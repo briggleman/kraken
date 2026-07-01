@@ -7,6 +7,14 @@ Deferred features and enhancements, roughly in priority order.
   highlighting, rename/copy + Trash (soft-delete/restore), single-file raw
   download, and the read-only settings-field flag._
 
+## Project & community
+- **Contribution support: PR template + `CONTRIBUTING.md`.** Deferred pending a decision on
+  how open to contributions the project should be. Think through: whether to accept outside
+  PRs at all (and under what bar), the contribution workflow (branch/fork, DCO or CLA, commit
+  style, the CI gate that already runs on PRs), how new **Game Specs** get proposed/reviewed
+  (likely the highest-volume contribution), a Code of Conduct, and issue templates (bug /
+  feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
+
 ## Platform
 - _All planned platform backlog items are done (see the dated sections below)._
 

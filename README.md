@@ -4,7 +4,7 @@
 
 ## Overview
 
-_TODO_
+Kraken is a personal project with the goal of being something I've built to use for my own hosting needs. It has the features I want and need in a gaming server without all the complexity of the ones that exist today. It's been developed for people like me who want something easy and secure to setup with some nice features to help manage your home stack if you have one. I plan on adding features and fixing things as I go along adding support for both Windows _and_ Linux containers for more games. If you love it drop a star and if you would like to see a feature let me know!
 
 ## Features
 

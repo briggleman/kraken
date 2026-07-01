@@ -1,0 +1,77 @@
+name: V Rising
+slug: vrising
+description: >-
+  V Rising dedicated server (SteamCMD app 1829350). The server is Windows-only,
+  so this spec targets a Windows node (steam-win image). Network/identity is
+  written to ServerHostSettings.json; gameplay rules come from the chosen
+  GameSettingsPreset. Ports are taken from the node's allocation.
+banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/header.jpg
+icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/capsule_231x87.jpg
+steam_app_ids:
+  windows: 1829350
+platforms:
+  - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+install:
+  # V Rising's server installs anonymously, but SteamCMD reports "Missing
+  # configuration" on the first app_update against a fresh (empty) appinfo cache.
+  # The standard fix is to run the command twice: the first pass primes the app
+  # config (and "fails"), the second downloads. Each Kraken install runs in a
+  # fresh container, so both passes run every time.
+  script: >-
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+  # V Rising is a Unity IL2CPP game → BepInEx 6 (IL2CPP). When a server opts into
+  # mods, this runs after the vanilla install: it fetches the latest
+  # BepInExPack_V_Rising (drops winhttp.dll + BepInEx/ + dotnet/ at C:\data) plus
+  # ServerLaunchFix, which headless V Rising REQUIRES to boot under BepInEx, into
+  # BepInEx/plugins. No startup change is needed on Windows — winhttp.dll is
+  # auto-loaded when VRisingServer.exe runs (so startup.bepinex_command is unset →
+  # the vanilla command is used). Single line: cmd can't span newlines, and the
+  # inner PowerShell uses only single quotes so cmd's quoting stays intact.
+  bepinex_compatible: true
+  bepinex_script: |-
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; function Dl($ns,$n){(Invoke-RestMethod ('https://thunderstore.io/api/experimental/package/'+$ns+'/'+$n+'/')).latest.download_url}; Invoke-WebRequest (Dl 'BepInEx' 'BepInExPack_V_Rising') -OutFile C:\data\_b.zip; Expand-Archive C:\data\_b.zip C:\data\_b -Force; $r=Join-Path C:\data\_b 'BepInExPack_V_Rising'; if(-not(Test-Path $r)){$r='C:\data\_b'}; Copy-Item (Join-Path $r '*') C:\data -Recurse -Force; New-Item -ItemType Directory -Force C:\data\BepInEx\plugins | Out-Null; Invoke-WebRequest (Dl 'Mythic' 'ServerLaunchFix') -OutFile C:\data\_s.zip; Expand-Archive C:\data\_s.zip C:\data\_s -Force; Get-ChildItem C:\data\_s -Recurse -Filter *.dll | Copy-Item -Destination C:\data\BepInEx\plugins -Force; Remove-Item C:\data\_b.zip,C:\data\_b,C:\data\_s.zip,C:\data\_s -Recurse -Force; Write-Host 'BepInEx IL2CPP + ServerLaunchFix installed'"
+startup:
+  command: >-
+    C:\data\VRisingServer.exe -persistentDataPath C:\data\save -logFile C:\data\logs\VRisingServer.log
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+ports:
+  - { name: game, protocol: udp, default: 9876, required: true }
+  - { name: query, protocol: udp, default: 9877, required: true }
+settings:
+  groups:
+    - id: server
+      label: Server
+      fields:
+        - { key: Name, label: Server name, type: string, default: "Kraken V Rising" }
+        - { key: Description, label: Description, type: text, default: "A Kraken-hosted V Rising server" }
+        - { key: MaxConnectedUsers, label: Max players, type: int, default: "40", min: 1, max: 200 }
+        - { key: Password, label: Server password, type: password, default: "" }
+        - { key: ListOnSteam, label: List on the Steam server browser, type: bool, default: "true" }
+        - { key: AutoSaveInterval, label: Autosave interval (seconds), type: int, default: "120", min: 30, max: 3600 }
+        - { key: GameSettingsPreset, label: Game settings preset, type: enum, options: [StandardPvP, StandardPvE], default: StandardPvP }
+config_files:
+  - path: C:\data\save\Settings\ServerHostSettings.json
+    format: template
+    template: |
+      {
+        "Name": "{{.settings.Name}}",
+        "Description": "{{.settings.Description}}",
+        "Port": {{.ports.game}},
+        "QueryPort": {{.ports.query}},
+        "MaxConnectedUsers": {{.settings.MaxConnectedUsers}},
+        "MaxConnectedAdmins": 4,
+        "ServerFps": 30,
+        "SaveName": "world1",
+        "Password": "{{.settings.Password}}",
+        "Secure": true,
+        "ListOnSteam": {{.settings.ListOnSteam}},
+        "ListOnEOS": true,
+        "AutoSaveCount": 20,
+        "AutoSaveInterval": {{.settings.AutoSaveInterval}},
+        "GameSettingsPreset": "{{.settings.GameSettingsPreset}}"
+      }
+resources:
+  min_memory_mb: 4096
+  recommended_memory_mb: 8192

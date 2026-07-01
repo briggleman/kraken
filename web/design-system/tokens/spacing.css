@@ -1,0 +1,30 @@
+/* Abyssal — spacing, radius & sizing tokens. 4px base scale. */
+:root {
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  --radius-sm:   8px;
+  --radius-md:   11px;
+  --radius-lg:   15px;
+  --radius-xl:   20px;
+  --radius-pill: 999px;
+
+  /* elevation tiers (dark shadow; glow is reserved for live/primary) */
+  --elevation-e1: 0 1px 3px rgba(0,0,0,.4);            /* card */
+  --elevation-e2: 0 12px 30px rgba(0,0,0,.55);          /* raised */
+  --elevation-e3: 0 30px 60px rgba(0,0,0,.6);           /* modal */
+  --elevation-glow:      0 0 22px rgba(61,245,207,.5);  /* live / primary */
+  --elevation-glow-soft: 0 0 18px rgba(61,245,207,.4);  /* primary button */
+
+  /* layout */
+  --container-max: 1240px;
+  --nav-height:    64px;
+}

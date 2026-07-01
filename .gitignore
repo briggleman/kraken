@@ -1,0 +1,51 @@
+# Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test / coverage
+*.test
+*.out
+coverage.*
+
+# Go workspace sum
+go.work.sum
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/**/*.key
+certs/
+# Agent SSH/SFTP host key (ed25519, generated on first run; extensionless)
+sftp_host_key
+sftp_host_key.pub
+
+# Node / web
+web/node_modules/
+web/dist/
+web/.vite/
+npm-debug.log*
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local / runtime data (bind-mounted server data, backups, dev logs).
+# Not root-anchored: integration tests can create these under internal/agent too.
+/data/
+server-data/
+backups/
+agent-backups/
+*.sqlite
+*.log
+
+# Local agent / editor tooling
+.claude/

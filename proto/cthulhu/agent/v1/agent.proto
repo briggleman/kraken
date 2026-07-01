@@ -1,0 +1,466 @@
+syntax = "proto3";
+
+// Package cthulhu.agent.v1 is the control-plane contract between the Panel and a
+// node Agent. The Agent runs the gRPC server (one per host); the Panel dials it
+// over mutual TLS. Request/response RPCs carry control actions; server-streaming
+// RPCs carry install progress, console output, and resource telemetry.
+package cthulhu.agent.v1;
+
+option go_package = "github.com/briggleman/kraken/internal/shared/agentpb;agentpb";
+
+// ServerState mirrors the Panel's server lifecycle state machine.
+enum ServerState {
+  SERVER_STATE_UNSPECIFIED = 0;
+  SERVER_STATE_INSTALLING = 1;
+  SERVER_STATE_OFFLINE = 2;
+  SERVER_STATE_STARTING = 3;
+  SERVER_STATE_RUNNING = 4;
+  SERVER_STATE_STOPPING = 5;
+  SERVER_STATE_CRASHED = 6;
+}
+
+// PowerAction is a requested power transition for a server.
+enum PowerAction {
+  POWER_ACTION_UNSPECIFIED = 0;
+  POWER_ACTION_START = 1;
+  POWER_ACTION_STOP = 2;
+  POWER_ACTION_RESTART = 3;
+  POWER_ACTION_KILL = 4;
+}
+
+// NodeService is implemented by the Agent and consumed by the Panel.
+service NodeService {
+  // GetNodeInfo returns the node's identity and capacity. Used for health checks
+  // and to reconcile the Panel's view of the node.
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (NodeInfo);
+
+  // CreateServer records a server's runtime spec on the node and provisions its
+  // data volume, without starting it. Must precede InstallServer/PowerAction.
+  rpc CreateServer(CreateServerRequest) returns (CreateServerResponse);
+
+  // RemoveServer stops and removes a server's container (and optionally its data).
+  rpc RemoveServer(RemoveServerRequest) returns (RemoveServerResponse);
+
+  // ApplyConfig writes rendered game-config files into the server's data volume.
+  // The Panel renders the content from the server's settings; the Agent just
+  // persists the bytes at each path.
+  rpc ApplyConfig(ApplyConfigRequest) returns (ApplyConfigResponse);
+
+  // ListFiles lists the entries directly under a path in the server's volume.
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+
+  // DownloadFiles streams a zip archive of the selected paths from the volume.
+  rpc DownloadFiles(DownloadFilesRequest) returns (stream FileChunk);
+
+  // ReadFile returns the raw bytes of a single file in the volume, capped at
+  // max_bytes. Used by the in-browser file editor/preview.
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+
+  // DownloadFile streams the raw (unzipped) bytes of a single file for download.
+  rpc DownloadFile(DownloadFileRequest) returns (stream FileChunk);
+
+  // MakeDir creates a directory (and parents) in the volume.
+  rpc MakeDir(MakeDirRequest) returns (MakeDirResponse);
+
+  // MovePath renames/moves a file or directory within the volume.
+  rpc MovePath(MovePathRequest) returns (MovePathResponse);
+
+  // CopyPath copies a file or directory within the volume.
+  rpc CopyPath(CopyPathRequest) returns (CopyPathResponse);
+
+  // WriteFile writes/overwrites a single file in the volume (new file or upload).
+  rpc WriteFile(WriteFileRequest) returns (WriteFileResponse);
+
+  // DeletePaths removes files/directories (recursively) from the volume.
+  rpc DeletePaths(DeletePathsRequest) returns (DeletePathsResponse);
+
+  // CreateBackup snapshots the server's data volume into a node-local archive.
+  rpc CreateBackup(CreateBackupRequest) returns (BackupInfo);
+
+  // ListBackups lists a server's backups.
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+
+  // RestoreBackup extracts a backup back into the server's data volume.
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+
+  // DeleteBackup removes a backup archive.
+  rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
+
+  // InstallServer runs the install/update phase for a server (e.g. SteamCMD) in
+  // a one-shot container, streaming progress until completion or failure.
+  rpc InstallServer(InstallServerRequest) returns (stream InstallEvent);
+
+  // PowerAction performs a power transition (start/stop/restart/kill).
+  rpc PowerAction(PowerActionRequest) returns (PowerActionResponse);
+
+  // GetServerStatus returns a server's current state and last-known resources.
+  rpc GetServerStatus(GetServerStatusRequest) returns (ServerStatus);
+
+  // StreamConsole streams console output for a server until the client cancels.
+  rpc StreamConsole(StreamConsoleRequest) returns (stream ConsoleLine);
+
+  // SendCommand writes a command to a running server's console / stdin.
+  rpc SendCommand(SendCommandRequest) returns (SendCommandResponse);
+
+  // StreamStats streams periodic resource telemetry for a server.
+  rpc StreamStats(StreamStatsRequest) returns (stream ResourceStats);
+
+  // ApplyNodeConfig delivers the Panel-managed per-node configuration (backup
+  // target selection + credentials, replication). The Agent applies it live and
+  // validates reachability of the configured target, returning ok/detail.
+  rpc ApplyNodeConfig(ApplyNodeConfigRequest) returns (ApplyNodeConfigResponse);
+
+  // ReplicateBackups mirrors a server's existing archives from the primary
+  // target to the configured SFTP remote. Drives the scheduled "replicate"
+  // cron action.
+  rpc ReplicateBackups(ReplicateBackupsRequest) returns (ReplicateBackupsResponse);
+}
+
+message GetNodeInfoRequest {}
+
+// PortMapping binds a container port to a host port for one of a server's ports.
+message PortMapping {
+  string name = 1;            // spec port name (e.g. "game")
+  string protocol = 2;        // "tcp" | "udp"
+  int32 container_port = 3;
+  int32 host_port = 4;
+}
+
+// ServerSpec is the runtime configuration the Agent needs to (re)create a
+// server's container.
+message ServerSpec {
+  string server_id = 1;
+  string image = 2;                  // runtime Docker image
+  string startup_command = 3;        // run via the image's shell (variables substituted)
+  map<string, string> env = 4;
+  int64 memory_limit_mb = 5;
+  repeated PortMapping ports = 6;
+  string data_path = 7;              // mount point for the data volume (default /data)
+  string stop_signal = 8;            // graceful stop signal, e.g. "SIGINT"
+  string stop_command = 9;           // optional console command to stop (e.g. "quit")
+  string ready_regex = 10;           // console line signalling the server is fully up (starting→running)
+  bool restart_on_crash = 11;        // auto-restart after an unexpected (non-operator) exit
+  int32 max_restarts = 12;           // cap on consecutive crash-restarts (0 → agent default)
+  PlayerQuery player_query = 13;     // how the Agent counts online players (nil → none)
+  SftpAccess sftp = 14;              // per-server SFTP credentials (nil/disabled → no SFTP)
+}
+
+// SftpAccess carries a server's SFTP credentials so the Agent's SFTP server can
+// authenticate a connection and chroot it to that server's data dir. The Panel
+// owns the credentials (generates + stores) and pushes them here on the spec.
+message SftpAccess {
+  bool enabled = 1;
+  string username = 2;                  // login name (the server id)
+  string password_hash = 3;             // bcrypt hash; empty → password auth disabled
+  repeated string authorized_keys = 4;  // OpenSSH authorized_keys lines (public keys)
+}
+
+// PlayerQuery tells the Agent how to read a server's online-player count. The
+// Panel resolves the spec's query block into the concrete host port (and, for
+// the REST method, the admin password) before sending it.
+message PlayerQuery {
+  string method = 1;   // "a2s" (Steam query) | "palworld-rest" | "" (none)
+  int32 port = 2;      // host port to query (A2S) / REST API port
+  string password = 3; // Basic-auth password for palworld-rest (admin); empty otherwise
+}
+
+message CreateServerRequest {
+  ServerSpec spec = 1;
+}
+
+message CreateServerResponse {}
+
+message RemoveServerRequest {
+  string server_id = 1;
+  bool delete_data = 2;
+}
+
+message RemoveServerResponse {}
+
+// RenderedFile is a config file's destination path and contents.
+message RenderedFile {
+  string path = 1;
+  string content = 2;
+}
+
+message ApplyConfigRequest {
+  string server_id = 1;
+  repeated RenderedFile files = 2;
+}
+
+message ApplyConfigResponse {}
+
+// FileEntry is one item in a directory listing.
+message FileEntry {
+  string name = 1;        // base name
+  string path = 2;        // full path within the volume
+  bool is_dir = 3;
+  int64 size = 4;
+  int64 mod_unix_ms = 5;
+}
+
+message ListFilesRequest {
+  string server_id = 1;
+  string path = 2; // directory to list (default: the data root)
+}
+
+message ListFilesResponse {
+  string path = 1;
+  repeated FileEntry entries = 2;
+}
+
+message DownloadFilesRequest {
+  string server_id = 1;
+  repeated string paths = 2; // files/dirs to include in the zip
+}
+
+message DownloadFileRequest {
+  string server_id = 1;
+  string path = 2; // single file to stream raw (not zipped)
+}
+
+message FileChunk {
+  bytes data = 1;
+}
+
+message ReadFileRequest {
+  string server_id = 1;
+  string path = 2;
+  int64 max_bytes = 3; // cap on returned content; 0 means use the agent default
+}
+
+message ReadFileResponse {
+  bytes content = 1;   // file bytes (capped at max_bytes)
+  int64 size = 2;      // total file size on disk
+  bool truncated = 3;  // size exceeded max_bytes; content is the leading slice
+  bool is_binary = 4;  // content appears to be binary (contains NUL bytes)
+}
+
+message MakeDirRequest {
+  string server_id = 1;
+  string path = 2;
+}
+message MakeDirResponse {}
+
+message MovePathRequest {
+  string server_id = 1;
+  string src = 2;
+  string dst = 3;
+}
+message MovePathResponse {}
+
+message CopyPathRequest {
+  string server_id = 1;
+  string src = 2;
+  string dst = 3;
+}
+message CopyPathResponse {}
+
+message WriteFileRequest {
+  string server_id = 1;
+  string path = 2;
+  bytes content = 3;
+}
+message WriteFileResponse {}
+
+message DeletePathsRequest {
+  string server_id = 1;
+  repeated string paths = 2;
+}
+message DeletePathsResponse {}
+
+// BackupState tracks the local archive's lifecycle. Backups are created
+// asynchronously: CreateBackup returns immediately with PENDING and the Agent
+// tar+gzips the data dir in the background, flipping to READY (or FAILED).
+enum BackupState {
+  BACKUP_STATE_UNSPECIFIED = 0; // unknown — treat as READY (e.g. an archive found on disk after restart)
+  BACKUP_STATE_PENDING = 1;     // archiving in progress
+  BACKUP_STATE_READY = 2;       // local archive complete
+  BACKUP_STATE_FAILED = 3;      // archiving failed
+}
+
+// ReplicationState tracks the off-node (SFTP) mirror of a finished archive,
+// which runs as a separate async step after the local archive is READY.
+enum ReplicationState {
+  REPLICATION_STATE_UNSPECIFIED = 0; // no off-node replication configured / not tracked
+  REPLICATION_STATE_PENDING = 1;     // mirror queued or in progress
+  REPLICATION_STATE_DONE = 2;        // mirrored off-node
+  REPLICATION_STATE_FAILED = 3;      // mirror failed (local archive is still good)
+}
+
+message BackupInfo {
+  string id = 1;
+  string name = 2;
+  int64 size = 3;
+  int64 created_unix_ms = 4;
+  BackupState state = 5;
+  ReplicationState replication = 6;
+}
+
+message CreateBackupRequest {
+  string server_id = 1;
+  string name = 2;
+  // slug is the server's game-spec slug, used to expand path tokens (e.g.
+  // {{SLUG}}) in the node's backup_dir / sftp_base_path. It is stable for the
+  // life of a server, so the resolved path is identical across all backup ops.
+  string slug = 3;
+}
+
+message ListBackupsRequest {
+  string server_id = 1;
+  string slug = 2; // see CreateBackupRequest.slug
+}
+message ListBackupsResponse {
+  repeated BackupInfo backups = 1;
+}
+
+message RestoreBackupRequest {
+  string server_id = 1;
+  string id = 2;
+  string slug = 3; // see CreateBackupRequest.slug
+}
+message RestoreBackupResponse {}
+
+message DeleteBackupRequest {
+  string server_id = 1;
+  string id = 2;
+  string slug = 3; // see CreateBackupRequest.slug
+}
+message DeleteBackupResponse {}
+
+message NodeInfo {
+  string node_id = 1;
+  string os = 2;               // "linux" | "windows"
+  bool wine_enabled = 3;
+  string agent_version = 4;
+  int64 total_memory_mb = 5;
+  int32 running_servers = 6;
+  string host = 7;             // primary (non-loopback) IPv4 of the agent host (LAN)
+  string external_ip = 8;      // detected outward-facing/WAN IP (egress echo), if any
+  int32 sftp_port = 9;         // port the Agent's SFTP server listens on (0 → SFTP disabled)
+}
+
+message InstallServerRequest {
+  string server_id = 1;
+  string image = 2;                  // Docker image for the install container
+  string install_script = 3;        // shell script (variables already substituted)
+  map<string, string> env = 4;      // environment variables for the install
+  int64 memory_limit_mb = 5;
+}
+
+message InstallEvent {
+  // Exactly one field is set per event.
+  oneof event {
+    string log_line = 1;     // a line of install output
+    int32 progress = 2;      // 0..100 where derivable
+    bool completed = 3;      // install finished successfully
+    string failed = 4;       // install failed, with reason
+  }
+}
+
+message PowerActionRequest {
+  string server_id = 1;
+  PowerAction action = 2;
+}
+
+message PowerActionResponse {
+  ServerState state = 1;
+}
+
+message GetServerStatusRequest {
+  string server_id = 1;
+}
+
+message ServerStatus {
+  string server_id = 1;
+  ServerState state = 2;
+  ResourceStats last_stats = 3;
+}
+
+message StreamConsoleRequest {
+  string server_id = 1;
+  // tail_lines, when > 0, replays that many recent lines before live output.
+  int32 tail_lines = 2;
+}
+
+message ConsoleLine {
+  string server_id = 1;
+  int64 ts_unix_ms = 2;
+  // stream is "stdout" or "stderr".
+  string stream = 3;
+  string text = 4;
+}
+
+message SendCommandRequest {
+  string server_id = 1;
+  string command = 2;
+}
+
+message SendCommandResponse {}
+
+message StreamStatsRequest {
+  string server_id = 1;
+  // interval_ms is the desired sampling interval; the Agent may clamp it.
+  int32 interval_ms = 2;
+}
+
+message ResourceStats {
+  string server_id = 1;
+  int64 ts_unix_ms = 2;
+  double cpu_percent = 3;
+  int64 memory_used_mb = 4;
+  int64 memory_limit_mb = 5;
+  int64 net_rx_bytes = 6;
+  int64 net_tx_bytes = 7;
+  int64 uptime_seconds = 8;  // seconds since the container started (0 if unknown)
+  int64 disk_used_mb = 9;    // size of the server's data dir (sampled periodically)
+  // Player count, when the spec declares a query method (A2S / Palworld REST) and
+  // the server answered. players_known distinguishes "0 players" from "unknown".
+  int32 players = 10;
+  int32 max_players = 11;
+  bool players_known = 12;
+}
+
+// NodeConfig is the Panel-managed per-node configuration the Agent applies to
+// select where backups are stored and (optionally) mirrored. It supersedes the
+// Agent's KRAKEN_* backup env vars, which become pre-reconcile defaults only.
+message NodeConfig {
+  string backup_target = 1;   // "local" | "sftp" (empty → keep env default)
+  string backup_dir = 2;      // node-local archive directory (for the "local" target)
+
+  // Fields 3-8 were an S3-compatible object-store target, removed in favor of SFTP.
+  reserved 3, 4, 5, 6, 7, 8;
+  reserved "s3_endpoint", "s3_region", "s3_bucket", "s3_access_key", "s3_secret_key", "s3_prefix";
+
+  // SFTP remote: the primary store when backup_target == "sftp", and the mirror
+  // destination when replicate_to_sftp is set. Exactly one of sftp_password /
+  // sftp_private_key authenticates the connection.
+  string sftp_host = 9;          // "host:port" (default port 22)
+  string sftp_user = 10;
+  string sftp_password = 11;
+  string sftp_private_key = 12;  // PEM-encoded private key
+  string sftp_base_path = 13;    // remote root directory for archives
+
+  // replicate_to_sftp mirrors every new backup (and the ReplicateBackups action)
+  // to the SFTP remote, regardless of the primary target.
+  bool replicate_to_sftp = 14;
+}
+
+message ApplyNodeConfigRequest {
+  NodeConfig config = 1;
+}
+
+message ApplyNodeConfigResponse {
+  bool ok = 1;        // configured target(s) reachable
+  string detail = 2;  // human-readable status / error detail
+}
+
+message ReplicateBackupsRequest {
+  string server_id = 1;
+  string slug = 2; // see CreateBackupRequest.slug
+}
+
+message ReplicateBackupsResponse {
+  int32 mirrored = 1; // archives copied to the remote this run
+  int32 skipped = 2;  // archives already present on the remote
+}

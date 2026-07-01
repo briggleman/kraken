@@ -1,0 +1,16 @@
+/* Abyssal — typography tokens.
+   Space Grotesk carries UI + prose; JetBrains Mono owns console, IDs, ports,
+   config and every numeric readout. Display & H1 are set in mono for a technical,
+   sci-fi register; H2/H3/body/caption are the grotesque sans. */
+:root {
+  --font-sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-black:    800;
+}

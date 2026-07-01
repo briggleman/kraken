@@ -1,0 +1,33 @@
+# Normalize line endings: text files are LF in the repo, checked out native.
+* text=auto eol=lf
+
+# Explicitly LF for scripts and code (avoid CRLF breaking shell/Go tooling).
+*.go    text eol=lf
+*.sh    text eol=lf
+*.mod   text eol=lf
+*.sum   text eol=lf
+*.proto text eol=lf
+*.sql   text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.json  text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.jsx   text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+
+# Generated Go protobuf — keep in the repo but mark as generated so diffs/reviews
+# and language stats treat it accordingly.
+*.pb.go   linguist-generated=true text eol=lf
+
+# Binary assets (never normalize).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff  binary
+*.woff2 binary

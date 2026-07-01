@@ -1,0 +1,75 @@
+name: Valheim
+slug: valheim
+description: >-
+  Valheim dedicated server (Linux-native, SteamCMD app 896660). Server name,
+  world, password, and public listing are launch options. No ready_regex is set,
+  so the server is marked running once the process is up — add one (e.g. a log
+  line that prints when the world finishes loading) for stricter gating.
+banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/892970/header.jpg
+icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/892970/capsule_231x87.jpg
+steam_app_ids:
+  linux: 896660
+platforms:
+  - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
+install:
+  # Run app_update twice: a fresh SteamCMD can fail the first pass with "Missing
+  # configuration" and exit nonzero; the second pass succeeds (';' so it always runs).
+  script: >-
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+  # Valheim is a Unity (Mono) game → BepInEx 5. When a server opts into mods, this
+  # runs after the vanilla install: fetch the Valheim BepInEx pack (ships the
+  # Doorstop loader + Linux run_bepinex.sh + unstripped corlib) and unpack it into
+  # /data alongside valheim_server.x86_64. Mods then live under /data/BepInEx/plugins.
+  bepinex_compatible: true
+  bepinex_script: >-
+    cd /data &&
+    curl -sSL -o /tmp/bepinex.zip "https://thunderstore.io/package/download/denikson/BepInExPack_Valheim/5.4.2202/" &&
+    rm -rf /tmp/bepinex && mkdir -p /tmp/bepinex &&
+    unzip -oq /tmp/bepinex.zip -d /tmp/bepinex &&
+    cp -rf /tmp/bepinex/BepInExPack_Valheim/. /data/ &&
+    mkdir -p /data/BepInEx/plugins &&
+    rm -rf /tmp/bepinex /tmp/bepinex.zip &&
+    echo "BepInEx installed into /data (launch via the Doorstop env in startup.bepinex_command)"
+startup:
+  # Valheim needs its bundled libs on LD_LIBRARY_PATH and the *game* app id (892970)
+  # in SteamAppId, then launches headless with -nographics -batchmode.
+  command: >-
+    cd /data &&
+    export LD_LIBRARY_PATH=/data/linux64:$LD_LIBRARY_PATH &&
+    export SteamAppId=892970 &&
+    ./valheim_server.x86_64 -nographics -batchmode
+    -name "{{SERVER_NAME}}" -port {{PORT_GAME}} -world "{{WORLD_NAME}}"
+    -password "{{SERVER_PASSWORD}}" -public {{PUBLIC}}
+    -savedir /data/save -saveinterval {{SAVE_INTERVAL}} -backups {{BACKUPS}}
+  # Modded launch: same as vanilla but routed through the BepInEx Doorstop loader
+  # (env-var form, equivalent to run_bepinex.sh) so plugins load before the game.
+  bepinex_command: >-
+    cd /data &&
+    export SteamAppId=892970 &&
+    export DOORSTOP_ENABLE=TRUE &&
+    export DOORSTOP_INVOKE_DLL_PATH=/data/BepInEx/core/BepInEx.Preloader.dll &&
+    export DOORSTOP_CORLIB_OVERRIDE_PATH=/data/unstripped_corlib &&
+    export LD_LIBRARY_PATH=/data/doorstop_libs:/data/linux64:$LD_LIBRARY_PATH &&
+    export LD_PRELOAD=libdoorstop_x64.so &&
+    ./valheim_server.x86_64 -nographics -batchmode
+    -name "{{SERVER_NAME}}" -port {{PORT_GAME}} -world "{{WORLD_NAME}}"
+    -password "{{SERVER_PASSWORD}}" -public {{PUBLIC}}
+    -savedir /data/save -saveinterval {{SAVE_INTERVAL}} -backups {{BACKUPS}}
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: SIGINT }
+variables:
+  - { key: SERVER_NAME, label: Server name, default: "Kraken Valheim", rules: "string", user_editable: true }
+  - { key: WORLD_NAME, label: World name, default: "Dedicated", rules: "string", user_editable: true }
+  - { key: SERVER_PASSWORD, label: Password (5+ chars, not in name), default: "valheim", rules: "string", user_editable: true }
+  - { key: PUBLIC, label: List publicly, default: "1", rules: "in:0,1", user_editable: true }
+  - { key: SAVE_INTERVAL, label: Save interval (seconds), default: "1800", rules: "int|min:60", user_editable: true }
+  - { key: BACKUPS, label: Backups kept, default: "4", rules: "int|min:0|max:30", user_editable: true }
+ports:
+  - { name: game, protocol: udp, default: 2456, required: true }
+  - { name: query, protocol: udp, default: 2457, required: true }
+# Valheim answers the Steam A2S_INFO query on its query port → live player count.
+query: { method: a2s, port: query }
+resources:
+  min_memory_mb: 2048
+  recommended_memory_mb: 4096

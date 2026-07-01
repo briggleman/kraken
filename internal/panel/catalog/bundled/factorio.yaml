@@ -1,0 +1,63 @@
+name: Factorio
+slug: factorio
+description: >-
+  Factorio headless server (Linux-native). Not on SteamCMD — the install phase
+  downloads the current stable headless build from factorio.com and creates a
+  default save if none exists. Server identity, password, and visibility are
+  written to server-settings.json from the Settings tab.
+banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/427520/header.jpg
+icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/427520/capsule_231x87.jpg
+platforms:
+  - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
+install:
+  script: >-
+    curl -sSL https://factorio.com/get-download/stable/headless/linux64 -o /tmp/factorio.tar.xz &&
+    tar -xJf /tmp/factorio.tar.xz -C /data --strip-components=1 &&
+    rm -f /tmp/factorio.tar.xz &&
+    mkdir -p /data/saves &&
+    { [ -f /data/saves/world.zip ] || /data/bin/x64/factorio --create /data/saves/world.zip; }
+startup:
+  command: >-
+    /data/bin/x64/factorio --start-server /data/saves/world.zip
+    --server-settings /data/server-settings.json --port {{PORT_GAME}}
+  # Factorio logs this exact transition when the map is loaded and joinable.
+  ready_regex: 'to\(InGame\)'
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: SIGINT }
+ports:
+  - { name: game, protocol: udp, default: 34197, required: true }
+settings:
+  groups:
+    - id: server
+      label: Server
+      fields:
+        - { key: name, label: Server name, type: string, default: "Kraken Factorio" }
+        - { key: description, label: Description, type: text, default: "A Kraken-hosted Factorio server" }
+        - { key: max_players, label: Max players (0 = unlimited), type: int, default: "0", min: 0, max: 500 }
+        - { key: game_password, label: Server password, type: password, default: "" }
+        - { key: public, label: List on public server browser, type: bool, default: "false" }
+        - { key: require_user_verification, label: Require Steam/Factorio.com verification, type: bool, default: "true" }
+        - { key: auto_pause, label: Pause when no players online, type: bool, default: "true" }
+        - { key: autosave_interval, label: Autosave interval (minutes), type: int, default: "10", min: 1, max: 240 }
+config_files:
+  - path: /data/server-settings.json
+    format: template
+    template: |
+      {
+        "name": "{{.settings.name}}",
+        "description": "{{.settings.description}}",
+        "max_players": {{.settings.max_players}},
+        "visibility": { "public": {{.settings.public}}, "lan": true },
+        "username": "",
+        "token": "",
+        "game_password": "{{.settings.game_password}}",
+        "require_user_verification": {{.settings.require_user_verification}},
+        "autosave_interval": {{.settings.autosave_interval}},
+        "autosave_slots": 5,
+        "afk_autokick_interval": 0,
+        "allow_commands": "admins-only",
+        "auto_pause": {{.settings.auto_pause}}
+      }
+resources:
+  min_memory_mb: 1024
+  recommended_memory_mb: 2048

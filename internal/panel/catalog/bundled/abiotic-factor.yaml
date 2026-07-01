@@ -1,0 +1,34 @@
+name: Abiotic Factor
+slug: abiotic-factor
+description: >-
+  Abiotic Factor dedicated server (SteamCMD app 2857200). The server ships as a
+  Windows build (Unreal Engine 5), so this targets a Windows node (steam-win
+  image). Server name, world save, player cap, and password are launch options.
+steam_app_ids:
+  windows: 2857200
+platforms:
+  - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+install:
+  # Run app_update twice: SteamCMD can report "Missing configuration" on the
+  # first pass against a fresh appinfo cache; the second pass downloads.
+  script: >-
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+startup:
+  command: >-
+    C:\data\AbioticFactorServer.exe -log
+    -SteamServerName="{{SERVER_NAME}}" -PORT={{PORT_GAME}} -QueryPort={{PORT_QUERY}}
+    -MaxServerPlayers={{MAX_PLAYERS}} -WorldSaveName={{WORLD_NAME}} -ServerPassword="{{SERVER_PASSWORD}}"
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+variables:
+  - { key: SERVER_NAME, label: Server name, default: "Kraken Abiotic Factor", rules: "string", user_editable: true }
+  - { key: WORLD_NAME, label: World save name (no spaces), default: "Kraken", rules: "string", user_editable: true }
+  - { key: MAX_PLAYERS, label: Max players, default: "6", rules: "int|min:1|max:16", user_editable: true }
+  - { key: SERVER_PASSWORD, label: Server password, default: "", rules: "string", user_editable: true }
+ports:
+  - { name: game, protocol: udp, default: 7777, required: true }
+  - { name: query, protocol: udp, default: 27015, required: true }
+resources:
+  min_memory_mb: 4096
+  recommended_memory_mb: 8192

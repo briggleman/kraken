@@ -1,0 +1,77 @@
+<!-- @dsCard group="Components" viewport="760x440" name="Select / dropdown" subtitle="themed trigger + popover listbox — icons, hints, states, keyboard nav" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin:0; background:var(--bg-abyss); font-family:var(--font-sans); padding:26px; color:var(--text-primary); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:26px 32px; max-width:700px; }
+  .lbl { font-family:var(--font-mono); font-size:11px; letter-spacing:1.5px; color:var(--text-faint); margin-bottom:12px; }
+  .col { min-width:0; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { Select } = window.AbyssalDesignSystem_6b879a;
+
+    const NODES = [
+      { value: 'node-01', label: 'node-01', icon: 'linux', hint: 'eu-west · 38%' },
+      { value: 'node-02', label: 'node-02', icon: 'linux', hint: 'us-east · 61%' },
+      { value: 'node-04', label: 'node-04', icon: 'linux', hint: 'ap-south · 12%' },
+      { value: 'node-09', label: 'node-09 (draining)', icon: 'offline', hint: '—', disabled: true },
+    ];
+    const GAMES = [
+      { value: 'valheim', label: 'Valheim', hint: 'app 896660' },
+      { value: 'cs2', label: 'CS2', hint: 'app 730' },
+      { value: 'rust', label: 'Rust', hint: 'app 258550' },
+      { value: 'palworld', label: 'Palworld', hint: 'app 2394010' },
+      { value: 'ark', label: 'ARK: Survival', hint: 'app 376030' },
+      { value: 'minecraft', label: 'Minecraft', hint: 'java' },
+    ];
+    const REGIONS = [
+      { value: 'eu', label: 'EU · Frankfurt' },
+      { value: 'us', label: 'US · Ashburn' },
+      { value: 'ap', label: 'AP · Singapore' },
+    ];
+
+    function Demo() {
+      const [node, setNode] = React.useState('node-01');
+      const [game, setGame] = React.useState(null);
+      const [region, setRegion] = React.useState('eu');
+
+      return (
+        <div className="grid">
+          <div className="col">
+            <div className="lbl">OPEN · ICONS + HINTS</div>
+            <Select label="NODE PLACEMENT" mono value={node} options={NODES} onChange={setNode} defaultOpen />
+          </div>
+
+          <div className="col">
+            <div className="lbl">CLOSED · PLACEHOLDER</div>
+            <Select label="GAME" value={game} options={GAMES} placeholder="Choose a game…" onChange={setGame} helper="Pick the title to install." />
+          </div>
+
+          <div className="col">
+            <div className="lbl">SMALL · SELECTED</div>
+            <Select size="sm" label="REGION" value={region} options={REGIONS} onChange={setRegion} />
+          </div>
+
+          <div className="col">
+            <div className="lbl">ERROR &amp; DISABLED</div>
+            <Select label="GAME" value={null} options={GAMES} error placeholder="Required" helper="Select a game to continue." />
+            <div style={{ height: 16 }} />
+            <Select label="NODE PLACEMENT" value="node-01" options={NODES} disabled mono />
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+  </script>
+</body>
+</html>

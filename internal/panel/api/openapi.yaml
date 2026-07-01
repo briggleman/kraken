@@ -1,0 +1,1005 @@
+openapi: 3.0.3
+info:
+  title: Kraken Panel API
+  description: >
+    Control-plane REST API for the Kraken self-hosted game-server platform:
+    authentication, the game-spec catalog, server lifecycle, files, backups,
+    cron schedules, node registry, Agent mTLS enrollment, users/roles, and the
+    audit log. All endpoints are under /api/v1 unless noted. Authenticated
+    endpoints use a bearer session token from POST /auth/login.
+  version: "1.0.0"
+servers:
+  - url: /api/v1
+    description: Panel API (relative to the Panel host)
+tags:
+  - name: Auth
+  - name: Servers
+  - name: Specs
+  - name: Nodes
+  - name: Files
+  - name: Backups
+  - name: Schedules
+  - name: Users & Roles
+  - name: Enrollment
+  - name: Setup
+  - name: Settings
+  - name: DNS
+  - name: Audit
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and obtain a session token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate the current session
+      responses:
+        '200': { description: Logged out }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user and role
+      responses:
+        '200':
+          description: The authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  role: { type: object }
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change the current user's password
+      description: >-
+        Rotates the caller's password, clears the first-run must-change flag, and
+        issues a fresh session token (the old bearer is invalidated).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200':
+          description: Password changed; returns a rotated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: Current password incorrect }
+
+  /setup/status:
+    get:
+      tags: [Setup]
+      summary: First-run onboarding progress
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  admin_must_change_password: { type: boolean }
+                  using_memory: { type: boolean }
+                  has_node_online: { type: boolean }
+                  has_spec: { type: boolean }
+                  has_server: { type: boolean }
+                  setup_complete: { type: boolean }
+  /setup/database:
+    get:
+      tags: [Setup]
+      summary: Current datastore target (never returns the password)
+      responses:
+        '200':
+          description: Datastore config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  using_memory: { type: boolean }
+                  env_locked: { type: boolean, description: "managed by KRAKEN_DATABASE_URL" }
+                  host: { type: string }
+                  port: { type: integer }
+                  user: { type: string }
+                  dbname: { type: string }
+                  sslmode: { type: string }
+    post:
+      tags: [Setup]
+      summary: Connect Postgres — create DB if needed, migrate, persist, restart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DBConnectRequest' }
+      responses:
+        '200':
+          description: Saved; the Panel will restart onto Postgres
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restarting: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Database is env-managed (KRAKEN_DATABASE_URL) }
+        '502': { description: Connection / create / migrate failed }
+  /setup/database/test:
+    post:
+      tags: [Setup]
+      summary: Preflight a Postgres connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DBConnectRequest' }
+      responses:
+        '200':
+          description: Reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  db_exists: { type: boolean }
+                  can_create_db: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { description: Connection failed }
+  /setup/local-enroll:
+    post:
+      tags: [Setup]
+      security: []
+      summary: Issue a bootstrap token for the co-located Agent (loopback only)
+      description: >-
+        Mints a one-time enrollment token for the local single-host Agent. Gated on
+        a loopback source IP; not reachable off-host.
+      responses:
+        '201':
+          description: Token issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BootstrapToken' }
+        '403': { description: Not called from the Panel host }
+        '503': { description: Agent enrollment not configured }
+  /catalog:
+    get:
+      tags: [Setup]
+      summary: List bundled starter game specs
+      responses:
+        '200':
+          description: Catalog entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  catalog:
+                    type: array
+                    items: { $ref: '#/components/schemas/CatalogItem' }
+  /catalog/{id}/import:
+    post:
+      tags: [Setup]
+      summary: Import a bundled catalog spec (one-click)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '201':
+          description: Imported
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Spec' }
+        '404': { description: Catalog item not found }
+        '409': { description: A spec with that slug is already imported }
+
+  /servers:
+    get:
+      tags: [Servers]
+      summary: List servers
+      responses:
+        '200':
+          description: Servers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  servers:
+                    type: array
+                    items: { $ref: '#/components/schemas/Server' }
+    post:
+      tags: [Servers]
+      summary: Create (deploy) a server from a spec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [spec_id, name]
+              properties:
+                spec_id: { type: string, format: uuid }
+                name: { type: string }
+                variables:
+                  type: object
+                  additionalProperties: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Server' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /servers/{id}:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Servers]
+      summary: Get a server
+      responses:
+        '200':
+          description: Server
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Server' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Servers]
+      summary: Delete a server and its data
+      responses:
+        '204': { description: Deleted }
+  /servers/{id}/power:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Servers]
+      summary: Power action (start/stop/restart/kill)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PowerRequest' }
+      responses:
+        '200':
+          description: New lifecycle state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { $ref: '#/components/schemas/ServerState' }
+  /servers/{id}/settings:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Servers]
+      summary: Get grouped game settings + current values
+      responses:
+        '200': { description: Settings (groups + values) }
+    put:
+      tags: [Servers]
+      summary: Update game settings values
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                values:
+                  type: object
+                  additionalProperties: { type: string }
+      responses:
+        '200': { description: Applied (with any validation errors) }
+
+  /servers/{id}/files:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Files]
+      summary: List files under a path
+      parameters:
+        - { name: path, in: query, schema: { type: string }, description: directory to list }
+      responses:
+        '200': { description: Directory listing }
+  /servers/{id}/files/content:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Files]
+      summary: Read a single file's contents
+      parameters: [ { name: path, in: query, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: File content (capped) }
+  /servers/{id}/files/raw:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Files]
+      summary: Download a single file (raw bytes)
+      parameters: [ { name: path, in: query, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: Raw file stream }
+  /servers/{id}/files/download:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Files]
+      summary: Download selected paths as a zip
+      responses: { '200': { description: Zip stream } }
+  /servers/{id}/files/mkdir:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Create a directory, responses: { '200': { description: Created } } }
+  /servers/{id}/files/move:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Move/rename a path, responses: { '200': { description: Moved } } }
+  /servers/{id}/files/copy:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Copy a path, responses: { '200': { description: Copied } } }
+  /servers/{id}/files/write:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Write/overwrite a file, responses: { '200': { description: Written } } }
+  /servers/{id}/files/upload:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Upload files (multipart), responses: { '200': { description: Uploaded } } }
+  /servers/{id}/files/delete:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post: { tags: [Files], summary: Delete paths, responses: { '200': { description: Deleted } } }
+
+  /servers/{id}/backups:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Backups]
+      summary: List backups
+      responses:
+        '200':
+          description: Backups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backups:
+                    type: array
+                    items: { $ref: '#/components/schemas/Backup' }
+    post:
+      tags: [Backups]
+      summary: Create a backup
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string } } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Backup' }
+  /servers/{id}/backups/{backupId}/restore:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: backupId, in: path, required: true, schema: { type: string } }
+    post: { tags: [Backups], summary: Restore a backup, responses: { '200': { description: Restored } } }
+  /servers/{id}/backups/{backupId}:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: backupId, in: path, required: true, schema: { type: string } }
+    delete: { tags: [Backups], summary: Delete a backup, responses: { '204': { description: Deleted } } }
+
+  /servers/{id}/schedules:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Schedules]
+      summary: List a server's scheduled tasks
+      responses:
+        '200':
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedules:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduledTask' }
+    post:
+      tags: [Schedules]
+      summary: Create a scheduled task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledTask' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /servers/{id}/schedules/{scheduleId}:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: scheduleId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [Schedules]
+      summary: Update a scheduled task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledTask' }
+    delete: { tags: [Schedules], summary: Delete a scheduled task, responses: { '204': { description: Deleted } } }
+
+  /specs:
+    get:
+      tags: [Specs]
+      summary: List game specs
+      responses:
+        '200':
+          description: Specs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  specs: { type: array, items: { $ref: '#/components/schemas/Spec' } }
+    post:
+      tags: [Specs]
+      summary: Create a spec (accepts JSON or YAML body)
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/Spec' } }
+          application/yaml: { schema: { type: string } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Spec' } }
+  /specs/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      tags: [Specs]
+      summary: Get a spec
+      responses:
+        '200':
+          description: Spec
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Spec' } }
+    put:
+      tags: [Specs]
+      summary: Update a spec (JSON or YAML)
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/Spec' } }
+          application/yaml: { schema: { type: string } }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Spec' } }
+    delete: { tags: [Specs], summary: Delete a spec, responses: { '204': { description: Deleted } } }
+
+  /nodes:
+    get:
+      tags: [Nodes]
+      summary: List nodes
+      responses:
+        '200':
+          description: Nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes: { type: array, items: { $ref: '#/components/schemas/Node' } }
+    post:
+      tags: [Nodes]
+      summary: Register a node
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/NodeRegister' } }
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Node' } }
+  /nodes/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [Nodes]
+      summary: Get a node
+      responses:
+        '200':
+          description: Node
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Node' } }
+    delete: { tags: [Nodes], summary: Deregister a node, responses: { '204': { description: Deleted } } }
+  /nodes/{id}/info:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [Nodes]
+      summary: Live Agent info (pings the node over mTLS, brings it online)
+      responses:
+        '200': { description: Live node info }
+        '502': { description: Agent unreachable }
+
+  /agents/bootstrap-tokens:
+    post:
+      tags: [Enrollment]
+      summary: Issue a one-time Agent bootstrap token (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [node_name]
+              properties:
+                node_name: { type: string }
+                ttl_seconds: { type: integer, description: token lifetime (default 900) }
+      responses:
+        '201':
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  node_name: { type: string }
+                  expires_at: { type: string, format: date-time }
+        '503': { description: CA signing not configured }
+  /agents/enroll:
+    post:
+      tags: [Enrollment]
+      summary: Enroll an Agent — exchange a bootstrap token + CSR for a signed cert
+      description: >
+        Authenticated solely by the one-time bootstrap token (the Agent has no
+        session yet). Returns the signed Agent certificate and the CA cert.
+        Re-enrolling with a fresh token rotates the certificate.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, csr]
+              properties:
+                token: { type: string }
+                csr: { type: string, description: PEM-encoded certificate signing request }
+      responses:
+        '200':
+          description: Signed certificate + CA (PEM)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificate: { type: string }
+                  ca: { type: string }
+        '401': { description: Invalid/expired bootstrap token }
+
+  /users:
+    get:
+      tags: [Users & Roles]
+      summary: List users
+      responses: { '200': { description: Users } }
+    post:
+      tags: [Users & Roles]
+      summary: Create a user
+      responses: { '201': { description: Created } }
+  /users/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    put: { tags: [Users & Roles], summary: Update a user, responses: { '200': { description: Updated } } }
+    delete: { tags: [Users & Roles], summary: Delete a user, responses: { '204': { description: Deleted } } }
+  /users/{id}/password:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post: { tags: [Users & Roles], summary: Reset a user's password, responses: { '200': { description: Reset } } }
+  /roles:
+    get: { tags: [Users & Roles], summary: List roles, responses: { '200': { description: Roles } } }
+  /permissions:
+    get: { tags: [Users & Roles], summary: List known permissions, responses: { '200': { description: Permissions } } }
+
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Panel-global settings status (never returns secrets)
+      responses:
+        '200':
+          description: Settings status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SettingsView' }
+    put:
+      tags: [Settings]
+      summary: Update Panel-global settings (Cloudflare token, UniFi gateway)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cloudflare_api_token: { type: string, description: "Scoped Cloudflare API token; empty string clears it" }
+                unifi_url: { type: string, description: "UniFi controller base URL, e.g. https://192.168.1.1" }
+                unifi_api_key: { type: string, description: "UniFi OS API key; empty string clears it" }
+                unifi_site: { type: string, description: "UniFi site (default 'default')" }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SettingsView' }
+  /settings/cloudflare/test:
+    post:
+      tags: [Settings]
+      summary: Verify the stored Cloudflare token by listing its zones
+      responses:
+        '200':
+          description: Reachable zones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zones: { type: array, items: { type: string } }
+        '400': { description: Cloudflare not configured }
+        '502': { description: Cloudflare API error }
+  /settings/unifi/test:
+    post:
+      tags: [Settings]
+      summary: Verify the stored UniFi credentials (lists forwards + WAN IP)
+      responses:
+        '200':
+          description: Reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  forward_count: { type: integer }
+                  wan_ip: { type: string }
+        '400': { description: UniFi not configured }
+        '502': { description: UniFi API error }
+  /servers/{id}/dns:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [DNS]
+      summary: Current DNS assignment + target for a server
+      responses:
+        '200':
+          description: DNS state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cloudflare_configured: { type: boolean }
+                  unifi_configured: { type: boolean }
+                  target_host: { type: string, description: "external/WAN host for DNS + connect" }
+                  lan_host: { type: string, description: "node LAN IP (port-forward target)" }
+                  ports: { type: object, additionalProperties: { type: integer } }
+                  dns: { $ref: '#/components/schemas/ServerDNS' }
+                  forwards:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        rule_id: { type: string }
+                        enabled: { type: boolean }
+    put:
+      tags: [DNS]
+      summary: Assign a DNS name (creates A/CNAME + optional SRV in Cloudflare)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, description: "FQDN, e.g. play.example.com" }
+                service: { type: string, description: "SRV service label (e.g. minecraft); omit to skip SRV" }
+                port_name: { type: string, description: "spec port to advertise; defaults to the primary port" }
+      responses:
+        '200':
+          description: Records created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dns: { $ref: '#/components/schemas/ServerDNS' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { description: Cloudflare API error }
+        '503': { description: Cloudflare not configured }
+    delete:
+      tags: [DNS]
+      summary: Remove a server's DNS records
+      responses:
+        '200': { description: Removed }
+  /servers/{id}/forwards/{portName}:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: portName, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [DNS]
+      summary: Open (create/enable) or close (disable) a UniFi port forward for a server port
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [open]
+              properties:
+                open: { type: boolean }
+      responses:
+        '200': { description: Forward updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { description: UniFi API error }
+        '503': { description: UniFi not configured }
+  /audit:
+    get:
+      tags: [Audit]
+      summary: List recent audit entries (newest first)
+      responses:
+        '200':
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Session token from POST /auth/login
+  parameters:
+    ServerId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string }
+        role_id: { type: string }
+        disabled: { type: boolean }
+        must_change_password: { type: boolean }
+    BootstrapToken:
+      type: object
+      properties:
+        token: { type: string }
+        node_name: { type: string }
+        expires_at: { type: string, format: date-time }
+    CatalogItem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        icon_url: { type: string }
+        banner_url: { type: string }
+        platforms: { type: array, items: { type: string } }
+        already_imported: { type: boolean }
+    ServerState:
+      type: string
+      enum: [installing, offline, starting, running, stopping, crashed]
+    Server:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        spec_id: { type: string, format: uuid }
+        node_id: { type: string }
+        kind: { type: string, enum: [linux-native, linux-wine, windows-native] }
+        state: { $ref: '#/components/schemas/ServerState' }
+        vars: { type: object, additionalProperties: { type: string } }
+        settings: { type: object, additionalProperties: { type: string } }
+        ports: { type: object, additionalProperties: { type: integer } }
+        memory_mb: { type: integer }
+        dns: { $ref: '#/components/schemas/ServerDNS' }
+        created_at: { type: string, format: date-time }
+    ServerDNS:
+      type: object
+      nullable: true
+      properties:
+        name: { type: string }
+        zone_id: { type: string }
+        service: { type: string }
+        port_name: { type: string }
+        record_ids: { type: array, items: { type: string } }
+    SettingsView:
+      type: object
+      properties:
+        cloudflare_configured: { type: boolean }
+        unifi_configured: { type: boolean }
+        unifi_url: { type: string }
+        unifi_site: { type: string }
+    DBConnectRequest:
+      type: object
+      required: [host, user]
+      properties:
+        host: { type: string }
+        port: { type: integer, default: 5432 }
+        user: { type: string }
+        password: { type: string, format: password }
+        dbname: { type: string, default: kraken }
+        sslmode: { type: string, default: disable }
+    PowerRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [start, stop, restart, kill] }
+    Spec:
+      type: object
+      description: Game specification (the "egg" equivalent). Large; key fields shown.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        version: { type: integer }
+        platforms:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              image: { type: string }
+        startup:
+          type: object
+          properties:
+            command: { type: string }
+            ready_regex: { type: string }
+            stop:
+              type: object
+              properties:
+                type: { type: string, enum: [signal, command] }
+                value: { type: string }
+            restart:
+              type: object
+              properties:
+                on_crash: { type: boolean }
+                max_retries: { type: integer }
+        ports:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              protocol: { type: string, enum: [tcp, udp] }
+              default: { type: integer }
+              required: { type: boolean }
+    Node:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        os: { type: string, enum: [linux, windows] }
+        wine_enabled: { type: boolean }
+        status: { type: string, enum: [online, offline, cordoned] }
+        address: { type: string }
+        public_host: { type: string }
+        external_ip: { type: string }
+        total_memory_mb: { type: integer }
+        allocated_memory_mb: { type: integer }
+    NodeRegister:
+      type: object
+      required: [name, os, address, total_memory_mb, port_start, port_end]
+      properties:
+        name: { type: string }
+        os: { type: string, enum: [linux, windows] }
+        wine_enabled: { type: boolean }
+        address: { type: string, description: "Agent gRPC host:port" }
+        public_host: { type: string }
+        total_memory_mb: { type: integer }
+        port_start: { type: integer }
+        port_end: { type: integer }
+    Backup:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        size: { type: integer }
+        created_ms: { type: integer, format: int64 }
+    ScheduleInput:
+      type: object
+      required: [action, cron]
+      properties:
+        name: { type: string }
+        action: { type: string, enum: [restart, backup, command] }
+        cron: { type: string, description: "5-field cron expression (min hour dom month dow)" }
+        command: { type: string, description: "required when action=command" }
+        enabled: { type: boolean }
+    ScheduledTask:
+      allOf:
+        - $ref: '#/components/schemas/ScheduleInput'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            server_id: { type: string, format: uuid }
+            last_run_at: { type: string, format: date-time }
+            next_run_at: { type: string, format: date-time }
+            last_error: { type: string }
+            created_at: { type: string, format: date-time }
+    AuditEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        time: { type: string, format: date-time }
+        actor: { type: string }
+        actor_id: { type: string }
+        action: { type: string }
+        method: { type: string }
+        path: { type: string }
+        target_type: { type: string }
+        target_id: { type: string }
+        status: { type: integer }
+        ip: { type: string }

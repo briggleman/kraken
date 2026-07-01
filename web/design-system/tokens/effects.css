@@ -1,0 +1,35 @@
+/* Abyssal — gradients, glow & motion tokens.
+   Functional motion only — feedback, never decoration on controls. Ambient
+   drift is reserved for backgrounds. The signature glow tier is reserved for
+   live / primary surfaces (bioluminescence). */
+:root {
+  /* gradients */
+  --gradient-accent:     linear-gradient(180deg, #3DF5CF, #16C7A4);
+  --gradient-accent-bar: linear-gradient(90deg, #16C7A4, #3DF5CF);
+  --gradient-depth:      linear-gradient(180deg, #0B2C36 0%, #072027 32%, #04141B 62%, #02090E 100%);
+  --gradient-iris:       radial-gradient(circle at 50% 40%, #7FFBE4 0%, #1BC8A6 28%, #0A5B54 58%, #03211F 100%);
+
+  /* glows & blur */
+  --glow-accent-dot: 0 0 8px #3DF5CF;
+  --glow-text:       0 0 44px rgba(61,245,207,.4);
+  --blur-nav:        14px;
+
+  /* easing & duration */
+  --ease-standard: cubic-bezier(.4,0,.2,1);
+  --ease-out:      cubic-bezier(.16,1,.3,1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}
+
+/* Shared keyframes */
+@keyframes abyssalSpin     { to { transform: rotate(360deg); } }
+@keyframes abyssalPulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes abyssalBlink    { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+@keyframes abyssalShimmer  { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+@keyframes abyssalFloat    { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes abyssalIris     { 0%, 100% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.04); filter: brightness(1.15); } }
+@keyframes abyssalSelectIn { from { opacity: 0; transform: translateY(-4px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}

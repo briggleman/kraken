@@ -1,0 +1,29 @@
+name: Windows Demo Server
+slug: windemo
+description: >-
+  A Windows-native demo server. In production this would use the steam-win image
+  (Server Core + SteamCMD); here nanoserver + a cmd loop keeps the demo small and
+  runnable so you can watch the Windows lifecycle end to end.
+# Windows-only game → single windows-native platform. The scheduler places it on
+# a Windows node (Docker in Windows-container mode).
+platforms:
+  - { kind: windows-native, image: mcr.microsoft.com/windows/nanoserver:ltsc2022 }
+install:
+  script: >-
+    echo installing windows demo server & echo ok > C:\data\installed.txt & echo install done
+startup:
+  # Runs via `cmd /S /C`. Print the ready line, then loop printing a tick every
+  # ~5s. `for /l %i in (1,0,2)` is an infinite loop (zero step); ping is the
+  # nanoserver-friendly sleep (no `timeout`, which needs console input).
+  command: >-
+    echo == server up on {{PORT_GAME}} == & for /l %i in (1,0,2) do @(echo tick & ping -n 6 127.0.0.1 > NUL)
+  ready_regex: server up on
+  restart:
+    on_crash: true
+    max_retries: 3
+  stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+ports:
+  - { name: game, protocol: udp, default: 27015, required: true }
+resources:
+  min_memory_mb: 1024
+  recommended_memory_mb: 2048

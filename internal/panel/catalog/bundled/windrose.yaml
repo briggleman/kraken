@@ -1,0 +1,29 @@
+name: Windrose
+slug: windrose
+description: >-
+  Windrose dedicated server (SteamCMD app 4129620). The server binary is
+  Windows-only, so this targets a Windows node (steam-win image). The server
+  binds all interfaces and uses the node-allocated game/query ports. Server name,
+  password, and max players live in R5\ServerDescription.json — edit it from the
+  Files tab after the first launch.
+steam_app_ids:
+  windows: 4129620
+platforms:
+  - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+install:
+  # Run app_update twice: SteamCMD can report "Missing configuration" on the
+  # first pass against a fresh appinfo cache; the second pass downloads.
+  script: >-
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+startup:
+  command: >-
+    C:\data\WindroseServer.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}} -QUERYPORT={{PORT_QUERY}}
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+ports:
+  - { name: game, protocol: udp, default: 7777, required: true }
+  - { name: query, protocol: udp, default: 7778, required: true }
+resources:
+  min_memory_mb: 4096
+  recommended_memory_mb: 8192

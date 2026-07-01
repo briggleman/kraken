@@ -1,0 +1,13 @@
+{
+  "name": "Kraken",
+  "short_name": "Kraken",
+  "description": "Game server control panel",
+  "icons": [
+    { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "theme_color": "#02090E",
+  "background_color": "#02090E",
+  "display": "standalone",
+  "start_url": "/"
+}

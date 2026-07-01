@@ -1,0 +1,76 @@
+/* Global base for the Kraken UI. Design tokens come from the Abyssal design
+   system (imported separately); this file sets the base canvas, scrollbars, and
+   the ambient/animation keyframes used by the app shell. */
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: var(--bg-abyss);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(61, 245, 207, 0.3);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(61, 245, 207, 0.22);
+  border-radius: 8px;
+  border: 2px solid var(--bg-base);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(61, 245, 207, 0.4);
+}
+
+input,
+button {
+  font-family: inherit;
+}
+
+/* ── ambient backdrop drift (see AmbientBackground); reduced-motion is handled
+   globally in the design system's effects.css ── */
+
+/* God-rays sway like sunlight rippling through water: the skew angle rocks back
+   and forth, the column breathes wider/narrower, and the brightness flickers —
+   all pivoting from the top (the "surface"). Each ray runs at its own duration
+   so the field never lines up, reading as a living shimmer rather than a slide. */
+@keyframes rayDrift {
+  0%   { opacity: 0.62; transform: translateX(-18px) skewX(-12deg) scaleX(0.97); }
+  30%  { opacity: 0.85; transform: translateX(-4px)  skewX(-7deg)  scaleX(1.05); }
+  55%  { opacity: 1;    transform: translateX(18px)  skewX(-4deg)  scaleX(1.02); }
+  80%  { opacity: 0.82; transform: translateX(2px)   skewX(-8deg)  scaleX(1.05); }
+  100% { opacity: 0.62; transform: translateX(-18px) skewX(-12deg) scaleX(0.97); }
+}
+
+/* The light source at the surface itself breathes, so the whole top glow pulses
+   subtly in time with the rays — kept near full brightness so it never darkens. */
+@keyframes surfaceShimmer {
+  0%   { opacity: 0.88; transform: scale(1); }
+  50%  { opacity: 1;    transform: scale(1.04); }
+  100% { opacity: 0.88; transform: scale(1); }
+}

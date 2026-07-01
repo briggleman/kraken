@@ -1,0 +1,58 @@
+/* Abyssal — color tokens.
+   Dark-first. Layered abyssal backgrounds, a single bioluminescent teal accent,
+   coral as the warm counterpoint, and colorblind-safe status hues (always paired
+   with an icon + label, never color alone). */
+:root {
+  /* ── Backgrounds — layered from the void up ── */
+  --bg-abyss:        #02090E; /* page void · deepest */
+  --bg-base:         #04141B; /* app background */
+  --bg-surface:      #08191F; /* cards · panels */
+  --bg-raised:       #0C232B; /* popovers · raised cards */
+  --bg-inset:        #030D12; /* console · inputs · wells */
+
+  /* ── Text ── */
+  --text-primary:    #EAFFF7; /* headings · key values */
+  --text-secondary:  #9CBEB9; /* body · descriptions */
+  --text-muted:      #6F928D; /* meta · secondary labels */
+  --text-faint:      #557E79; /* mono micro-labels */
+  --text-on-accent:  #022019; /* ink on teal fills */
+
+  /* ── Accent ── */
+  --accent:          #3DF5CF; /* primary action · brand · live */
+  --accent-hover:    #5FFBE4; /* hover brighten */
+  --accent-deep:     #16C7A4; /* gradient base · pressed */
+  --coral:           #FF7A4D; /* warm counterpoint */
+  --coral-soft:      #FF9D76; /* coral text on dark */
+
+  /* ── Borders (teal at low opacity) ── */
+  --border-subtle:   rgba(61,245,207,.14); /* card & panel edges */
+  --border-soft:     rgba(61,245,207,.10); /* hairlines */
+  --border-strong:   rgba(61,245,207,.30); /* focus · active · dividers */
+  --border-danger:   rgba(255,92,87,.40);  /* danger edges */
+
+  /* ── Status (colorblind-safe; pair with icon + label) ── */
+  --status-running:    #36E5A6; /* healthy · serving */
+  --status-starting:   #F4C152; /* booting — pulses */
+  --status-stopping:   #F4A24C; /* graceful shutdown */
+  --status-offline:    #5B7470; /* stopped · down */
+  --status-offline-fg: #9FB6B1; /* offline text / icon */
+  --status-installing: #38B6FF; /* pulling depot — progress */
+  --status-crashed:    #FF5C57; /* exited unexpectedly */
+
+  /* ── Console severity ── */
+  --log-info:    #3DF5CF;
+  --log-warn:    #F4C152;
+  --log-error:   #FF5C57;
+  --log-system:  #7E9BFF;
+  --log-time:    #557E79;
+  --log-text:    #6F928D;
+
+  /* ── Accent washes (translucent teal fills) ── */
+  --accent-wash-08: rgba(61,245,207,.08);
+  --accent-wash-12: rgba(61,245,207,.12);
+  --accent-wash-16: rgba(61,245,207,.16);
+  --danger-wash:    rgba(255,92,87,.09);
+
+  /* ── Selection ── */
+  --selection-bg: rgba(61,245,207,.30);
+}

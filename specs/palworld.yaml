@@ -1,0 +1,119 @@
+name: Palworld
+slug: palworld
+description: Palworld dedicated server with the full PalWorldSettings.ini option set.
+banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/header.jpg
+icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/capsule_231x87.jpg
+steam_app_ids:
+  linux: 2394010
+# In production use the steam-base image; busybox here keeps the demo runnable and
+# lets you watch the rendered PalWorldSettings.ini in the console / Files tab.
+platforms:
+  - { kind: linux-native, image: busybox:latest }
+  - { kind: linux-wine, image: busybox:latest }
+install:
+  script: echo "steamcmd +login anonymous +app_update 2394010 validate +quit"
+startup:
+  command: >-
+    echo '== PalWorldSettings.ini ==';
+    cat /data/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini 2>/dev/null;
+    echo '== server up on {{PORT_GAME}} ==';
+    while true; do echo tick; sleep 10; done
+  ready_regex: server up on
+  restart:
+    on_crash: true
+    max_retries: 3
+  stop: { type: signal, value: SIGINT }
+ports:
+  - { name: game, protocol: udp, default: 8211, required: true }
+
+settings:
+  groups:
+    - id: server
+      label: Server
+      fields:
+        - { key: ServerName, label: Server name, type: string, default: "Default Palworld Server" }
+        - { key: ServerDescription, label: Description, type: text, default: "" }
+        - { key: ServerPlayerMaxNum, label: Max players, type: int, default: "32", min: 1, max: 32 }
+        - { key: CoopPlayerMaxNum, label: Co-op party size, type: int, default: "4", min: 1, max: 4 }
+        - { key: ServerPassword, label: Server password, type: password, default: "" }
+        - { key: AdminPassword, label: Admin password, type: password, default: "" }
+        - { key: Region, label: Region, type: string, default: "" }
+        - { key: bShowPlayerList, label: Show player list, type: bool, default: "false" }
+        - { key: bIsMultiplay, label: Multiplayer, type: bool, default: "false" }
+        - { key: bIsPvP, label: PvP, type: bool, default: "false" }
+    - id: network
+      label: Network & RCON
+      fields:
+        - { key: PublicIP, label: Public IP, type: string, default: "" }
+        - { key: PublicPort, label: Public port, type: int, default: "8211", read_only: true }
+        - { key: RCONEnabled, label: Enable RCON, type: bool, default: "false" }
+        - { key: RCONPort, label: RCON port, type: int, default: "25575" }
+        - { key: RESTAPIEnabled, label: Enable REST API, type: bool, default: "false" }
+        - { key: RESTAPIPort, label: REST API port, type: int, default: "8212" }
+        - { key: bUseAuth, label: Require authentication, type: bool, default: "true" }
+    - id: world
+      label: World
+      fields:
+        - { key: Difficulty, label: Difficulty, type: enum, options: [None, Casual, Normal, Hard], default: None }
+        - { key: DayTimeSpeedRate, label: Day speed, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: NightTimeSpeedRate, label: Night speed, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: bEnableInvaderEnemy, label: Enable raids, type: bool, default: "true" }
+        - { key: bEnableFastTravel, label: Fast travel, type: bool, default: "true" }
+        - { key: bIsStartLocationSelectByMap, label: Choose start on map, type: bool, default: "true" }
+    - id: rates
+      label: Rates
+      fields:
+        - { key: ExpRate, label: EXP rate, type: float, default: "1.0", min: 0.1, max: 20 }
+        - { key: PalCaptureRate, label: Pal capture rate, type: float, default: "1.0", min: 0.5, max: 2 }
+        - { key: PalSpawnNumRate, label: Pal spawn rate, type: float, default: "1.0", min: 0.1, max: 3 }
+        - { key: EnemyDropItemRate, label: Enemy drop rate, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: CollectionDropRate, label: Gather amount, type: float, default: "1.0", min: 0.5, max: 3 }
+        - { key: CollectionObjectHpRate, label: Gather object HP, type: float, default: "1.0", min: 0.5, max: 3 }
+        - { key: CollectionObjectRespawnSpeedRate, label: Gather respawn, type: float, default: "1.0", min: 0.5, max: 3 }
+        - { key: WorkSpeedRate, label: Work speed, type: float, default: "1.0", min: 0.1, max: 5 }
+    - id: combat
+      label: Combat
+      fields:
+        - { key: PalDamageRateAttack, label: Pal damage dealt, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalDamageRateDefense, label: Pal damage taken, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PlayerDamageRateAttack, label: Player damage dealt, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PlayerDamageRateDefense, label: Player damage taken, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: bEnablePlayerToPlayerDamage, label: Player-vs-player damage, type: bool, default: "false" }
+        - { key: bEnableFriendlyFire, label: Friendly fire, type: bool, default: "false" }
+        - { key: DeathPenalty, label: Death penalty, type: enum, options: [None, Item, ItemAndEquipment, All], default: All }
+    - id: survival
+      label: Survival
+      fields:
+        - { key: PlayerStomachDecreaceRate, label: Player hunger decay, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PlayerStaminaDecreaceRate, label: Player stamina decay, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PlayerAutoHPRegeneRate, label: Player HP regen, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PlayerAutoHpRegeneRateInSleep, label: Player HP regen (sleep), type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalStomachDecreaceRate, label: Pal hunger decay, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalStaminaDecreaceRate, label: Pal stamina decay, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalAutoHPRegeneRate, label: Pal HP regen, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalAutoHpRegeneRateInSleep, label: Pal HP regen (box), type: float, default: "1.0", min: 0.1, max: 5 }
+    - id: base
+      label: Building, Items & Base
+      fields:
+        - { key: BuildObjectDamageRate, label: Structure damage, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: BuildObjectDeteriorationDamageRate, label: Structure decay, type: float, default: "1.0", min: 0, max: 5 }
+        - { key: DropItemMaxNum, label: Max dropped items, type: int, default: "3000", min: 100, max: 5000 }
+        - { key: DropItemAliveMaxHours, label: Dropped item lifetime (h), type: float, default: "1.0", min: 0.1, max: 24 }
+        - { key: ItemWeightRate, label: Item weight, type: float, default: "1.0", min: 0.1, max: 5 }
+        - { key: PalEggDefaultHatchingTime, label: Egg hatch time (h), type: float, default: "72.0", min: 0, max: 240 }
+        - { key: BaseCampMaxNum, label: Max base camps, type: int, default: "128", min: 1, max: 128 }
+        - { key: BaseCampWorkerMaxNum, label: Workers per base, type: int, default: "15", min: 1, max: 50 }
+        - { key: GuildPlayerMaxNum, label: Guild max players, type: int, default: "20", min: 1, max: 100 }
+        - { key: bAutoResetGuildNoOnlinePlayers, label: Auto-reset empty guilds, type: bool, default: "false" }
+        - { key: AutoResetGuildTimeNoOnlinePlayers, label: Guild reset time (h), type: float, default: "72.0", min: 1, max: 720 }
+
+config_files:
+  - path: /data/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini
+    format: template
+    template: |
+      [/Script/Pal.PalGameWorldSettings]
+      OptionSettings=(Difficulty={{.settings.Difficulty}},DayTimeSpeedRate={{.settings.DayTimeSpeedRate}},NightTimeSpeedRate={{.settings.NightTimeSpeedRate}},ExpRate={{.settings.ExpRate}},PalCaptureRate={{.settings.PalCaptureRate}},PalSpawnNumRate={{.settings.PalSpawnNumRate}},PalDamageRateAttack={{.settings.PalDamageRateAttack}},PalDamageRateDefense={{.settings.PalDamageRateDefense}},PlayerDamageRateAttack={{.settings.PlayerDamageRateAttack}},PlayerDamageRateDefense={{.settings.PlayerDamageRateDefense}},PlayerStomachDecreaceRate={{.settings.PlayerStomachDecreaceRate}},PlayerStaminaDecreaceRate={{.settings.PlayerStaminaDecreaceRate}},PlayerAutoHPRegeneRate={{.settings.PlayerAutoHPRegeneRate}},PlayerAutoHpRegeneRateInSleep={{.settings.PlayerAutoHpRegeneRateInSleep}},PalStomachDecreaceRate={{.settings.PalStomachDecreaceRate}},PalStaminaDecreaceRate={{.settings.PalStaminaDecreaceRate}},PalAutoHPRegeneRate={{.settings.PalAutoHPRegeneRate}},PalAutoHpRegeneRateInSleep={{.settings.PalAutoHpRegeneRateInSleep}},BuildObjectDamageRate={{.settings.BuildObjectDamageRate}},BuildObjectDeteriorationDamageRate={{.settings.BuildObjectDeteriorationDamageRate}},CollectionDropRate={{.settings.CollectionDropRate}},CollectionObjectHpRate={{.settings.CollectionObjectHpRate}},CollectionObjectRespawnSpeedRate={{.settings.CollectionObjectRespawnSpeedRate}},EnemyDropItemRate={{.settings.EnemyDropItemRate}},ItemWeightRate={{.settings.ItemWeightRate}},WorkSpeedRate={{.settings.WorkSpeedRate}},DeathPenalty={{.settings.DeathPenalty}},bEnablePlayerToPlayerDamage={{if eq .settings.bEnablePlayerToPlayerDamage "true"}}True{{else}}False{{end}},bEnableFriendlyFire={{if eq .settings.bEnableFriendlyFire "true"}}True{{else}}False{{end}},bEnableInvaderEnemy={{if eq .settings.bEnableInvaderEnemy "true"}}True{{else}}False{{end}},bEnableFastTravel={{if eq .settings.bEnableFastTravel "true"}}True{{else}}False{{end}},bIsStartLocationSelectByMap={{if eq .settings.bIsStartLocationSelectByMap "true"}}True{{else}}False{{end}},DropItemMaxNum={{.settings.DropItemMaxNum}},DropItemAliveMaxHours={{.settings.DropItemAliveMaxHours}},BaseCampMaxNum={{.settings.BaseCampMaxNum}},BaseCampWorkerMaxNum={{.settings.BaseCampWorkerMaxNum}},PalEggDefaultHatchingTime={{.settings.PalEggDefaultHatchingTime}},GuildPlayerMaxNum={{.settings.GuildPlayerMaxNum}},bAutoResetGuildNoOnlinePlayers={{if eq .settings.bAutoResetGuildNoOnlinePlayers "true"}}True{{else}}False{{end}},AutoResetGuildTimeNoOnlinePlayers={{.settings.AutoResetGuildTimeNoOnlinePlayers}},bIsPvP={{if eq .settings.bIsPvP "true"}}True{{else}}False{{end}},bIsMultiplay={{if eq .settings.bIsMultiplay "true"}}True{{else}}False{{end}},CoopPlayerMaxNum={{.settings.CoopPlayerMaxNum}},ServerPlayerMaxNum={{.settings.ServerPlayerMaxNum}},ServerName="{{.settings.ServerName}}",ServerDescription="{{.settings.ServerDescription}}",AdminPassword="{{.settings.AdminPassword}}",ServerPassword="{{.settings.ServerPassword}}",PublicPort={{.settings.PublicPort}},PublicIP="{{.settings.PublicIP}}",RCONEnabled={{if eq .settings.RCONEnabled "true"}}True{{else}}False{{end}},RCONPort={{.settings.RCONPort}},RESTAPIEnabled={{if eq .settings.RESTAPIEnabled "true"}}True{{else}}False{{end}},RESTAPIPort={{.settings.RESTAPIPort}},Region="{{.settings.Region}}",bUseAuth={{if eq .settings.bUseAuth "true"}}True{{else}}False{{end}},bShowPlayerList={{if eq .settings.bShowPlayerList "true"}}True{{else}}False{{end}})
+
+resources:
+  min_memory_mb: 8192
+  recommended_memory_mb: 16384

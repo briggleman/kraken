@@ -1,0 +1,30 @@
+# Kraken local development stack: Postgres (source-of-truth state).
+# Bring up:   docker compose -f deploy/docker-compose.yml up -d
+# Connect:    KRAKEN_DATABASE_URL=postgres://kraken:kraken@localhost:5432/kraken?sslmode=disable
+#
+# The Panel and Agent run on the host during development (they need the host's
+# Docker socket and host networking for game ports); only the datastore lives here.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kraken-postgres
+    # Persistent across test cycles: a clean Panel is restarted on top of this,
+    # but the datastore (and the pgdata volume) stays up. `restart: unless-stopped`
+    # brings it back after a host reboot. Only `down -v` deletes the data.
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kraken
+      POSTGRES_PASSWORD: kraken
+      POSTGRES_DB: kraken
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kraken -d kraken"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

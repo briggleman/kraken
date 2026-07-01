@@ -1,0 +1,56 @@
+name: Enshrouded
+slug: enshrouded
+description: >-
+  Enshrouded dedicated server (SteamCMD app 2278520). Windows-only server, so
+  this targets a Windows node (steam-win image). All configuration lives in
+  enshrouded_server.json, generated from the Settings tab. Enshrouded is
+  memory-hungry — 16 GB is recommended for a full group.
+banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/header.jpg
+icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/capsule_231x87.jpg
+steam_app_ids:
+  windows: 2278520
+platforms:
+  - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+install:
+  # Run app_update twice: SteamCMD can report "Missing configuration" on the
+  # first pass against a fresh appinfo cache; the second pass downloads.
+  script: >-
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+startup:
+  # Run from the data dir so the server finds enshrouded_server.json beside it.
+  command: C:\data\enshrouded_server.exe
+  # The server prints the Host_Online state once it is up and joinable.
+  ready_regex: 'Host_Online'
+  restart: { on_crash: true, max_retries: 3 }
+  stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+ports:
+  - { name: game, protocol: udp, default: 15636, required: true }
+  - { name: query, protocol: udp, default: 15637, required: true }
+settings:
+  groups:
+    - id: server
+      label: Server
+      fields:
+        - { key: name, label: Server name, type: string, default: "Kraken Enshrouded" }
+        - { key: password, label: Server password, type: password, default: "" }
+        - { key: slotCount, label: Player slots, type: int, default: "16", min: 1, max: 16 }
+        - { key: gameSettingsPreset, label: Game settings preset, type: enum, options: [Default, Relaxed, Hard, Survival, Custom], default: Default }
+config_files:
+  - path: C:\data\enshrouded_server.json
+    format: template
+    template: |
+      {
+        "name": "{{.settings.name}}",
+        "password": "{{.settings.password}}",
+        "saveDirectory": "./savegame",
+        "logDirectory": "./logs",
+        "ip": "0.0.0.0",
+        "gamePort": {{.ports.game}},
+        "queryPort": {{.ports.query}},
+        "slotCount": {{.settings.slotCount}},
+        "gameSettingsPreset": "{{.settings.gameSettingsPreset}}"
+      }
+resources:
+  min_memory_mb: 6144
+  recommended_memory_mb: 16384

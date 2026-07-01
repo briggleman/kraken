@@ -1,0 +1,90 @@
+name: ci
+
+# Build, lint, and test on every pull request (and pushes to main).
+# The weekly Docker image rebuild lives in steam-images.yml, not here.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid PR pushes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go (build · vet · staticcheck · test)
+    runs-on: ubuntu-latest
+    # Postgres so the store integration tests run for real (they self-migrate
+    # and skip only when KRAKEN_TEST_DATABASE_URL is unset).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: kraken
+          POSTGRES_PASSWORD: kraken
+          POSTGRES_DB: kraken
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kraken -d kraken"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KRAKEN_TEST_DATABASE_URL: postgres://kraken:kraken@localhost:5432/kraken?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l internal cmd)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      - name: cross-compile Windows agent
+        run: GOOS=windows GOARCH=amd64 go build ./cmd/agent
+
+      - name: vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      - name: test
+        run: go test -race ./...
+
+  web:
+    name: web (typecheck · build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: install
+        run: npm ci
+        working-directory: web
+
+      - name: build (tsc --noEmit && vite build)
+        run: npm run build
+        working-directory: web

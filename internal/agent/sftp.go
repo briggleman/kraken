@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
@@ -25,6 +26,10 @@ type sftpConfig struct {
 	Password   string
 	PrivateKey string // PEM-encoded private key
 	BasePath   string // remote root directory for archives
+	// KnownHostKey pins the remote's SSH host key in authorized_keys format
+	// ("<algo> <base64-key> [comment]"). Empty means trust-on-use (agent logs
+	// a warning; production deployments should pin).
+	KnownHostKey string
 }
 
 // sftpBackupTarget stores backup archives on a remote host over SFTP. It is used
@@ -66,12 +71,14 @@ func (t *sftpBackupTarget) dial() (sc *sftp.Client, close func() error, err erro
 		return nil, nil, fmt.Errorf("sftp: a password or private key is required")
 	}
 
+	hostKeyCB, hkerr := hostKeyCallback(t.cfg.KnownHostKey, host)
+	if hkerr != nil {
+		return nil, nil, hkerr
+	}
 	cfg := &ssh.ClientConfig{
-		User: t.cfg.User,
-		Auth: []ssh.AuthMethod{auth},
-		// The backup remote is an operator-configured trusted host with no UI for
-		// pinning a host key, so we accept whatever key it presents (trust-on-use).
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- operator-configured backup host; no key-pinning UI yet
+		User:            t.cfg.User,
+		Auth:            []ssh.AuthMethod{auth},
+		HostKeyCallback: hostKeyCB,
 		Timeout:         sftpDialTimeout,
 	}
 	conn, err := ssh.Dial("tcp", host, cfg)
@@ -88,6 +95,24 @@ func (t *sftpBackupTarget) dial() (sc *sftp.Client, close func() error, err erro
 		_ = conn.Close()
 		return cerr
 	}, nil
+}
+
+// hostKeyCallback returns the ssh.HostKeyCallback for the SFTP dial. When
+// knownHostKey is set (authorized_keys format: "<algo> <base64-key> [comment]")
+// the callback pins that key via ssh.FixedHostKey — any mismatch aborts the
+// connection. When empty, falls back to ssh.InsecureIgnoreHostKey() and logs
+// a one-time warning per dial so operators can grep for it in agent logs.
+func hostKeyCallback(knownHostKey, host string) (ssh.HostKeyCallback, error) {
+	trimmed := strings.TrimSpace(knownHostKey)
+	if trimmed == "" {
+		slog.Warn("sftp: no known host key pinned — accepting any key (MITM-vulnerable). Set sftp_known_host_key in node config to pin.", "host", host)
+		return ssh.InsecureIgnoreHostKey(), nil // #nosec G106 -- explicit fallback when operator hasn't pinned; see warn log
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(trimmed))
+	if err != nil {
+		return nil, fmt.Errorf("sftp: parse known_host_key (expected authorized_keys format): %w", err)
+	}
+	return ssh.FixedHostKey(pub), nil
 }
 
 // remoteDir is the directory archives live in. The SFTP base path is always

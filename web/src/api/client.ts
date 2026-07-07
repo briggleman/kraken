@@ -401,6 +401,7 @@ export const api = {
     unifi_url?: string;
     unifi_api_key?: string;
     unifi_site?: string;
+    unifi_verify_tls?: boolean;
     session_ttl_seconds?: number;
     allowed_origins?: string[];
     bootstrap_disabled?: boolean;

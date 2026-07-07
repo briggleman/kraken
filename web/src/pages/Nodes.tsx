@@ -268,6 +268,7 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
   const [sftpPassword, setSftpPassword] = useState("");
   const [sftpKey, setSftpKey] = useState("");
   const [sftpBase, setSftpBase] = useState("");
+  const [sftpKnownHost, setSftpKnownHost] = useState("");
   const [replicate, setReplicate] = useState(false);
   // Steam account (for installing games whose server isn't anonymous-downloadable)
   const [steamUser, setSteamUser] = useState("");
@@ -287,6 +288,7 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
         setSftpHost(c.sftp_host ?? "");
         setSftpUser(c.sftp_user ?? "");
         setSftpBase(c.sftp_base_path ?? "");
+        setSftpKnownHost(c.sftp_known_host_key ?? "");
         setReplicate(c.replicate_to_sftp);
         setSteamUser(c.steam_username ?? "");
       })
@@ -306,6 +308,7 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
       sftp_host: sftpHost,
       sftp_user: sftpUser,
       sftp_base_path: sftpBase,
+      sftp_known_host_key: sftpKnownHost,
       replicate_to_sftp: replicate,
       steam_username: steamUser,
     };
@@ -387,7 +390,20 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
                   autoComplete="off"
                 />
               </Field>
-              <Input label="BASE PATH" value={sftpBase} onChange={(e) => setSftpBase(e.target.value)} mono placeholder="/backups/kraken" helper="Supports {{SLUG}} (the game's slug), e.g. /backups/{{SLUG}}." style={{ marginBottom: 4 }} />
+              <Input label="BASE PATH" value={sftpBase} onChange={(e) => setSftpBase(e.target.value)} mono placeholder="/backups/kraken" helper="Supports {{SLUG}} (the game's slug), e.g. /backups/{{SLUG}}." style={{ marginBottom: 14 }} />
+              <Field label="KNOWN HOST KEY">
+                <textarea
+                  style={{ ...selectStyle, fontFamily: mono, fontSize: 12, minHeight: 60, resize: "vertical" }}
+                  value={sftpKnownHost}
+                  onChange={(e) => setSftpKnownHost(e.target.value)}
+                  placeholder="ssh-ed25519 AAAAC3Nz…"
+                  autoComplete="off"
+                />
+                <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Pin the SFTP host's SSH public key to defeat MITM. authorized_keys format — grab it with{" "}
+                  <code style={{ color: "var(--text-primary)" }}>ssh-keyscan -t ed25519 &lt;host&gt;</code>. Leave blank to trust-on-use (a warning is logged on every connect).
+                </div>
+              </Field>
             </div>
           )}
 

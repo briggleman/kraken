@@ -1,8 +1,8 @@
 // Package unifi is a minimal client for a local UniFi controller's port-forward
 // API, authenticated with a UniFi OS API key (X-API-KEY). It implements only what
 // the networking feature needs: list/create/enable/delete port forwards and read
-// the gateway's WAN IP. The gateway typically serves a self-signed cert, so TLS
-// verification is disabled (local, trusted-network integration).
+// the gateway's WAN IP. UniFi gateways ship with self-signed certs by default;
+// operators who have installed a trusted cert can opt into TLS verification.
 package unifi
 
 import (
@@ -27,20 +27,27 @@ type Client struct {
 
 // New builds a client for the controller at url (e.g. https://192.168.1.1), site
 // (default "default" when empty), authenticated by the given API key.
-func New(url, apiKey, site string) *Client {
+//
+// verifyTLS toggles standard TLS verification. Most UniFi gateways serve the
+// stock self-signed cert on the LAN, so operators keep this false until they've
+// installed a trusted cert on the controller.
+func New(url, apiKey, site string, verifyTLS bool) *Client {
 	if site == "" {
 		site = "default"
 	}
 	base := strings.TrimRight(url, "/") + "/proxy/network/api/s/" + site
+	transport := &http.Transport{}
+	if !verifyTLS {
+		// Operator-opted-in: skip cert validation for the local self-signed gateway.
+		// When verifyTLS is true the default verification path applies.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12} // #nosec G402 -- operator-selected: LAN self-signed
+	}
 	return &Client{
 		base: base,
 		key:  apiKey,
 		http: &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				// The local UniFi gateway serves a self-signed cert on a trusted LAN.
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- local self-signed gateway
-			},
+			Timeout:   15 * time.Second,
+			Transport: transport,
 		},
 	}
 }

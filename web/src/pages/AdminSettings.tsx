@@ -85,6 +85,7 @@ export function AdminSettings() {
   const [uURL, setUURL] = useState("");
   const [uKey, setUKey] = useState("");
   const [uSite, setUSite] = useState("");
+  const [uVerifyTLS, setUVerifyTLS] = useState(false);
   const [uBusy, setUBusy] = useState<"save" | "test" | null>(null);
   const [uError, setUError] = useState<string | null>(null);
   const [uNotice, setUNotice] = useState<string | null>(null);
@@ -111,6 +112,7 @@ export function AdminSettings() {
         setUConfigured(s.unifi_configured);
         setUURL(s.unifi_url ?? "");
         setUSite(s.unifi_site ?? "");
+        setUVerifyTLS(s.unifi_verify_tls);
         setSessTTL(s.session_ttl_seconds);
         setSessLocked(s.session_ttl_locked);
         setOrigins((s.allowed_origins ?? []).join(", "));
@@ -181,10 +183,11 @@ export function AdminSettings() {
     setUError(null);
     setUNotice(null);
     try {
-      const s = await api.updatePanelSettings({ unifi_url: uURL.trim(), unifi_api_key: uKey.trim(), unifi_site: uSite.trim() });
+      const s = await api.updatePanelSettings({ unifi_url: uURL.trim(), unifi_api_key: uKey.trim(), unifi_site: uSite.trim(), unifi_verify_tls: uVerifyTLS });
       setUConfigured(s.unifi_configured);
       setUURL(s.unifi_url ?? "");
       setUSite(s.unifi_site ?? "");
+      setUVerifyTLS(s.unifi_verify_tls);
       setUKey("");
       setUNotice(s.unifi_configured ? "UniFi settings saved." : "UniFi settings cleared.");
     } catch (e) {
@@ -319,6 +322,15 @@ export function AdminSettings() {
           <div style={{ flex: 1 }}>
             <Input label="SITE" value={uSite} onChange={(e) => setUSite(e.target.value)} mono placeholder="default" autoComplete="off" />
           </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16, padding: "12px 14px", borderRadius: "var(--radius-md)", background: "rgba(7,23,29,.4)", border: "1px solid var(--border-subtle)" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: "1.5px", color: "var(--text-faint)", marginBottom: 4 }}>VERIFY TLS CERTIFICATE</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+              Off by default — UniFi gateways ship with a self-signed cert on the LAN. Turn on if you've installed a trusted certificate on the controller.
+            </div>
+          </div>
+          <Toggle checked={uVerifyTLS} onChange={setUVerifyTLS} />
         </div>
         <Notice error={uError} ok={uNotice} />
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>

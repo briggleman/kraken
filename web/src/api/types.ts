@@ -70,6 +70,7 @@ export interface PanelSettings {
   unifi_configured: boolean;
   unifi_url?: string;
   unifi_site?: string;
+  unifi_verify_tls: boolean;
   session_ttl_seconds: number;
   session_ttl_locked: boolean;
   allowed_origins: string[] | null;
@@ -90,6 +91,7 @@ export interface NodeConfig {
   sftp_password_configured: boolean;
   sftp_key_configured: boolean;
   sftp_base_path?: string;
+  sftp_known_host_key?: string;
   replicate_to_sftp: boolean;
   steam_username?: string;
   steam_configured: boolean; // a Steam password is stored
@@ -113,6 +115,7 @@ export interface NodeConfigUpdate {
   sftp_password?: string;
   sftp_private_key?: string;
   sftp_base_path?: string;
+  sftp_known_host_key?: string;
   replicate_to_sftp?: boolean;
   steam_username?: string;
   steam_password?: string;

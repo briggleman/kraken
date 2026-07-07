@@ -39,6 +39,7 @@ type settingsView struct {
 	UnifiConfigured      bool   `json:"unifi_configured"`
 	UnifiURL             string `json:"unifi_url,omitempty"`
 	UnifiSite            string `json:"unifi_site,omitempty"`
+	UnifiVerifyTLS       bool   `json:"unifi_verify_tls"`
 
 	// Global runtime settings. Each *_locked flag is true when the equivalent env
 	// var is set, in which case the effective value comes from env (not the store)
@@ -58,6 +59,7 @@ func (s *Server) toSettingsView(ctx context.Context, st *store.Settings) setting
 		UnifiConfigured:      st.UnifiURL != "" && st.UnifiAPIKey != "",
 		UnifiURL:             st.UnifiURL,
 		UnifiSite:            st.UnifiSite,
+		UnifiVerifyTLS:       st.UnifiVerifyTLS,
 
 		SessionTTLSeconds:    int(s.sessionTTL(ctx) / time.Second),
 		SessionTTLLocked:     s.cfg.SessionTTLFromEnv,
@@ -103,6 +105,7 @@ type updatePanelSettingsRequest struct {
 	UnifiURL           *string   `json:"unifi_url"`
 	UnifiAPIKey        *string   `json:"unifi_api_key"`
 	UnifiSite          *string   `json:"unifi_site"`
+	UnifiVerifyTLS     *bool     `json:"unifi_verify_tls"`
 	SessionTTLSeconds  *int      `json:"session_ttl_seconds"`
 	AllowedOrigins     *[]string `json:"allowed_origins"`
 	BootstrapDisabled  *bool     `json:"bootstrap_disabled"`
@@ -133,6 +136,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.UnifiSite != nil {
 		st.UnifiSite = strings.TrimSpace(*req.UnifiSite)
+	}
+	if req.UnifiVerifyTLS != nil {
+		st.UnifiVerifyTLS = *req.UnifiVerifyTLS
 	}
 	// Global runtime settings — ignored when the equivalent env var locks them.
 	if req.SessionTTLSeconds != nil && !s.cfg.SessionTTLFromEnv {

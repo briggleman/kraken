@@ -52,6 +52,7 @@ type nodeConfigView struct {
 	SftpPasswordConfigured bool   `json:"sftp_password_configured"`
 	SftpKeyConfigured      bool   `json:"sftp_key_configured"`
 	SftpBasePath           string `json:"sftp_base_path,omitempty"`
+	SftpKnownHostKey       string `json:"sftp_known_host_key,omitempty"`
 
 	ReplicateToSftp bool `json:"replicate_to_sftp"`
 
@@ -72,6 +73,7 @@ func toNodeConfigView(c *store.NodeConfig) nodeConfigView {
 		SftpPasswordConfigured: c.SftpPassword != "",
 		SftpKeyConfigured:      c.SftpPrivateKey != "",
 		SftpBasePath:           c.SftpBasePath,
+		SftpKnownHostKey:       c.SftpKnownHostKey,
 		ReplicateToSftp:        c.ReplicateToSftp,
 		SteamUsername:          c.SteamUsername,
 		SteamConfigured:        c.SteamPassword != "",
@@ -82,14 +84,15 @@ func toNodeConfigView(c *store.NodeConfig) nodeConfigView {
 // the Agent.
 func nodeConfigToProto(c *store.NodeConfig) *agentpb.NodeConfig {
 	return &agentpb.NodeConfig{
-		BackupTarget:    c.BackupTarget,
-		BackupDir:       c.BackupDir,
-		SftpHost:        c.SftpHost,
-		SftpUser:        c.SftpUser,
-		SftpPassword:    c.SftpPassword,
-		SftpPrivateKey:  c.SftpPrivateKey,
-		SftpBasePath:    c.SftpBasePath,
-		ReplicateToSftp: c.ReplicateToSftp,
+		BackupTarget:     c.BackupTarget,
+		BackupDir:        c.BackupDir,
+		SftpHost:         c.SftpHost,
+		SftpUser:         c.SftpUser,
+		SftpPassword:     c.SftpPassword,
+		SftpPrivateKey:   c.SftpPrivateKey,
+		SftpBasePath:     c.SftpBasePath,
+		SftpKnownHostKey: c.SftpKnownHostKey,
+		ReplicateToSftp:  c.ReplicateToSftp,
 	}
 }
 
@@ -128,11 +131,12 @@ type updateNodeConfigRequest struct {
 	BackupTarget *string `json:"backup_target"`
 	BackupDir    *string `json:"backup_dir"`
 
-	SftpHost       *string `json:"sftp_host"`
-	SftpUser       *string `json:"sftp_user"`
-	SftpPassword   *string `json:"sftp_password"`
-	SftpPrivateKey *string `json:"sftp_private_key"`
-	SftpBasePath   *string `json:"sftp_base_path"`
+	SftpHost         *string `json:"sftp_host"`
+	SftpUser         *string `json:"sftp_user"`
+	SftpPassword     *string `json:"sftp_password"`
+	SftpPrivateKey   *string `json:"sftp_private_key"`
+	SftpBasePath     *string `json:"sftp_base_path"`
+	SftpKnownHostKey *string `json:"sftp_known_host_key"`
 
 	ReplicateToSftp *bool `json:"replicate_to_sftp"`
 
@@ -188,6 +192,7 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	setRaw(&c.SftpPassword, req.SftpPassword)
 	setRaw(&c.SftpPrivateKey, req.SftpPrivateKey)
 	setTrim(&c.SftpBasePath, req.SftpBasePath)
+	setTrim(&c.SftpKnownHostKey, req.SftpKnownHostKey)
 	if req.ReplicateToSftp != nil {
 		c.ReplicateToSftp = *req.ReplicateToSftp
 	}

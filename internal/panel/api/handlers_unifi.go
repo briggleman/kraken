@@ -19,7 +19,7 @@ func (s *Server) unifiClient(ctx context.Context) *unifi.Client {
 	if st.UnifiURL == "" || st.UnifiAPIKey == "" {
 		return nil
 	}
-	return unifi.New(st.UnifiURL, st.UnifiAPIKey, st.UnifiSite)
+	return unifi.New(st.UnifiURL, st.UnifiAPIKey, st.UnifiSite, st.UnifiVerifyTLS)
 }
 
 // unifiWANIP returns the gateway's WAN IP when UniFi is configured, else "".

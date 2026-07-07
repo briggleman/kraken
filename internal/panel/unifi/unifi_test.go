@@ -13,7 +13,7 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	c := New(srv.URL, "key-abc", "")
+	c := New(srv.URL, "key-abc", "", false)
 	c.http = srv.Client() // use the test server's client (plain http)
 	return c
 }
@@ -24,11 +24,11 @@ func dataEnvelope(w http.ResponseWriter, result any) {
 }
 
 func TestNew_BaseAndSite(t *testing.T) {
-	c := New("https://192.168.1.1/", "k", "")
+	c := New("https://192.168.1.1/", "k", "", false)
 	if c.base != "https://192.168.1.1/proxy/network/api/s/default" {
 		t.Fatalf("unexpected base: %s", c.base)
 	}
-	if c2 := New("https://gw", "k", "lab"); c2.base != "https://gw/proxy/network/api/s/lab" {
+	if c2 := New("https://gw", "k", "lab", false); c2.base != "https://gw/proxy/network/api/s/lab" {
 		t.Fatalf("unexpected site base: %s", c2.base)
 	}
 }

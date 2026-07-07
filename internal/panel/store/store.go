@@ -57,6 +57,10 @@ type Settings struct {
 	UnifiURL    string `json:"unifi_url,omitempty"`     // controller base URL, e.g. https://192.168.1.1
 	UnifiAPIKey string `json:"unifi_api_key,omitempty"` // UniFi OS API key (X-API-KEY)
 	UnifiSite   string `json:"unifi_site,omitempty"`    // controller site, default "default"
+	// UnifiVerifyTLS turns on standard TLS certificate verification when talking
+	// to the controller. Default false because UniFi gateways ship self-signed;
+	// operators who install a trusted cert should enable this to defeat MITM.
+	UnifiVerifyTLS bool `json:"unifi_verify_tls,omitempty"`
 
 	// Global runtime settings. The equivalent env var overrides these and locks
 	// the field in the UI; a zero value means "use the built-in/config default".
@@ -82,6 +86,11 @@ type NodeConfig struct {
 	SftpPassword   string `json:"sftp_password,omitempty"`    // encrypted at rest
 	SftpPrivateKey string `json:"sftp_private_key,omitempty"` // encrypted at rest (PEM)
 	SftpBasePath   string `json:"sftp_base_path,omitempty"`
+	// SftpKnownHostKey pins the SSH host key of the SFTP remote (authorized_keys
+	// format: "<algo> <base64-key> [comment]"). Empty → the Agent accepts any key
+	// on connect and logs a MITM-vulnerability warning. Pin this for real
+	// verification.
+	SftpKnownHostKey string `json:"sftp_known_host_key,omitempty"`
 
 	// ReplicateToSftp mirrors every new backup (and the scheduled replicate
 	// action) to the SFTP remote, regardless of the primary target.

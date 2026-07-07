@@ -444,6 +444,12 @@ message NodeConfig {
   // replicate_to_sftp mirrors every new backup (and the ReplicateBackups action)
   // to the SFTP remote, regardless of the primary target.
   bool replicate_to_sftp = 14;
+
+  // sftp_known_host_key pins the SSH host key of the SFTP backup remote. Accepts
+  // the standard authorized_keys line format ("<algo> <base64-key> [comment]").
+  // Empty means the Agent accepts whatever key the host presents on connect
+  // (trust-on-use) and logs a warning — pin this for real MITM protection.
+  string sftp_known_host_key = 15;
 }
 
 message ApplyNodeConfigRequest {

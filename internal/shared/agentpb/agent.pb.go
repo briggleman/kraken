@@ -3222,8 +3222,13 @@ type NodeConfig struct {
 	// replicate_to_sftp mirrors every new backup (and the ReplicateBackups action)
 	// to the SFTP remote, regardless of the primary target.
 	ReplicateToSftp bool `protobuf:"varint,14,opt,name=replicate_to_sftp,json=replicateToSftp,proto3" json:"replicate_to_sftp,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// sftp_known_host_key pins the SSH host key of the SFTP backup remote. Accepts
+	// the standard authorized_keys line format ("<algo> <base64-key> [comment]").
+	// Empty means the Agent accepts whatever key the host presents on connect
+	// (trust-on-use) and logs a warning — pin this for real MITM protection.
+	SftpKnownHostKey string `protobuf:"bytes,15,opt,name=sftp_known_host_key,json=sftpKnownHostKey,proto3" json:"sftp_known_host_key,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *NodeConfig) Reset() {
@@ -3310,6 +3315,13 @@ func (x *NodeConfig) GetReplicateToSftp() bool {
 		return x.ReplicateToSftp
 	}
 	return false
+}
+
+func (x *NodeConfig) GetSftpKnownHostKey() string {
+	if x != nil {
+		return x.SftpKnownHostKey
+	}
+	return ""
 }
 
 type ApplyNodeConfigRequest struct {
@@ -3724,7 +3736,7 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	" \x01(\x05R\aplayers\x12\x1f\n" +
 	"\vmax_players\x18\v \x01(\x05R\n" +
 	"maxPlayers\x12#\n" +
-	"\rplayers_known\x18\f \x01(\bR\fplayersKnown\"\x9b\x03\n" +
+	"\rplayers_known\x18\f \x01(\bR\fplayersKnown\"\xca\x03\n" +
 	"\n" +
 	"NodeConfig\x12#\n" +
 	"\rbackup_target\x18\x01 \x01(\tR\fbackupTarget\x12\x1d\n" +
@@ -3736,7 +3748,8 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\rsftp_password\x18\v \x01(\tR\fsftpPassword\x12(\n" +
 	"\x10sftp_private_key\x18\f \x01(\tR\x0esftpPrivateKey\x12$\n" +
 	"\x0esftp_base_path\x18\r \x01(\tR\fsftpBasePath\x12*\n" +
-	"\x11replicate_to_sftp\x18\x0e \x01(\bR\x0freplicateToSftpJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"N\n" +
+	"\x11replicate_to_sftp\x18\x0e \x01(\bR\x0freplicateToSftp\x12-\n" +
+	"\x13sftp_known_host_key\x18\x0f \x01(\tR\x10sftpKnownHostKeyJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"N\n" +
 	"\x16ApplyNodeConfigRequest\x124\n" +
 	"\x06config\x18\x01 \x01(\v2\x1c.cthulhu.agent.v1.NodeConfigR\x06config\"A\n" +
 	"\x17ApplyNodeConfigResponse\x12\x0e\n" +

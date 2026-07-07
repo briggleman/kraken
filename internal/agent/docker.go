@@ -237,11 +237,12 @@ func (d *DockerRuntime) buildTarget(cfg *agentpb.NodeConfig) backupTarget {
 // buildSFTPTarget constructs an SFTP target from cfg's sftp_* fields.
 func buildSFTPTarget(cfg *agentpb.NodeConfig) *sftpBackupTarget {
 	return &sftpBackupTarget{cfg: sftpConfig{
-		Host:       cfg.GetSftpHost(),
-		User:       cfg.GetSftpUser(),
-		Password:   cfg.GetSftpPassword(),
-		PrivateKey: cfg.GetSftpPrivateKey(),
-		BasePath:   cfg.GetSftpBasePath(),
+		Host:         cfg.GetSftpHost(),
+		User:         cfg.GetSftpUser(),
+		Password:     cfg.GetSftpPassword(),
+		PrivateKey:   cfg.GetSftpPrivateKey(),
+		BasePath:     cfg.GetSftpBasePath(),
+		KnownHostKey: cfg.GetSftpKnownHostKey(),
 	}}
 }
 
@@ -1320,6 +1321,14 @@ func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id st
 		}
 		if err != nil {
 			return fmt.Errorf("docker: read backup: %w", err)
+		}
+		// Reject archive entries with path traversal or absolute-path prefixes
+		// BEFORE joining them into a filesystem path — protects against Zip Slip
+		// even if the downstream withinHostDir() check ever regresses. The check
+		// below is the real second-line defense; this one is the CodeQL-visible
+		// first line.
+		if strings.Contains(hdr.Name, "..") || strings.HasPrefix(hdr.Name, "/") || strings.HasPrefix(hdr.Name, `\`) {
+			return fmt.Errorf("docker: backup entry %q has illegal path", hdr.Name)
 		}
 		dest := filepath.Join(root, filepath.FromSlash(hdr.Name))
 		if !d.withinHostDir(serverID, dest) {

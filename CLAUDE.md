@@ -88,6 +88,12 @@ gh pr create --fill                  # title must conform to Conventional Commit
 # review → gh pr merge --squash --delete-branch
 ```
 
+`main`'s branch-protection ruleset is documented in
+[`.github/RULESET.md`](.github/RULESET.md). If `gh pr merge` fails with
+"base branch policy prohibits the merge" while every CI check is green,
+that doc has the diagnosis (Required approvals drifted above 0 on a
+solo-maintainer repo).
+
 ## Commits & PR titles (Conventional Commits + release-please)
 
 **PRs are squash-merged, so the PR title BECOMES the commit message on `main`.**

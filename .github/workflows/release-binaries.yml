@@ -1,0 +1,94 @@
+name: release-binaries
+
+# Attach cross-platform binaries to every GitHub Release. Triggered when a
+# Release is published — either manually or automatically by release-please
+# merging its "chore(main): release X.Y.Z" PR (which creates the tag + the
+# Release).
+#
+# For each supported OS/arch, cross-compile panel/agent/krakenctl with
+# -ldflags stamping the tag, commit SHA, and build date into
+# internal/shared/version. Then upload the binaries + a SHA256SUMS file as
+# release assets so operators can `curl` a specific version onto a node
+# without running `go build` themselves.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-binaries-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64, ext: "" }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: cross-compile
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          COMMIT="${GITHUB_SHA:0:12}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          MOD="github.com/briggleman/kraken/internal/shared/version"
+          LDFLAGS="-s -w -X ${MOD}.Version=${VERSION} -X ${MOD}.Commit=${COMMIT} -X ${MOD}.Date=${DATE}"
+          mkdir -p dist
+          for cmd in panel agent krakenctl; do
+            OUT="dist/kraken-${cmd}-${GOOS}-${GOARCH}${{ matrix.ext }}"
+            go build -trimpath -ldflags "${LDFLAGS}" -o "${OUT}" "./cmd/${cmd}"
+            echo "built ${OUT}"
+          done
+          ls -la dist/
+
+      - name: upload assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${{ github.repository }}"
+
+  checksums:
+    name: sha256sums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cd dist
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${{ github.repository }}" \
+            --pattern "kraken-*"
+          ls -la
+
+      - name: generate + upload SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum kraken-* > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "${GITHUB_REF_NAME}" SHA256SUMS --clobber --repo "${{ github.repository }}"

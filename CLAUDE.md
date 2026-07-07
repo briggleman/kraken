@@ -74,6 +74,20 @@ Dev login: `admin` / `admin` (override via `KRAKEN_BOOTSTRAP_ADMIN_USER` / `_PAS
 - **Cross-OS:** the Docker runtime is OS-aware (Linux + Windows containers). Keep agent
   changes working on both; don't assume Linux-only stats/paths/signals.
 
+## Branching & PR workflow
+
+**Never `git push origin main` directly.** Every change lands on a feature
+branch, opens a PR, and squash-merges. Direct pushes bypass the `pr-title`
+CI gate and leave release-please's release PR in a confusing state.
+
+```sh
+git switch -c <type>/<short-name>   # feat/spec-external-repo, fix/off-by-one, docs/…
+# … edits + one or more commits …
+git push -u origin HEAD
+gh pr create --fill                  # title must conform to Conventional Commits
+# review → gh pr merge --squash --delete-branch
+```
+
 ## Commits & PR titles (Conventional Commits + release-please)
 
 **PRs are squash-merged, so the PR title BECOMES the commit message on `main`.**
@@ -95,6 +109,9 @@ mono-repo-style changes. On merge to `main`, release-please maintains an open
 GitHub notes, and rewrites the annotated line in
 [`internal/shared/version/version.go`](internal/shared/version/version.go).
 See [`release-please-config.json`](release-please-config.json) for the config.
+
+**Do NOT add a `Co-Authored-By: Claude …` trailer** to commit messages here —
+the git log and release-please changelog stay clean without it.
 
 ## Pointers
 

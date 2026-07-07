@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Kraken — social preview</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #010609; }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .card {
+    width: 1280px;
+    height: 640px;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(1400px 900px at 50% -10%, rgba(61,245,207,0.09) 0%, rgba(61,245,207,0) 55%),
+      radial-gradient(1000px 700px at 50% 110%, rgba(61,245,207,0.05) 0%, rgba(61,245,207,0) 60%),
+      linear-gradient(180deg, #041018 0%, #010609 65%);
+    color: #e6f6f2;
+    isolation: isolate;
+  }
+  /* subtle star field, ~40 stars across the canvas */
+  .stars {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      radial-gradient(1.5px 1.5px at 5% 12%, rgba(255,255,255,.55) 50%, transparent 51%),
+      radial-gradient(1px 1px at 12% 74%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 18% 30%, rgba(61,245,207,.7) 50%, transparent 51%),
+      radial-gradient(1px 1px at 22% 88%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 31% 8%, rgba(255,255,255,.5) 50%, transparent 51%),
+      radial-gradient(1px 1px at 37% 58%, rgba(255,255,255,.3) 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 46% 20%, rgba(61,245,207,.5) 50%, transparent 51%),
+      radial-gradient(1px 1px at 53% 82%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 60% 12%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 67% 68%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1.4px 1.4px at 74% 30%, rgba(61,245,207,.55) 50%, transparent 51%),
+      radial-gradient(1px 1px at 81% 78%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 88% 20%, rgba(255,255,255,.45) 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 94% 62%, rgba(255,255,255,.5) 50%, transparent 51%),
+      radial-gradient(1px 1px at 7% 46%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 28% 44%, rgba(255,255,255,.3) 50%, transparent 51%),
+      radial-gradient(1px 1px at 43% 92%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 58% 48%, rgba(255,255,255,.35) 50%, transparent 51%),
+      radial-gradient(1px 1px at 72% 96%, rgba(255,255,255,.3) 50%, transparent 51%),
+      radial-gradient(1.3px 1.3px at 86% 44%, rgba(61,245,207,.45) 50%, transparent 51%);
+  }
+  /* faint teal aurora bar just below top edge */
+  .aurora {
+    position: absolute; top: 0; left: 0; right: 0; height: 220px; pointer-events: none;
+    background: radial-gradient(600px 180px at 50% 0%, rgba(61,245,207,0.18) 0%, rgba(61,245,207,0) 70%);
+    filter: blur(2px);
+  }
+  /* corner rule accents */
+  .corner {
+    position: absolute; width: 40px; height: 40px;
+    border-color: rgba(61,245,207,0.35); border-style: solid; border-width: 0;
+  }
+  .corner.tl { top: 32px;    left: 32px;    border-top-width: 1px;    border-left-width: 1px; }
+  .corner.tr { top: 32px;    right: 32px;   border-top-width: 1px;    border-right-width: 1px; }
+  .corner.bl { bottom: 32px; left: 32px;    border-bottom-width: 1px; border-left-width: 1px; }
+  .corner.br { bottom: 32px; right: 32px;   border-bottom-width: 1px; border-right-width: 1px; }
+
+  .eyebrow {
+    position: absolute;
+    top: 60px; left: 50%; transform: translateX(-50%);
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 13px; letter-spacing: 4px;
+    color: #3df5cf; opacity: 0.9;
+  }
+  .brand {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -52%);
+    display: flex; align-items: center; gap: 40px;
+  }
+  .brand img {
+    width: 200px; height: 200px; object-fit: contain;
+    filter: drop-shadow(0 0 45px rgba(61,245,207,0.7));
+  }
+  .wordmark {
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+    font-size: 128px; font-weight: 900;
+    letter-spacing: 12px; line-height: 1;
+    color: #f4fffb;
+    text-shadow: 0 0 60px rgba(61,245,207,0.55), 0 0 12px rgba(61,245,207,0.35);
+  }
+  .tagline {
+    margin-top: 20px;
+    font-size: 26px; font-weight: 400; letter-spacing: 0.3px;
+    color: #9dc6bd;
+  }
+  .footer {
+    position: absolute;
+    bottom: 60px; left: 60px; right: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 13px; letter-spacing: 2.5px;
+    color: #6b8b83;
+  }
+  .footer .repo { color: #b8dbd4; }
+  .stack { display: flex; gap: 18px; }
+  .stack .dot { color: rgba(61,245,207,0.6); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="stars"></div>
+    <div class="aurora"></div>
+
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <div class="eyebrow">// SELF-HOSTED GAME SERVER CONTROL</div>
+
+    <div class="brand">
+      <img src="/kraken-glyph-teal.png" alt="Kraken">
+      <div>
+        <div class="wordmark">KRAKEN</div>
+        <div class="tagline">Deploy dedicated game servers<br>across your own fleet.</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="repo">github.com/briggleman/kraken</div>
+      <div class="stack">
+        <span>GO</span><span class="dot">·</span>
+        <span>GRPC</span><span class="dot">·</span>
+        <span>REACT</span><span class="dot">·</span>
+        <span>POSTGRES</span><span class="dot">·</span>
+        <span>DOCKER</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

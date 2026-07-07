@@ -16,16 +16,6 @@ Deferred features and enhancements, roughly in priority order.
   feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
 
 ## Platform
-- **Attach cross-platform binaries to each GitHub Release.** release-please
-  tags releases and generates notes but does not build/upload artifacts. Add a
-  workflow that fires on `release: created` (or listens for the `release-please`
-  action's tag output) and cross-compiles `panel.exe` / `agent.exe` /
-  `krakenctl.exe` for `linux/amd64` + `windows/amd64` (+ maybe `darwin/arm64`
-  for local ops tooling), stamps `-ldflags` with `-X …Version=$TAG -X …Commit=$SHA
-  -X …Date=$(date -u)`, then `gh release upload` the binaries + SHA256SUMS.
-  Consumers pull `krakenctl` from the Release page for node enrollment; ops
-  teams don't have to `go build` on their own hosts. Skipped in the initial
-  release-please rollout to keep the PR small.
 - **Pull game specs from an external GitHub repo.** Today the catalog is
   `go:embed`ded in the panel binary (`internal/panel/catalog/bundled/*.yaml`),
   so adding or updating a spec requires a Kraken release. Move to a

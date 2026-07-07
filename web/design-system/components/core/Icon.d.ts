@@ -4,7 +4,7 @@ export type IconName =
   | 'running' | 'starting' | 'stopping' | 'offline' | 'installing' | 'crashed'
   | 'check' | 'plus' | 'search' | 'copy' | 'folder' | 'file' | 'lock' | 'database'
   | 'refresh' | 'info' | 'octagon' | 'chevron' | 'clock' | 'gear' | 'x' | 'play' | 'linux' | 'windows' | 'wine'
-  | 'eye' | 'eye-off' | 'kraken';
+  | 'eye' | 'eye-off' | 'kraken' | 'postgresql';
 
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   /** Glyph name from the Abyssal icon set. */

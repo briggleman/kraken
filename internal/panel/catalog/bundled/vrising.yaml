@@ -5,8 +5,8 @@ description: >-
   so this spec targets a Windows node (steam-win image). Network/identity is
   written to ServerHostSettings.json; gameplay rules come from the chosen
   GameSettingsPreset. Ports are taken from the node's allocation.
-banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/header.jpg
-icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/capsule_231x87.jpg
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1604030/51b4f7de5c6e00dea6785c4811b8d46d7170f02d/capsule_616x353.jpg?t=1782909978
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1604030/d18204000a839feb84393b3d860c17cd4a4b269c.jpg
 steam_app_ids:
   windows: 1829350
 platforms:

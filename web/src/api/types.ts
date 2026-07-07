@@ -55,6 +55,7 @@ export interface CatalogItem {
   icon_url?: string;
   banner_url?: string;
   platforms: string[];
+  steam_app_ids?: Record<string, number>;
   already_imported: boolean;
 }
 

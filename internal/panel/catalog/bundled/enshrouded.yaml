@@ -4,9 +4,9 @@ description: >-
   Enshrouded dedicated server (SteamCMD app 2278520). Windows-only server, so
   this targets a Windows node (steam-win image). All configuration lives in
   enshrouded_server.json, generated from the Settings tab. Enshrouded is
-  memory-hungry — 16 GB is recommended for a full group.
-banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/header.jpg
-icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/capsule_231x87.jpg
+  memory-hungry — 16 GB is recommended for a full 16-slot group.
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1203620/27a14997cb232ac8c62f8e92b156af1fcf766a58/capsule_616x353_alt_assets_1.jpg?t=1782800102
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1203620/b51ff4aa19722a1f3587b35f37f590a998f36a9a.jpg
 steam_app_ids:
   windows: 2278520
 platforms:
@@ -27,6 +27,11 @@ startup:
 ports:
   - { name: game, protocol: udp, default: 15636, required: true }
   - { name: query, protocol: udp, default: 15637, required: true }
+
+# The custom gameSettings block below is only APPLIED by the game when
+# gameSettingsPreset == "Custom". Any other preset (Default/Relaxed/Hard/Survival)
+# silently loads a bundled preset and ignores these values. The Settings tab
+# still lets you tweak them for later use.
 settings:
   groups:
     - id: server
@@ -35,7 +40,80 @@ settings:
         - { key: name, label: Server name, type: string, default: "Kraken Enshrouded" }
         - { key: password, label: Server password, type: password, default: "" }
         - { key: slotCount, label: Player slots, type: int, default: "16", min: 1, max: 16 }
-        - { key: gameSettingsPreset, label: Game settings preset, type: enum, options: [Default, Relaxed, Hard, Survival, Custom], default: Default }
+    - id: chat
+      label: Chat
+      fields:
+        - { key: enableTextChat, label: Text chat, type: bool, default: "true" }
+        - { key: enableVoiceChat, label: Voice chat, type: bool, default: "true" }
+        - { key: voiceChatMode, label: Voice chat mode, type: enum, options: [Proximity, Global], default: Proximity }
+    - id: preset
+      label: Difficulty preset
+      description: >-
+        Custom settings below only take effect when this is set to Custom.
+        Any other value loads a bundled preset and silently ignores them.
+      fields:
+        - { key: gameSettingsPreset, label: Preset, type: enum, options: [Default, Relaxed, Hard, Survival, Custom], default: Default }
+    - id: player
+      label: Custom — Player
+      fields:
+        - { key: playerHealthFactor, label: Player health, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: playerManaFactor, label: Player mana, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: playerStaminaFactor, label: Player stamina, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: playerBodyHeatFactor, label: Body heat, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: playerDivingTimeFactor, label: Diving time, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: foodBuffDurationFactor, label: Food buff duration, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: shroudTimeFactor, label: Shroud tolerance, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: enableDurability, label: Item durability, type: bool, default: "true" }
+        - { key: enableStarvingDebuff, label: Starving debuff, type: bool, default: "false" }
+        - { key: enableGliderTurbulences, label: Glider turbulences, type: bool, default: "true" }
+    - id: enemies
+      label: Custom — Enemies
+      fields:
+        - { key: enemyDamageFactor, label: Enemy damage, type: float, default: "1", min: 0.25, max: 5 }
+        - { key: enemyHealthFactor, label: Enemy health, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: enemyStaminaFactor, label: Enemy stamina, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: enemyPerceptionRangeFactor, label: Enemy perception range, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: threatBonus, label: Threat bonus, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: bossDamageFactor, label: Boss damage, type: float, default: "1", min: 0.2, max: 5 }
+        - { key: bossHealthFactor, label: Boss health, type: float, default: "1", min: 0.2, max: 5 }
+        - { key: randomSpawnerAmount, label: Random spawner amount, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
+        - { key: aggroPoolAmount, label: Aggro pool size, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
+        - { key: pacifyAllEnemies, label: Pacify all enemies, type: bool, default: "false" }
+    - id: world
+      label: Custom — World
+      fields:
+        - { key: weatherFrequency, label: Weather frequency, type: enum, options: [Disabled, Rare, Normal, Often], default: Normal }
+        - { key: fishingDifficulty, label: Fishing difficulty, type: enum, options: [VeryEasy, Easy, Normal, Hard, VeryHard], default: Normal }
+        - { key: curseModifier, label: Curse modifier, type: enum, options: [Easy, Normal, Hard], default: Normal }
+        - { key: tombstoneMode, label: Tombstone mode, type: enum, options: [AddBackpackMaterials, Everything, NoTombstone], default: AddBackpackMaterials }
+        - { key: tamingStartleRepercussion, label: Taming startle penalty, type: enum, options: [KeepProgress, LoseSomeProgress, LoseAllProgress], default: LoseSomeProgress }
+        - { key: miningDamageFactor, label: Mining damage, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: plantGrowthSpeedFactor, label: Plant growth speed, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: resourceDropStackAmountFactor, label: Resource drop stacks, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: factoryProductionSpeedFactor, label: Factory production speed, type: float, default: "1", min: 0.25, max: 2 }
+    - id: time
+      label: Custom — Day / Night / Hunger
+      description: >-
+        Values are entered in seconds; Enshrouded stores them internally in
+        nanoseconds, which the template appends automatically.
+      fields:
+        - { key: dayTimeDurationSeconds, label: Day duration (seconds), type: int, default: "1800", min: 120, max: 3600 }
+        - { key: nightTimeDurationSeconds, label: Night duration (seconds), type: int, default: "720", min: 120, max: 3600 }
+        - { key: fromHungerToStarvingSeconds, label: Hunger → starving (seconds), type: int, default: "600", min: 300, max: 1200 }
+    - id: progression
+      label: Custom — Progression
+      fields:
+        - { key: experienceCombatFactor, label: Combat XP, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: experienceMiningFactor, label: Mining XP, type: float, default: "1", min: 0, max: 2 }
+        - { key: experienceExplorationQuestsFactor, label: Exploration / quest XP, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: perkCostFactor, label: Perk cost, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: perkUpgradeRecyclingFactor, label: Perk upgrade recycling, type: float, default: "0.5", min: 0, max: 1 }
+
+# userGroups (Admin/Friend/Guest passwords + role permissions) is intentionally
+# omitted here — Enshrouded populates it with empty defaults on first write, and
+# leaving it out lets operators manage per-role passwords via the Files tab or
+# SFTP. Note: settings saves overwrite this file, so hand-edits to other keys
+# will not persist.
 config_files:
   - path: C:\data\enshrouded_server.json
     format: template
@@ -49,7 +127,49 @@ config_files:
         "gamePort": {{.ports.game}},
         "queryPort": {{.ports.query}},
         "slotCount": {{.settings.slotCount}},
-        "gameSettingsPreset": "{{.settings.gameSettingsPreset}}"
+        "enableTextChat": {{.settings.enableTextChat}},
+        "enableVoiceChat": {{.settings.enableVoiceChat}},
+        "voiceChatMode": "{{.settings.voiceChatMode}}",
+        "gameSettingsPreset": "{{.settings.gameSettingsPreset}}",
+        "gameSettings": {
+          "playerHealthFactor": {{.settings.playerHealthFactor}},
+          "playerManaFactor": {{.settings.playerManaFactor}},
+          "playerStaminaFactor": {{.settings.playerStaminaFactor}},
+          "playerBodyHeatFactor": {{.settings.playerBodyHeatFactor}},
+          "playerDivingTimeFactor": {{.settings.playerDivingTimeFactor}},
+          "foodBuffDurationFactor": {{.settings.foodBuffDurationFactor}},
+          "shroudTimeFactor": {{.settings.shroudTimeFactor}},
+          "enableDurability": {{.settings.enableDurability}},
+          "enableStarvingDebuff": {{.settings.enableStarvingDebuff}},
+          "enableGliderTurbulences": {{.settings.enableGliderTurbulences}},
+          "enemyDamageFactor": {{.settings.enemyDamageFactor}},
+          "enemyHealthFactor": {{.settings.enemyHealthFactor}},
+          "enemyStaminaFactor": {{.settings.enemyStaminaFactor}},
+          "enemyPerceptionRangeFactor": {{.settings.enemyPerceptionRangeFactor}},
+          "threatBonus": {{.settings.threatBonus}},
+          "bossDamageFactor": {{.settings.bossDamageFactor}},
+          "bossHealthFactor": {{.settings.bossHealthFactor}},
+          "randomSpawnerAmount": "{{.settings.randomSpawnerAmount}}",
+          "aggroPoolAmount": "{{.settings.aggroPoolAmount}}",
+          "pacifyAllEnemies": {{.settings.pacifyAllEnemies}},
+          "weatherFrequency": "{{.settings.weatherFrequency}}",
+          "fishingDifficulty": "{{.settings.fishingDifficulty}}",
+          "curseModifier": "{{.settings.curseModifier}}",
+          "tombstoneMode": "{{.settings.tombstoneMode}}",
+          "tamingStartleRepercussion": "{{.settings.tamingStartleRepercussion}}",
+          "miningDamageFactor": {{.settings.miningDamageFactor}},
+          "plantGrowthSpeedFactor": {{.settings.plantGrowthSpeedFactor}},
+          "resourceDropStackAmountFactor": {{.settings.resourceDropStackAmountFactor}},
+          "factoryProductionSpeedFactor": {{.settings.factoryProductionSpeedFactor}},
+          "dayTimeDuration": {{.settings.dayTimeDurationSeconds}}000000000,
+          "nightTimeDuration": {{.settings.nightTimeDurationSeconds}}000000000,
+          "fromHungerToStarving": {{.settings.fromHungerToStarvingSeconds}}000000000,
+          "experienceCombatFactor": {{.settings.experienceCombatFactor}},
+          "experienceMiningFactor": {{.settings.experienceMiningFactor}},
+          "experienceExplorationQuestsFactor": {{.settings.experienceExplorationQuestsFactor}},
+          "perkCostFactor": {{.settings.perkCostFactor}},
+          "perkUpgradeRecyclingFactor": {{.settings.perkUpgradeRecyclingFactor}}
+        }
       }
 resources:
   min_memory_mb: 6144

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "kraken",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "draft": false,
+      "prerelease": false,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "internal/shared/version/version.go"
+        }
+      ]
+    }
+  },
+  "release-search-depth": 400,
+  "commit-search-depth": 400
+}

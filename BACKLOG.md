@@ -16,7 +16,76 @@ Deferred features and enhancements, roughly in priority order.
   feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
 
 ## Platform
-- _All planned platform backlog items are done (see the dated sections below)._
+- **Attach cross-platform binaries to each GitHub Release.** release-please
+  tags releases and generates notes but does not build/upload artifacts. Add a
+  workflow that fires on `release: created` (or listens for the `release-please`
+  action's tag output) and cross-compiles `panel.exe` / `agent.exe` /
+  `krakenctl.exe` for `linux/amd64` + `windows/amd64` (+ maybe `darwin/arm64`
+  for local ops tooling), stamps `-ldflags` with `-X …Version=$TAG -X …Commit=$SHA
+  -X …Date=$(date -u)`, then `gh release upload` the binaries + SHA256SUMS.
+  Consumers pull `krakenctl` from the Release page for node enrollment; ops
+  teams don't have to `go build` on their own hosts. Skipped in the initial
+  release-please rollout to keep the PR small.
+- **Pull game specs from an external GitHub repo.** Today the catalog is
+  `go:embed`ded in the panel binary (`internal/panel/catalog/bundled/*.yaml`),
+  so adding or updating a spec requires a Kraken release. Move to a
+  pull-at-runtime model: point the panel at a spec-only repo (e.g.
+  `briggleman/kraken-specs`) and have it fetch + validate on startup + on a
+  schedule (weekly, or via a webhook / manual refresh action). Each entry
+  becomes a versioned catalog item — an operator can update Palworld's spec
+  without a Kraken redeploy. Design notes: (1) keep the current bundled/
+  fallback for offline installs; (2) sign or hash-pin the manifest so a repo
+  compromise can't inject a malicious startup command; (3) surface "N updates
+  available" on the Catalog page so operators know when to re-import;
+  (4) `GET /catalog?source=repo` filter so operators can distinguish bundled
+  vs external. This is what the [[SPECS.md]] convention is for — spec authors
+  contribute to that repo instead of the main Kraken repo. Highest-volume
+  contribution surface in the project once opened up.
+- **Power actions must gate on install state.** `POST /servers/{id}/power` with
+  `action=start` currently accepts a server whose install phase failed and never
+  reached `installed`. The Agent happily creates a runtime container that runs
+  the startup command against an empty `/data` (or `C:\data`), which then exits
+  1 with e.g. `'C:\data\VRisingServer.exe' is not recognized as an internal or
+  external command`, and the crash watchdog burns through its retry budget on a
+  server that never had files. Fix: `handlers_server.go` power handler should
+  reject `start`/`restart` when `server.State` is `install_failed` (or anything
+  other than a post-install state) with a 409 + hint to redeploy or re-run
+  provisioning. Repro seen 2026-07-07: image pull denied against GHCR at
+  provision time → server left in `crashed` state → a later start attempt in
+  the UI booted the empty container → 3 watchdog crashes → misleading "exe not
+  found" error trail. Consider also: a `POST /servers/{id}/reinstall` endpoint
+  so an install-failed server can be recovered without deleting + re-creating
+  (the current recovery loses the allocated port + server ID). Small enough to
+  bundle: both changes live in `handlers_server.go`.
+- **`steam-win` — swap the VC++ redist installer for a direct DLL side-load.**
+  The runtime stage still invokes `vc_redist.x64.exe /quiet /norestart` to install
+  `vcruntime140.dll` / `vcruntime140_1.dll` / `msvcp140.dll` / `concrt140.dll`
+  plus SxS registration hooks. Extracting just those four DLLs into
+  `C:\Windows\System32` is estimated to save **300–800 MB** on top of the
+  safe-cleanup pass shipped earlier — but some games may need the SxS
+  registration the installer performs, so the swap requires live A/B against
+  V Rising (the known-working reference) on a Windows Docker daemon before it
+  can ship. Approach: `vc_redist.x64.exe /extract:C:\vc` → `expand` the emitted
+  CABs → copy the four DLLs → skip the MSI install. Track boot success + no
+  `0xC0000135` under both process and Hyper-V isolation.
+- **Wine runtime for Windows-only games on Linux nodes.** Deferred to a future
+  release. `LinuxWine` is a valid `PlatformKind` in the schema but no
+  `images/steam-wine` exists, so today Linux operators need a Windows node for
+  V Rising / Enshrouded / Windrose / Abiotic Factor / etc. Full scope:
+  (1) Build `images/steam-wine` — Debian + i386 + a pinned Wine version + xvfb
+  for headless + wine-prefix pre-init + SteamCMD invoked with
+  `+@sSteamCmdForcePlatformType windows`. (2) Decide how the schema handles
+  per-platform startup — the current single `startup.command` can't be both
+  `C:\data\X.exe` and `xvfb-run wine C:/data/X.exe`. Options: bake a
+  detect-and-rewrite wrapper into the image, add a `startup.command_wine` /
+  per-OS map to the schema, or ship sibling specs (e.g. `windrose-wine`).
+  (3) Per-game validation is required — Wine viability varies wildly:
+  Abiotic Factor (community-confirmed OK), Enshrouded (no confirmed reports,
+  UE5 shader-compile risk), V Rising (IL2CPP + BepInEx-under-Wine is
+  historically flaky), Windrose (UE5 + P2P NAT-punch, unknown). Add
+  `linux-wine` to each Windows-only spec only after it live-boots on the
+  wine image.
+
 
 ### Done (2026-07-01)
 - ~~**SFTP server (power-user file access).**~~ Shipped. The Agent runs an SSH/SFTP

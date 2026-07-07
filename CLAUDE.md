@@ -74,6 +74,28 @@ Dev login: `admin` / `admin` (override via `KRAKEN_BOOTSTRAP_ADMIN_USER` / `_PAS
 - **Cross-OS:** the Docker runtime is OS-aware (Linux + Windows containers). Keep agent
   changes working on both; don't assume Linux-only stats/paths/signals.
 
+## Commits & PR titles (Conventional Commits + release-please)
+
+**PRs are squash-merged, so the PR title BECOMES the commit message on `main`.**
+release-please reads those commits to compute SemVer bumps and generate the
+`CHANGELOG.md`. Non-conforming PR titles fail CI (`pr-title` job).
+
+Format: `type(optional-scope): lowercase subject`
+
+- `feat: add BepInEx toggle` — new user-facing capability → **minor** bump
+- `fix: crash watchdog off-by-one` — user-facing bug fix → **patch** bump
+- `feat!: rewrite spec schema` — breaking change (also `feat:` + `BREAKING CHANGE:`
+  footer) → **minor** bump while pre-1.0, **major** after 1.0
+- `docs:`, `chore:`, `ci:`, `refactor:`, `test:`, `build:`, `perf:`, `style:`,
+  `revert:` — no version bump, still included in release notes
+
+Subject must start lowercase. Scope (`feat(agent):`) is optional but useful for
+mono-repo-style changes. On merge to `main`, release-please maintains an open
+`chore(main): release X.Y.Z` PR — merging that PR tags the release, publishes
+GitHub notes, and rewrites the annotated line in
+[`internal/shared/version/version.go`](internal/shared/version/version.go).
+See [`release-please-config.json`](release-please-config.json) for the config.
+
 ## Pointers
 
 - Design language → **[web/DESIGN.md](web/DESIGN.md)**

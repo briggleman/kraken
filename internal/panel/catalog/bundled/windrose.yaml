@@ -1,11 +1,16 @@
 name: Windrose
 slug: windrose
 description: >-
-  Windrose dedicated server (SteamCMD app 4129620). The server binary is
-  Windows-only, so this targets a Windows node (steam-win image). The server
-  binds all interfaces and uses the node-allocated game/query ports. Server name,
-  password, and max players live in R5\ServerDescription.json — edit it from the
-  Files tab after the first launch.
+  Windrose dedicated server (SteamCMD app 4129620). Windows-only, so this
+  targets a Windows node (steam-win image). Configuration lives in
+  ServerDescription.json at the install root — the server auto-generates
+  PersistentServerId, InviteCode, and WorldIslandId on first launch and
+  rewrites the file at runtime, so Kraken deliberately does NOT template it.
+  Boot once, then edit ServerName / Password / MaxPlayerCount / region via
+  the Files tab or SFTP. Recommend 8 GB for 2 players, 12 GB for 4, 16 GB for 10.
+# Steam main-capsule + community-icon (game appid 3041230). See bundled/SPECS.md.
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3041230/58031ef98f88d5602171eb018d9306c7383a6e6a/capsule_616x353.jpg?t=1782370662
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/3041230/f8ae552a1c3eb4a6d3015867a6a4a64c02b9cd8d.jpg
 steam_app_ids:
   windows: 4129620
 platforms:
@@ -17,13 +22,18 @@ install:
     steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
     & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
 startup:
+  # -log + -MULTIHOME + -PORT are standard UE engine flags that let Windrose bind
+  # the allocated game port. No -QUERYPORT: Windrose has no separate query port —
+  # it advertises via P2P NAT punch-through when direct connect is off, or
+  # DirectConnectionServerPort in ServerDescription.json when it's on.
   command: >-
-    C:\data\WindroseServer.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}} -QUERYPORT={{PORT_QUERY}}
+    C:\data\WindroseServer.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}}
+  # No ready_regex: the invite code prints after boot but the exact log line
+  # format isn't documented, so the watchdog just watches for process uptime.
   restart: { on_crash: true, max_retries: 3 }
   stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
-  - { name: query, protocol: udp, default: 7778, required: true }
 resources:
-  min_memory_mb: 4096
-  recommended_memory_mb: 8192
+  min_memory_mb: 6144
+  recommended_memory_mb: 12288

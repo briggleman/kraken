@@ -110,7 +110,11 @@ export function Users() {
         })}
         {users.length === 0 && (
           <div style={{ padding: "40px 22px", textAlign: "center", fontFamily: mono, color: "var(--text-muted)" }}>
-            <div style={{ fontSize: 30, marginBottom: 10 }}>🐙</div>
+            <img
+              src="/kraken-glyph-teal.png"
+              alt="Kraken"
+              style={{ display: "block", margin: "0 auto 10px", width: 30, height: 30, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(61,245,207,.3))" }}
+            />
             No users.
           </div>
         )}

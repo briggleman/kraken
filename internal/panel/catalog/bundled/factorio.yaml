@@ -1,12 +1,14 @@
 name: Factorio
 slug: factorio
 description: >-
-  Factorio headless server (Linux-native). Not on SteamCMD — the install phase
-  downloads the current stable headless build from factorio.com and creates a
-  default save if none exists. Server identity, password, and visibility are
-  written to server-settings.json from the Settings tab.
-banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/427520/header.jpg
-icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/427520/capsule_231x87.jpg
+  Factorio headless server (Linux-native, x86_64). Not on SteamCMD — the install
+  phase downloads the current stable headless build from factorio.com and creates
+  a default world if none exists. Server identity, access, autosaves, and
+  network tuning are written to server-settings.json from the Settings tab.
+  Admins (server-adminlist.json) and map-gen tweaks are managed via the Files
+  tab / SFTP; map-gen changes only apply to a fresh world.
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427520/capsule_616x353.jpg?t=1763986204
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/427520/267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d.jpg
 platforms:
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
 install:
@@ -20,7 +22,8 @@ startup:
   command: >-
     /data/bin/x64/factorio --start-server /data/saves/world.zip
     --server-settings /data/server-settings.json --port {{PORT_GAME}}
-  # Factorio logs this exact transition when the map is loaded and joinable.
+  # Factorio logs "changing state from(CreatingGame) to(InGame)" once the map is
+  # loaded and the server is accepting joins.
   ready_regex: 'to\(InGame\)'
   restart: { on_crash: true, max_retries: 3 }
   stop: { type: signal, value: SIGINT }
@@ -35,10 +38,43 @@ settings:
         - { key: description, label: Description, type: text, default: "A Kraken-hosted Factorio server" }
         - { key: max_players, label: Max players (0 = unlimited), type: int, default: "0", min: 0, max: 500 }
         - { key: game_password, label: Server password, type: password, default: "" }
-        - { key: public, label: List on public server browser, type: bool, default: "false" }
-        - { key: require_user_verification, label: Require Steam/Factorio.com verification, type: bool, default: "true" }
+        - { key: public, label: List on public server browser, type: bool, default: "false", help: "Requires factorio.com username + token below." }
+        - { key: require_user_verification, label: Require Factorio.com account verification, type: bool, default: "true" }
+        - { key: allow_commands, label: In-game /commands, type: enum, options: ["true", "false", "admins-only"], default: "admins-only" }
+    - id: access
+      label: Access & pausing
+      fields:
         - { key: auto_pause, label: Pause when no players online, type: bool, default: "true" }
+        - { key: auto_pause_when_players_connect, label: Pause while a player is connecting, type: bool, default: "false" }
+        - { key: only_admins_can_pause_the_game, label: Only admins can pause the game, type: bool, default: "true" }
+        - { key: afk_autokick_interval, label: AFK autokick (minutes, 0 = never), type: int, default: "0", min: 0, max: 240 }
+        - { key: ignore_player_limit_for_returning_players, label: Let returning players bypass the max-players cap, type: bool, default: "false" }
+    - id: saves
+      label: Autosaves
+      fields:
         - { key: autosave_interval, label: Autosave interval (minutes), type: int, default: "10", min: 1, max: 240 }
+        - { key: autosave_slots, label: Autosave slots (rotates through), type: int, default: "5", min: 1, max: 50 }
+        - { key: autosave_only_on_server, label: Autosave on server only (not on clients), type: bool, default: "true" }
+        - { key: non_blocking_saving, label: Non-blocking (forked) autosaves, type: bool, default: "false", help: "Experimental — UNIX-only fork, can corrupt saves. Enable only if you accept the risk." }
+    - id: factorio_com
+      label: Factorio.com credentials
+      description: >-
+        Required only when the "List on public server browser" switch above is
+        on. Grab a token from https://factorio.com/profile — it's preferred over
+        your account password.
+      fields:
+        - { key: username, label: Factorio.com username, type: string, default: "" }
+        - { key: token, label: Factorio.com token, type: password, default: "" }
+    - id: network
+      label: Network tuning
+      description: >-
+        Defaults are fine for most servers. Only touch these if you're diagnosing
+        upload-bandwidth or latency issues.
+      fields:
+        - { key: max_heartbeats_per_second, label: Network tick rate (heartbeats/s), type: int, default: "60", min: 6, max: 240 }
+        - { key: max_upload_in_kilobytes_per_second, label: Max upload (KB/s, 0 = unlimited), type: int, default: "0", min: 0, max: 100000 }
+        - { key: max_upload_slots, label: Max upload slots (0 = unlimited), type: int, default: "5", min: 0, max: 50 }
+        - { key: minimum_latency_in_ticks, label: Minimum latency (ticks, 0 = none), type: int, default: "0", min: 0, max: 60 }
 config_files:
   - path: /data/server-settings.json
     format: template
@@ -46,17 +82,28 @@ config_files:
       {
         "name": "{{.settings.name}}",
         "description": "{{.settings.description}}",
+        "tags": [],
         "max_players": {{.settings.max_players}},
         "visibility": { "public": {{.settings.public}}, "lan": true },
-        "username": "",
-        "token": "",
+        "username": "{{.settings.username}}",
+        "password": "",
+        "token": "{{.settings.token}}",
         "game_password": "{{.settings.game_password}}",
         "require_user_verification": {{.settings.require_user_verification}},
+        "max_upload_in_kilobytes_per_second": {{.settings.max_upload_in_kilobytes_per_second}},
+        "max_upload_slots": {{.settings.max_upload_slots}},
+        "minimum_latency_in_ticks": {{.settings.minimum_latency_in_ticks}},
+        "max_heartbeats_per_second": {{.settings.max_heartbeats_per_second}},
+        "ignore_player_limit_for_returning_players": {{.settings.ignore_player_limit_for_returning_players}},
+        "allow_commands": "{{.settings.allow_commands}}",
         "autosave_interval": {{.settings.autosave_interval}},
-        "autosave_slots": 5,
-        "afk_autokick_interval": 0,
-        "allow_commands": "admins-only",
-        "auto_pause": {{.settings.auto_pause}}
+        "autosave_slots": {{.settings.autosave_slots}},
+        "afk_autokick_interval": {{.settings.afk_autokick_interval}},
+        "auto_pause": {{.settings.auto_pause}},
+        "auto_pause_when_players_connect": {{.settings.auto_pause_when_players_connect}},
+        "only_admins_can_pause_the_game": {{.settings.only_admins_can_pause_the_game}},
+        "autosave_only_on_server": {{.settings.autosave_only_on_server}},
+        "non_blocking_saving": {{.settings.non_blocking_saving}}
       }
 resources:
   min_memory_mb: 1024

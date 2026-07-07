@@ -239,7 +239,11 @@ export function ServerFilesPanel({ id, name }: { id: string; name: string }) {
       ) : visible.length === 0 ? (
         <Card dashed padding={36}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" }}>
-            <span style={{ fontSize: 30 }}>🐙</span>
+            <img
+              src="/kraken-glyph-teal.png"
+              alt="Kraken"
+              style={{ width: 30, height: 30, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(61,245,207,.3))" }}
+            />
             <div style={{ fontFamily: mono, color: "var(--text-muted)" }}>{inTrash ? "Trash is empty." : "Empty directory."}</div>
           </div>
         </Card>

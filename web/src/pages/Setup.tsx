@@ -21,6 +21,22 @@ const SECTION_LABEL: React.CSSProperties = {
   marginBottom: 14,
 };
 
+const CATALOG_TH: React.CSSProperties = {
+  textAlign: "left",
+  padding: "10px 14px",
+  fontFamily: mono,
+  fontSize: 11,
+  letterSpacing: "1px",
+  color: "var(--text-faint)",
+  fontWeight: 500,
+  borderBottom: "1px solid var(--border-subtle)",
+};
+
+const CATALOG_TD: React.CSSProperties = {
+  padding: "12px 14px",
+  verticalAlign: "middle",
+};
+
 function StepDots({ step, done }: { step: number; done: boolean[] }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
@@ -113,6 +129,11 @@ export function Setup() {
   const [dbBusy, setDbBusy] = useState<"test" | "connect" | null>(null);
   const [dbNotice, setDbNotice] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
+  // Once-per-mount guard so the compose-defaults auto-probe doesn't loop.
+  const [autoProbed, setAutoProbed] = useState(false);
+  // Add-a-game state: bulk-import status + once-per-session auto-import guard.
+  const [importingAll, setImportingAll] = useState(false);
+  const [autoImportedGames, setAutoImportedGames] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -181,6 +202,48 @@ export function Setup() {
     void refresh();
   }, [refresh]);
 
+  // Auto-detect the bundled Docker Compose Postgres. On first mount, if we're
+  // on the in-memory store and the operator hasn't touched the DB form, probe
+  // localhost:5432 with the compose defaults (kraken/kraken@localhost/kraken).
+  // Success → pre-fill the form and hint. Failure → silent no-op; the operator
+  // types their own DSN as before. Non-compose operators see zero change.
+  useEffect(() => {
+    if (!dbCfg || !dbCfg.using_memory || autoProbed || db.host !== "") return;
+    setAutoProbed(true);
+    const defaults = { host: "localhost", port: 5432, user: "kraken", password: "kraken", dbname: "kraken", sslmode: "disable" };
+    void (async () => {
+      try {
+        const r = await api.testDatabase(defaults);
+        setDb(defaults);
+        setDbNotice(
+          r.db_exists
+            ? "Detected the bundled Postgres — click Connect to persist."
+            : r.can_create_db
+              ? "Detected the bundled Postgres — the database will be created on Connect."
+              : "Detected the bundled Postgres — click Connect to persist.",
+        );
+      } catch {
+        /* not the compose stack — leave the form blank */
+      }
+    })();
+  }, [dbCfg, autoProbed, db.host]);
+
+  // Auto-import all catalog games the first time the operator lands on the
+  // Add-a-game step. Prior behavior asked them to click Import on each row;
+  // the mock treats this step as informational ("here's what's ready") so we
+  // just pull everything in on entry. A per-session guard keeps re-visits from
+  // re-firing the loop; the Import all button is the manual re-trigger.
+  useEffect(() => {
+    if (step !== 3 || autoImportedGames || catalog.length === 0) return;
+    if (catalog.every((g) => g.already_imported)) {
+      setAutoImportedGames(true);
+      return;
+    }
+    setAutoImportedGames(true);
+    void importAllGames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, catalog, autoImportedGames]);
+
   // While waiting for the local node to come online, poll its live info so the
   // quickstart agent flips to "online" without the operator doing anything.
   const hasOnlineNode = nodes.some((n) => n.status === "online");
@@ -225,6 +288,32 @@ export function Setup() {
     }
   };
 
+  // Serially import every not-yet-imported catalog entry. 409s from the panel
+  // (spec slug already exists) are treated as success — they just mean the row
+  // was imported by an earlier run.
+  const importAllGames = async () => {
+    setImportingAll(true);
+    setError(null);
+    try {
+      for (const g of catalog) {
+        if (g.already_imported) continue;
+        setImporting(g.id);
+        try {
+          await api.importCatalog(g.id);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "";
+          if (!/already exists|409/i.test(msg)) throw e;
+        }
+      }
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "import failed");
+    } finally {
+      setImporting(null);
+      setImportingAll(false);
+    }
+  };
+
   const done = [
     !!dbCfg && !dbCfg.using_memory, // Database: persisted on Postgres
     !!status && !status.admin_must_change_password, // Secure
@@ -251,7 +340,7 @@ export function Setup() {
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: "34px 30px 70px" }}>
+    <main style={{ maxWidth: step === 3 ? 1080 : 760, margin: "0 auto", padding: "34px 30px 70px", transition: "max-width 220ms ease" }}>
       <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 10 }}>// FIRST RUN</div>
       <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 30, letterSpacing: "-0.5px", margin: "0 0 28px", color: "var(--text-primary)" }}>
         Get Kraken ready
@@ -323,7 +412,7 @@ export function Setup() {
                   <Button variant="secondary" icon="refresh" disabled={dbBusy !== null || db.host.trim() === ""} onClick={() => void testDb()}>
                     {dbBusy === "test" ? "Testing…" : "Test connection"}
                   </Button>
-                  <Button variant="primary" icon="check" disabled={dbBusy !== null || db.host.trim() === ""} onClick={() => void connectDb()}>
+                  <Button variant="primary" icon="postgresql" disabled={dbBusy !== null || db.host.trim() === ""} onClick={() => void connectDb()}>
                     {dbBusy === "connect" ? "Connecting…" : "Connect & restart"}
                   </Button>
                 </div>
@@ -436,46 +525,92 @@ export function Setup() {
 
         {step === 3 && (
           <div>
-            <div style={SECTION_LABEL}>ADD A GAME</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <div style={{ ...SECTION_LABEL, marginBottom: 0 }}>ADD A GAME</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)" }}>
+                  <b style={{ color: "var(--text-primary)" }}>{catalog.filter((g) => g.already_imported).length}</b> / {catalog.length} specs imported
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="plus"
+                  onClick={() => void importAllGames()}
+                  disabled={importingAll || catalog.length === 0 || catalog.every((g) => g.already_imported)}
+                >
+                  {importingAll ? "Importing…" : "Import all"}
+                </Button>
+              </div>
+            </div>
             {catalog.length === 0 ? (
               <div style={{ fontFamily: mono, fontSize: 13, color: "var(--text-muted)" }}>No catalog entries available.</div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
-                {catalog.map((g) => (
-                  <div
-                    key={g.id}
-                    style={{
-                      borderRadius: "var(--radius-md)",
-                      overflow: "hidden",
-                      border: "1px solid var(--border-subtle)",
-                      background: "rgba(7,23,29,.5)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: 70,
-                        backgroundImage: g.banner_url ? `url(${g.banner_url})` : "repeating-linear-gradient(135deg,rgba(61,245,207,.05) 0 10px,transparent 10px 20px)",
-                        backgroundColor: "rgba(3,16,21,.7)",
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        borderBottom: "1px solid var(--border-soft)",
-                      }}
-                    />
-                    <div style={{ padding: 13 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)", marginBottom: 3 }}>{g.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10, minHeight: 32 }}>{g.description}</div>
-                      {g.already_imported ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: mono, fontSize: 12, color: "var(--status-running)" }}>
-                          <Icon name="check" size={14} /> Imported
-                        </div>
-                      ) : (
-                        <Button size="sm" variant="primary" icon="plus" disabled={importing === g.id} onClick={() => void importGame(g.id)}>
-                          {importing === g.id ? "Importing…" : "Import"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+              <div style={{ overflow: "hidden", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)", background: "rgba(7,23,29,.4)" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "rgba(3,16,21,.6)" }}>
+                      <th style={CATALOG_TH}>Game</th>
+                      <th style={{ ...CATALOG_TH, width: 70, textAlign: "center" }}>Platform</th>
+                      <th style={{ ...CATALOG_TH, width: "48%" }}>Configuration</th>
+                      <th style={{ ...CATALOG_TH, width: 130 }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catalog.map((g, i) => {
+                      const appid = g.steam_app_ids?.linux ?? g.steam_app_ids?.windows;
+                      const os = g.platforms.includes("linux-native") ? "linux" : "windows";
+                      const isImporting = importing === g.id;
+                      return (
+                        <tr key={g.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--border-subtle)" }}>
+                          <td style={CATALOG_TD}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div
+                                style={{
+                                  width: 96,
+                                  height: 54,
+                                  borderRadius: 4,
+                                  flexShrink: 0,
+                                  backgroundImage: g.banner_url ? `url(${g.banner_url})` : "repeating-linear-gradient(135deg,rgba(61,245,207,.06) 0 8px,transparent 8px 16px)",
+                                  backgroundColor: "rgba(3,16,21,.7)",
+                                  backgroundSize: "cover",
+                                  backgroundPosition: "center",
+                                  border: "1px solid var(--border-soft)",
+                                }}
+                              />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text-primary)" }}>{g.name}</div>
+                                <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)" }}>
+                                  {appid ? `SteamCMD · ${appid}` : g.slug}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ ...CATALOG_TD, textAlign: "center" }}>
+                            <OsIcon os={os} size={20} style={{ color: "var(--text-secondary)" }} />
+                          </td>
+                          <td style={{ ...CATALOG_TD, color: "var(--text-secondary)", fontSize: 12.5, lineHeight: 1.5 }}>
+                            {g.description}
+                          </td>
+                          <td style={CATALOG_TD}>
+                            {g.already_imported ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 12, color: "var(--status-running)" }}>
+                                <Icon name="check" size={13} /> Imported
+                              </span>
+                            ) : isImporting ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 12, color: "var(--accent)" }}>
+                                <Icon name="refresh" size={13} /> Importing…
+                              </span>
+                            ) : (
+                              <Button size="sm" variant="secondary" icon="plus" onClick={() => void importGame(g.id)}>
+                                Import
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
             <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 16 }}>

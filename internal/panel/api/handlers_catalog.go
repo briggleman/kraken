@@ -9,14 +9,15 @@ import (
 )
 
 type catalogItem struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Slug            string   `json:"slug"`
-	Description     string   `json:"description,omitempty"`
-	IconURL         string   `json:"icon_url,omitempty"`
-	BannerURL       string   `json:"banner_url,omitempty"`
-	Platforms       []string `json:"platforms"`
-	AlreadyImported bool     `json:"already_imported"`
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Slug            string         `json:"slug"`
+	Description     string         `json:"description,omitempty"`
+	IconURL         string         `json:"icon_url,omitempty"`
+	BannerURL       string         `json:"banner_url,omitempty"`
+	Platforms       []string       `json:"platforms"`
+	SteamAppIDs     map[string]int `json:"steam_app_ids,omitempty"`
+	AlreadyImported bool           `json:"already_imported"`
 }
 
 // handleListCatalog returns the built-in starter game catalog, flagging which
@@ -42,6 +43,7 @@ func (s *Server) handleListCatalog(w http.ResponseWriter, r *http.Request) {
 			IconURL:         e.Spec.IconURL,
 			BannerURL:       e.Spec.BannerURL,
 			Platforms:       kinds,
+			SteamAppIDs:     e.Spec.SteamAppIDs,
 			AlreadyImported: gerr == nil,
 		})
 	}

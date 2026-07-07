@@ -255,7 +255,11 @@ export function Fleet() {
 function EmptyState({ onDeploy, hasSpecs }: { onDeploy: () => void; hasSpecs: boolean }) {
   return (
     <Card dashed style={{ textAlign: "center", padding: "80px 20px" }}>
-      <div style={{ fontSize: 40, marginBottom: 12 }}>🐙</div>
+      <img
+        src="/kraken-glyph-teal.png"
+        alt="Kraken"
+        style={{ display: "block", margin: "0 auto 12px", width: 40, height: 40, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(61,245,207,.35))" }}
+      />
       <div style={{ fontFamily: mono, color: "var(--text-secondary)", marginBottom: 18 }}>
         {hasSpecs ? "The deep is quiet — deploy your first server." : "No game specs yet. Add a spec, then deploy."}
       </div>

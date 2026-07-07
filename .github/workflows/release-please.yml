@@ -1,0 +1,32 @@
+name: release-please
+
+# Google's release-please: read Conventional Commits merged to main, maintain
+# an open "chore(main): release X.Y.Z" PR that accumulates the pending
+# changelog + version bump. Merging that PR tags the release + creates the
+# GitHub Release + updates CHANGELOG.md and internal/shared/version/version.go.
+#
+# Bump rules (pre-1.0, bump-minor-pre-major=true):
+#   feat!:  / BREAKING CHANGE:  →  minor bump (0.1.0 → 0.2.0, not forced to 1.0)
+#   feat:                        →  minor bump
+#   fix:                         →  patch bump
+#   others (docs, chore, ci, …)  →  no version bump, but included in notes
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

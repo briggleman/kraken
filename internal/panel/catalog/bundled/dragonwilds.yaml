@@ -1,0 +1,86 @@
+name: RuneScape Dragonwilds
+slug: dragonwilds
+description: >-
+  RuneScape: Dragonwilds dedicated server (SteamCMD app 4019830). Linux-native
+  UE5 server, anonymous SteamCMD, 6-player cap. Server identity + admin/world
+  passwords live in DedicatedServer.ini, generated from the Settings tab.
+  IMPORTANT: the game refuses to start until you paste your in-game Player ID
+  into the OwnerId field.
+# Steam main-capsule + community-icon (game appid 1374490 = RS: Dragonwilds).
+# Server appid 4019830 has no CDN assets; always use the game appid. See
+# bundled/SPECS.md.
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1374490/91ab96a83047ad282e9741a597a9f83a17d2121d/capsule_616x353_alt_assets_2.jpg?t=1783424384
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1374490/8e307e43b46f4dc3554487c491015ba2b24ff235.jpg
+steam_app_ids:
+  linux: 4019830
+platforms:
+  - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
+install:
+  # Anonymous SteamCMD; two-step to defeat the "Missing configuration" first-run
+  # race (fresh appinfo cache). Second pass' "Success!" clears the agent's exit-0-
+  # but-app-failed guard even when the first pass exits nonzero.
+  script: >-
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+startup:
+  # UE5 servers dlopen steamclient.so from $HOME/.steam/sdk64 — the palworld pattern.
+  # The Shipping binary needs +x since SteamCMD doesn't always preserve the mode
+  # bit through the tarball on this image. The trailing "RSDragonwilds" is the UE
+  # project name argument (mirroring the AltSystem42 Docker entrypoint).
+  command: >-
+    export HOME=/home/steam &&
+    mkdir -p "$HOME/.steam/sdk64" &&
+    ln -sf /home/steam/steamcmd/linux64/steamclient.so "$HOME/.steam/sdk64/steamclient.so" &&
+    cd /data/RSDragonwilds/Binaries/Linux &&
+    chmod +x ./RSDragonwildsServer-Linux-Shipping &&
+    ./RSDragonwildsServer-Linux-Shipping RSDragonwilds -log -Port={{PORT_GAME}}
+  # No ready_regex: no confirmed "server up" log line for this early-access game.
+  # The watchdog marks it running once the process stays up (crash-restart still
+  # covers hard failures).
+  restart:
+    on_crash: true
+    max_retries: 3
+  stop: { type: signal, value: SIGINT }
+ports:
+  - { name: game, protocol: udp, default: 7777, required: true }
+settings:
+  groups:
+    - id: server
+      label: Server
+      description: >-
+        OwnerId is REQUIRED — copy it from the in-game Settings menu on any
+        account that should own this server. The server crashes on boot until
+        this is set.
+      fields:
+        - { key: OwnerId, label: Owner Player ID, type: string, default: "", help: "Your in-game Player ID (Settings menu → bottom). The server refuses to start without it." }
+        - { key: ServerName, label: Server name, type: string, default: "Kraken Dragonwilds" }
+        - { key: DefaultWorldName, label: Default world name, type: string, default: "Kraken World" }
+        - { key: AdminPassword, label: Admin password, type: password, default: "", help: "Required for the in-game Server Management screen." }
+        - { key: WorldPassword, label: World password, type: password, default: "", help: "Leave blank for a public server." }
+    - id: identity
+      label: Steam identity
+      description: >-
+        Kraken rewrites DedicatedServer.ini on every settings save, so the game's
+        auto-generated ServerGuid is wiped unless pinned here. After the first
+        successful start, open Files → DedicatedServer.ini, copy the generated
+        ServerGuid value, paste it below, and Save. It will then persist across
+        settings changes and keep the Steam server-browser identity stable.
+      fields:
+        - { key: ServerGuid, label: Server GUID, type: string, default: "", pattern: "^[A-F0-9]*$", help: "Uppercase hex. Leave blank on first deploy; the game generates one. Paste it here after first run to lock it." }
+
+config_files:
+  - path: /data/RSDragonwilds/Saved/Config/LinuxServer/DedicatedServer.ini
+    format: template
+    template: |
+      [/Script/Dominion.DedicatedServerSettings]
+      OwnerId={{.settings.OwnerId}}
+      ServerName={{.settings.ServerName}}
+      DefaultWorldName={{.settings.DefaultWorldName}}
+      AdminPassword={{.settings.AdminPassword}}
+      WorldPassword={{.settings.WorldPassword}}
+      {{if .settings.ServerGuid}}ServerGuid={{.settings.ServerGuid}}
+      {{end}}
+resources:
+  # 2 GB base + 1 GB per player; game caps players at 6, so 8 GB is a full house.
+  min_memory_mb: 3072
+  recommended_memory_mb: 8192

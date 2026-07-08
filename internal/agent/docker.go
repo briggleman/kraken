@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -1378,7 +1377,7 @@ func (d *DockerRuntime) fail(emit func(*agentpb.InstallEvent) error, msg string)
 func (d *DockerRuntime) pullImage(ctx context.Context, ref string, log func(string)) error {
 	// A locally-present image is used as-is — this supports images built on the
 	// host (e.g. ghcr.io/briggleman/kraken-steam-win, steam-base) that live in no registry.
-	if _, _, err := d.cli.ImageInspectWithRaw(ctx, ref); err == nil {
+	if _, err := d.cli.ImageInspect(ctx, ref); err == nil {
 		log("Using local image " + ref)
 		return nil
 	}
@@ -1528,7 +1527,7 @@ func (d *DockerRuntime) memUsedBytes(s dockerStats) uint64 {
 }
 
 // mapState maps Docker container state to the proto ServerState.
-func mapState(st *types.ContainerState) agentpb.ServerState {
+func mapState(st *container.State) agentpb.ServerState {
 	if st == nil {
 		return agentpb.ServerState_SERVER_STATE_OFFLINE
 	}

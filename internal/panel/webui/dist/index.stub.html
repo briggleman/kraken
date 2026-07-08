@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Kraken — Panel (UI not built)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 2rem; background: #02090e; color: #cbd5e1;
+           font: 14px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 640px; margin: 4rem auto; padding: 2rem;
+           background: #0b1a24; border: 1px solid #143244; border-radius: 12px; }
+    h1 { color: #38bdf8; margin: 0 0 1rem; font-weight: 600; letter-spacing: 0.01em; }
+    code { background: #02090e; padding: 0.15rem 0.4rem; border-radius: 4px;
+           font-family: ui-monospace, Menlo, monospace; color: #7dd3fc; }
+    p { margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Kraken Panel</h1>
+    <p>The web UI has not been built into this binary.</p>
+    <p>Build it once, then rebuild the Panel:</p>
+    <p><code>npm --prefix web ci &amp;&amp; npm --prefix web run build</code></p>
+    <p><code>go build -o bin/ ./cmd/panel</code></p>
+    <p>The Panel API is up regardless — try
+       <code>/healthz</code>, <code>/metrics</code>, or <code>/api/v1/*</code>.</p>
+  </main>
+</body>
+</html>

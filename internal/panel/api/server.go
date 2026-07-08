@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/nodeclient"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/panel/webui"
 	"github.com/briggleman/kraken/internal/shared/mtls"
 )
 
@@ -248,6 +250,21 @@ func (s *Server) routes() chi.Router {
 			// Agent bootstrap token issuance (admin) for mTLS enrollment.
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/agents/bootstrap-tokens", s.handleCreateBootstrapToken)
 		})
+	})
+
+	// Embedded UI: catch-all handler under NotFound so it never shadows
+	// /api/v1/*, /healthz, /readyz, or /metrics (chi tries those first).
+	// The handler serves the built React bundle with SPA fallback so any
+	// client-router path (/servers/foo, /nodes, …) renders index.html.
+	ui := webui.Handler()
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		// Anything under /api that reaches this fallback is a real 404 —
+		// hand it back as JSON rather than the SPA shell.
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			http.NotFound(w, req)
+			return
+		}
+		ui.ServeHTTP(w, req)
 	})
 
 	return r

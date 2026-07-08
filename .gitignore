@@ -31,6 +31,10 @@ web/node_modules/
 web/dist/
 web/.vite/
 npm-debug.log*
+# Vite output lands in the Go embed target — see web/vite.config.ts.
+# The dist/ directory is committed with a stub index.html + a .gitignore
+# so `//go:embed all:dist` compiles in a fresh checkout, but the real
+# build artifacts (assets/, hashed js/css) are ignored via that inner file.
 
 # Editor / OS
 .idea/

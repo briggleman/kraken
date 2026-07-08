@@ -18,7 +18,7 @@ User=kraken
 Group=kraken
 SupplementaryGroups=docker
 EnvironmentFile=-/etc/kraken/agent.env
-Environment=KRAKEN_SFTP_HOST_KEY=/var/lib/kraken/sftp_host_key
+Environment=KRAKEN_STATE_DIR=/var/lib/kraken
 ExecStart=/usr/local/bin/kraken-agent
 Restart=on-failure
 RestartSec=5s

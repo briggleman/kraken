@@ -17,7 +17,7 @@ Type=simple
 User=kraken
 Group=kraken
 EnvironmentFile=-/etc/kraken/panel.env
-Environment=KRAKEN_CONFIG_FILE=/var/lib/kraken/panel.json
+Environment=KRAKEN_STATE_DIR=/var/lib/kraken
 ExecStart=/usr/local/bin/kraken-panel
 Restart=on-failure
 RestartSec=5s

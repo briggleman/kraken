@@ -50,7 +50,7 @@ services:
       KRAKEN_ENV: prod
       KRAKEN_HTTP_ADDR: :${KRAKEN_HTTP_PORT:-8080}
       KRAKEN_DATABASE_URL: postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable
-      KRAKEN_CONFIG_FILE: /var/lib/kraken/panel.json
+      KRAKEN_STATE_DIR: /var/lib/kraken
       KRAKEN_SECRETS_KEY: ${KRAKEN_SECRETS_KEY:?generate a base64-of-32-bytes key — see deploy/.env.example}
       KRAKEN_BOOTSTRAP_ADMIN_USER: ${KRAKEN_BOOTSTRAP_ADMIN_USER:-admin}
       KRAKEN_BOOTSTRAP_ADMIN_PASSWORD: ${KRAKEN_BOOTSTRAP_ADMIN_PASSWORD:-}
@@ -76,7 +76,7 @@ services:
       KRAKEN_NODE_OS: linux
       KRAKEN_DATA_DIR: /data
       KRAKEN_BACKUP_DIR: /agent-backups
-      KRAKEN_SFTP_HOST_KEY: /var/lib/kraken/sftp_host_key
+      KRAKEN_STATE_DIR: /var/lib/kraken
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${KRAKEN_DATA_DIR:-./server-data}:/data

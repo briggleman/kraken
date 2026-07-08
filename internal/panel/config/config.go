@@ -84,11 +84,16 @@ func (c *Config) CASigning() bool { return c.CACert != "" && c.CAKey != "" }
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
+	// KRAKEN_STATE_DIR groups all Panel-owned state (config file, secrets
+	// key, generated CA) under one directory so a systemd unit or a
+	// container just needs to point at /var/lib/kraken. Legacy default is
+	// "data" (cwd-relative) so existing dev setups keep working unchanged.
+	stateDir := env("KRAKEN_STATE_DIR", "data")
 	c := &Config{
 		Env:                    env("KRAKEN_ENV", "dev"),
 		HTTPAddr:               env("KRAKEN_HTTP_ADDR", ":8080"),
 		DatabaseURL:            env("KRAKEN_DATABASE_URL", ""),
-		ConfigFile:             env("KRAKEN_CONFIG_FILE", "data/panel.json"),
+		ConfigFile:             env("KRAKEN_CONFIG_FILE", filepath.Join(stateDir, "panel.json")),
 		BootstrapAdminUser:     env("KRAKEN_BOOTSTRAP_ADMIN_USER", "admin"),
 		BootstrapAdminPassword: env("KRAKEN_BOOTSTRAP_ADMIN_PASSWORD", ""),
 		TLSCert:                env("KRAKEN_TLS_CERT", ""),

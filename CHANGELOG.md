@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/briggleman/kraken/compare/v0.4.0...v0.5.0) (2026-07-08)
+
+
+### Features
+
+* **panel:** auto-sign Panel client cert so mTLS is on by default ([#21](https://github.com/briggleman/kraken/issues/21)) ([a3522d1](https://github.com/briggleman/kraken/commit/a3522d18a27ac8bf368e76a6c1eb4f11c978b51a))
+* **web:** merge Wine into platform dropdown + tabbed agent-install docs ([#22](https://github.com/briggleman/kraken/issues/22)) ([737b027](https://github.com/briggleman/kraken/commit/737b0275462da705f5dc4f885418dcfa778f3b67))
+
+
+### Bug Fixes
+
+* **ci:** chain release-binaries + release-images inline from release-please ([#18](https://github.com/briggleman/kraken/issues/18)) ([c55e65d](https://github.com/briggleman/kraken/commit/c55e65d54496daeda5f5bee55c3a401406af12ee))
+
 ## [0.4.0](https://github.com/briggleman/kraken/compare/v0.3.1...v0.4.0) (2026-07-08)
 
 

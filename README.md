@@ -156,6 +156,12 @@ token minted from **Settings → Nodes → Add node** in the UI:
 sudo krakenctl enroll -panel http://<panel-host>:8080 -token <one-time-token>
 ```
 
+**Windows Agent (for Windows-native game servers).** Docker Compose is
+Linux-only, so a Windows host runs the Agent bare-metal alongside a
+Linux/containerized Panel elsewhere. Full step-by-step walkthrough — download,
+enroll, run as an nssm-managed Windows Service — lives in
+**[`deploy/windows/README.md`](deploy/windows/README.md)**.
+
 ### Path 2 — Bare metal + systemd
 
 For hosts that prefer a service-managed binary over a container (or Windows

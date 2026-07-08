@@ -27,7 +27,10 @@ proto/                            .proto definitions (Panel <-> Agent)
 web/                              React + TS + Vite UI (design-system/ + src/)
 images/                           steam-base, steam-win  (no steam-wine)
 specs/                            Game Specs (the "egg" equivalent)
-deploy/                           docker-compose.yml (Postgres only)
+deploy/                           docker-compose.yml (Postgres only),
+                                  docker-compose.full.yml (Postgres + Panel +
+                                  Agent), panel/agent Dockerfiles, install.sh,
+                                  systemd/ units
 scripts/                          genproto.sh, seed-dev.sh
 ```
 
@@ -45,14 +48,19 @@ docker compose -f deploy/docker-compose.yml up -d
 go run ./cmd/panel
 go run ./cmd/agent
 
-# Web (Vite on :5173):
+# Web (Vite on :5173, proxies /api to the Panel):
 npm --prefix web run dev
-npm --prefix web run build        # tsc --noEmit && vite build
+npm --prefix web run build        # tsc --noEmit && vite build; writes into
+                                  # internal/panel/webui/dist so the Panel binary
+                                  # embeds the built UI via //go:embed
 npm --prefix web run typecheck
 
 # Tests / build / proto:
 go test ./...
-go build -o bin/ ./cmd/...
+go build -o bin/ ./cmd/...        # panel embeds the current web build; run
+                                  # `npm --prefix web run build` first for a
+                                  # release binary, or the panel serves a
+                                  # "UI not built" stub
 scripts/genproto.sh               # regenerate gRPC from proto/
 scripts/seed-dev.sh               # seed a node + Palworld spec + demo server (needs :8080 + :9090)
 ```

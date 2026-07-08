@@ -67,7 +67,8 @@ database URL, secrets key, and a bootstrap admin.
 |---|---|---|
 | `KRAKEN_HTTP_ADDR` | `:8080` | Panel HTTP/API listen address. |
 | `KRAKEN_DATABASE_URL` | _(unset → in-memory)_ | Postgres DSN. **Unset means an in-memory store — data is not persisted.** |
-| `KRAKEN_CONFIG_FILE` | `data/panel.json` | On-disk file (mode `0600`) holding the DSN and the auto-generated secrets key — kept **outside** the DB it protects. |
+| `KRAKEN_STATE_DIR` | `data` | Directory that groups Panel state (config file, generated CA, secrets key). Set to `/var/lib/kraken` in production; `KRAKEN_CONFIG_FILE` defaults under this. |
+| `KRAKEN_CONFIG_FILE` | `${STATE_DIR}/panel.json` | On-disk file (mode `0600`) holding the DSN and the auto-generated secrets key — kept **outside** the DB it protects. |
 | `KRAKEN_SECRETS_KEY` | _(auto-generated)_ | base64 of 32 bytes — the AES-256 master key for secrets at rest. Auto-generated to the config file if unset (a warning is logged). **Set this in production.** |
 | `KRAKEN_BOOTSTRAP_ADMIN_USER` | `admin` | First admin username (created on first run). |
 | `KRAKEN_BOOTSTRAP_ADMIN_PASSWORD` | _(random, logged once)_ | First admin password. If unset, a strong password is generated and logged once. |
@@ -85,7 +86,8 @@ database URL, secrets key, and a bootstrap admin.
 |---|---|---|
 | `KRAKEN_AGENT_ADDR` | `:9090` | Agent gRPC listen address (mutual TLS). |
 | `KRAKEN_SFTP_ADDR` | `:2022` | Agent SFTP listen address. **Expose only to trusted networks** — it's authenticated but externally reachable. |
-| `KRAKEN_SFTP_HOST_KEY` | `sftp_host_key` (cwd) | Path to the SSH host key (ed25519, generated on first run). |
+| `KRAKEN_STATE_DIR` | `.` (cwd) | Directory that groups Agent state (SFTP host key today). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
+| `KRAKEN_SFTP_HOST_KEY` | `${STATE_DIR}/sftp_host_key` | Path to the SSH host key (ed25519, generated on first run). |
 | `KRAKEN_DATA_DIR` | `server-data` | Host directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
 | `KRAKEN_BACKUP_DIR` | `backups` | Local backup destination (before optional replication). |
 | `KRAKEN_NODE_ID` | _(hostname)_ | Stable node identity. |
@@ -95,57 +97,72 @@ database URL, secrets key, and a bootstrap admin.
 | `KRAKEN_NODE_WINE` | _(off)_ | Enable the Wine code path for the node. |
 | `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | _(unset)_ | mTLS material presented/verified by the Agent. |
 
-## Deploy at home
+## Deploy
 
-Kraken's control plane runs as **host processes** (they need the Docker socket), so a
-home deployment is: one machine running Docker, Postgres in a container, and the Panel +
-Agent as background processes. For a second machine, run just another Agent and enroll it.
+Kraken ships as one binary each for the Panel and Agent — the Panel embeds the
+built web UI, so there's no separate static host. Pick a path:
 
-**Prerequisites:** Docker, and either the built `panel`/`agent` binaries or Go 1.26+ to
-build them. (The web UI is served as static assets from a production build.)
+### Path 1 — Docker Compose (recommended)
 
-1. **Get the code and build the binaries:**
-   ```sh
-   go build -o bin/ ./cmd/...          # panel, agent, krakenctl
-   npm --prefix web ci && npm --prefix web run build
-   ```
+One command brings up Postgres + Panel + Agent on a Linux host. Panel and Agent
+use `network_mode: host` so game ports bind directly on the host.
 
-2. **Start Postgres:**
-   ```sh
-   docker compose -f deploy/docker-compose.yml up -d
-   ```
+```sh
+cp deploy/.env.example deploy/.env
+echo "KRAKEN_SECRETS_KEY=$(openssl rand -base64 32)" >> deploy/.env
+docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
+```
 
-3. **Generate a secrets key** (32 random bytes, base64) so secrets survive restarts:
-   ```sh
-   export KRAKEN_SECRETS_KEY="$(openssl rand -base64 32)"
-   ```
+Open `http://<host>:8080`, sign in with the bootstrap admin (default `admin` +
+the generated password printed in `docker compose logs panel`), rotate the
+password, and deploy a server. Images are published to
+`ghcr.io/briggleman/kraken-panel` and `-agent` on every release.
 
-4. **Run the Panel** (persisted store + your own admin login):
-   ```sh
-   export KRAKEN_DATABASE_URL="postgres://kraken:kraken@localhost:5432/kraken?sslmode=disable"
-   export KRAKEN_BOOTSTRAP_ADMIN_USER=admin
-   export KRAKEN_BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-password'
-   export KRAKEN_QUICKSTART=true                      # auto-registers the local Agent
-   ./bin/panel &
-   ```
+### Path 2 — Bare metal + systemd
 
-5. **Run the Agent** on the same host (it will be picked up by quickstart):
-   ```sh
-   export KRAKEN_DATA_DIR=/srv/kraken/server-data     # where game data lives
-   export KRAKEN_NODE_OS=linux
-   ./bin/agent &
-   ```
+For hosts that prefer a service-managed binary over a container (or Windows
+Agents — Docker Compose is Linux-only). One command downloads the release
+binaries, verifies their checksums, drops in a `kraken` system user, and
+installs the systemd units:
 
-6. **Open the UI** at `http://localhost:8080`, log in, pick a game, and deploy a server.
+```sh
+curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash
+sudoedit /etc/kraken/panel.env   # optional — a KRAKEN_SECRETS_KEY was generated
+docker compose -f deploy/docker-compose.yml up -d       # or your own Postgres
+sudo systemctl enable --now kraken-panel kraken-agent
+```
 
-**Firewall notes for a home network:**
+Second host? Same command with `--role agent`:
+
+```sh
+curl -fsSL .../deploy/install.sh | sudo bash -s -- --role agent
+sudo systemctl enable --now kraken-agent
+# then enroll it: krakenctl enroll -panel https://panel:8080 -token <one-time>
+```
+
+The installer is idempotent — re-running upgrades to the latest release
+without clobbering `/etc/kraken/*.env`.
+
+### Path 3 — Build from source
+
+For contributors or anyone on an unsupported OS/arch. Requires Go 1.26+ and
+Node 20+.
+
+```sh
+npm --prefix web ci && npm --prefix web run build   # populates the panel's embed
+go build -o bin/ ./cmd/...                          # panel, agent, krakenctl
+docker compose -f deploy/docker-compose.yml up -d   # Postgres only
+./bin/panel &                                       # reads data/panel.json by default
+./bin/agent &
+```
+
+### Firewall notes
+
 - Forward each game's **UDP/TCP ports** (shown per server) from your router to the host.
 - Keep the **Panel** (`:8080`) and **SFTP** (`:2022`) on your LAN / behind a VPN — do
   not expose them to the public internet without a reverse proxy + TLS.
 - Set `KRAKEN_ALLOWED_ORIGINS` to your Panel's real origin if you serve it off-localhost.
-
-To add a **second machine**, run only the Agent there and enroll it with the Panel's CA
-using `krakenctl` (see `cmd/krakenctl`); the new node then appears in the fleet.
 
 ## Repository layout
 
@@ -177,19 +194,22 @@ docker compose -f deploy/docker-compose.yml up -d
 go run ./cmd/panel
 go run ./cmd/agent
 
-# Web UI (Vite on :5173):
+# Web UI on Vite (:5173) — proxies /api to the Panel and gives you HMR.
+# For production the Panel serves the built UI directly at :8080 (see the
+# internal/panel/webui package).
 npm --prefix web run dev
 
 # Tests / build / proto:
 go test ./...
-go build -o bin/ ./cmd/...
+npm --prefix web run build && go build -o bin/ ./cmd/...   # panel binary embeds UI
 scripts/genproto.sh        # regenerate gRPC from proto/
 scripts/seed-dev.sh        # seed a node + demo server (needs Panel + Agent up)
 ```
 
-Dev login: `admin` / `admin`. See [deploy/](deploy/) for the datastore stack;
-**[CLAUDE.md](CLAUDE.md)** has the full command + convention reference, and
-**[SECURITY.md](SECURITY.md)** documents the security posture.
+Dev login: `admin` / `admin`. See [deploy/](deploy/) for the full-stack Docker
+compose, install script, and systemd units; **[CLAUDE.md](CLAUDE.md)** has the
+full command + convention reference, and **[SECURITY.md](SECURITY.md)** documents
+the security posture.
 
 ## License
 

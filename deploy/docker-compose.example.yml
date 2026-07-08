@@ -58,6 +58,44 @@
 #   AND the matching password inside KRAKEN_DATABASE_URL.
 #
 # -----------------------------------------------------------------------------
+# MIXED MODE — bare-metal Agent + containerized Panel
+# -----------------------------------------------------------------------------
+#
+# You can skip the containerized Agent and run it bare-metal instead —
+# useful when you want systemd-managed Agent lifecycle, when the Agent
+# is on a different host, or on any host where Docker-in-Docker feels
+# awkward. Since Panel uses network_mode: host, everything still talks
+# on host loopback with no config changes to this file.
+#
+# Same host — Panel in Docker, Agent bare-metal:
+#
+#   # 1) bring up Postgres + Panel only (skip the `agent` service):
+#   docker compose -f docker-compose.example.yml up -d postgres panel
+#
+#   # 2) install just the Agent bare-metal and enable systemd:
+#   curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+#     | sudo bash -s -- --role agent
+#   sudo systemctl enable --now kraken-agent
+#
+# The Panel's `KRAKEN_LOCAL_AGENT_ADDR=127.0.0.1:9090` (below) already
+# points at the host, so it finds the bare-metal Agent as its `local`
+# node — no compose edits needed. To turn the Agent service back on
+# later, just re-run `docker compose up -d` (it'll include the agent
+# service again).
+#
+# Different host — Panel here, Agent(s) elsewhere:
+#
+#   # 1) on the Panel host, mint a one-time enrollment token from the UI
+#   #    (Settings → Nodes → Add node) or via the API.
+#   # 2) on the remote Agent host:
+#   curl -fsSL .../deploy/install.sh | sudo bash -s -- --role agent
+#   sudo krakenctl enroll -panel http://<panel-host>:8080 -token <token>
+#   sudo systemctl enable --now kraken-agent
+#
+# The remote Agent registers itself with the Panel and shows up in the
+# node list. No changes to this compose file are needed.
+#
+# -----------------------------------------------------------------------------
 # PLATFORM NOTES
 # -----------------------------------------------------------------------------
 #

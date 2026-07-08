@@ -133,6 +133,29 @@ Either way, open `http://<host>:8080`, sign in with the bootstrap admin
 panel`), rotate the password, and deploy a server. Images are published to
 `ghcr.io/briggleman/kraken-panel` and `-agent` on every release.
 
+**Mixed mode — containerized Panel + bare-metal Agent.** Skip the compose
+`agent` service and run the Agent as a systemd unit instead — handy when you
+want systemd-managed lifecycle, run the Agent on a different host, or prefer
+to keep the Docker socket out of a container. Because Panel uses host
+networking, no compose-file edits are needed:
+
+```sh
+# 1) bring up just Postgres + Panel:
+docker compose -f docker-compose.example.yml up -d postgres panel
+
+# 2) install the Agent bare-metal (same host, or a remote one):
+curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role agent
+sudo systemctl enable --now kraken-agent
+```
+
+For a remote Agent, additionally enroll it with the Panel using a bootstrap
+token minted from **Settings → Nodes → Add node** in the UI:
+
+```sh
+sudo krakenctl enroll -panel http://<panel-host>:8080 -token <one-time-token>
+```
+
 ### Path 2 — Bare metal + systemd
 
 For hosts that prefer a service-managed binary over a container (or Windows

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/briggleman/kraken/compare/v0.3.1...v0.4.0) (2026-07-08)
+
+
+### Features
+
+* **agent:** auto-enroll co-located Agent so mTLS is on by default ([#16](https://github.com/briggleman/kraken/issues/16)) ([c4c62cb](https://github.com/briggleman/kraken/commit/c4c62cb2bf935aab53a937aec4cbbbe3e89240ca))
+
+
+### Bug Fixes
+
+* **server:** gate power actions on install state + add reinstall endpoint ([#14](https://github.com/briggleman/kraken/issues/14)) ([7512b52](https://github.com/briggleman/kraken/commit/7512b52b8cca5ed04beaa06168289164b2bd5c03))
+
 ## [0.3.1](https://github.com/briggleman/kraken/compare/v0.3.0...v0.3.1) (2026-07-08)
 
 

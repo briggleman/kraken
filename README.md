@@ -105,7 +105,22 @@ built web UI, so there's no separate static host. Pick a path:
 ### Path 1 — Docker Compose (recommended)
 
 One command brings up Postgres + Panel + Agent on a Linux host. Panel and Agent
-use `network_mode: host` so game ports bind directly on the host.
+use `network_mode: host` so game ports bind directly on the host. Two flavors:
+
+**Quickstart — copy, edit two lines, run.** `deploy/docker-compose.example.yml`
+is a self-contained template with heavy comments explaining every knob. Copy
+it wherever you want to run Kraken, replace `CHANGE_ME_openssl_rand_base64_32`
+with the output of `openssl rand -base64 32`, optionally set a bootstrap
+admin password, then:
+
+```sh
+docker compose -f docker-compose.example.yml up -d
+```
+
+**Production — secrets separated from the compose file.**
+`deploy/docker-compose.full.yml` reads secrets from a git-ignored `.env` so the
+compose file itself stays safe to commit. Slightly more setup, cleaner for
+real deployments:
 
 ```sh
 cp deploy/.env.example deploy/.env
@@ -113,10 +128,33 @@ echo "KRAKEN_SECRETS_KEY=$(openssl rand -base64 32)" >> deploy/.env
 docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
 ```
 
-Open `http://<host>:8080`, sign in with the bootstrap admin (default `admin` +
-the generated password printed in `docker compose logs panel`), rotate the
-password, and deploy a server. Images are published to
+Either way, open `http://<host>:8080`, sign in with the bootstrap admin
+(default `admin` + the generated password printed in `docker compose logs
+panel`), rotate the password, and deploy a server. Images are published to
 `ghcr.io/briggleman/kraken-panel` and `-agent` on every release.
+
+**Mixed mode — containerized Panel + bare-metal Agent.** Skip the compose
+`agent` service and run the Agent as a systemd unit instead — handy when you
+want systemd-managed lifecycle, run the Agent on a different host, or prefer
+to keep the Docker socket out of a container. Because Panel uses host
+networking, no compose-file edits are needed:
+
+```sh
+# 1) bring up just Postgres + Panel:
+docker compose -f docker-compose.example.yml up -d postgres panel
+
+# 2) install the Agent bare-metal (same host, or a remote one):
+curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role agent
+sudo systemctl enable --now kraken-agent
+```
+
+For a remote Agent, additionally enroll it with the Panel using a bootstrap
+token minted from **Settings → Nodes → Add node** in the UI:
+
+```sh
+sudo krakenctl enroll -panel http://<panel-host>:8080 -token <one-time-token>
+```
 
 ### Path 2 — Bare metal + systemd
 

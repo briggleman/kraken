@@ -182,9 +182,25 @@ EOF
 fi
 
 if [ "$ROLE" = "agent" ] || [ "$ROLE" = "both" ]; then
+  # For a single-host install (both roles), bind the Agent's gRPC to
+  # loopback: the co-located Panel dials 127.0.0.1:9090 and there is no
+  # legitimate reason to accept LAN connections. The Agent's gRPC has no
+  # application-level auth (mTLS is the trust boundary), so binding on
+  # all interfaces without TLS configured would expose the docker socket
+  # to the LAN.
+  #
+  # For --role agent (this host is a REMOTE Agent enrolled with a Panel
+  # elsewhere), keep the default :9090 external bind. The Agent will
+  # refuse to serve plaintext gRPC on that address until you run
+  # `krakenctl enroll` and set KRAKEN_TLS_CERT/KEY/CA.
+  if [ "$ROLE" = "both" ]; then
+    agent_addr="127.0.0.1:9090"
+  else
+    agent_addr=":9090"
+  fi
   write_if_missing "$CONFIG_DIR/agent.env" <<EOF
 # Kraken Agent environment. Managed by deploy/install.sh — edit freely.
-KRAKEN_AGENT_ADDR=:9090
+KRAKEN_AGENT_ADDR=$agent_addr
 KRAKEN_SFTP_ADDR=:2022
 KRAKEN_NODE_OS=linux
 KRAKEN_DATA_DIR=$STATE_DIR/server-data
@@ -192,6 +208,15 @@ KRAKEN_BACKUP_DIR=$STATE_DIR/agent-backups
 EOF
   install -d -m 0750 -o "$KRAKEN_USER" -g "$KRAKEN_USER" \
     "$STATE_DIR/server-data" "$STATE_DIR/agent-backups"
+
+  if [ "$ROLE" = "agent" ]; then
+    warn "remote-Agent install: this host now expects mTLS on :9090."
+    warn "Before starting kraken-agent, mint a bootstrap token from the"
+    warn "Panel host (Settings → Nodes → Add node, or via the API) and run:"
+    warn "  sudo krakenctl enroll -panel http://<panel-host>:8080 -token <TOKEN>"
+    warn "The Agent refuses plaintext gRPC on non-loopback addresses without"
+    warn "TLS. Set KRAKEN_ALLOW_INSECURE_GRPC=1 in agent.env to override."
+  fi
 fi
 
 # ---- systemd -----------------------------------------------------------

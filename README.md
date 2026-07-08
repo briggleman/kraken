@@ -200,6 +200,12 @@ docker compose -f deploy/docker-compose.yml up -d   # Postgres only
 - Forward each game's **UDP/TCP ports** (shown per server) from your router to the host.
 - Keep the **Panel** (`:8080`) and **SFTP** (`:2022`) on your LAN / behind a VPN — do
   not expose them to the public internet without a reverse proxy + TLS.
+- **Agent gRPC (`:9090`) must not be reachable off-host without mTLS.** The default
+  deploy configs bind it to `127.0.0.1:9090` so only the co-located Panel can reach
+  it. The Agent refuses to serve plaintext gRPC on a non-loopback address unless
+  either `KRAKEN_TLS_CERT`/`KRAKEN_TLS_KEY`/`KRAKEN_TLS_CA` are configured (via
+  `krakenctl enroll`) or `KRAKEN_ALLOW_INSECURE_GRPC=1` is set as an explicit
+  opt-in. If you run the Agent on a separate host from the Panel, enroll it first.
 - Set `KRAKEN_ALLOWED_ORIGINS` to your Panel's real origin if you serve it off-localhost.
 
 ## Repository layout

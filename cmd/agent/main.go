@@ -48,6 +48,21 @@ func run(logger *slog.Logger) error {
 	nodeOS := env("KRAKEN_NODE_OS", "linux")
 	wine := env("KRAKEN_NODE_WINE", "true") == "true"
 
+	// Resolve mTLS material up-front — needed for the safety guard below and
+	// then again to configure the gRPC server. When all three are set the
+	// Panel↔Agent channel is mutually authenticated; otherwise the server
+	// accepts plaintext connections and the NodeService is effectively
+	// unauthenticated. Plaintext + a non-loopback listen address = anyone
+	// with LAN reach can drive the Agent's docker socket, so we refuse.
+	cert, key, ca := env("KRAKEN_TLS_CERT", ""), env("KRAKEN_TLS_KEY", ""), env("KRAKEN_TLS_CA", "")
+	secure := cert != "" && key != "" && ca != ""
+	if !secure && !isLoopbackAddr(addr) && env("KRAKEN_ALLOW_INSECURE_GRPC", "") != "1" {
+		return fmt.Errorf("agent: refusing to serve plaintext gRPC on non-loopback address %q — "+
+			"enroll with the Panel (`krakenctl enroll` sets KRAKEN_TLS_CERT/KEY/CA), "+
+			"bind loopback with KRAKEN_AGENT_ADDR=127.0.0.1:9090, "+
+			"or opt in explicitly with KRAKEN_ALLOW_INSECURE_GRPC=1", addr)
+	}
+
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
@@ -60,17 +75,14 @@ func run(logger *slog.Logger) error {
 		defer func() { _ = closer.Close() }()
 	}
 
-	// Mutual TLS when certs are configured; plaintext (dev) otherwise.
+	// Build the gRPC server per the resolution above.
 	var grpcServer *grpc.Server
-	secure := false
-	cert, key, ca := env("KRAKEN_TLS_CERT", ""), env("KRAKEN_TLS_KEY", ""), env("KRAKEN_TLS_CA", "")
-	if cert != "" && key != "" && ca != "" {
+	if secure {
 		tlsCfg, terr := mtls.ServerTLS(cert, key, ca)
 		if terr != nil {
 			return fmt.Errorf("load server TLS: %w", terr)
 		}
 		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
-		secure = true
 	} else {
 		grpcServer = grpc.NewServer()
 	}
@@ -116,6 +128,23 @@ func run(logger *slog.Logger) error {
 		grpcServer.GracefulStop()
 	}
 	return nil
+}
+
+// isLoopbackAddr reports whether the host part of a listen address binds to
+// loopback only. Empty host or 0.0.0.0/:: means the Agent accepts LAN
+// traffic and is treated as non-loopback so the plaintext-gRPC guard fires.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // selectRuntime returns the Docker runtime unless KRAKEN_RUNTIME=fake or the

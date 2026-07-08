@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/briggleman/kraken/compare/v0.2.0...v0.3.0) (2026-07-08)
+
+
+### Features
+
+* simplify deployment (single-binary, docker compose, install.sh) ([#7](https://github.com/briggleman/kraken/issues/7)) ([2c624e3](https://github.com/briggleman/kraken/commit/2c624e3f057914e288cb53bcbbeb30c3fd52f250))
+
 ## [0.2.0](https://github.com/briggleman/kraken/compare/v0.1.0...v0.2.0) (2026-07-07)
 
 

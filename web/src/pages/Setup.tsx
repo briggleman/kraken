@@ -76,6 +76,139 @@ function StepDots({ step, done }: { step: number; done: boolean[] }) {
   );
 }
 
+// AgentInstallInstructions surfaces per-OS install commands for a remote
+// Agent, gated behind Linux / Windows tabs so the operator sees a shell
+// matching the host they're about to run against. The Linux flow uses the
+// bare-metal install.sh wrapper (installs the systemd unit); the Windows
+// flow downloads the release binaries and enrolls directly (matches
+// deploy/windows/README.md — nssm service install is documented there).
+type AgentTarget = "linux" | "windows";
+function AgentInstallInstructions({
+  panelOrigin,
+  token,
+  onDone,
+}: {
+  panelOrigin: string;
+  token: string;
+  onDone: () => void;
+}) {
+  const [target, setTarget] = useState<AgentTarget>("linux");
+
+  const linuxCmds = [
+    {
+      title: "1 · INSTALL AGENT + SYSTEMD UNIT",
+      body: "curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | sudo bash -s -- --role agent",
+    },
+    {
+      title: "2 · ENROLL (WRITES /etc/kraken/certs)",
+      body: `sudo krakenctl enroll -panel ${panelOrigin} -token ${token} -hosts <this-host-ip> -out /etc/kraken/certs`,
+    },
+    {
+      title: "3 · START THE AGENT",
+      body: "sudo systemctl enable --now kraken-agent",
+    },
+  ];
+
+  const winCmds = [
+    {
+      title: "1 · DOWNLOAD BINARIES (POWERSHELL, ADMIN)",
+      body: `$ver = "latest"
+$dest = "C:\\kraken"
+New-Item -ItemType Directory -Force -Path "$dest\\bin","$dest\\state","$dest\\certs" | Out-Null
+$base = if ($ver -eq "latest") { "https://github.com/briggleman/kraken/releases/latest/download" } else { "https://github.com/briggleman/kraken/releases/download/$ver" }
+foreach ($f in @("kraken-agent-windows-amd64.exe","kraken-krakenctl-windows-amd64.exe")) {
+  Invoke-WebRequest -Uri "$base/$f" -OutFile "$dest\\bin\\$f"
+}`,
+    },
+    {
+      title: "2 · ENROLL (WRITES C:\\kraken\\certs)",
+      body: `cd C:\\kraken\\bin
+.\\kraken-krakenctl-windows-amd64.exe enroll \`
+  -panel ${panelOrigin} -token ${token} \`
+  -hosts $env:COMPUTERNAME,<this-host-ip> \`
+  -out C:\\kraken\\certs`,
+    },
+    {
+      title: "3 · RUN THE AGENT",
+      body: `$env:KRAKEN_TLS_CERT="C:\\kraken\\certs\\agent.pem"
+$env:KRAKEN_TLS_KEY="C:\\kraken\\certs\\agent-key.pem"
+$env:KRAKEN_TLS_CA="C:\\kraken\\certs\\ca.pem"
+$env:KRAKEN_NODE_OS="windows"
+$env:KRAKEN_STATE_DIR="C:\\kraken\\state"
+C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
+    },
+  ];
+
+  const cmds = target === "linux" ? linuxCmds : winCmds;
+
+  return (
+    <div>
+      <OsTabs value={target} onChange={setTarget} />
+      {cmds.map((c) => (
+        <div key={c.title}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", margin: "10px 0 6px" }}>{c.title}</div>
+          <CodeBlock text={c.body} />
+        </div>
+      ))}
+      {target === "windows" && (
+        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
+          To keep the Agent running as a Windows Service (with log rotation + auto-start), see the{" "}
+          <a href="https://github.com/briggleman/kraken/blob/main/deploy/windows/README.md" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+            Windows install walkthrough
+          </a>
+          .
+        </p>
+      )}
+      <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>
+        Then{" "}
+        <button onClick={onDone} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, font: "inherit" }}>
+          register the node
+        </button>{" "}
+        with its agent address (host:9090). The token expires in 15 minutes.
+      </p>
+    </div>
+  );
+}
+
+// OsTabs is the Linux/Windows switch used above the install commands. Two
+// radio-style pills side-by-side with brand-color glyphs so the operator
+// knows at a glance which shell they're looking at.
+function OsTabs({ value, onChange }: { value: AgentTarget; onChange: (v: AgentTarget) => void }) {
+  return (
+    <div role="tablist" style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+      {(["linux", "windows"] as AgentTarget[]).map((os) => {
+        const active = value === os;
+        return (
+          <button
+            key={os}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(os)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 14px",
+              borderRadius: "var(--radius-sm)",
+              border: `1px solid ${active ? "var(--accent)" : "var(--border-subtle)"}`,
+              background: active ? "var(--accent-wash-12)" : "transparent",
+              color: active ? "var(--text-primary)" : "var(--text-secondary)",
+              cursor: "pointer",
+              fontFamily: mono,
+              fontSize: 12,
+              letterSpacing: "1px",
+              textTransform: "uppercase",
+            }}
+          >
+            <OsIcon os={os} size={14} style={{ color: active ? "var(--accent)" : "var(--text-secondary)" }} />
+            {os === "linux" ? "Linux Install" : "Windows Install"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // CodeBlock renders a copy-able shell command.
 function CodeBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -490,9 +623,7 @@ export function Setup() {
                 <div>
                   <div style={SECTION_LABEL}>CONNECT A REMOTE NODE</div>
                   <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
-                    Generate a one-time enrollment token, then run these on the remote host (it needs the{" "}
-                    <code style={{ fontFamily: mono, color: "var(--text-primary)" }}>krakenctl</code> and{" "}
-                    <code style={{ fontFamily: mono, color: "var(--text-primary)" }}>kraken-agent</code> binaries).
+                    Generate a one-time enrollment token, pick the target OS, and run the commands on the remote host.
                   </p>
                   <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 14 }}>
                     <div style={{ flex: 1 }}>
@@ -503,19 +634,7 @@ export function Setup() {
                     </Button>
                   </div>
                   {remoteToken && (
-                    <div>
-                      <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", marginBottom: 6 }}>1 · ENROLL (writes ./certs)</div>
-                      <CodeBlock text={`krakenctl enroll -panel ${panelOrigin} -token ${remoteToken} -hosts <this-host-ip> -out ./certs`} />
-                      <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", margin: "8px 0 6px" }}>2 · START THE AGENT</div>
-                      <CodeBlock text={`KRAKEN_TLS_CERT=certs/agent.pem KRAKEN_TLS_KEY=certs/agent-key.pem KRAKEN_TLS_CA=certs/ca.pem ./kraken-agent`} />
-                      <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8 }}>
-                        Then{" "}
-                        <button onClick={() => navigate("/nodes")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, font: "inherit" }}>
-                          register the node
-                        </button>{" "}
-                        with its agent address (host:9090). The token expires in 15 minutes.
-                      </p>
-                    </div>
+                    <AgentInstallInstructions panelOrigin={panelOrigin} token={remoteToken} onDone={() => navigate("/nodes")} />
                   )}
                 </div>
               )}

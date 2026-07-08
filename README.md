@@ -183,28 +183,25 @@ deploy/           docker-compose (Postgres)
 
 ## Development
 
-Prerequisites: Go 1.26+, Node 20+, Docker, protoc.
+Prerequisites: Go 1.26+, Node 20+, Docker, protoc, and GNU make. `make help`
+lists every developer target; the common ones:
 
 ```sh
-# (from repo root) — bring up the datastore (Postgres):
-docker compose -f deploy/docker-compose.yml up -d
-
-# Run Panel (:8080) and Agent (:9090) on the host (they need the Docker socket).
-# Panel uses an in-memory store unless KRAKEN_DATABASE_URL is set.
-go run ./cmd/panel
-go run ./cmd/agent
-
-# Web UI on Vite (:5173) — proxies /api to the Panel and gives you HMR.
-# For production the Panel serves the built UI directly at :8080 (see the
-# internal/panel/webui package).
-npm --prefix web run dev
-
-# Tests / build / proto:
-go test ./...
-npm --prefix web run build && go build -o bin/ ./cmd/...   # panel binary embeds UI
-scripts/genproto.sh        # regenerate gRPC from proto/
-scripts/seed-dev.sh        # seed a node + demo server (needs Panel + Agent up)
+make db-up            # start Postgres (persistent volume)
+make dev-panel        # Panel on :8080 (in a second terminal)
+make dev-agent        # Agent on :9090
+make dev-web          # Vite dev server on :5173 (HMR + /api proxy)
+make seed             # seed a node + Palworld spec + demo server
+make check            # everything CI runs: fmt · vet · staticcheck · test -race
+make build            # web bundle + all Go binaries into bin/
+make images           # build Panel + Agent Docker images locally
 ```
+
+The Panel binary embeds the web UI via `//go:embed` — so `go build ./cmd/panel`
+on its own serves a "UI not built" stub. Run `make build` (or `npm --prefix web
+run build` once, then `go build`) for a binary that serves the real UI at `:8080`.
+
+Windows: `winget install GnuWin32.Make` or run recipes from Git Bash / WSL.
 
 Dev login: `admin` / `admin`. See [deploy/](deploy/) for the full-stack Docker
 compose, install script, and systemd units; **[CLAUDE.md](CLAUDE.md)** has the

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -42,6 +43,72 @@ func main() {
 		logger.Error("panel exited with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+// ensurePanelClient auto-issues a Panel client cert against the Agent-
+// enrollment CA and points cfg.TLSCert/Key/CA at the resulting files, so the
+// Panel dials Agents over mTLS by default — no operator setup required.
+//
+// The symmetry with the Agent side is deliberate:
+//   - Agents get their server cert auto-issued via the /agents/enroll flow
+//     (Panel signs, Agent persists to ${state_dir}/agent.pem)
+//   - Panel now gets its client cert auto-issued locally against the same CA
+//     (Panel signs, Panel persists to ${state_dir}/panel-client.pem)
+//
+// An operator who sets KRAKEN_TLS_CERT/KEY/CA explicitly (via `krakenctl
+// gen-certs` or an existing PKI) short-circuits this — cfg.MutualTLS() is
+// already true and we skip the auto-issue entirely.
+//
+// Idempotent: if the three files exist on disk already, they're reused. To
+// rotate, delete them and restart the Panel.
+func ensurePanelClient(cfg *config.Config, caCert, caKey []byte, logger *slog.Logger) error {
+	if cfg.MutualTLS() {
+		return nil // operator override — respect it
+	}
+	if len(caCert) == 0 || len(caKey) == 0 {
+		logger.Warn("Panel→Agent gRPC will be INSECURE — no CA available to auto-sign a Panel client cert " +
+			"(configure KRAKEN_CA_CERT/KRAKEN_CA_KEY or KRAKEN_TLS_CERT/KEY/CA to enable mTLS)")
+		return nil
+	}
+
+	stateDir := cfg.StateDir
+	if stateDir == "" {
+		stateDir = "data"
+	}
+	certPath := filepath.Join(stateDir, "panel-client.pem")
+	keyPath := filepath.Join(stateDir, "panel-client-key.pem")
+	caPath := filepath.Join(stateDir, "panel-ca.pem")
+
+	if fileNonEmpty(certPath) && fileNonEmpty(keyPath) && fileNonEmpty(caPath) {
+		cfg.TLSCert, cfg.TLSKey, cfg.TLSCA = certPath, keyPath, caPath
+		logger.Info("Panel→Agent mTLS: reusing existing auto-signed client cert bundle", "dir", stateDir)
+		return nil
+	}
+
+	certPEM, keyPEM, err := mtls.IssuePanelClientCert(caCert, caKey, mtls.DefaultPanelClientCertTTL)
+	if err != nil {
+		return fmt.Errorf("issue panel client cert: %w", err)
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return fmt.Errorf("create state dir %q: %w", stateDir, err)
+	}
+	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", certPath, err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", keyPath, err)
+	}
+	if err := os.WriteFile(caPath, caCert, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", caPath, err)
+	}
+	cfg.TLSCert, cfg.TLSKey, cfg.TLSCA = certPath, keyPath, caPath
+	logger.Info("Panel→Agent mTLS: auto-signed client cert against Agent-enrollment CA", "dir", stateDir)
+	return nil
+}
+
+func fileNonEmpty(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.Size() > 0
 }
 
 // ensureCA resolves the Agent-enrollment CA signing material. When an external
@@ -125,6 +192,9 @@ func run(logger *slog.Logger) error {
 	}
 
 	caCert, caKey := ensureCA(ctx, st, cfg, logger)
+	if err := ensurePanelClient(cfg, caCert, caKey, logger); err != nil {
+		return fmt.Errorf("ensure panel client cert: %w", err)
+	}
 	srv := api.New(cfg, st, logger, api.WithCA(caCert, caKey), api.WithRestart(requestRestart))
 	defer func() { _ = srv.Close() }()
 

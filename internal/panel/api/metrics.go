@@ -64,8 +64,9 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// Servers by state.
 	if servers, err := s.store.ListServers(ctx); err == nil {
 		byState := map[store.ServerState]int{
-			store.StateInstalling: 0, store.StateOffline: 0, store.StateStarting: 0,
-			store.StateRunning: 0, store.StateStopping: 0, store.StateCrashed: 0,
+			store.StateInstalling: 0, store.StateInstallFailed: 0, store.StateOffline: 0,
+			store.StateStarting: 0, store.StateRunning: 0, store.StateStopping: 0,
+			store.StateCrashed: 0,
 		}
 		for _, sv := range servers {
 			byState[sv.State]++

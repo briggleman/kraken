@@ -136,12 +136,13 @@ type ServerSFTP struct {
 type ServerState string
 
 const (
-	StateInstalling ServerState = "installing"
-	StateOffline    ServerState = "offline"
-	StateStarting   ServerState = "starting"
-	StateRunning    ServerState = "running"
-	StateStopping   ServerState = "stopping"
-	StateCrashed    ServerState = "crashed"
+	StateInstalling    ServerState = "installing"
+	StateInstallFailed ServerState = "install_failed"
+	StateOffline       ServerState = "offline"
+	StateStarting      ServerState = "starting"
+	StateRunning       ServerState = "running"
+	StateStopping      ServerState = "stopping"
+	StateCrashed       ServerState = "crashed"
 )
 
 // Server is a provisioned game server: a spec deployed onto a node with resolved

@@ -13,6 +13,7 @@ import { StatusPill } from "@ds/components/core/StatusPill";
 import { IconButton } from "@ds/components/core/IconButton";
 import { Toggle } from "@ds/components/core/Toggle";
 import { Select } from "@ds/components/core/Select";
+import type { SelectOption } from "@ds/components/core/Select";
 import { MetricBar } from "@ds/components/core/MetricCard";
 import type { ServerStatus } from "@ds/components/core/StatusPill";
 
@@ -184,6 +185,27 @@ const selectStyle: React.CSSProperties = {
   outline: "none",
 };
 
+// Platform is the single knob for a node's OS + Wine capability. Splitting
+// it into an OS dropdown + a separate Wine checkbox left "Windows + Wine
+// enabled" reachable in the UI even though it's a no-op (Wine is a POSIX
+// runtime), so we collapse the two into one enumerated field.
+type NodePlatform = "linux" | "linux-wine" | "windows";
+const PLATFORM_OPTIONS: SelectOption[] = [
+  { value: "linux", label: "Linux", icon: "linux" },
+  { value: "linux-wine", label: "Linux + Wine", icon: "wine" },
+  { value: "windows", label: "Windows", icon: "windows" },
+];
+function platformToApi(p: NodePlatform): { os: string; wine_enabled: boolean } {
+  switch (p) {
+    case "linux-wine":
+      return { os: "linux", wine_enabled: true };
+    case "windows":
+      return { os: "windows", wine_enabled: false };
+    default:
+      return { os: "linux", wine_enabled: false };
+  }
+}
+
 function AddNodeModal(props: {
   onClose: () => void;
   onSubmit: (input: {
@@ -192,8 +214,7 @@ function AddNodeModal(props: {
   }) => void;
 }) {
   const [name, setName] = useState("");
-  const [os, setOs] = useState("linux");
-  const [wine, setWine] = useState(true);
+  const [platform, setPlatform] = useState<NodePlatform>("linux-wine");
   const [address, setAddress] = useState("127.0.0.1:9090");
   const [publicHost, setPublicHost] = useState("");
   const [mem, setMem] = useState(16384);
@@ -209,25 +230,14 @@ function AddNodeModal(props: {
 
           <Input label="NAME" value={name} onChange={(e) => setName(e.target.value)} placeholder="abyss-node-01" mono style={{ marginBottom: 14 }} />
 
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <Select
-                label="OS"
-                mono
-                value={os}
-                options={[
-                  { value: "linux", label: "linux", icon: "linux" },
-                  { value: "windows", label: "windows", icon: "windows" },
-                ]}
-                onChange={setOs}
-              />
-            </div>
-            <div style={{ flex: 1, display: "flex", alignItems: "flex-end", paddingBottom: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-secondary)", fontSize: 14, cursor: "pointer" }}>
-                <input type="checkbox" checked={wine} onChange={(e) => setWine(e.target.checked)} /> Wine enabled
-              </label>
-            </div>
-          </div>
+          <Select
+            label="PLATFORM"
+            mono
+            value={platform}
+            options={PLATFORM_OPTIONS}
+            onChange={(v) => setPlatform(v as NodePlatform)}
+          />
+          <div style={{ height: 14 }} />
 
           <Input label="AGENT ADDRESS" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="host:port (gRPC control)" mono style={{ marginBottom: 14 }} />
           <Input label="PUBLIC HOST (OPTIONAL)" value={publicHost} onChange={(e) => setPublicHost(e.target.value)} placeholder="players' connect IP / DNS — auto-detected if blank" mono helper="auto-detected if blank" style={{ marginBottom: 14 }} />
@@ -244,7 +254,10 @@ function AddNodeModal(props: {
               variant="primary"
               icon="check"
               disabled={!name || !address}
-              onClick={() => props.onSubmit({ name, os, wine_enabled: wine, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd })}
+              onClick={() => {
+                const { os, wine_enabled } = platformToApi(platform);
+                props.onSubmit({ name, os, wine_enabled, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd });
+              }}
             >
               Register
             </Button>

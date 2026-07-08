@@ -1,25 +1,38 @@
 name: release-images
 
-# Build + publish the Panel and Agent container images to GHCR on every
-# GitHub Release (release-please auto-creates one when its "chore(main):
-# release X.Y.Z" PR merges). Tags:
-#   - vX.Y.Z (the exact release tag)
-#   - latest (points to the newest release)
+# Build + publish the Panel and Agent container images to GHCR for a given
+# tag. Invoked as a reusable workflow from release-please.yml when a new
+# release is cut, and available as manual workflow_dispatch for rebuilds
+# against an existing tag (e.g. refreshing :latest against updated base
+# images without cutting a new release).
 #
-# The workflow_dispatch trigger lets a maintainer rebuild manually
-# (e.g. to refresh :latest against updated base images).
+# Tags produced per image:
+#   - latest                (points to the newest release)
+#   - vX.Y.Z                (raw git tag with the v prefix)
+#   - X.Y.Z                 (canonical semver, no v prefix)
+#   - X.Y                   (major.minor floating tag)
+#   - sha-<short>           (commit-level pin)
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Release tag to build images for (e.g. v0.4.0)'
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to build images for (e.g. v0.4.0)'
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: release-images-${{ github.event.release.tag_name || github.ref }}
+  group: release-images-${{ inputs.tag_name }}
   cancel-in-progress: false
 
 env:
@@ -32,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -40,15 +55,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: derive semver from tag
+        id: ver
+        env:
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          echo "raw=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Image metadata (tags + labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.PANEL_IMAGE }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+            type=raw,value=${{ steps.ver.outputs.raw }}
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.ver.outputs.version }}
             type=sha
       - name: Build + push
         uses: docker/build-push-action@v6
@@ -58,7 +81,7 @@ jobs:
           file: deploy/panel.Dockerfile
           push: true
           build-args: |
-            VERSION=${{ github.event.release.tag_name || github.ref_name }}
+            VERSION=${{ steps.ver.outputs.version }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.repository.updated_at }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -71,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -79,15 +104,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: derive semver from tag
+        id: ver
+        env:
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          echo "raw=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Image metadata (tags + labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.AGENT_IMAGE }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+            type=raw,value=${{ steps.ver.outputs.raw }}
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.ver.outputs.version }}
             type=sha
       - name: Build + push
         uses: docker/build-push-action@v6
@@ -97,7 +130,7 @@ jobs:
           file: deploy/agent.Dockerfile
           push: true
           build-args: |
-            VERSION=${{ github.event.release.tag_name || github.ref_name }}
+            VERSION=${{ steps.ver.outputs.version }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.repository.updated_at }}
           tags: ${{ steps.meta.outputs.tags }}

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/briggleman/kraken/compare/v0.3.0...v0.3.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **agent:** refuse plaintext gRPC on non-loopback + safe-by-default binds ([#11](https://github.com/briggleman/kraken/issues/11)) ([2194f20](https://github.com/briggleman/kraken/commit/2194f20400461890b79892569468bc81d05a2137))
+
 ## [0.3.0](https://github.com/briggleman/kraken/compare/v0.2.0...v0.3.0) (2026-07-08)
 
 

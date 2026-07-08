@@ -5,6 +5,13 @@ name: release-please
 # changelog + version bump. Merging that PR tags the release + creates the
 # GitHub Release + updates CHANGELOG.md and internal/shared/version/version.go.
 #
+# When release-please cuts a release, we chain the release-binaries and
+# release-images workflows inline (via workflow_call). This is necessary
+# because GitHub blocks the default GITHUB_TOKEN from triggering downstream
+# workflows via the `release: published` event (recursion prevention), so
+# a plain `on: release` trigger on those workflows never fires. Chaining
+# them here keeps everything in one workflow run and inherits the token.
+#
 # Bump rules (pre-1.0, bump-minor-pre-major=true):
 #   feat!:  / BREAKING CHANGE:  →  minor bump (0.1.0 → 0.2.0, not forced to 1.0)
 #   feat:                        →  minor bump
@@ -15,8 +22,13 @@ on:
     branches: [main]
 
 permissions:
+  # release-please needs contents+PR write. Downstream reusable workflows
+  # additionally need contents:write (upload release assets) and
+  # packages:write (push to GHCR). Called workflows cannot exceed the
+  # caller's permissions, so all required scopes are declared here.
   contents: write
   pull-requests: write
+  packages: write
 
 concurrency:
   group: release-please-${{ github.ref }}
@@ -25,8 +37,33 @@ concurrency:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: rp
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  binaries:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+    permissions:
+      contents: write
+
+  images:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release-images.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write

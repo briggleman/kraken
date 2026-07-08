@@ -1,9 +1,9 @@
 name: release-binaries
 
-# Attach cross-platform binaries to every GitHub Release. Triggered when a
-# Release is published — either manually or automatically by release-please
-# merging its "chore(main): release X.Y.Z" PR (which creates the tag + the
-# Release).
+# Attach cross-platform binaries to a GitHub Release. Invoked as a reusable
+# workflow from release-please.yml when release-please cuts a new release,
+# and available as a manual workflow_dispatch for rebuilds against an
+# existing tag.
 #
 # For each supported OS/arch, cross-compile panel/agent/krakenctl with
 # -ldflags stamping the tag, commit SHA, and build date into
@@ -12,14 +12,24 @@ name: release-binaries
 # without running `go build` themselves.
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Release tag to build binaries for (e.g. v0.4.0)'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to build binaries for (e.g. v0.4.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-binaries-${{ github.event.release.tag_name }}
+  group: release-binaries-${{ inputs.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -35,6 +45,9 @@ jobs:
           - { goos: windows, goarch: amd64, ext: ".exe" }
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out at the tagged commit so version stamping matches.
+          ref: ${{ inputs.tag_name }}
 
       - uses: actions/setup-go@v5
         with:
@@ -59,9 +72,9 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
+          TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           COMMIT="${GITHUB_SHA:0:12}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -78,7 +91,8 @@ jobs:
       - name: upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${{ github.repository }}"
+          TAG: ${{ inputs.tag_name }}
+        run: gh release upload "${TAG}" dist/* --clobber --repo "${{ github.repository }}"
 
   checksums:
     name: sha256sums
@@ -88,11 +102,12 @@ jobs:
       - name: download release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
           mkdir -p dist
           cd dist
-          gh release download "${GITHUB_REF_NAME}" \
+          gh release download "${TAG}" \
             --repo "${{ github.repository }}" \
             --pattern "kraken-*"
           ls -la
@@ -100,9 +115,10 @@ jobs:
       - name: generate + upload SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
           cd dist
           sha256sum kraken-* > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "${GITHUB_REF_NAME}" SHA256SUMS --clobber --repo "${{ github.repository }}"
+          gh release upload "${TAG}" SHA256SUMS --clobber --repo "${{ github.repository }}"

@@ -195,8 +195,14 @@ if [ "$ROLE" = "agent" ] || [ "$ROLE" = "both" ]; then
   # `krakenctl enroll` and set KRAKEN_TLS_CERT/KEY/CA.
   if [ "$ROLE" = "both" ]; then
     agent_addr="127.0.0.1:9090"
+    # Single-host install: point the Agent at the co-located Panel so
+    # it auto-enrolls on first start (cert bundle persists to
+    # $STATE_DIR/agent.pem and is reused on restarts).
+    panel_url_line="KRAKEN_PANEL_URL=http://127.0.0.1:8080"
   else
     agent_addr=":9090"
+    # Remote Agent: the operator runs `krakenctl enroll` manually.
+    panel_url_line="# KRAKEN_PANEL_URL=http://<panel-host>:8080  # uncomment for auto-enroll"
   fi
   write_if_missing "$CONFIG_DIR/agent.env" <<EOF
 # Kraken Agent environment. Managed by deploy/install.sh — edit freely.
@@ -205,6 +211,7 @@ KRAKEN_SFTP_ADDR=:2022
 KRAKEN_NODE_OS=linux
 KRAKEN_DATA_DIR=$STATE_DIR/server-data
 KRAKEN_BACKUP_DIR=$STATE_DIR/agent-backups
+$panel_url_line
 EOF
   install -d -m 0750 -o "$KRAKEN_USER" -g "$KRAKEN_USER" \
     "$STATE_DIR/server-data" "$STATE_DIR/agent-backups"

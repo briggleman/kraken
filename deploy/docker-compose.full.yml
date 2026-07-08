@@ -82,6 +82,9 @@ services:
       KRAKEN_DATA_DIR: /data
       KRAKEN_BACKUP_DIR: /agent-backups
       KRAKEN_STATE_DIR: /var/lib/kraken
+      # Auto-enroll with the co-located Panel on first start; cert bundle
+      # persists to /var/lib/kraken and is reused across restarts.
+      KRAKEN_PANEL_URL: http://127.0.0.1:8080
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${KRAKEN_DATA_DIR:-./server-data}:/data

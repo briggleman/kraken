@@ -72,6 +72,11 @@ type Config struct {
 	Quickstart bool
 	// LocalAgentAddr is the gRPC address of the co-located Agent used by quickstart.
 	LocalAgentAddr string
+
+	// StateDir groups Panel-owned state (config file, generated CA, auto-issued
+	// Panel client cert). Defaults to "data" (cwd-relative) so existing dev
+	// workflows keep working; production deploys set this to /var/lib/kraken.
+	StateDir string
 }
 
 // MutualTLS reports whether Panel→Agent mTLS is fully configured.
@@ -90,6 +95,7 @@ func Load() (*Config, error) {
 	// "data" (cwd-relative) so existing dev setups keep working unchanged.
 	stateDir := env("KRAKEN_STATE_DIR", "data")
 	c := &Config{
+		StateDir:               stateDir,
 		Env:                    env("KRAKEN_ENV", "dev"),
 		HTTPAddr:               env("KRAKEN_HTTP_ADDR", ":8080"),
 		DatabaseURL:            env("KRAKEN_DATABASE_URL", ""),

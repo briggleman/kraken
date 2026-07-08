@@ -57,3 +57,60 @@ func TestSignAgentCSRRejectsGarbage(t *testing.T) {
 		t.Fatal("expected error signing garbage CSR")
 	}
 }
+
+// TestIssuePanelClientCert exercises the Panel-side counterpart to
+// SignAgentCSR: the Panel signs itself a client cert against its own CA so
+// outbound gRPC to Agents can complete mTLS. The Agent side verifies with
+// the same CA + a ClientAuth EKU requirement.
+func TestIssuePanelClientCert(t *testing.T) {
+	caCertPEM, caKeyPEM, err := GenerateCA()
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+	certPEM, keyPEM, err := IssuePanelClientCert(caCertPEM, caKeyPEM, time.Hour)
+	if err != nil {
+		t.Fatalf("IssuePanelClientCert: %v", err)
+	}
+	if len(keyPEM) == 0 {
+		t.Fatal("empty key PEM")
+	}
+
+	block, _ := pem.Decode(certPEM)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse issued panel cert: %v", err)
+	}
+	if cert.Subject.CommonName != PanelServerName {
+		t.Fatalf("cn: got %q, want %q", cert.Subject.CommonName, PanelServerName)
+	}
+
+	// Must carry the ClientAuth EKU — Agents (mtls.ServerTLS) reject anything
+	// else at handshake time.
+	var hasClientAuth bool
+	for _, ku := range cert.ExtKeyUsage {
+		if ku == x509.ExtKeyUsageClientAuth {
+			hasClientAuth = true
+		}
+	}
+	if !hasClientAuth {
+		t.Errorf("panel cert missing ExtKeyUsageClientAuth (got %v)", cert.ExtKeyUsage)
+	}
+
+	// Verify the cert chains against the CA when used as a client cert.
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caCertPEM) {
+		t.Fatal("could not load CA into pool")
+	}
+	if _, err := cert.Verify(x509.VerifyOptions{
+		Roots:     roots,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}); err != nil {
+		t.Fatalf("panel cert failed client-auth verify: %v", err)
+	}
+}
+
+func TestIssuePanelClientCertRejectsBadCA(t *testing.T) {
+	if _, _, err := IssuePanelClientCert([]byte("garbage"), []byte("garbage"), time.Hour); err == nil {
+		t.Fatal("expected error with garbage CA material")
+	}
+}

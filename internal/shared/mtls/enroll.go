@@ -17,6 +17,11 @@ import (
 // DefaultAgentCertTTL is how long an enrolled Agent certificate is valid.
 const DefaultAgentCertTTL = 90 * 24 * time.Hour
 
+// DefaultPanelClientCertTTL is how long an auto-issued Panel client cert is
+// valid. Long-lived because the Panel binds its own lifecycle to it and
+// rotates on restart when the file is deleted, not on any external schedule.
+const DefaultPanelClientCertTTL = 5 * 365 * 24 * time.Hour
+
 func newSerial() *big.Int {
 	max := new(big.Int).Lsh(big.NewInt(1), 128)
 	n, _ := rand.Int(rand.Reader, max)
@@ -133,6 +138,48 @@ func SignAgentCSR(caCertPEM, caKeyPEM, csrPEM []byte, ttl time.Duration) ([]byte
 		return nil, fmt.Errorf("mtls: sign cert: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+}
+
+// IssuePanelClientCert generates a fresh ECDSA keypair for the Panel and
+// returns a client certificate signed by the given CA. The cert carries the
+// PanelServerName CN + ClientAuth EKU so an Agent (which trusts the same CA
+// and requires client auth) accepts the Panel's outbound mTLS handshake.
+//
+// This is the symmetric counterpart to SignAgentCSR: an Agent cert is server-
+// auth + client-auth (Agent listens and Panel connects), a Panel cert is
+// client-auth only (Panel connects out).
+func IssuePanelClientCert(caCertPEM, caKeyPEM []byte, ttl time.Duration) (certPEM, keyPEM []byte, err error) {
+	caCert, caKey, err := loadCAKeyPair(caCertPEM, caKeyPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ttl <= 0 {
+		ttl = DefaultPanelClientCertTTL
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: newSerial(),
+		Subject:      pkix.Name{CommonName: PanelServerName},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(ttl),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		DNSNames:     []string{PanelServerName},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &key.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mtls: sign panel client cert: %w", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	return certPEM, keyPEM, nil
 }
 
 func loadCAKeyPair(certPEM, keyPEM []byte) (*x509.Certificate, *ecdsa.PrivateKey, error) {

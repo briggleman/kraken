@@ -1,0 +1,37 @@
+# /etc/systemd/system/kraken-panel.service
+#
+# Kraken Panel — control-plane API + embedded web UI.
+# Reads its environment from /etc/kraken/panel.env (see deploy/.env.example).
+# State (config file + generated CA + secrets key) lives under
+# /var/lib/kraken. The Panel does NOT need docker socket access — that's
+# the Agent's job.
+
+[Unit]
+Description=Kraken Panel (control-plane API + web UI)
+Documentation=https://github.com/briggleman/kraken
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kraken
+Group=kraken
+EnvironmentFile=-/etc/kraken/panel.env
+Environment=KRAKEN_STATE_DIR=/var/lib/kraken
+ExecStart=/usr/local/bin/kraken-panel
+Restart=on-failure
+RestartSec=5s
+# --- hardening ------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kraken /etc/kraken
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

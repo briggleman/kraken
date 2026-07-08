@@ -27,37 +27,42 @@ proto/                            .proto definitions (Panel <-> Agent)
 web/                              React + TS + Vite UI (design-system/ + src/)
 images/                           steam-base, steam-win  (no steam-wine)
 specs/                            Game Specs (the "egg" equivalent)
-deploy/                           docker-compose.yml (Postgres only)
+deploy/                           docker-compose.yml (Postgres only),
+                                  docker-compose.full.yml (Postgres + Panel +
+                                  Agent), panel/agent Dockerfiles, install.sh,
+                                  systemd/ units
 scripts/                          genproto.sh, seed-dev.sh
 ```
 
 Gitignored runtime dirs (don't commit, don't treat as source): `bin/`, `certs/`,
 `server-data/`, `agent-backups/`, `data/`.
 
-## Commands (there is NO Makefile)
+## Commands
 
-```sh
-# Datastores (Panel/Agent run on the host so they can reach the Docker socket):
-docker compose -f deploy/docker-compose.yml up -d
+There's a `Makefile` at the repo root — `make help` lists every target with
+a one-line description. The most useful ones:
 
-# Run (dev): Panel on :8080, Agent on :9090. Panel uses an in-memory store unless
-# KRAKEN_DATABASE_URL is set (postgres://kraken:kraken@localhost:5432/kraken?sslmode=disable).
-go run ./cmd/panel
-go run ./cmd/agent
+| Target | What it does |
+| --- | --- |
+| `make` (default: `build`) | web bundle + all three Go binaries |
+| `make check` | everything CI runs — `fmt` · `vet` · `staticcheck` · web build · `test -race` |
+| `make db-up` | start Postgres (persistent volume, safe to re-run) |
+| `make dev-panel` / `dev-agent` / `dev-web` | run the three dev processes |
+| `make seed` | seed node + Palworld spec + demo server (Panel + Agent must be up) |
+| `make images` | build Panel + Agent Docker images locally |
+| `make up` / `down` | bring the full compose stack up / down (needs `deploy/.env`) |
+| `make clean` | remove `bin/` + generated web assets (committed markers preserved) |
 
-# Web (Vite on :5173):
-npm --prefix web run dev
-npm --prefix web run build        # tsc --noEmit && vite build
-npm --prefix web run typecheck
+On Windows: `winget install GnuWin32.Make`, or run the recipes from Git Bash /
+WSL, or execute the raw commands under the target (any recipe is a one-liner
+shell block).
 
-# Tests / build / proto:
-go test ./...
-go build -o bin/ ./cmd/...
-scripts/genproto.sh               # regenerate gRPC from proto/
-scripts/seed-dev.sh               # seed a node + Palworld spec + demo server (needs :8080 + :9090)
-```
+The Panel binary embeds the web UI via `//go:embed` — so `make build-go` alone
+serves a "UI not built" stub. Run `make build` (or `make build-web` once, then
+iterate on `make build-go`) for the real UI.
 
-Dev login: `admin` / `admin` (override via `KRAKEN_BOOTSTRAP_ADMIN_USER` / `_PASSWORD`).
+Dev login on a fresh DB: `admin` / `admin` (override via
+`KRAKEN_BOOTSTRAP_ADMIN_USER` / `_PASSWORD`).
 
 ## Conventions that bite
 

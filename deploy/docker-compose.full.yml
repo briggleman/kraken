@@ -1,0 +1,89 @@
+# Kraken — full home-deploy stack in one command.
+#
+#   docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
+#
+# Runs Postgres + Panel + Agent on a single host. Panel and Agent join the
+# host network so the Panel binds :8080 directly, the Agent binds :9090 +
+# :2022 directly, and game containers spawned by the Agent expose their
+# UDP/TCP ports on the host without an extra NAT hop.
+#
+# Compare with docker-compose.yml (Postgres-only): that file targets the
+# bare-metal path where Panel + Agent run as host processes. Use this file
+# when you want the entire stack in containers.
+#
+# Linux-only: network_mode: host does nothing on Docker Desktop for Mac or
+# Windows. Windows nodes must use the bare-metal Agent — Windows-container
+# game servers require the host's Windows Docker daemon.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kraken-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kraken
+      POSTGRES_PASSWORD: kraken
+      POSTGRES_DB: kraken
+    # Bind to loopback only — Panel/Agent on the host reach it via
+    # 127.0.0.1:5432, but nothing else on the network can.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kraken -d kraken"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  panel:
+    image: ${KRAKEN_PANEL_IMAGE:-ghcr.io/briggleman/kraken-panel:latest}
+    container_name: kraken-panel
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Host networking so the Panel binds :8080 directly and dials the
+    # host-networked Agent on 127.0.0.1:9090 without cross-network gymnastics.
+    network_mode: host
+    environment:
+      KRAKEN_ENV: prod
+      KRAKEN_HTTP_ADDR: :${KRAKEN_HTTP_PORT:-8080}
+      KRAKEN_DATABASE_URL: postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable
+      KRAKEN_STATE_DIR: /var/lib/kraken
+      KRAKEN_SECRETS_KEY: ${KRAKEN_SECRETS_KEY:?generate a base64-of-32-bytes key — see deploy/.env.example}
+      KRAKEN_BOOTSTRAP_ADMIN_USER: ${KRAKEN_BOOTSTRAP_ADMIN_USER:-admin}
+      KRAKEN_BOOTSTRAP_ADMIN_PASSWORD: ${KRAKEN_BOOTSTRAP_ADMIN_PASSWORD:-}
+      KRAKEN_ALLOWED_ORIGINS: ${KRAKEN_ALLOWED_ORIGINS:-}
+      KRAKEN_QUICKSTART: "true"
+      KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
+    volumes:
+      - panel-state:/var/lib/kraken
+
+  agent:
+    image: ${KRAKEN_AGENT_IMAGE:-ghcr.io/briggleman/kraken-agent:latest}
+    container_name: kraken-agent
+    restart: unless-stopped
+    depends_on:
+      - panel
+    # Host networking + docker socket so the Agent launches game
+    # containers on the host's daemon and their game ports are directly
+    # reachable from the LAN / internet.
+    network_mode: host
+    environment:
+      KRAKEN_AGENT_ADDR: :9090
+      KRAKEN_SFTP_ADDR: ${KRAKEN_SFTP_ADDR:-:2022}
+      KRAKEN_NODE_OS: linux
+      KRAKEN_DATA_DIR: /data
+      KRAKEN_BACKUP_DIR: /agent-backups
+      KRAKEN_STATE_DIR: /var/lib/kraken
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KRAKEN_DATA_DIR:-./server-data}:/data
+      - ${KRAKEN_BACKUP_DIR:-./agent-backups}:/agent-backups
+      - agent-state:/var/lib/kraken
+
+volumes:
+  pgdata:
+  panel-state:
+  agent-state:

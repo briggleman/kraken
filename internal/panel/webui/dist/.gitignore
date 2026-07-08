@@ -1,0 +1,13 @@
+# Vite writes into this directory (see web/vite.config.ts). The build
+# artifacts are not committed — Vite regenerates them per build with
+# content-hashed filenames. We DO commit two files so //go:embed all:dist
+# compiles in a fresh checkout and the Handler has a useful fallback:
+#   - this .gitignore
+#   - index.stub.html (served when no real index.html is present)
+#
+# `npm --prefix web run build` runs scripts/clean-dist.mjs before Vite,
+# which clears everything here EXCEPT the two files above — so real builds
+# never dirty the working tree.
+*
+!.gitignore
+!index.stub.html

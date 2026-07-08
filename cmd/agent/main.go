@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -78,8 +79,14 @@ func run(logger *slog.Logger) error {
 	// SFTP server for power-user file access — a separate SSH listener that
 	// chroots each per-server login to that server's data dir. No-op on the fake
 	// runtime. The host key persists so the server's identity is stable.
+	//
+	// KRAKEN_STATE_DIR groups Agent-owned state (host key today; more later)
+	// under one directory so systemd / containers point at /var/lib/kraken
+	// and get sensible defaults for everything. Legacy default is cwd-
+	// relative so existing dev setups keep working unchanged.
+	stateDir := env("KRAKEN_STATE_DIR", ".")
 	sftpAddr := env("KRAKEN_SFTP_ADDR", ":2022")
-	hostKeyPath := env("KRAKEN_SFTP_HOST_KEY", "sftp_host_key")
+	hostKeyPath := env("KRAKEN_SFTP_HOST_KEY", filepath.Join(stateDir, "sftp_host_key"))
 	if sftpSrv, serr := agent.StartSFTP(rt, sftpAddr, hostKeyPath, logger); serr != nil {
 		logger.Warn("SFTP server not started", "err", serr)
 	} else if sftpSrv != nil {

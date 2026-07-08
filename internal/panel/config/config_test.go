@@ -51,6 +51,38 @@ func TestLoad_EnvWinsAndLocks(t *testing.T) {
 	}
 }
 
+func TestLoad_StateDirDrivesConfigFileDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("KRAKEN_STATE_DIR", dir)
+	// Explicit KRAKEN_CONFIG_FILE must be unset for the default to apply.
+	t.Setenv("KRAKEN_CONFIG_FILE", "")
+	t.Setenv("KRAKEN_DATABASE_URL", "")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := filepath.Join(dir, "panel.json")
+	if c.ConfigFile != want {
+		t.Fatalf("state-dir default: got %q, want %q", c.ConfigFile, want)
+	}
+}
+
+func TestLoad_ExplicitConfigFileWinsOverStateDir(t *testing.T) {
+	explicit := filepath.Join(t.TempDir(), "custom.json")
+	t.Setenv("KRAKEN_STATE_DIR", t.TempDir())
+	t.Setenv("KRAKEN_CONFIG_FILE", explicit)
+	t.Setenv("KRAKEN_DATABASE_URL", "")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if c.ConfigFile != explicit {
+		t.Fatalf("explicit path should win, got %q", c.ConfigFile)
+	}
+}
+
 func TestLoad_FileFallbackWhenEnvUnset(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "panel.json")
 	if err := SaveDatabaseURL(cfgPath, "postgres://file/db"); err != nil {

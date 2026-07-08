@@ -1,0 +1,181 @@
+# =============================================================================
+# Kraken — quickstart docker-compose template
+# =============================================================================
+#
+# ONE-COMMAND HOME DEPLOY. Copy this file next to where you want to run
+# Kraken, edit the two REQUIRED spots below, then run:
+#
+#   docker compose -f docker-compose.example.yml up -d
+#
+# Everything is inlined so you don't need a separate .env file. For a
+# production deploy where the compose file gets tracked in git, graduate
+# to docker-compose.full.yml — it pulls secrets from a git-ignored .env
+# so nothing sensitive ends up in the repo.
+#
+# -----------------------------------------------------------------------------
+# BEFORE YOU START — REQUIRED EDITS
+# -----------------------------------------------------------------------------
+#
+# 1. KRAKEN_SECRETS_KEY (inside the `panel` service, below).
+#    Generate one:  openssl rand -base64 32
+#    This is the AES-256 master key that seals every at-rest secret
+#    (Steam creds, agent-enrollment CA key, SFTP keys, integration
+#    tokens). KEEP IT — losing it makes every stored secret
+#    unrecoverable. Rotating it forces re-entering everything.
+#
+# 2. KRAKEN_BOOTSTRAP_ADMIN_PASSWORD (inside the `panel` service).
+#    Set your own strong password, OR leave blank to have Kraken
+#    generate one and log it once on first startup — grab it with:
+#      docker compose logs panel | grep 'bootstrap admin'
+#    Rotate at first login regardless (Settings → Users).
+#
+# -----------------------------------------------------------------------------
+# COMMON CUSTOMIZATIONS
+# -----------------------------------------------------------------------------
+#
+# Where game-server data lives on the host:
+#   `agent` service → volumes → `./server-data:/data`. The LEFT side is
+#   a host path — change it to whatever disk / RAID / ZFS pool you want
+#   (e.g. `/srv/kraken/data:/data`). One subdirectory per server is
+#   created under it. Same idea for `./agent-backups:/agent-backups`.
+#
+# Pin a specific release instead of :latest:
+#   Both images accept `:vX.Y.Z` tags (see the Releases page). Pinning
+#   means `docker compose pull` won't drift to a newer major.
+#
+# Reverse proxy (Caddy / nginx / Traefik / Cloudflare Tunnel):
+#   Uncomment KRAKEN_ALLOWED_ORIGINS and set your public URL(s).
+#   Same-origin (http://<host>:8080) is always allowed even without this.
+#
+# Panel port:
+#   Change KRAKEN_HTTP_ADDR from `:8080` to `:NNNN`. Because Panel uses
+#   host networking, the port you pick binds directly on the host — no
+#   `ports:` mapping needed.
+#
+# Postgres credentials:
+#   The defaults work but are known. If Postgres is ever reachable
+#   beyond loopback, or the host is shared, change POSTGRES_PASSWORD
+#   AND the matching password inside KRAKEN_DATABASE_URL.
+#
+# -----------------------------------------------------------------------------
+# PLATFORM NOTES
+# -----------------------------------------------------------------------------
+#
+# Linux only. `network_mode: host` is a no-op on Docker Desktop for Mac
+# or Windows — game ports won't be reachable from the LAN. On Windows,
+# use the bare-metal installer (deploy/install.sh) instead.
+#
+# Windows game servers (V Rising, windemo) require a Windows Docker
+# daemon on a Windows host, which means the Agent is bare-metal there
+# regardless. You can still containerize the Panel on Linux and register
+# the Windows Agent as an extra node.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Postgres — source of truth for the Panel (specs, servers, users, ports)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: kraken-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kraken
+      # Change POSTGRES_PASSWORD for prod — also update the password
+      # inside KRAKEN_DATABASE_URL in the panel service.
+      POSTGRES_PASSWORD: kraken
+      POSTGRES_DB: kraken
+    ports:
+      # Loopback-only publish so `psql` on the host can attach for
+      # troubleshooting, but no LAN exposure. Delete this section
+      # entirely to keep Postgres purely container-internal.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kraken -d kraken"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Panel — HTTP API + embedded web UI on :8080
+  # ---------------------------------------------------------------------------
+  panel:
+    image: ghcr.io/briggleman/kraken-panel:latest
+    container_name: kraken-panel
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Host networking so :8080 binds directly on the host and so the
+    # Panel can dial the Agent at 127.0.0.1:9090 with no NAT hop.
+    network_mode: host
+    environment:
+      KRAKEN_ENV: prod
+      KRAKEN_HTTP_ADDR: ":8080"
+      KRAKEN_DATABASE_URL: "postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable"
+      KRAKEN_STATE_DIR: /var/lib/kraken
+
+      # === REQUIRED ==========================================================
+      # Generate:  openssl rand -base64 32
+      KRAKEN_SECRETS_KEY: "CHANGE_ME_openssl_rand_base64_32"
+      # =======================================================================
+
+      KRAKEN_BOOTSTRAP_ADMIN_USER: admin
+      # Blank → Panel generates + logs a strong random password once.
+      KRAKEN_BOOTSTRAP_ADMIN_PASSWORD: ""
+
+      # Uncomment for reverse-proxy / public hostname setups:
+      # KRAKEN_ALLOWED_ORIGINS: "https://kraken.example.com"
+
+      KRAKEN_QUICKSTART: "true"
+      KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
+    volumes:
+      # Named volume for the Panel's config file, generated CA, and
+      # (if KRAKEN_SECRETS_KEY unset) auto-generated secrets key.
+      - panel-state:/var/lib/kraken
+
+  # ---------------------------------------------------------------------------
+  # Agent — per-host daemon; launches game containers via the docker socket
+  # ---------------------------------------------------------------------------
+  agent:
+    image: ghcr.io/briggleman/kraken-agent:latest
+    container_name: kraken-agent
+    restart: unless-stopped
+    depends_on:
+      - panel
+    # Host networking so :9090 (gRPC to Panel) and :2022 (SFTP for
+    # power-user file access) bind directly on the host, and so game
+    # containers spawned by the Agent expose their UDP/TCP ports on the
+    # host without an extra NAT hop.
+    network_mode: host
+    environment:
+      KRAKEN_AGENT_ADDR: ":9090"
+      KRAKEN_SFTP_ADDR: ":2022"
+      KRAKEN_NODE_OS: linux
+      KRAKEN_DATA_DIR: /data
+      KRAKEN_BACKUP_DIR: /agent-backups
+      KRAKEN_STATE_DIR: /var/lib/kraken
+    volumes:
+      # Docker socket — the Agent uses this to run game-server
+      # containers on the host's daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # === HOST PATHS TO CUSTOMIZE ===========================================
+      # LEFT of the colon is the host path. Change to any location with
+      # enough space for your games — absolute paths (e.g. /srv/kraken/
+      # data) or a mounted disk work fine. One subdir per server appears
+      # inside.
+      - ./server-data:/data
+      - ./agent-backups:/agent-backups
+      # =======================================================================
+
+      # Named volume for the persistent SFTP host key.
+      - agent-state:/var/lib/kraken
+
+volumes:
+  pgdata:
+  panel-state:
+  agent-state:

@@ -190,7 +190,14 @@ services:
     # host without an extra NAT hop.
     network_mode: host
     environment:
-      KRAKEN_AGENT_ADDR: ":9090"
+      # Loopback-only gRPC — the co-located Panel dials 127.0.0.1:9090.
+      # This is critical: the Agent's gRPC service has no application-level
+      # auth (mTLS is the trust boundary), so binding on all interfaces
+      # without TLS material configured would expose the docker socket to
+      # any LAN peer. If you need a remote Panel to reach this Agent,
+      # enroll it with `krakenctl enroll` first (which sets
+      # KRAKEN_TLS_CERT/KEY/CA), THEN change this back to ":9090".
+      KRAKEN_AGENT_ADDR: "127.0.0.1:9090"
       KRAKEN_SFTP_ADDR: ":2022"
       KRAKEN_NODE_OS: linux
       KRAKEN_DATA_DIR: /data

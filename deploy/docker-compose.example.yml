@@ -200,6 +200,12 @@ services:
       KRAKEN_AGENT_ADDR: "127.0.0.1:9090"
       KRAKEN_SFTP_ADDR: ":2022"
       KRAKEN_NODE_OS: linux
+      # Auto-enroll: on first start (no persisted cert bundle in
+      # /var/lib/kraken), the Agent contacts the co-located Panel to fetch
+      # an mTLS bundle and reuses it on subsequent restarts. host networking
+      # makes 127.0.0.1 resolve to the Panel container. Remove this line
+      # only if you plan to manage certs manually via `krakenctl enroll`.
+      KRAKEN_PANEL_URL: http://127.0.0.1:8080
       KRAKEN_DATA_DIR: /data
       KRAKEN_BACKUP_DIR: /agent-backups
       KRAKEN_STATE_DIR: /var/lib/kraken

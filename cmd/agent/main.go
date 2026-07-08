@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/agent/enroll"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/mtls"
 	"github.com/briggleman/kraken/internal/shared/version"
@@ -48,6 +49,12 @@ func run(logger *slog.Logger) error {
 	nodeOS := env("KRAKEN_NODE_OS", "linux")
 	wine := env("KRAKEN_NODE_WINE", "true") == "true"
 
+	// KRAKEN_STATE_DIR groups Agent-owned state (mTLS bundle, SFTP host key,
+	// … more later) under one directory so systemd / containers point at
+	// /var/lib/kraken and get sensible defaults for everything. Legacy
+	// default is cwd-relative so existing dev setups keep working unchanged.
+	stateDir := env("KRAKEN_STATE_DIR", ".")
+
 	// Resolve mTLS material up-front — needed for the safety guard below and
 	// then again to configure the gRPC server. When all three are set the
 	// Panel↔Agent channel is mutually authenticated; otherwise the server
@@ -56,9 +63,29 @@ func run(logger *slog.Logger) error {
 	// with LAN reach can drive the Agent's docker socket, so we refuse.
 	cert, key, ca := env("KRAKEN_TLS_CERT", ""), env("KRAKEN_TLS_KEY", ""), env("KRAKEN_TLS_CA", "")
 	secure := cert != "" && key != "" && ca != ""
+
+	// Auto-enroll: if TLS isn't configured but KRAKEN_PANEL_URL is set,
+	// enroll with the Panel over its loopback-gated /setup/local-enroll →
+	// /agents/enroll flow. The persisted cert bundle survives across
+	// restarts (subsequent boots reuse it without contacting the Panel).
+	// A separate host / non-quickstart operator sets KRAKEN_TLS_* directly
+	// (via `krakenctl enroll`) and this branch is skipped entirely.
+	if !secure {
+		if panelURL := env("KRAKEN_PANEL_URL", ""); panelURL != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			paths, aerr := enroll.EnsureCerts(ctx, panelURL, stateDir, nil, 90*time.Second, logger)
+			cancel()
+			if aerr != nil {
+				return fmt.Errorf("auto-enroll with Panel at %s: %w", panelURL, aerr)
+			}
+			cert, key, ca = paths.Cert, paths.Key, paths.CA
+			secure = true
+		}
+	}
+
 	if !secure && !isLoopbackAddr(addr) && env("KRAKEN_ALLOW_INSECURE_GRPC", "") != "1" {
 		return fmt.Errorf("agent: refusing to serve plaintext gRPC on non-loopback address %q — "+
-			"enroll with the Panel (`krakenctl enroll` sets KRAKEN_TLS_CERT/KEY/CA), "+
+			"enroll with the Panel (set KRAKEN_PANEL_URL for auto-enroll, or run `krakenctl enroll` to populate KRAKEN_TLS_CERT/KEY/CA), "+
 			"bind loopback with KRAKEN_AGENT_ADDR=127.0.0.1:9090, "+
 			"or opt in explicitly with KRAKEN_ALLOW_INSECURE_GRPC=1", addr)
 	}
@@ -89,14 +116,8 @@ func run(logger *slog.Logger) error {
 	agentpb.RegisterNodeServiceServer(grpcServer, agent.NewService(rt))
 
 	// SFTP server for power-user file access — a separate SSH listener that
-	// chroots each per-server login to that server's data dir. No-op on the fake
-	// runtime. The host key persists so the server's identity is stable.
-	//
-	// KRAKEN_STATE_DIR groups Agent-owned state (host key today; more later)
-	// under one directory so systemd / containers point at /var/lib/kraken
-	// and get sensible defaults for everything. Legacy default is cwd-
-	// relative so existing dev setups keep working unchanged.
-	stateDir := env("KRAKEN_STATE_DIR", ".")
+	// chroots each per-server login to that server's data dir. No-op on the
+	// fake runtime. The host key persists so the server's identity is stable.
 	sftpAddr := env("KRAKEN_SFTP_ADDR", ":2022")
 	hostKeyPath := env("KRAKEN_SFTP_HOST_KEY", filepath.Join(stateDir, "sftp_host_key"))
 	if sftpSrv, serr := agent.StartSFTP(rt, sftpAddr, hostKeyPath, logger); serr != nil {

@@ -1,0 +1,52 @@
+# Keep the Docker build context small and reproducible. Everything here is
+# either generated per-build (node_modules, dist, bin), local runtime
+# state (server data, backups, certs), or otherwise not useful inside an
+# image (git history, editor junk, docs source).
+
+# node / vite
+web/node_modules/
+web/dist/
+web/.vite/
+
+# generated go outputs — the Dockerfile builds these itself
+bin/
+*.exe
+*.exe~
+
+# committed embed dir is fine, but real Vite output (only produced locally)
+# should be regenerated inside the builder stage
+internal/panel/webui/dist/assets/
+internal/panel/webui/dist/index.html
+internal/panel/webui/dist/favicon-*.png
+internal/panel/webui/dist/kraken-glyph-*.png
+internal/panel/webui/dist/site.webmanifest
+internal/panel/webui/dist/social-preview.*
+
+# runtime state / anything private
+server-data/
+agent-backups/
+backups/
+data/
+certs/
+*.pem
+*.key
+sftp_host_key
+sftp_host_key.pub
+.env
+.env.*
+!deploy/.env.example
+
+# vcs / editor / OS
+.git/
+.github/
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# docs / meta not needed inside the image
+docs/
+BACKLOG.md
+CLAUDE.md
+SECURITY.md

@@ -192,6 +192,7 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}", s.handleGetServer)
 			r.With(s.requirePermission(rbac.PermServerCreate)).Post("/servers", s.handleCreateServer)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/power", s.handleServerLifecyclePower)
+			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/reinstall", s.handleReinstallServer)
 			r.With(s.requirePermission(rbac.PermServerDelete)).Delete("/servers/{id}", s.handleDeleteServer)
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}/settings", s.handleGetServerSettings)
 			r.With(s.requirePermission(rbac.PermServerConfig)).Put("/servers/{id}/settings", s.handleUpdateServerSettings)

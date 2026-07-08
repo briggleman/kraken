@@ -189,9 +189,13 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	s.logger.Info("server installed", "id", server.ID)
 }
 
+// failServer marks the server as install_failed — distinct from runtime
+// crashed so the power handler can reject start/restart until a reinstall
+// clears the failure. Runtime crashes (watchdog surface) still land in
+// StateCrashed and remain retriable via the normal power flow.
 func (s *Server) failServer(server *store.Server, reason string) {
 	s.logger.Error("server provisioning failed", "id", server.ID, "reason", reason)
-	s.setServerState(server.ID, store.StateCrashed)
+	s.setServerState(server.ID, store.StateInstallFailed)
 }
 
 // setServerState reloads the server and updates only its state, so a concurrent
@@ -290,6 +294,21 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
+	// Reject start/restart on a server that never completed its install phase.
+	// The runtime container would boot against empty /data and crash-loop
+	// immediately, producing misleading "exe not found" errors and locking the
+	// server. Stop/kill are allowed through — they're no-ops on a non-running
+	// container and let the operator clean up any lingering runtime state.
+	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		switch sv.State {
+		case store.StateInstalling:
+			writeError(w, http.StatusConflict, "server is still installing; wait for the install to finish before starting")
+			return
+		case store.StateInstallFailed:
+			writeError(w, http.StatusConflict, "server install failed; POST /api/v1/servers/{id}/reinstall to retry")
+			return
+		}
+	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load hosting node")
@@ -339,6 +358,56 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": sv.State})
+}
+
+// handleReinstallServer retries the install phase on a server whose previous
+// install failed, without deleting the server (so the allocated ports, name,
+// and server ID all survive). Only valid from the StateInstallFailed
+// terminal state — a still-running install or a fully installed server
+// should not go through here (deleting + recreating covers those cases).
+func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get server")
+		return
+	}
+	if !s.authorizeServer(w, ctx, sv) {
+		return
+	}
+	if sv.State != store.StateInstallFailed {
+		writeError(w, http.StatusConflict, "reinstall is only valid when state=install_failed (current state: "+string(sv.State)+")")
+		return
+	}
+	sp, err := s.store.GetSpec(ctx, sv.SpecID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load server spec")
+		return
+	}
+	node, err := s.store.GetNode(ctx, sv.NodeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load hosting node")
+		return
+	}
+	// Optional Steam Guard code for authenticated installs — same shape as
+	// the initial create-server request.
+	var req struct {
+		SteamGuardCode string `json:"steam_guard_code,omitempty"`
+	}
+	_ = decodeJSON(r, &req) // empty body is fine
+
+	sv.State = store.StateInstalling
+	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update server state")
+		return
+	}
+	s.logger.Info("server reinstall requested", "id", sv.ID, "name", sv.Name)
+	go s.provision(sv, sp, node, req.SteamGuardCode)
+	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
 }
 
 // handleDeleteServer removes the server's container on the Agent, releases its

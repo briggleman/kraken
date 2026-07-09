@@ -42,6 +42,12 @@ RUN go build -trimpath \
       -X github.com/briggleman/kraken/internal/shared/version.Date=${DATE}" \
     -o /out/panel ./cmd/panel
 
+# Empty state-dir stamp used as the COPY source below to pre-create the
+# runtime's /var/lib/kraken with nonroot ownership. Distroless has no
+# shell so a plain `RUN mkdir` in the runtime stage isn't possible;
+# COPY --chown is the idiomatic workaround.
+RUN mkdir -p /out/state
+
 # ---- runtime ------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.title="kraken-panel" \
@@ -49,7 +55,14 @@ LABEL org.opencontainers.image.title="kraken-panel" \
       org.opencontainers.image.source="https://github.com/briggleman/kraken" \
       org.opencontainers.image.licenses="GPL-3.0"
 COPY --from=gobuild /out/panel /panel
-# Panel-writable state (KRAKEN_CONFIG_FILE + generated secrets key + CA).
+# Pre-create /var/lib/kraken owned by the nonroot uid (65532 in distroless)
+# so a freshly-mounted named volume inherits that ownership — Docker
+# copies both contents and perms from the image dir into a brand-new
+# volume on first mount. Without this, the Panel (running nonroot) can't
+# write panel-client.pem into the state dir on first boot.
+# The compose files include a panel-init container that chowns *existing*
+# volumes to close the retrofit gap for upgrades from earlier images.
+COPY --from=gobuild --chown=65532:65532 /out/state /var/lib/kraken
 VOLUME ["/var/lib/kraken"]
 EXPOSE 8080
 USER nonroot:nonroot

@@ -70,6 +70,12 @@ type Settings struct {
 	// instance has no users (a post-setup lockdown). Ignored when the bootstrap
 	// env vars are set.
 	BootstrapDisabled bool `json:"bootstrap_disabled,omitempty"`
+
+	// SetupDismissed latches once first-run onboarding finishes (the operator
+	// clicked Finish, or setup computed complete once). It keeps the Setup
+	// shortcut out of the nav permanently — without it the computed state
+	// regresses (and the wizard resurfaces) whenever a node dips offline.
+	SetupDismissed bool `json:"setup_dismissed,omitempty"`
 }
 
 // NodeConfig is the Panel-managed per-node configuration. It selects where a

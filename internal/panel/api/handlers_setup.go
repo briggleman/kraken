@@ -122,7 +122,10 @@ type setupStatusResponse struct {
 }
 
 // handleSetupStatus reports first-run progress so the UI can drive (and dismiss)
-// the onboarding wizard. Computed from existing reads; no new state.
+// the onboarding wizard. Individual fields are computed from existing reads;
+// SetupComplete additionally respects the persisted dismissal latch, and
+// auto-latches the first time everything computes complete — otherwise the
+// Setup nav shortcut would resurface every time a node dips offline.
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	resp := setupStatusResponse{UsingMemory: s.cfg.UsesMemoryStore()}
@@ -143,8 +146,43 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	if servers, err := s.store.ListServers(ctx); err == nil {
 		resp.HasServer = len(servers) > 0
 	}
-	resp.SetupComplete = !resp.AdminMustChangePassword && resp.HasNodeOnline && resp.HasSpec && resp.HasServer
+	computed := !resp.AdminMustChangePassword && resp.HasNodeOnline && resp.HasSpec && resp.HasServer
+	dismissed := s.setupDismissed(ctx)
+	if computed && !dismissed {
+		s.dismissSetup(ctx) // best-effort latch; a failed write just retries next poll
+		dismissed = true
+	}
+	resp.SetupComplete = computed || dismissed
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// setupDismissed reads the persisted onboarding-finished latch.
+func (s *Server) setupDismissed(ctx context.Context) bool {
+	st, err := s.store.GetSettings(ctx)
+	return err == nil && st != nil && st.SetupDismissed
+}
+
+// dismissSetup persists the onboarding-finished latch (idempotent).
+func (s *Server) dismissSetup(ctx context.Context) {
+	st, err := s.store.GetSettings(ctx)
+	if err != nil || st == nil {
+		st = &store.Settings{}
+	}
+	if st.SetupDismissed {
+		return
+	}
+	st.SetupDismissed = true
+	if err := s.store.SaveSettings(ctx, st); err != nil {
+		s.logger.Warn("could not persist setup dismissal", "err", err)
+	}
+}
+
+// handleDismissSetup marks onboarding as finished — called when the operator
+// leaves the wizard via Finish. The Setup nav shortcut disappears for good.
+func (s *Server) handleDismissSetup(w http.ResponseWriter, r *http.Request) {
+	s.dismissSetup(r.Context())
+	s.recordAudit(r, http.StatusOK, "setup-dismissed")
+	writeJSON(w, http.StatusOK, map[string]bool{"setup_complete": true})
 }
 
 // handleLocalEnroll issues a one-time bootstrap token for the co-located Agent so

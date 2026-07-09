@@ -5,6 +5,7 @@ package api
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -46,6 +47,10 @@ type Server struct {
 	// Per-node throttle for agent cert rotation attempts (see rotate.go).
 	rotateMu   sync.Mutex
 	lastRotate map[string]time.Time
+
+	// setupNets is the parsed internal-network allowlist guarding /setup/*
+	// (see internal_gate.go).
+	setupNets []*net.IPNet
 
 	// onRestart, when set, asks the host process to exit cleanly so a supervisor
 	// restarts it (used after a UI-driven datastore change). Nil = no-op.
@@ -104,6 +109,14 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 			logger.Info("Agent enrollment enabled (Panel will sign Agent certs)")
 		}
 	}
+	// Internal-network allowlist for the /setup/* surface. An unset list gets
+	// the private-network defaults (config.Load does this too; this covers
+	// direct constructions) so the gate never silently fails open.
+	cidrs := cfg.SetupAllowedCIDRs
+	if len(cidrs) == 0 {
+		cidrs = config.DefaultSetupAllowedCIDRs()
+	}
+	s.setupNets = s.parseSetupCIDRs(cidrs)
 	// Build the Agent pool now that all options have been applied. In-memory
 	// bytes (from Panel auto-issue) beat file paths (operator override); no
 	// TLS at all → plaintext with a warning.
@@ -191,8 +204,9 @@ func (s *Server) routes() chi.Router {
 		r.Post("/agents/enroll", s.handleEnroll)
 
 		// Local single-host enrollment: issues a bootstrap token for the co-located
-		// Agent. No session (the Agent has none); gated on a loopback source IP.
-		r.Post("/setup/local-enroll", s.handleLocalEnroll)
+		// Agent. No session (the Agent has none); gated on a loopback source IP
+		// plus the internal-network allowlist like the rest of /setup/*.
+		r.With(s.requireInternal).Post("/setup/local-enroll", s.handleLocalEnroll)
 
 		// Live console + stats WebSocket. Authenticates from the ?token= query
 		// param (the browser can't set Authorization on a WS handshake).
@@ -207,13 +221,19 @@ func (s *Server) routes() chi.Router {
 			r.Get("/auth/me", s.handleMe)
 			r.Post("/auth/change-password", s.handleChangePassword)
 
-			// First-run onboarding progress.
-			r.Get("/setup/status", s.handleSetupStatus)
-
-			// Datastore configuration (bring-your-own Postgres).
-			r.With(s.requirePermission(rbac.PermSettingsView)).Get("/setup/database", s.handleGetDatabase)
-			r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/setup/database/test", s.handleTestDatabase)
-			r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/setup/database", s.handleConnectDatabase)
+			// First-run onboarding. The whole /setup/* surface is additionally
+			// gated on an internal-network source IP (requireInternal): setup can
+			// reconfigure the datastore and mint enrollment material, so it must
+			// never be drivable from the public internet even with a valid session.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireInternal)
+				r.Get("/setup/status", s.handleSetupStatus)
+				r.Post("/setup/dismiss", s.handleDismissSetup)
+				// Datastore configuration (bring-your-own Postgres).
+				r.With(s.requirePermission(rbac.PermSettingsView)).Get("/setup/database", s.handleGetDatabase)
+				r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/setup/database/test", s.handleTestDatabase)
+				r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/setup/database", s.handleConnectDatabase)
+			})
 
 			// OpenAPI document — any authenticated user; rendered by the in-app
 			// API reference. Not public.

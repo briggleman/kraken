@@ -54,6 +54,13 @@ type Config struct {
 	// locks the WS-origins field in the UI (env wins over the stored setting).
 	AllowedOriginsFromEnv bool
 
+	// SetupAllowedCIDRs restricts the /setup/* API surface (first-run wizard,
+	// datastore configuration, local enrollment) to requests whose real TCP
+	// peer falls inside one of these CIDRs (single IPs allowed too). Defaults
+	// to loopback + private ranges (RFC 1918, link-local, IPv6 ULA) so setup
+	// is never drivable from the public internet, even with valid credentials.
+	SetupAllowedCIDRs []string
+
 	// Mutual-TLS for Panel→Agent gRPC. When all three are set the Panel dials
 	// Agents over mTLS; otherwise it falls back to an insecure connection (dev).
 	TLSCert string // path to the Panel's client certificate (PEM)
@@ -87,6 +94,22 @@ func (c *Config) MutualTLS() bool {
 // CASigning reports whether the Panel can sign Agent enrollment requests.
 func (c *Config) CASigning() bool { return c.CACert != "" && c.CAKey != "" }
 
+// DefaultSetupAllowedCIDRs is the built-in internal-network allowlist for the
+// /setup/* API surface: loopback, RFC 1918 private ranges, link-local, and the
+// IPv6 loopback/ULA/link-local equivalents.
+func DefaultSetupAllowedCIDRs() []string {
+	return []string{
+		"127.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	// KRAKEN_STATE_DIR groups all Panel-owned state (config file, secrets
@@ -109,6 +132,10 @@ func Load() (*Config, error) {
 		CAKey:                  env("KRAKEN_CA_KEY", ""),
 		LocalAgentAddr:         env("KRAKEN_LOCAL_AGENT_ADDR", "127.0.0.1:9090"),
 		AllowedOrigins:         envList("KRAKEN_ALLOWED_ORIGINS"),
+		SetupAllowedCIDRs:      envList("KRAKEN_SETUP_ALLOWED_CIDRS"),
+	}
+	if len(c.SetupAllowedCIDRs) == 0 {
+		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()
 	}
 	_, c.AllowedOriginsFromEnv = os.LookupEnv("KRAKEN_ALLOWED_ORIGINS")
 	_, c.SessionTTLFromEnv = os.LookupEnv("KRAKEN_SESSION_TTL")

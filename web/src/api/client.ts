@@ -143,6 +143,9 @@ export const api = {
   setupStatus(): Promise<SetupStatus> {
     return request("GET", "/setup/status");
   },
+  dismissSetup(): Promise<{ setup_complete: boolean }> {
+    return request("POST", "/setup/dismiss");
+  },
   getDatabaseConfig(): Promise<DatabaseConfig> {
     return request("GET", "/setup/database");
   },

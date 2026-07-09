@@ -72,7 +72,7 @@ func (p CertPaths) missing() []string {
 // panelURL is expected to be reachable on loopback (that's how the
 // server-side loopback gate authenticates the enrollment). Setting it to
 // anything else is a supported operator override but the request will fail.
-func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []string, deadline time.Duration, logger *slog.Logger) (CertPaths, error) {
+func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []string, agentPort int, deadline time.Duration, logger *slog.Logger) (CertPaths, error) {
 	paths := pathsIn(stateDir)
 	if paths.exists() {
 		logger.Info("auto-enroll: reusing existing cert bundle", "dir", stateDir)
@@ -104,7 +104,7 @@ func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []st
 	if err != nil {
 		return CertPaths{}, fmt.Errorf("auto-enroll: generate key/CSR: %w", err)
 	}
-	certPEM, caPEM, err := exchangeCSR(ctx, client, base, token, csrPEM)
+	certPEM, caPEM, err := exchangeCSR(ctx, client, base, token, csrPEM, agentPort)
 	if err != nil {
 		return CertPaths{}, fmt.Errorf("auto-enroll: CSR exchange: %w", err)
 	}
@@ -178,8 +178,10 @@ func fetchLocalToken(ctx context.Context, client *http.Client, base string) (str
 	return payload.Token, nil
 }
 
-func exchangeCSR(ctx context.Context, client *http.Client, base, token string, csrPEM []byte) (certPEM, caPEM []byte, err error) {
-	body, _ := json.Marshal(map[string]string{"token": token, "csr": string(csrPEM)})
+func exchangeCSR(ctx context.Context, client *http.Client, base, token string, csrPEM []byte, agentPort int) (certPEM, caPEM []byte, err error) {
+	// agent_port lets the Panel prefill node registration with the actual
+	// host:port this agent serves on (vital when several agents share an IP).
+	body, _ := json.Marshal(map[string]any{"token": token, "csr": string(csrPEM), "agent_port": agentPort})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/v1/agents/enroll", bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err

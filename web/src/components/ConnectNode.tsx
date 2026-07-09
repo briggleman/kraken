@@ -40,7 +40,9 @@ function AgentInstallInstructions({ panelOrigin, token }: { panelOrigin: string;
     },
     {
       title: "3 · ENROLL + CONFIGURE (WRITES /etc/kraken)",
-      body: `sudo krakenctl enroll -panel ${panelOrigin} -token ${token} -hosts <this-host-ip> -out /etc/kraken/certs
+      // -hosts must be addresses the Panel can DIAL (IPs / real DNS names —
+      // never a bare machine name); -port must match KRAKEN_AGENT_ADDR.
+      body: `sudo krakenctl enroll -panel ${panelOrigin} -token ${token} -hosts <this-host-ip> -port 9090 -out /etc/kraken/certs
 sudo tee -a /etc/kraken/agent.env >/dev/null <<'EOF'
 KRAKEN_NODE_ID=$(hostname)
 KRAKEN_TLS_CERT=/etc/kraken/certs/agent.pem
@@ -72,10 +74,12 @@ foreach ($f in @("kraken-agent-windows-amd64.exe","kraken-krakenctl-windows-amd6
     },
     {
       title: "3 · ENROLL (WRITES C:\\kraken\\certs)",
+      // -hosts must be addresses the Panel can DIAL (IPs / real DNS names —
+      // never $env:COMPUTERNAME); -port must match the agent's gRPC port.
       body: `cd C:\\kraken\\bin
 .\\kraken-krakenctl-windows-amd64.exe enroll \`
   -panel ${panelOrigin} -token ${token} \`
-  -hosts $env:COMPUTERNAME,<this-host-ip> \`
+  -hosts <this-host-ip> -port 9090 \`
   -out C:\\kraken\\certs`,
     },
     {
@@ -103,6 +107,9 @@ C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
       ))}
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
         The node takes its name from <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>KRAKEN_NODE_ID</span>.
+        {" "}<span style={{ fontFamily: mono, color: "var(--text-primary)" }}>-hosts</span> must be IPs or real DNS names the panel
+        can dial — never a bare computer name — and <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>-port</span> must
+        match the agent&apos;s gRPC port.
         {target === "windows" && (
           <>
             {" "}To keep the Agent running as a Windows Service (with log rotation + auto-start), see the{" "}
@@ -342,11 +349,13 @@ export function ConnectNode({
   }, [token, enroll?.status]);
 
   // Once enrolled, prefill the agent address from the hosts the agent baked
-  // into its certificate (the -hosts flag it enrolled with).
+  // into its certificate (IPs first — always dialable) and the gRPC port the
+  // agent reported at enrollment. Never assume :9090: hosts can run several
+  // agents on one IP (e.g. a Windows agent + a WSL agent side by side).
   useEffect(() => {
     if (enroll?.status !== "redeemed" || regAddress !== "") return;
     const host = enroll.hosts?.[0];
-    if (host) setRegAddress(`${host}:9090`);
+    if (host) setRegAddress(`${host}:${enroll.agent_port || 9090}`);
   }, [enroll, regAddress]);
 
   // After registration, keep pinging the new node until it reports online.

@@ -618,7 +618,8 @@ paths:
                   status: { type: string, enum: [pending, redeemed, expired] }
                   node_name: { type: string }
                   ip: { type: string }
-                  hosts: { type: array, items: { type: string } }
+                  hosts: { type: array, items: { type: string }, description: agent-advertised reachable addresses, IPs first }
+                  agent_port: { type: integer, description: agent-reported gRPC port for the registration prefill }
                   expires_at: { type: string, format: date-time }
                   redeemed_at: { type: string, format: date-time }
   /agents/enroll:
@@ -640,6 +641,7 @@ paths:
               properties:
                 token: { type: string }
                 csr: { type: string, description: PEM-encoded certificate signing request }
+                agent_port: { type: integer, description: gRPC port the agent will serve on (default 9090) — used to prefill node registration }
       responses:
         '200':
           description: Signed certificate + CA (PEM)

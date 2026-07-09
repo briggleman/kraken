@@ -136,7 +136,7 @@ func (fp *fakePanel) signCSR(t *testing.T, csrPEM string) []byte {
 func TestEnsureCerts_HappyPath(t *testing.T) {
 	fp := newFakePanel(t, 0, "bootstrap-tok")
 	dir := t.TempDir()
-	paths, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 5*time.Second, testLogger())
+	paths, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 5*time.Second, testLogger())
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestEnsureCerts_Idempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 5*time.Second, testLogger()); err != nil {
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 5*time.Second, testLogger()); err != nil {
 		t.Fatalf("enroll (idempotent): %v", err)
 	}
 	if got := fp.tokenIssued.Load() + fp.enrollRequests.Load() + fp.healthProbes.Load(); got != 0 {
@@ -185,7 +185,7 @@ func TestEnsureCerts_Idempotent(t *testing.T) {
 func TestEnsureCerts_WaitsForPanel(t *testing.T) {
 	fp := newFakePanel(t, 2, "bootstrap-tok") // first 2 probes fail
 	dir := t.TempDir()
-	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 10*time.Second, testLogger()); err != nil {
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 10*time.Second, testLogger()); err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
 	if fp.healthProbes.Load() < 3 {
@@ -202,7 +202,7 @@ func TestEnsureCerts_UnreachablePanel(t *testing.T) {
 	dir := t.TempDir()
 	// Point at a port that is (almost certainly) closed. The 127.0.0.1
 	// address makes the failure prompt.
-	_, err := EnsureCerts(context.Background(), "http://127.0.0.1:1", dir, nil, 2*time.Second, testLogger())
+	_, err := EnsureCerts(context.Background(), "http://127.0.0.1:1", dir, nil, 9090, 2*time.Second, testLogger())
 	if err == nil {
 		t.Fatal("expected error from unreachable Panel")
 	}

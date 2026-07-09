@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ type redeemedToken struct {
 	nodeName   string
 	ip         string
 	hosts      []string // extra SANs the agent requested (its reachable IPs/DNS names)
+	agentPort  int      // the gRPC port the agent reports it will serve on (0 = unknown)
 	redeemedAt time.Time
 }
 
@@ -86,9 +88,9 @@ func (b *bootstrapRegistry) redeem(token string) (string, error) {
 }
 
 // recordRedeemed remembers a successful enrollment so status() can report it.
-func (b *bootstrapRegistry) recordRedeemed(token, nodeName, ip string, hosts []string) {
+func (b *bootstrapRegistry) recordRedeemed(token, nodeName, ip string, hosts []string, agentPort int) {
 	b.mu.Lock()
-	b.redeemed[token] = redeemedToken{nodeName: nodeName, ip: ip, hosts: hosts, redeemedAt: time.Now()}
+	b.redeemed[token] = redeemedToken{nodeName: nodeName, ip: ip, hosts: hosts, agentPort: agentPort, redeemedAt: time.Now()}
 	b.mu.Unlock()
 }
 
@@ -98,6 +100,7 @@ type enrollState struct {
 	NodeName   string    `json:"node_name,omitempty"`
 	IP         string    `json:"ip,omitempty"`
 	Hosts      []string  `json:"hosts,omitempty"`
+	AgentPort  int       `json:"agent_port,omitempty"` // agent-reported gRPC port for the registration prefill
 	ExpiresAt  time.Time `json:"expires_at,omitempty"`
 	RedeemedAt time.Time `json:"redeemed_at,omitempty"`
 }
@@ -106,7 +109,7 @@ func (b *bootstrapRegistry) status(token string) enrollState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rt, ok := b.redeemed[token]; ok {
-		return enrollState{Status: "redeemed", NodeName: rt.nodeName, IP: rt.ip, Hosts: rt.hosts, RedeemedAt: rt.redeemedAt}
+		return enrollState{Status: "redeemed", NodeName: rt.nodeName, IP: rt.ip, Hosts: rt.hosts, AgentPort: rt.agentPort, RedeemedAt: rt.redeemedAt}
 	}
 	if bt, ok := b.tokens[token]; ok {
 		if time.Now().After(bt.expiresAt) {
@@ -170,6 +173,10 @@ func (s *Server) handleEnrollStatus(w http.ResponseWriter, r *http.Request) {
 type enrollRequest struct {
 	Token string `json:"token"`
 	CSR   string `json:"csr"`
+	// AgentPort is the gRPC port the agent will serve on (optional; default
+	// 9090). Reported so node registration can be prefilled host:port —
+	// several agents can share one IP on different ports.
+	AgentPort int `json:"agent_port,omitempty"`
 }
 
 // handleEnroll is the Agent enrollment endpoint. It is authenticated solely by a
@@ -199,7 +206,11 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "could not sign CSR: "+err.Error())
 		return
 	}
-	s.bootstrap.recordRedeemed(req.Token, nodeName, clientIP(r), enrollHosts(certPEM))
+	port := req.AgentPort
+	if port <= 0 || port > 65535 {
+		port = 9090
+	}
+	s.bootstrap.recordRedeemed(req.Token, nodeName, clientIP(r), enrollHosts(certPEM), port)
 	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r),
 		"issued_cert", mtls.SummarizePEM(certPEM), "ca_sha256", mtls.FingerprintPEM(s.caCert))
 	s.recordAudit(r, http.StatusOK, "enroll:"+nodeName)
@@ -211,14 +222,22 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 
 // enrollHosts extracts the operator-supplied SANs from an issued agent cert —
 // the `-hosts` values passed to `krakenctl enroll`, i.e. the addresses the
-// agent expects to be reached at. Baked-in logical/loopback names are dropped.
+// agent expects to be reached at. Baked-in logical/loopback names are dropped,
+// and IPs are ordered BEFORE DNS names: the first entry seeds the registration
+// prefill, and an IP is always dialable while a name (worst case a bare
+// computer name) may not resolve from the Panel at all.
 func enrollHosts(certPEM []byte) []string {
 	skip := map[string]bool{mtls.AgentServerName: true, "localhost": true, "127.0.0.1": true, "::1": true}
-	var out []string
+	var ips, names []string
 	for _, h := range mtls.SANHosts(certPEM) {
-		if !skip[h] {
-			out = append(out, h)
+		if skip[h] {
+			continue
+		}
+		if net.ParseIP(h) != nil {
+			ips = append(ips, h)
+		} else {
+			names = append(names, h)
 		}
 	}
-	return out
+	return append(ips, names...)
 }

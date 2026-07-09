@@ -153,10 +153,14 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 // arbitrary host can mint an enrollment token this way.
 func (s *Server) handleLocalEnroll(w http.ResponseWriter, r *http.Request) {
 	if !isLoopback(clientIP(r)) {
+		s.logger.Warn("local-enroll rejected: source IP is not loopback "+
+			"(a containerized Agent reaching the Panel over a bridge network trips this gate)",
+			"ip", clientIP(r), "remote_addr", r.RemoteAddr)
 		writeError(w, http.StatusForbidden, "local enrollment is only available from the Panel host")
 		return
 	}
 	if s.caCert == nil {
+		s.logger.Warn("local-enroll rejected: no CA signing material configured", "ip", clientIP(r))
 		writeError(w, http.StatusServiceUnavailable, "agent enrollment is not configured")
 		return
 	}
@@ -165,6 +169,7 @@ func (s *Server) handleLocalEnroll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
+	s.logger.Info("local-enroll: bootstrap token issued for co-located agent", "expires_at", exp)
 	s.recordAudit(r, http.StatusCreated, "local-enroll")
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"token":      token,

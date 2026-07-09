@@ -91,6 +91,7 @@ func (s *Server) handleCreateBootstrapToken(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
+	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", clientIP(r))
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"token":      token,
 		"node_name":  req.NodeName,
@@ -126,10 +127,12 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	certPEM, err := mtls.SignAgentCSR(s.caCert, s.caKey, []byte(req.CSR), mtls.DefaultAgentCertTTL)
 	if err != nil {
+		s.logger.Warn("agent enrollment: CSR rejected", "node", nodeName, "ip", clientIP(r), "err", err)
 		writeError(w, http.StatusBadRequest, "could not sign CSR: "+err.Error())
 		return
 	}
-	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r))
+	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r),
+		"issued_cert", mtls.SummarizePEM(certPEM), "ca_sha256", mtls.FingerprintPEM(s.caCert))
 	s.recordAudit(r, http.StatusOK, "enroll:"+nodeName)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"certificate": string(certPEM),

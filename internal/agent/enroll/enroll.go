@@ -49,13 +49,19 @@ func pathsIn(dir string) CertPaths {
 
 // exists returns true iff every path in p is present + non-empty on disk.
 func (p CertPaths) exists() bool {
+	return len(p.missing()) == 0
+}
+
+// missing lists the bundle files that are absent or empty on disk.
+func (p CertPaths) missing() []string {
+	var out []string
 	for _, f := range []string{p.Cert, p.Key, p.CA} {
 		st, err := os.Stat(f)
 		if err != nil || st.Size() == 0 {
-			return false
+			out = append(out, f)
 		}
 	}
-	return true
+	return out
 }
 
 // EnsureCerts guarantees a valid Agent mTLS bundle at ${stateDir}. If files
@@ -72,6 +78,8 @@ func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []st
 		logger.Info("auto-enroll: reusing existing cert bundle", "dir", stateDir)
 		return paths, nil
 	}
+	logger.Info("auto-enroll: cert bundle incomplete, enrolling with Panel",
+		"dir", stateDir, "panel", panelURL, "missing", paths.missing())
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return CertPaths{}, fmt.Errorf("auto-enroll: mkdir state dir: %w", err)
 	}
@@ -100,6 +108,8 @@ func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []st
 	if err != nil {
 		return CertPaths{}, fmt.Errorf("auto-enroll: CSR exchange: %w", err)
 	}
+	logger.Info("auto-enroll: Panel issued agent certificate", "cert", mtls.SummarizePEM(certPEM))
+	logger.Info("auto-enroll: Panel returned CA", "ca", mtls.SummarizePEM(caPEM))
 
 	if err := writeSecret(paths.Key, keyPEM); err != nil {
 		return CertPaths{}, err

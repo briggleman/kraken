@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -83,6 +84,10 @@ func run(logger *slog.Logger) error {
 		}
 	}
 
+	if secure {
+		logTLSBundle(logger, cert, ca)
+	}
+
 	if !secure && !isLoopbackAddr(addr) && env("KRAKEN_ALLOW_INSECURE_GRPC", "") != "1" {
 		return fmt.Errorf("agent: refusing to serve plaintext gRPC on non-loopback address %q — "+
 			"enroll with the Panel (set KRAKEN_PANEL_URL for auto-enroll, or run `krakenctl enroll` to populate KRAKEN_TLS_CERT/KEY/CA), "+
@@ -108,6 +113,19 @@ func run(logger *slog.Logger) error {
 		tlsCfg, terr := mtls.ServerTLS(cert, key, ca)
 		if terr != nil {
 			return fmt.Errorf("load server TLS: %w", terr)
+		}
+		// Debug visibility into handshakes: an "attempt" line with no matching
+		// "client authenticated" line means client-cert verification failed
+		// (the client side logs the specific x509 reason).
+		tlsCfg.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+			logger.Info("mTLS: handshake attempt", "remote", hi.Conn.RemoteAddr().String(), "sni", hi.ServerName)
+			return nil, nil
+		}
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) > 0 {
+				logger.Info("mTLS: client authenticated", "peer", mtls.SummarizeCert(cs.PeerCertificates[0]))
+			}
+			return nil
 		}
 		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 	} else {
@@ -149,6 +167,29 @@ func run(logger *slog.Logger) error {
 		grpcServer.GracefulStop()
 	}
 	return nil
+}
+
+// logTLSBundle logs the identity of the mTLS material the Agent is about to
+// serve with, and cross-checks the cert against the CA it will trust for
+// client auth. A stale bundle — enrolled under a CA the Panel no longer uses,
+// or expired — shows up here as an explicit warning instead of a stream of
+// opaque handshake failures later.
+func logTLSBundle(logger *slog.Logger, certFile, caFile string) {
+	certPEM, cerr := os.ReadFile(certFile)
+	caPEM, kerr := os.ReadFile(caFile)
+	if cerr != nil || kerr != nil {
+		logger.Warn("mTLS: could not read bundle for inspection", "cert_err", cerr, "ca_err", kerr)
+		return
+	}
+	logger.Info("mTLS: agent certificate", "file", certFile, "cert", mtls.SummarizePEM(certPEM))
+	logger.Info("mTLS: trusted CA (client certs must chain to this)", "file", caFile, "ca", mtls.SummarizePEM(caPEM))
+	if err := mtls.VerifyPEM(certPEM, caPEM); err != nil {
+		logger.Warn("mTLS: agent cert does NOT verify against the bundled CA — "+
+			"Panel connections will fail the handshake; delete the bundle and re-enroll this agent",
+			"err", err)
+	} else {
+		logger.Info("mTLS: agent cert verifies against bundled CA")
+	}
 }
 
 // isLoopbackAddr reports whether the host part of a listen address binds to

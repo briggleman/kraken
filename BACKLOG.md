@@ -31,6 +31,31 @@ Deferred features and enhancements, roughly in priority order.
   vs external. This is what the [[SPECS.md]] convention is for — spec authors
   contribute to that repo instead of the main Kraken repo. Highest-volume
   contribution surface in the project once opened up.
+- **winget package for kraken-agent + krakenctl.** Goal: `winget install kraken`
+  puts both commands on PATH; `winget upgrade kraken` tracks releases. Plan
+  (drafted 2026-07-09):
+  1. *Release prep:* `release-binaries.yml` additionally zips the two Windows
+     exes — renamed to stable `kraken-agent.exe` / `krakenctl.exe` — into
+     `kraken-cli-windows-amd64.zip` (+ SHA256SUMS entry). Existing raw-exe
+     assets stay (the setup wizard's instructions download them directly).
+  2. *First submission:* one package `BenRiggleman.Kraken` in
+     microsoft/winget-pkgs — `InstallerType: zip`, `NestedInstallerType:
+     portable`, two `NestedInstallerFiles` with `PortableCommandAlias`
+     `kraken-agent`/`krakenctl`; GPL-3.0; validate with `winget validate` +
+     SandboxTest.ps1. One package (not two) so agent+ctl can't version-skew.
+     New-package PRs are human-moderated (days–weeks).
+  3. *Automation:* on `release: published`, winget-releaser action (or
+     `wingetcreate update --submit`) opens the version PR automatically; needs
+     a `public_repo` PAT secret + a fork of winget-pkgs.
+  4. *Follow-up:* native `kraken-agent service install|uninstall` subcommands
+     (`golang.org/x/sys/windows/svc`) so the winget flow replaces nssm
+     entirely: install → enroll → service install; upgrades via
+     `winget upgrade` + service restart. Agents already report their version
+     in NodeInfo → future "agent update available" indicator in the panel.
+  Notes: portable installs don't register services (hence step 4); binaries
+  are unsigned (fine for winget's hash pinning; SmartScreen may prompt —
+  optional Azure Trusted Signing later); panel deliberately excluded (ships
+  as a container); Windows arm64 only if that build target ever exists.
 - **`steam-win` — swap the VC++ redist installer for a direct DLL side-load.**
   The runtime stage still invokes `vc_redist.x64.exe /quiet /norestart` to install
   `vcruntime140.dll` / `vcruntime140_1.dll` / `msvcp140.dll` / `concrt140.dll`

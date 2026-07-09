@@ -138,21 +138,6 @@ services:
       retries: 10
 
   # ---------------------------------------------------------------------------
-  # One-shot: chown the panel-state named volume to the nonroot uid (65532)
-  # that the Panel image runs as. Docker creates named volumes root-owned
-  # by default; without this, the Panel's cert auto-issue at startup hits
-  # "permission denied" on /var/lib/kraken. Runs once per `up`, then exits.
-  # Idempotent — re-running against an already-correct volume is a no-op.
-  # ---------------------------------------------------------------------------
-  panel-init:
-    image: alpine:3
-    container_name: kraken-panel-init
-    command: ["chown", "-R", "65532:65532", "/var/lib/kraken"]
-    volumes:
-      - panel-state:/var/lib/kraken
-    restart: "no"
-
-  # ---------------------------------------------------------------------------
   # Panel — HTTP API + embedded web UI on :8080
   # ---------------------------------------------------------------------------
   panel:
@@ -162,8 +147,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      panel-init:
-        condition: service_completed_successfully
     # Host networking so :8080 binds directly on the host and so the
     # Panel can dial the Agent at 127.0.0.1:9090 with no NAT hop.
     network_mode: host

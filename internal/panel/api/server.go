@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,6 +42,10 @@ type Server struct {
 	clientTLSCert []byte
 	clientTLSKey  []byte
 	clientTLSCA   []byte
+
+	// Per-node throttle for agent cert rotation attempts (see rotate.go).
+	rotateMu   sync.Mutex
+	lastRotate map[string]time.Time
 
 	// onRestart, when set, asks the host process to exit cleanly so a supervisor
 	// restarts it (used after a UI-driven datastore change). Nil = no-op.
@@ -83,7 +88,7 @@ func WithClientTLSBytes(cert, key, ca []byte) Option {
 // TLS; only an explicitly cert-less (dev) config falls back to insecure,
 // with a warning.
 func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option) *Server {
-	s := &Server{cfg: cfg, store: st, logger: logger, bootstrap: newBootstrapRegistry()}
+	s := &Server{cfg: cfg, store: st, logger: logger, bootstrap: newBootstrapRegistry(), lastRotate: map[string]time.Time{}}
 	for _, o := range opts {
 		o(s)
 	}

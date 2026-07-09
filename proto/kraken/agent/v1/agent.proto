@@ -114,6 +114,29 @@ service NodeService {
   // target to the configured SFTP remote. Drives the scheduled "replicate"
   // cron action.
   rpc ReplicateBackups(ReplicateBackupsRequest) returns (ReplicateBackupsResponse);
+
+  // BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
+  // serving cert. The new key is held in memory (single pending slot, short
+  // TTL) until CompleteCertRotation delivers the signed certificate. The Panel
+  // drives this over the existing mutually-authenticated channel when the
+  // agent's cert nears expiry, so rotation needs no operator or token.
+  rpc BeginCertRotation(BeginCertRotationRequest) returns (BeginCertRotationResponse);
+
+  // CompleteCertRotation delivers the CA-signed certificate for the pending
+  // key. The Agent verifies it (matches the pending key, chains to its trusted
+  // CA), persists the new bundle, and hot-swaps the serving cert in place.
+  rpc CompleteCertRotation(CompleteCertRotationRequest) returns (CompleteCertRotationResponse);
+}
+
+message BeginCertRotationRequest {}
+message BeginCertRotationResponse {
+  string csr = 1; // PEM-encoded certificate signing request
+}
+message CompleteCertRotationRequest {
+  string certificate = 1; // PEM-encoded signed Agent certificate
+}
+message CompleteCertRotationResponse {
+  int64 not_after_unix = 1; // expiry of the newly installed certificate
 }
 
 message GetNodeInfoRequest {}
@@ -338,6 +361,7 @@ message NodeInfo {
   string host = 7;             // primary (non-loopback) IPv4 of the agent host (LAN)
   string external_ip = 8;      // detected outward-facing/WAN IP (egress echo), if any
   int32 sftp_port = 9;         // port the Agent's SFTP server listens on (0 → SFTP disabled)
+  int64 cert_not_after_unix = 10; // mTLS serving cert expiry (unix seconds; 0 → no TLS)
 }
 
 message InstallServerRequest {

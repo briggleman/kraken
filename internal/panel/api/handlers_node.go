@@ -210,6 +210,8 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	if _, _, perr := s.pushNodeConfig(ctx, n); perr != nil {
 		s.logger.Warn("could not push node config", "node", n.ID, "err", perr)
 	}
+	// Rotate the agent's mTLS cert when it nears expiry (best-effort, throttled).
+	s.maybeRotateAgentCert(ctx, n, client, info)
 	return info, nil
 }
 

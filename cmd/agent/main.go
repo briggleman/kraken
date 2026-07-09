@@ -107,13 +107,23 @@ func run(logger *slog.Logger) error {
 		defer func() { _ = closer.Close() }()
 	}
 
-	// Build the gRPC server per the resolution above.
+	// Build the gRPC server per the resolution above. Under TLS the serving
+	// cert is owned by a CertManager so the Panel-driven rotation RPCs can
+	// hot-swap it without a restart.
 	var grpcServer *grpc.Server
+	var svcOpts []agent.ServiceOption
 	if secure {
 		tlsCfg, terr := mtls.ServerTLS(cert, key, ca)
 		if terr != nil {
 			return fmt.Errorf("load server TLS: %w", terr)
 		}
+		cm, cerr := agent.NewCertManager(cert, key, ca, logger)
+		if cerr != nil {
+			return fmt.Errorf("init cert manager: %w", cerr)
+		}
+		tlsCfg.Certificates = nil
+		tlsCfg.GetCertificate = cm.GetCertificate
+		svcOpts = append(svcOpts, agent.WithCertManager(cm))
 		// Debug visibility into handshakes: an "attempt" line with no matching
 		// "client authenticated" line means client-cert verification failed
 		// (the client side logs the specific x509 reason).
@@ -131,7 +141,7 @@ func run(logger *slog.Logger) error {
 	} else {
 		grpcServer = grpc.NewServer()
 	}
-	agentpb.RegisterNodeServiceServer(grpcServer, agent.NewService(rt))
+	agentpb.RegisterNodeServiceServer(grpcServer, agent.NewService(rt, svcOpts...))
 
 	// SFTP server for power-user file access — a separate SSH listener that
 	// chroots each per-server login to that server's data dir. No-op on the

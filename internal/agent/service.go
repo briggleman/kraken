@@ -15,14 +15,65 @@ import (
 // the runtime's emit-callback form.
 type Service struct {
 	agentpb.UnimplementedNodeServiceServer
-	rt Runtime
+	rt    Runtime
+	certs *CertManager // nil when the agent serves without TLS
+}
+
+// ServiceOption customizes a Service at construction time.
+type ServiceOption func(*Service)
+
+// WithCertManager wires the mTLS cert manager so the service can report cert
+// expiry in NodeInfo and serve the Panel-driven rotation RPCs.
+func WithCertManager(cm *CertManager) ServiceOption {
+	return func(s *Service) { s.certs = cm }
 }
 
 // NewService wraps a Runtime as a gRPC NodeService implementation.
-func NewService(rt Runtime) *Service { return &Service{rt: rt} }
+func NewService(rt Runtime, opts ...ServiceOption) *Service {
+	s := &Service{rt: rt}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
 
 func (s *Service) GetNodeInfo(ctx context.Context, _ *agentpb.GetNodeInfoRequest) (*agentpb.NodeInfo, error) {
-	return s.rt.NodeInfo(ctx)
+	info, err := s.rt.NodeInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.certs != nil {
+		info.CertNotAfterUnix = s.certs.NotAfter().Unix()
+	}
+	return info, nil
+}
+
+// BeginCertRotation mints a fresh key + CSR for the serving cert (Panel-driven
+// rotation, step 1). FailedPrecondition when the agent isn't serving TLS.
+func (s *Service) BeginCertRotation(_ context.Context, _ *agentpb.BeginCertRotationRequest) (*agentpb.BeginCertRotationResponse, error) {
+	if s.certs == nil {
+		return nil, status.Error(codes.FailedPrecondition, "agent is not serving TLS")
+	}
+	csr, err := s.certs.BeginRotation()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &agentpb.BeginCertRotationResponse{Csr: string(csr)}, nil
+}
+
+// CompleteCertRotation verifies + installs the signed cert (step 2).
+func (s *Service) CompleteCertRotation(_ context.Context, req *agentpb.CompleteCertRotationRequest) (*agentpb.CompleteCertRotationResponse, error) {
+	if s.certs == nil {
+		return nil, status.Error(codes.FailedPrecondition, "agent is not serving TLS")
+	}
+	if req.Certificate == "" {
+		return nil, status.Error(codes.InvalidArgument, "certificate is required")
+	}
+	notAfter, err := s.certs.CompleteRotation([]byte(req.Certificate))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return &agentpb.CompleteCertRotationResponse{NotAfterUnix: notAfter.Unix()}, nil
 }
 
 func (s *Service) CreateServer(ctx context.Context, req *agentpb.CreateServerRequest) (*agentpb.CreateServerResponse, error) {

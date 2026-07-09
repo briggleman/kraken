@@ -31,22 +31,6 @@ Deferred features and enhancements, roughly in priority order.
   vs external. This is what the [[SPECS.md]] convention is for — spec authors
   contribute to that repo instead of the main Kraken repo. Highest-volume
   contribution surface in the project once opened up.
-- **Power actions must gate on install state.** `POST /servers/{id}/power` with
-  `action=start` currently accepts a server whose install phase failed and never
-  reached `installed`. The Agent happily creates a runtime container that runs
-  the startup command against an empty `/data` (or `C:\data`), which then exits
-  1 with e.g. `'C:\data\VRisingServer.exe' is not recognized as an internal or
-  external command`, and the crash watchdog burns through its retry budget on a
-  server that never had files. Fix: `handlers_server.go` power handler should
-  reject `start`/`restart` when `server.State` is `install_failed` (or anything
-  other than a post-install state) with a 409 + hint to redeploy or re-run
-  provisioning. Repro seen 2026-07-07: image pull denied against GHCR at
-  provision time → server left in `crashed` state → a later start attempt in
-  the UI booted the empty container → 3 watchdog crashes → misleading "exe not
-  found" error trail. Consider also: a `POST /servers/{id}/reinstall` endpoint
-  so an install-failed server can be recovered without deleting + re-creating
-  (the current recovery loses the allocated port + server ID). Small enough to
-  bundle: both changes live in `handlers_server.go`.
 - **`steam-win` — swap the VC++ redist installer for a direct DLL side-load.**
   The runtime stage still invokes `vc_redist.x64.exe /quiet /norestart` to install
   `vcruntime140.dll` / `vcruntime140_1.dll` / `msvcp140.dll` / `concrt140.dll`
@@ -58,24 +42,32 @@ Deferred features and enhancements, roughly in priority order.
   can ship. Approach: `vc_redist.x64.exe /extract:C:\vc` → `expand` the emitted
   CABs → copy the four DLLs → skip the MSI install. Track boot success + no
   `0xC0000135` under both process and Hyper-V isolation.
-- **Wine runtime for Windows-only games on Linux nodes.** Deferred to a future
-  release. `LinuxWine` is a valid `PlatformKind` in the schema but no
-  `images/steam-wine` exists, so today Linux operators need a Windows node for
-  V Rising / Enshrouded / Windrose / Abiotic Factor / etc. Full scope:
-  (1) Build `images/steam-wine` — Debian + i386 + a pinned Wine version + xvfb
-  for headless + wine-prefix pre-init + SteamCMD invoked with
-  `+@sSteamCmdForcePlatformType windows`. (2) Decide how the schema handles
-  per-platform startup — the current single `startup.command` can't be both
-  `C:\data\X.exe` and `xvfb-run wine C:/data/X.exe`. Options: bake a
-  detect-and-rewrite wrapper into the image, add a `startup.command_wine` /
-  per-OS map to the schema, or ship sibling specs (e.g. `windrose-wine`).
-  (3) Per-game validation is required — Wine viability varies wildly:
-  Abiotic Factor (community-confirmed OK), Enshrouded (no confirmed reports,
-  UE5 shader-compile risk), V Rising (IL2CPP + BepInEx-under-Wine is
-  historically flaky), Windrose (UE5 + P2P NAT-punch, unknown). Add
-  `linux-wine` to each Windows-only spec only after it live-boots on the
-  wine image.
+- **Wine: validate the remaining Windows-only games per-spec.** The
+  `steam-wine` image + per-platform spec overrides shipped 2026-07-09
+  (Abiotic Factor live-validated — joinable session under Wine 10). Each
+  remaining Windows-only spec gets `linux-wine` only after it live-boots:
+  Enshrouded (no confirmed reports, UE5 shader-compile risk), V Rising
+  (IL2CPP + BepInEx-under-Wine historically flaky), Windrose (UE5 + P2P
+  NAT-punch, unknown). Per game: add the platform entry with
+  `install_script`/`startup_command` overrides (copy the abiotic-factor
+  pattern: Linux SteamCMD + `+@sSteamCmdForcePlatformType windows`,
+  launch via `wine-headless`), deploy, verify ready + a real client join.
 
+
+### Done (2026-07-09)
+- ~~**Wine runtime (`images/steam-wine`) for Windows-only games on Linux nodes.**~~ Shipped.
+  Debian + pinned WineHQ 10.0 + primed SteamCMD + pre-initialized win64 prefix, built by
+  `steam-images.yml`. Schema: per-platform `install_script`/`startup_command` overrides on
+  `Platform` (BepInEx loader > platform override > spec-level). The image bakes in
+  `wine-headless` (starts Xvfb itself and execs `wine64` — replaces `xvfb-run`, whose
+  SIGUSR1 readiness handshake deadlocks as container PID 1). Abiotic Factor is the first
+  validated `linux-wine` spec: live boot on Linux Docker reached a joinable session
+  (`Session creation completed`). _Gotchas: WineHQ's 32-bit `wine` launcher can't
+  bootstrap a win64 prefix (use `wine64`); non-POSIX stop signals are now ignored on
+  Linux agents._
+- ~~**Power actions must gate on install state.**~~ Already shipped (predates this pass):
+  provisioning failures land in `install_failed` (`StateInstallFailed`), the power handler
+  rejects start/restart for it, and reinstall recovery exists in `handlers_server.go`.
 
 ### Done (2026-07-01)
 - ~~**SFTP server (power-user file access).**~~ Shipped. The Agent runs an SSH/SFTP

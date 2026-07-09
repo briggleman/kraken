@@ -154,8 +154,9 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 
 	// When BepInEx is enabled, run the vanilla install first, then append the
 	// spec's BepInEx install (download + unpack the loader into the data dir). The
-	// separator is OS-aware: cmd chains with " & ", POSIX shells with a newline.
-	installScript := sp.Install.Script
+	// separator is OS-aware: cmd chains with " & ", POSIX shells (incl. the wine
+	// image, which is a Linux container) with a newline.
+	installScript := sp.InstallScriptFor(server.Kind)
 	if server.BepInEx && sp.Install.BepInExScript != "" {
 		sep := "\n"
 		if server.Kind == spec.WindowsNative {
@@ -528,9 +529,11 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 		})
 	}
 
-	// A BepInEx server launches through the loader command (./run_bepinex.sh …)
-	// so plugins load; fall back to the vanilla command when not modded or unset.
-	startupCmd := sp.Startup.Command
+	// Startup command precedence: BepInEx loader (when the server is modded and
+	// the spec provides one) > per-platform override > spec-level command.
+	// Note BepInEx-under-wine is unvalidated; modded deploys are expected on
+	// native platforms.
+	startupCmd := sp.StartupCommandFor(server.Kind)
 	if server.BepInEx && sp.Startup.BepInExCommand != "" {
 		startupCmd = sp.Startup.BepInExCommand
 	}

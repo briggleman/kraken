@@ -81,3 +81,36 @@ func TestImageFor(t *testing.T) {
 		t.Fatal("ImageFor(WindowsNative) should not be found")
 	}
 }
+
+func TestPerPlatformOverrides(t *testing.T) {
+	s := validSpec()
+	s.Platforms = append(s.Platforms, Platform{
+		Kind:           LinuxWine,
+		Image:          "registry/kraken/steam-wine:latest",
+		InstallScript:  "steamcmd +@sSteamCmdForcePlatformType windows +app_update {{APP_ID}} +quit",
+		StartupCommand: "wine-headless /data/Server.exe -port {{PORT_GAME}}",
+	})
+
+	// The overriding platform gets its own commands …
+	if got := s.InstallScriptFor(LinuxWine); got != s.Platforms[1].InstallScript {
+		t.Fatalf("InstallScriptFor(LinuxWine) = %q; want the override", got)
+	}
+	if got := s.StartupCommandFor(LinuxWine); got != s.Platforms[1].StartupCommand {
+		t.Fatalf("StartupCommandFor(LinuxWine) = %q; want the override", got)
+	}
+	// … while platforms without overrides fall back to the spec-level commands.
+	if got := s.InstallScriptFor(LinuxNative); got != s.Install.Script {
+		t.Fatalf("InstallScriptFor(LinuxNative) = %q; want spec-level script", got)
+	}
+	if got := s.StartupCommandFor(LinuxNative); got != s.Startup.Command {
+		t.Fatalf("StartupCommandFor(LinuxNative) = %q; want spec-level command", got)
+	}
+	// An unknown kind also falls back rather than failing.
+	if got := s.StartupCommandFor(WindowsNative); got != s.Startup.Command {
+		t.Fatalf("StartupCommandFor(WindowsNative) = %q; want spec-level command", got)
+	}
+	// Overrides must not break validation.
+	if err := s.Validate(); err != nil {
+		t.Fatalf("Validate with overrides: %v", err)
+	}
+}

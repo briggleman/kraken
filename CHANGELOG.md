@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/briggleman/kraken/compare/v0.5.1...v0.6.0) (2026-07-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **setup:** the gRPC package renamed cthulhu.agent.v1 → kraken.agent.v1, changing every Panel↔Agent RPC path. Upgrade the Panel and all Agents together; mixed versions fail with 'unknown method'. Certificates and persisted data are unaffected.
+
+### Features
+
+* **setup:** remote-node onboarding overhaul + mTLS debug logging ([2951867](https://github.com/briggleman/kraken/commit/295186751d058d6a9afc43d96f6304726921b4f1))
+
 ## [0.5.1](https://github.com/briggleman/kraken/compare/v0.5.0...v0.5.1) (2026-07-09)
 
 

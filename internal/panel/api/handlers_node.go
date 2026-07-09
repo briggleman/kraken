@@ -37,8 +37,8 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Identity comes from the agent itself when omitted: dial it and adopt its
-	// self-reported node id / OS / Wine capability. Keeps registration to a
-	// single field (address) and makes the agent's KRAKEN_NODE_ID authoritative.
+	// self-reported node id / OS. Keeps registration to a single field
+	// (address) and makes the agent's KRAKEN_NODE_ID authoritative.
 	if req.Name == "" || req.OS == "" {
 		client, err := s.nodes.Client(req.Address)
 		if err != nil {
@@ -60,7 +60,6 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.OS == "" {
 			req.OS = info.Os
-			req.WineEnabled = info.WineEnabled
 		}
 	}
 	os := cluster.NodeOS(req.OS)
@@ -68,6 +67,9 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "os must be 'linux' or 'windows'")
 		return
 	}
+	// Wine is a property of the game image (the wine runtime ships in the
+	// container), not the host — every Linux node can run linux-wine specs.
+	req.WineEnabled = os == cluster.OSLinux
 	if req.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required (agent did not report one)")
 		return
@@ -165,6 +167,12 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	// The Agent is authoritative about its own OS; correct a stale/guessed value.
 	if os := cluster.NodeOS(info.Os); (os == cluster.OSLinux || os == cluster.OSWindows) && os != n.OS {
 		n.OS = os
+		changed = true
+	}
+	// Wine capability is derived, not configured: the wine runtime ships in the
+	// game image, so every Linux node supports linux-wine (and no Windows node does).
+	if wine := n.OS == cluster.OSLinux; n.WineEnabled != wine {
+		n.WineEnabled = wine
 		changed = true
 	}
 	// Backfill capacity the operator didn't supply (e.g. the quickstart local node).

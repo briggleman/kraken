@@ -347,7 +347,6 @@ export function Setup() {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [pinging, setPinging] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
 
   // Remote-node enrollment panel state. The wizard walks token → enroll →
@@ -494,13 +493,8 @@ export function Setup() {
 
   const pingAll = async () => {
     if (nodes.length === 0) return;
-    setPinging(true);
-    try {
-      await Promise.allSettled(nodes.filter((n) => n.status !== "online").map((n) => api.nodeInfo(n.id)));
-      await refresh();
-    } finally {
-      setPinging(false);
-    }
+    await Promise.allSettled(nodes.filter((n) => n.status !== "online").map((n) => api.nodeInfo(n.id)));
+    await refresh();
   };
 
   const generateRemoteToken = async () => {
@@ -791,11 +785,30 @@ export function Setup() {
               ))
             )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 6, marginBottom: 18 }}>
-              <Button size="sm" variant="secondary" icon="refresh" onClick={() => void pingAll()} disabled={pinging || nodes.length === 0}>
-                {pinging ? "Checking…" : "Check node status"}
-              </Button>
-            </div>
+            <EnrollConsole lines={consoleLines} />
+            {enroll?.status === "expired" && (
+              <div style={{ marginBottom: 14 }}>
+                <Button variant="secondary" icon="refresh" onClick={() => void generateRemoteToken()}>
+                  Generate a new token
+                </Button>
+              </div>
+            )}
+            {enroll?.status === "redeemed" && !(registeredNode && registeredNode.status === "online") && !registeredNodeId && (
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <Input
+                    label="AGENT ADDRESS"
+                    value={regAddress}
+                    onChange={(e) => setRegAddress(e.target.value)}
+                    placeholder="host:9090"
+                    mono
+                  />
+                </div>
+                <Button variant="primary" icon="check" disabled={registering || !regAddress.trim()} onClick={() => void registerRemote()}>
+                  {registering ? "Registering…" : "Register node"}
+                </Button>
+              </div>
+            )}
 
             <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 16 }}>
               {!remoteOpen ? (
@@ -835,28 +848,6 @@ export function Setup() {
                         <CopyButton text={remoteToken} />
                       </div>
                       <AgentInstallInstructions panelOrigin={panelOrigin} token={remoteToken} />
-                      <EnrollConsole lines={consoleLines} />
-                      {enroll?.status === "expired" && (
-                        <Button variant="secondary" icon="refresh" onClick={() => void generateRemoteToken()}>
-                          Generate a new token
-                        </Button>
-                      )}
-                      {enroll?.status === "redeemed" && !(registeredNode && registeredNode.status === "online") && !registeredNodeId && (
-                        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 4 }}>
-                          <div style={{ flex: 1 }}>
-                            <Input
-                              label="AGENT ADDRESS"
-                              value={regAddress}
-                              onChange={(e) => setRegAddress(e.target.value)}
-                              placeholder="host:9090"
-                              mono
-                            />
-                          </div>
-                          <Button variant="primary" icon="check" disabled={registering || !regAddress.trim()} onClick={() => void registerRemote()}>
-                            {registering ? "Registering…" : "Register node"}
-                          </Button>
-                        </div>
-                      )}
                     </>
                   )}
                 </div>

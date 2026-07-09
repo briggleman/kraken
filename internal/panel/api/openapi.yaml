@@ -979,8 +979,8 @@ components:
       required: [address]
       properties:
         name: { type: string, description: blank = adopt the agent's self-reported node id (KRAKEN_NODE_ID) }
-        os: { type: string, enum: [linux, windows], description: blank = adopt the agent's self-reported OS + Wine capability }
-        wine_enabled: { type: boolean }
+        os: { type: string, enum: [linux, windows], description: blank = adopt the agent's self-reported OS }
+        wine_enabled: { type: boolean, description: ignored — derived from os (Wine ships in the game image, so every Linux node supports linux-wine) }
         address: { type: string, description: "Agent gRPC host:port" }
         public_host: { type: string }
         total_memory_mb: { type: integer }

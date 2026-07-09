@@ -79,7 +79,6 @@ export function Nodes() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text-primary)" }}>{n.name}</span>
                       <Badge tone={n.os.toLowerCase() === "windows" ? "neutral" : "accent"}>{n.os.toUpperCase()}</Badge>
-                      {n.wine_enabled && <Badge tone="coral">WINE</Badge>}
                     </div>
                     <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>{n.address}</div>
                   </div>
@@ -187,36 +186,27 @@ const selectStyle: React.CSSProperties = {
   outline: "none",
 };
 
-// Platform is the single knob for a node's OS + Wine capability. Splitting
-// it into an OS dropdown + a separate Wine checkbox left "Windows + Wine
-// enabled" reachable in the UI even though it's a no-op (Wine is a POSIX
-// runtime), so we collapse the two into one enumerated field.
-type NodePlatform = "linux" | "linux-wine" | "windows";
+// Platform is just the node's OS. Wine capability is derived server-side:
+// the wine runtime ships in the game image, so every Linux node can run
+// linux-wine specs (and no Windows node can) — nothing to configure here.
+type NodePlatform = "linux" | "windows";
 const PLATFORM_OPTIONS: SelectOption[] = [
   { value: "linux", label: "Linux", icon: "linux" },
-  { value: "linux-wine", label: "Linux + Wine", icon: "wine" },
   { value: "windows", label: "Windows", icon: "windows" },
 ];
-function platformToApi(p: NodePlatform): { os: string; wine_enabled: boolean } {
-  switch (p) {
-    case "linux-wine":
-      return { os: "linux", wine_enabled: true };
-    case "windows":
-      return { os: "windows", wine_enabled: false };
-    default:
-      return { os: "linux", wine_enabled: false };
-  }
+function platformToApi(p: NodePlatform): { os: string } {
+  return { os: p === "windows" ? "windows" : "linux" };
 }
 
 function AddNodeModal(props: {
   onClose: () => void;
   onSubmit: (input: {
-    name: string; os: string; wine_enabled: boolean; address: string; public_host: string;
+    name: string; os: string; address: string; public_host: string;
     total_memory_mb: number; port_start: number; port_end: number;
   }) => void;
 }) {
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<NodePlatform>("linux-wine");
+  const [platform, setPlatform] = useState<NodePlatform>("linux");
   const [address, setAddress] = useState("127.0.0.1:9090");
   const [publicHost, setPublicHost] = useState("");
   const [mem, setMem] = useState(16384);
@@ -265,8 +255,8 @@ function AddNodeModal(props: {
               icon="check"
               disabled={!address}
               onClick={() => {
-                const { os, wine_enabled } = platformToApi(platform);
-                props.onSubmit({ name, os, wine_enabled, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd });
+                const { os } = platformToApi(platform);
+                props.onSubmit({ name, os, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd });
               }}
             >
               Register

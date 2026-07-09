@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Page } from "@/components/Shell";
 import { useDialog } from "@/components/Dialog";
+import { ConnectNode } from "@/components/ConnectNode";
 import { Toaster } from "@ds/components/core/Toast";
 import { api } from "@/api/client";
 import type { Node, NodeConfig, NodeConfigUpdate } from "@/api/types";
@@ -13,7 +14,6 @@ import { StatusPill } from "@ds/components/core/StatusPill";
 import { IconButton } from "@ds/components/core/IconButton";
 import { Toggle } from "@ds/components/core/Toggle";
 import { Select } from "@ds/components/core/Select";
-import type { SelectOption } from "@ds/components/core/Select";
 import { MetricBar } from "@ds/components/core/MetricCard";
 import type { ServerStatus } from "@ds/components/core/StatusPill";
 
@@ -110,28 +110,24 @@ export function Nodes() {
       )}
 
       {adding && (
-        <AddNodeModal
-          onClose={() => setAdding(false)}
-          onSubmit={async (input) => {
-            try {
-              const n = await api.registerNode(input);
-              setAdding(false);
-              // Auto-ping so the node comes online immediately (no manual ping).
-              // A failure here is the operator's first signal that the agent is
-              // unreachable (firewall / wrong address) — surface it, don't bury it.
-              try {
-                await api.nodeInfo(n.id);
-                Toaster.success(`Node "${n.name}" registered and online`);
-              } catch (e) {
-                Toaster.error(`Node "${n.name}" registered, but the agent is unreachable: ${msg(e)}`);
-              }
-              refresh();
-            } catch (e) {
-              Toaster.error(msg(e));
-              setAdding(false);
-            }
-          }}
-        />
+        <div onClick={() => { setAdding(false); refresh(); }} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(1,9,14,.78)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "48px 20px", overflowY: "auto" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 640 }}>
+            <Card glow padding={24}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 8 }}>// CONNECT</div>
+                  <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 14px", color: "var(--text-primary)" }}>Add a node</h2>
+                </div>
+                <IconButton icon="x" variant="ghost" onClick={() => { setAdding(false); refresh(); }} title="Close" />
+              </div>
+              {/* Same flow as the setup wizard: token → install instructions →
+                  live status console → inline register. A remote agent needs an
+                  enrollment token before it can be registered, so the shortcut
+                  form this modal used to show skipped the step that matters. */}
+              <ConnectNode nodes={nodes} refresh={refresh} defaultOpen />
+            </Card>
+          </div>
+        </div>
       )}
     </Page>
   );
@@ -185,88 +181,6 @@ const selectStyle: React.CSSProperties = {
   fontFamily: "var(--font-sans)",
   outline: "none",
 };
-
-// Platform is just the node's OS. Wine capability is derived server-side:
-// the wine runtime ships in the game image, so every Linux node can run
-// linux-wine specs (and no Windows node can) — nothing to configure here.
-type NodePlatform = "linux" | "windows";
-const PLATFORM_OPTIONS: SelectOption[] = [
-  { value: "linux", label: "Linux", icon: "linux" },
-  { value: "windows", label: "Windows", icon: "windows" },
-];
-function platformToApi(p: NodePlatform): { os: string } {
-  return { os: p === "windows" ? "windows" : "linux" };
-}
-
-function AddNodeModal(props: {
-  onClose: () => void;
-  onSubmit: (input: {
-    name: string; os: string; address: string; public_host: string;
-    total_memory_mb: number; port_start: number; port_end: number;
-  }) => void;
-}) {
-  const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<NodePlatform>("linux");
-  const [address, setAddress] = useState("127.0.0.1:9090");
-  const [publicHost, setPublicHost] = useState("");
-  const [mem, setMem] = useState(16384);
-  const [portStart, setPortStart] = useState(28000);
-  const [portEnd, setPortEnd] = useState(28100);
-
-  return (
-    <div onClick={props.onClose} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(1,9,14,.78)", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 20px", overflowY: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 460 }}>
-        <Card glow padding={24}>
-          <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 8 }}>// REGISTER</div>
-          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 18px", color: "var(--text-primary)" }}>Add a node</h2>
-
-          <Input
-            label="NAME (OPTIONAL)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="blank = the agent's KRAKEN_NODE_ID"
-            helper="Leave blank to adopt the agent's self-reported name."
-            mono
-            style={{ marginBottom: 14 }}
-          />
-
-          <Select
-            label="PLATFORM"
-            mono
-            value={platform}
-            options={PLATFORM_OPTIONS}
-            onChange={(v) => setPlatform(v as NodePlatform)}
-          />
-          <div style={{ height: 14 }} />
-
-          <Input label="AGENT ADDRESS" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="host:port (gRPC control)" mono style={{ marginBottom: 14 }} />
-          <Input label="PUBLIC HOST (OPTIONAL)" value={publicHost} onChange={(e) => setPublicHost(e.target.value)} placeholder="players' connect IP / DNS — auto-detected if blank" mono helper="auto-detected if blank" style={{ marginBottom: 14 }} />
-
-          <div style={{ display: "flex", gap: 12 }}>
-            <Input label="MEMORY (MB)" type="number" value={mem} onChange={(e) => setMem(+e.target.value)} mono style={{ flex: 1 }} />
-            <Input label="PORT START" type="number" value={portStart} onChange={(e) => setPortStart(+e.target.value)} mono style={{ flex: 1 }} />
-            <Input label="PORT END" type="number" value={portEnd} onChange={(e) => setPortEnd(+e.target.value)} mono style={{ flex: 1 }} />
-          </div>
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
-            <Button variant="ghost" onClick={props.onClose}>Cancel</Button>
-            <Button
-              variant="primary"
-              icon="check"
-              disabled={!address}
-              onClick={() => {
-                const { os } = platformToApi(platform);
-                props.onSubmit({ name, os, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd });
-              }}
-            >
-              Register
-            </Button>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
 
 // NodeConfigModal edits a node's System settings: where backups are stored
 // (local disk or SFTP remote) and whether they're mirrored to an SFTP remote.

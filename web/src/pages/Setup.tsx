@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, clearToken } from "@/api/client";
+import { api, ApiError, clearToken } from "@/api/client";
 import type { CatalogItem, DatabaseConfig, EnrollStatus, Node, SetupStatus, Spec } from "@/api/types";
 import { Button } from "@ds/components/core/Button";
 import { Card } from "@ds/components/core/Card";
@@ -342,6 +342,7 @@ function EnrollConsole({ lines }: { lines: ConsoleLine[] }) {
 export function Setup() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [restricted, setRestricted] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [specs, setSpecs] = useState<Spec[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -390,9 +391,23 @@ export function Setup() {
         setDb((d) => ({ ...d, host: dbc.host ?? d.host, port: dbc.port ?? d.port, user: dbc.user ?? d.user, dbname: dbc.dbname ?? d.dbname, sslmode: dbc.sslmode ?? d.sslmode }));
       }
     } catch (e) {
+      // The /setup API is gated to the internal network — a 403 here means the
+      // operator is browsing from outside it; show the restricted card instead
+      // of a broken wizard.
+      if (e instanceof ApiError && e.status === 403) {
+        setRestricted(true);
+        return;
+      }
       setError(e instanceof Error ? e.message : "failed to load setup state");
     }
   }, []);
+
+  // finishSetup records that onboarding is done (hides the Setup nav shortcut
+  // permanently), then leaves the wizard.
+  const finishSetup = (state?: { deploy: boolean }) => {
+    void api.dismissSetup().catch(() => {/* best-effort; status auto-latches later */});
+    navigate("/", state ? { state } : undefined);
+  };
 
   const testDb = async () => {
     setDbBusy("test");
@@ -634,6 +649,23 @@ export function Setup() {
   // The node + game steps gate Continue; Database/Secure/Deploy are skippable.
   const canNext = step === 2 ? hasOnlineNode : step === 3 ? specs.length > 0 : true;
   const panelOrigin = window.location.origin;
+
+  if (restricted) {
+    return (
+      <main style={{ maxWidth: 560, margin: "0 auto", padding: "80px 30px" }}>
+        <Card padding={28} style={{ textAlign: "center" }}>
+          <Icon name="lock" size={34} style={{ color: "var(--accent)", marginBottom: 12 }} />
+          <h2 style={{ fontWeight: 700, fontSize: 20, color: "var(--text-primary)", margin: "0 0 8px" }}>Setup is restricted to the internal network</h2>
+          <p style={{ fontSize: 13.5, color: "var(--text-secondary)", margin: "0 0 16px", lineHeight: 1.6 }}>
+            First-run setup can reconfigure the datastore and enroll agents, so it only answers requests
+            from private networks. Browse from the panel's LAN or VPN — or widen{" "}
+            <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>KRAKEN_SETUP_ALLOWED_CIDRS</span> deliberately.
+          </p>
+          <Button variant="secondary" onClick={() => navigate("/")}>Back to the fleet</Button>
+        </Card>
+      </main>
+    );
+  }
 
   if (restarting) {
     return (
@@ -981,7 +1013,7 @@ export function Setup() {
                 ? "Your first server is deployed. Head to the fleet to manage it."
                 : "A node is online and a game is imported — deploy your first server to finish."}
             </p>
-            <Button variant="primary" icon={status?.has_server ? "check" : "plus"} onClick={() => navigate("/", { state: { deploy: !status?.has_server } })}>
+            <Button variant="primary" icon={status?.has_server ? "check" : "plus"} onClick={() => finishSetup({ deploy: !status?.has_server })}>
               {status?.has_server ? "Go to fleet" : "Deploy your first server"}
             </Button>
           </div>
@@ -1007,7 +1039,7 @@ export function Setup() {
         ) : (
           // Final step: let the user finish without deploying (deploy is the
           // primary call-to-action inside the card above).
-          <Button variant="secondary" onClick={() => navigate("/")}>
+          <Button variant="secondary" onClick={() => finishSetup()}>
             {status?.has_server ? "Finish" : "Skip & finish"}
           </Button>
         )}

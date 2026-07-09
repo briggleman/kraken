@@ -25,6 +25,9 @@ func newSetupServer(t *testing.T) http.Handler {
 		SessionTTL:             time.Hour,
 		BootstrapAdminUser:     testAdmin,
 		BootstrapAdminPassword: testPass,
+		// httptest requests arrive from 192.0.2.1 (TEST-NET-1, public) — allow
+		// it so the /setup internal-network gate doesn't 403 the whole suite.
+		SetupAllowedCIDRs: []string{"192.0.2.0/24"},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	if err := panel.Seed(context.Background(), st, cfg, logger); err != nil {

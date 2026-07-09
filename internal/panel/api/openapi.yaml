@@ -95,6 +95,12 @@ paths:
     get:
       tags: [Setup]
       summary: First-run onboarding progress
+      description: >-
+        The whole /setup/* surface answers only requests whose source IP falls
+        inside KRAKEN_SETUP_ALLOWED_CIDRS (default: loopback + private ranges);
+        external sources receive 403 regardless of credentials.
+        setup_complete latches true permanently once onboarding finishes
+        (computed complete once, or explicitly dismissed).
       responses:
         '200':
           description: Setup status
@@ -109,6 +115,21 @@ paths:
                   has_spec: { type: boolean }
                   has_server: { type: boolean }
                   setup_complete: { type: boolean }
+        '403': { description: Source IP outside the setup allowlist }
+  /setup/dismiss:
+    post:
+      tags: [Setup]
+      summary: Mark first-run onboarding as finished (hides the Setup shortcut permanently)
+      responses:
+        '200':
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup_complete: { type: boolean }
+        '403': { description: Source IP outside the setup allowlist }
   /setup/database:
     get:
       tags: [Setup]

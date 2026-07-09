@@ -265,7 +265,7 @@ function SpecForm({ form, upd }: { form: any; upd: (mut: (d: any) => void) => vo
             {(p.kind === "linux-wine" || p.install_script || p.startup_command) && (
               <div style={{ display: "grid", gap: 10, margin: "8px 0 4px 12px" }}>
                 <Field grow><Area label="INSTALL SCRIPT OVERRIDE (OPTIONAL — replaces the spec install for this platform)" rows={2} value={p.install_script ?? ""} onChange={(v) => upd((d) => (d.platforms[i].install_script = v || undefined))} placeholder="steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit" /></Field>
-                <Field grow><Area label="STARTUP COMMAND OVERRIDE (OPTIONAL — replaces the spec startup for this platform)" rows={2} value={p.startup_command ?? ""} onChange={(v) => upd((d) => (d.platforms[i].startup_command = v || undefined))} placeholder="xvfb-run -a wine64 /data/<Game>/Binaries/Win64/<Server>-Win64-Shipping.exe -log -PORT={{PORT_GAME}}" /></Field>
+                <Field grow><Area label="STARTUP COMMAND OVERRIDE (OPTIONAL — replaces the spec startup for this platform)" rows={2} value={p.startup_command ?? ""} onChange={(v) => upd((d) => (d.platforms[i].startup_command = v || undefined))} placeholder="wine-headless /data/<Game>/Binaries/Win64/<Server>-Win64-Shipping.exe -log -PORT={{PORT_GAME}}" /></Field>
               </div>
             )}
           </div>

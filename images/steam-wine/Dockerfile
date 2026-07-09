@@ -9,8 +9,8 @@
 # from `kraken-steam-deps` so this build never downloads or self-updates Steam
 # tooling. Installs use the LINUX SteamCMD with `+@sSteamCmdForcePlatformType
 # windows` to pull the Windows depot; startup runs the .exe through Wine under
-# xvfb (headless X) — e.g.:
-#   xvfb-run -a wine64 /data/<Game>/Binaries/Win64/<Server>-Win64-Shipping.exe …
+# a headless X server via the baked-in wrapper — e.g.:
+#   wine-headless /data/<Game>/Binaries/Win64/<Server>-Win64-Shipping.exe …
 #
 # Wine comes from the WineHQ apt repo, version-pinned via WINE_BRANCH /
 # WINE_VERSION so a weekly CI rebuild can't silently jump a Wine major and
@@ -80,6 +80,24 @@ ENV LANG=C.UTF-8 \
 
 # Non-root: SteamCMD refuses root, game servers shouldn't have it either.
 RUN useradd -m -u 1000 steam
+
+# wine-headless — run a Windows binary under Wine with a headless X server.
+# This replaces xvfb-run, which waits for Xvfb's SIGUSR1 readiness signal:
+# when a spec's startup command execs xvfb-run as container PID 1, that signal
+# is ignored (PID 1 default-ignores signals without handlers) and xvfb-run
+# waits forever without ever launching the game. We start Xvfb ourselves and
+# poll for its socket instead. Specs use: wine-headless /data/<Server>.exe …
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'set -e' \
+      ': "${DISPLAY:=:99}"' \
+      'Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp >/dev/null 2>&1 &' \
+      'i=0' \
+      'while [ ! -S "/tmp/.X11-unix/X${DISPLAY#:}" ] && [ "$i" -lt 100 ]; do i=$((i+1)); sleep 0.1; done' \
+      'export DISPLAY' \
+      'exec wine64 "$@"' \
+      > /usr/local/bin/wine-headless \
+    && chmod 0755 /usr/local/bin/wine-headless
 
 # Primed SteamCMD from the deps image (no network fetch in this build).
 COPY --from=steamdeps --chown=steam:steam /home/steam/steamcmd /home/steam/steamcmd

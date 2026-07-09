@@ -22,7 +22,7 @@ platforms:
       steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
       steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
     startup_command: >-
-      xvfb-run -a wine64 /data/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log
+      wine-headless /data/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log
       -SteamServerName="{{SERVER_NAME}}" -PORT={{PORT_GAME}} -QueryPort={{PORT_QUERY}}
       -MaxServerPlayers={{MAX_PLAYERS}} -WorldSaveName={{WORLD_NAME}} -ServerPassword="{{SERVER_PASSWORD}}"
 install:
@@ -36,6 +36,8 @@ startup:
     C:\data\AbioticFactorServer.exe -log
     -SteamServerName="{{SERVER_NAME}}" -PORT={{PORT_GAME}} -QueryPort={{PORT_QUERY}}
     -MaxServerPlayers={{MAX_PLAYERS}} -WorldSaveName={{WORLD_NAME}} -ServerPassword="{{SERVER_PASSWORD}}"
+  # Logged once the session is up and joinable (verified live under wine).
+  ready_regex: "Session creation completed"
   restart: { on_crash: true, max_retries: 3 }
   stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
 variables:

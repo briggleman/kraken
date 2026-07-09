@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/briggleman/kraken/compare/v0.6.0...v0.7.0) (2026-07-09)
+
+
+### Features
+
+* **mtls:** automatic agent cert rotation over the reconcile channel ([#28](https://github.com/briggleman/kraken/issues/28)) ([6e47746](https://github.com/briggleman/kraken/commit/6e477465092bbcfb835ebe5cab0dbe5ec9f07e69))
+
 ## [0.6.0](https://github.com/briggleman/kraken/compare/v0.5.1...v0.6.0) (2026-07-09)
 
 

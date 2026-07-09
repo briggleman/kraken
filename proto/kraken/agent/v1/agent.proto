@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-// Package cthulhu.agent.v1 is the control-plane contract between the Panel and a
+// Package kraken.agent.v1 is the control-plane contract between the Panel and a
 // node Agent. The Agent runs the gRPC server (one per host); the Panel dials it
 // over mutual TLS. Request/response RPCs carry control actions; server-streaming
 // RPCs carry install progress, console output, and resource telemetry.
-package cthulhu.agent.v1;
+package kraken.agent.v1;
 
 option go_package = "github.com/briggleman/kraken/internal/shared/agentpb;agentpb";
 

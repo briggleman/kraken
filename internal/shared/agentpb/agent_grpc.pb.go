@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.35.1
-// source: cthulhu/agent/v1/agent.proto
+// source: kraken/agent/v1/agent.proto
 
-// Package cthulhu.agent.v1 is the control-plane contract between the Panel and a
+// Package kraken.agent.v1 is the control-plane contract between the Panel and a
 // node Agent. The Agent runs the gRPC server (one per host); the Panel dials it
 // over mutual TLS. Request/response RPCs carry control actions; server-streaming
 // RPCs carry install progress, console output, and resource telemetry.
@@ -24,31 +24,31 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NodeService_GetNodeInfo_FullMethodName      = "/cthulhu.agent.v1.NodeService/GetNodeInfo"
-	NodeService_CreateServer_FullMethodName     = "/cthulhu.agent.v1.NodeService/CreateServer"
-	NodeService_RemoveServer_FullMethodName     = "/cthulhu.agent.v1.NodeService/RemoveServer"
-	NodeService_ApplyConfig_FullMethodName      = "/cthulhu.agent.v1.NodeService/ApplyConfig"
-	NodeService_ListFiles_FullMethodName        = "/cthulhu.agent.v1.NodeService/ListFiles"
-	NodeService_DownloadFiles_FullMethodName    = "/cthulhu.agent.v1.NodeService/DownloadFiles"
-	NodeService_ReadFile_FullMethodName         = "/cthulhu.agent.v1.NodeService/ReadFile"
-	NodeService_DownloadFile_FullMethodName     = "/cthulhu.agent.v1.NodeService/DownloadFile"
-	NodeService_MakeDir_FullMethodName          = "/cthulhu.agent.v1.NodeService/MakeDir"
-	NodeService_MovePath_FullMethodName         = "/cthulhu.agent.v1.NodeService/MovePath"
-	NodeService_CopyPath_FullMethodName         = "/cthulhu.agent.v1.NodeService/CopyPath"
-	NodeService_WriteFile_FullMethodName        = "/cthulhu.agent.v1.NodeService/WriteFile"
-	NodeService_DeletePaths_FullMethodName      = "/cthulhu.agent.v1.NodeService/DeletePaths"
-	NodeService_CreateBackup_FullMethodName     = "/cthulhu.agent.v1.NodeService/CreateBackup"
-	NodeService_ListBackups_FullMethodName      = "/cthulhu.agent.v1.NodeService/ListBackups"
-	NodeService_RestoreBackup_FullMethodName    = "/cthulhu.agent.v1.NodeService/RestoreBackup"
-	NodeService_DeleteBackup_FullMethodName     = "/cthulhu.agent.v1.NodeService/DeleteBackup"
-	NodeService_InstallServer_FullMethodName    = "/cthulhu.agent.v1.NodeService/InstallServer"
-	NodeService_PowerAction_FullMethodName      = "/cthulhu.agent.v1.NodeService/PowerAction"
-	NodeService_GetServerStatus_FullMethodName  = "/cthulhu.agent.v1.NodeService/GetServerStatus"
-	NodeService_StreamConsole_FullMethodName    = "/cthulhu.agent.v1.NodeService/StreamConsole"
-	NodeService_SendCommand_FullMethodName      = "/cthulhu.agent.v1.NodeService/SendCommand"
-	NodeService_StreamStats_FullMethodName      = "/cthulhu.agent.v1.NodeService/StreamStats"
-	NodeService_ApplyNodeConfig_FullMethodName  = "/cthulhu.agent.v1.NodeService/ApplyNodeConfig"
-	NodeService_ReplicateBackups_FullMethodName = "/cthulhu.agent.v1.NodeService/ReplicateBackups"
+	NodeService_GetNodeInfo_FullMethodName      = "/kraken.agent.v1.NodeService/GetNodeInfo"
+	NodeService_CreateServer_FullMethodName     = "/kraken.agent.v1.NodeService/CreateServer"
+	NodeService_RemoveServer_FullMethodName     = "/kraken.agent.v1.NodeService/RemoveServer"
+	NodeService_ApplyConfig_FullMethodName      = "/kraken.agent.v1.NodeService/ApplyConfig"
+	NodeService_ListFiles_FullMethodName        = "/kraken.agent.v1.NodeService/ListFiles"
+	NodeService_DownloadFiles_FullMethodName    = "/kraken.agent.v1.NodeService/DownloadFiles"
+	NodeService_ReadFile_FullMethodName         = "/kraken.agent.v1.NodeService/ReadFile"
+	NodeService_DownloadFile_FullMethodName     = "/kraken.agent.v1.NodeService/DownloadFile"
+	NodeService_MakeDir_FullMethodName          = "/kraken.agent.v1.NodeService/MakeDir"
+	NodeService_MovePath_FullMethodName         = "/kraken.agent.v1.NodeService/MovePath"
+	NodeService_CopyPath_FullMethodName         = "/kraken.agent.v1.NodeService/CopyPath"
+	NodeService_WriteFile_FullMethodName        = "/kraken.agent.v1.NodeService/WriteFile"
+	NodeService_DeletePaths_FullMethodName      = "/kraken.agent.v1.NodeService/DeletePaths"
+	NodeService_CreateBackup_FullMethodName     = "/kraken.agent.v1.NodeService/CreateBackup"
+	NodeService_ListBackups_FullMethodName      = "/kraken.agent.v1.NodeService/ListBackups"
+	NodeService_RestoreBackup_FullMethodName    = "/kraken.agent.v1.NodeService/RestoreBackup"
+	NodeService_DeleteBackup_FullMethodName     = "/kraken.agent.v1.NodeService/DeleteBackup"
+	NodeService_InstallServer_FullMethodName    = "/kraken.agent.v1.NodeService/InstallServer"
+	NodeService_PowerAction_FullMethodName      = "/kraken.agent.v1.NodeService/PowerAction"
+	NodeService_GetServerStatus_FullMethodName  = "/kraken.agent.v1.NodeService/GetServerStatus"
+	NodeService_StreamConsole_FullMethodName    = "/kraken.agent.v1.NodeService/StreamConsole"
+	NodeService_SendCommand_FullMethodName      = "/kraken.agent.v1.NodeService/SendCommand"
+	NodeService_StreamStats_FullMethodName      = "/kraken.agent.v1.NodeService/StreamStats"
+	NodeService_ApplyNodeConfig_FullMethodName  = "/kraken.agent.v1.NodeService/ApplyNodeConfig"
+	NodeService_ReplicateBackups_FullMethodName = "/kraken.agent.v1.NodeService/ReplicateBackups"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -1013,7 +1013,7 @@ func _NodeService_ReplicateBackups_Handler(srv interface{}, ctx context.Context,
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var NodeService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "cthulhu.agent.v1.NodeService",
+	ServiceName: "kraken.agent.v1.NodeService",
 	HandlerType: (*NodeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -1124,5 +1124,5 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "cthulhu/agent/v1/agent.proto",
+	Metadata: "kraken/agent/v1/agent.proto",
 }

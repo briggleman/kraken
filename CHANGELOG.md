@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/briggleman/kraken/compare/v0.8.1...v0.8.2) (2026-07-09)
+
+
+### Bug Fixes
+
+* **ui:** unified node-connect flow, FontAwesome platform icons, footer kraken ([#35](https://github.com/briggleman/kraken/issues/35)) ([ed55dca](https://github.com/briggleman/kraken/commit/ed55dcabcf0f37e332f3782f30730f81ad39a7bd))
+
 ## [0.8.1](https://github.com/briggleman/kraken/compare/v0.8.0...v0.8.1) (2026-07-09)
 
 

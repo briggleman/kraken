@@ -212,6 +212,29 @@ docker compose -f deploy/docker-compose.yml up -d   # Postgres only
   either `KRAKEN_TLS_CERT`/`KRAKEN_TLS_KEY`/`KRAKEN_TLS_CA` are configured (via
   `krakenctl enroll`) or `KRAKEN_ALLOW_INSECURE_GRPC=1` is set as an explicit
   opt-in. If you run the Agent on a separate host from the Panel, enroll it first.
+- **Remote agents: open the host firewall for inbound `9090` (gRPC) + `2022` (SFTP).**
+  The Panel dials *in* to the agent, so enrollment succeeding (an outbound call) proves
+  nothing about reachability — a blocked inbound port is the most common reason a
+  freshly enrolled node sits **Offline** (often surfacing as `connection refused` in
+  Panel logs when NAT is in the path). Use a **port-based** rule, not a program-based
+  one — program rules silently stop matching when the agent binary is renamed or
+  updated:
+
+  ```powershell
+  # Windows (admin PowerShell)
+  New-NetFirewallRule -DisplayName "kraken-agent ports (TCP 9090 + 2022)" `
+    -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9090,2022
+  ```
+
+  ```sh
+  # Linux — ufw
+  sudo ufw allow 9090/tcp && sudo ufw allow 2022/tcp
+  # Linux — firewalld
+  sudo firewall-cmd --permanent --add-port={9090,2022}/tcp && sudo firewall-cmd --reload
+  ```
+
+  Scope the rules to your LAN/VPN subnet where possible; the ports still must never
+  be internet-exposed (gRPC is mTLS-only, but SFTP is password/key auth).
 - Set `KRAKEN_ALLOWED_ORIGINS` to your Panel's real origin if you serve it off-localhost.
 
 ## Repository layout

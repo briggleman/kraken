@@ -299,8 +299,10 @@ func (s *Server) routes() chi.Router {
 			// Audit log (admin).
 			r.With(s.requirePermission(rbac.PermAuditView)).Get("/audit", s.handleListAudit)
 
-			// Agent bootstrap token issuance (admin) for mTLS enrollment.
+			// Agent bootstrap token issuance (admin) for mTLS enrollment, plus
+			// the token-lifecycle poll the setup wizard uses to show progress.
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/agents/bootstrap-tokens", s.handleCreateBootstrapToken)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Get("/agents/enroll-status", s.handleEnrollStatus)
 		})
 	})
 

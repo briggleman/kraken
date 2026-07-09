@@ -118,12 +118,14 @@ export function Nodes() {
               const n = await api.registerNode(input);
               setAdding(false);
               // Auto-ping so the node comes online immediately (no manual ping).
+              // A failure here is the operator's first signal that the agent is
+              // unreachable (firewall / wrong address) — surface it, don't bury it.
               try {
                 await api.nodeInfo(n.id);
-              } catch {
-                /* unreachable for now — the operator can retry from the card */
+                Toaster.success(`Node "${n.name}" registered and online`);
+              } catch (e) {
+                Toaster.error(`Node "${n.name}" registered, but the agent is unreachable: ${msg(e)}`);
               }
-              Toaster.success("Node registered");
               refresh();
             } catch (e) {
               Toaster.error(msg(e));
@@ -228,7 +230,15 @@ function AddNodeModal(props: {
           <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 8 }}>// REGISTER</div>
           <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 18px", color: "var(--text-primary)" }}>Add a node</h2>
 
-          <Input label="NAME" value={name} onChange={(e) => setName(e.target.value)} placeholder="abyss-node-01" mono style={{ marginBottom: 14 }} />
+          <Input
+            label="NAME (OPTIONAL)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="blank = the agent's KRAKEN_NODE_ID"
+            helper="Leave blank to adopt the agent's self-reported name."
+            mono
+            style={{ marginBottom: 14 }}
+          />
 
           <Select
             label="PLATFORM"
@@ -253,7 +263,7 @@ function AddNodeModal(props: {
             <Button
               variant="primary"
               icon="check"
-              disabled={!name || !address}
+              disabled={!address}
               onClick={() => {
                 const { os, wine_enabled } = platformToApi(platform);
                 props.onSubmit({ name, os, wine_enabled, address, public_host: publicHost, total_memory_mb: mem, port_start: portStart, port_end: portEnd });

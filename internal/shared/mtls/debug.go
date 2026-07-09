@@ -62,6 +62,20 @@ func SummarizePEM(pemBytes []byte) string {
 	return SummarizeCert(cert)
 }
 
+// SANHosts returns the DNS + IP SANs of the first certificate in pemBytes,
+// in cert order (DNS names first). Empty on parse failure.
+func SANHosts(pemBytes []byte) []string {
+	cert, err := parseFirstCert(pemBytes)
+	if err != nil {
+		return nil
+	}
+	hosts := append([]string{}, cert.DNSNames...)
+	for _, ip := range cert.IPAddresses {
+		hosts = append(hosts, ip.String())
+	}
+	return hosts
+}
+
 // VerifyPEM reports whether the first cert in certPEM chains to the CA(s) in
 // caPEM and is valid right now. Used at startup to catch a stale bundle (cert
 // enrolled under a previous CA, or expired) before the first handshake fails.

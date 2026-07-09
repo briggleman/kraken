@@ -16,8 +16,8 @@ import (
 )
 
 type registerNodeRequest struct {
-	Name        string `json:"name"`
-	OS          string `json:"os"` // "linux" | "windows"
+	Name        string `json:"name"` // optional; taken from the agent (KRAKEN_NODE_ID) when blank
+	OS          string `json:"os"`   // "linux" | "windows"; optional, agent-reported when blank
 	WineEnabled bool   `json:"wine_enabled"`
 	Address     string `json:"address"`     // Agent gRPC host:port
 	PublicHost  string `json:"public_host"` // optional; players' connect host (else auto-detected)
@@ -32,13 +32,44 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid node body")
 		return
 	}
+	if req.Address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
+		return
+	}
+	// Identity comes from the agent itself when omitted: dial it and adopt its
+	// self-reported node id / OS / Wine capability. Keeps registration to a
+	// single field (address) and makes the agent's KRAKEN_NODE_ID authoritative.
+	if req.Name == "" || req.OS == "" {
+		client, err := s.nodes.Client(req.Address)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		info, err := client.GetNodeInfo(ctx, &agentpb.GetNodeInfoRequest{})
+		cancel()
+		if err != nil {
+			writeError(w, http.StatusBadGateway,
+				"agent unreachable at "+req.Address+" — it must be running and reachable to auto-detect the node identity "+
+					"(check the agent is started and the host firewall allows inbound TCP on the agent port), "+
+					"or supply name and os explicitly: "+err.Error())
+			return
+		}
+		if req.Name == "" {
+			req.Name = info.NodeId
+		}
+		if req.OS == "" {
+			req.OS = info.Os
+			req.WineEnabled = info.WineEnabled
+		}
+	}
 	os := cluster.NodeOS(req.OS)
 	if os != cluster.OSLinux && os != cluster.OSWindows {
 		writeError(w, http.StatusBadRequest, "os must be 'linux' or 'windows'")
 		return
 	}
-	if req.Name == "" || req.Address == "" {
-		writeError(w, http.StatusBadRequest, "name and address are required")
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required (agent did not report one)")
 		return
 	}
 	n := &cluster.Node{

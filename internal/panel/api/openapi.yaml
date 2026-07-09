@@ -560,9 +560,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [node_name]
               properties:
-                node_name: { type: string }
+                node_name: { type: string, description: audit-log label only (default "remote-agent") — the node's real name comes from the agent at registration }
                 ttl_seconds: { type: integer, description: token lifetime (default 900) }
       responses:
         '201':
@@ -576,6 +575,31 @@ paths:
                   node_name: { type: string }
                   expires_at: { type: string, format: date-time }
         '503': { description: CA signing not configured }
+  /agents/enroll-status:
+    get:
+      tags: [Enrollment]
+      summary: Poll a bootstrap token's lifecycle (pending → redeemed)
+      description: >
+        Lets the setup wizard show live enrollment progress. Once redeemed, the
+        response includes the enrolling source IP and the hosts the agent baked
+        into its certificate (its reachable addresses) so node registration can
+        be prefilled.
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Token state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending, redeemed, expired] }
+                  node_name: { type: string }
+                  ip: { type: string }
+                  hosts: { type: array, items: { type: string } }
+                  expires_at: { type: string, format: date-time }
+                  redeemed_at: { type: string, format: date-time }
   /agents/enroll:
     post:
       tags: [Enrollment]
@@ -952,10 +976,10 @@ components:
         allocated_memory_mb: { type: integer }
     NodeRegister:
       type: object
-      required: [name, os, address, total_memory_mb, port_start, port_end]
+      required: [address]
       properties:
-        name: { type: string }
-        os: { type: string, enum: [linux, windows] }
+        name: { type: string, description: blank = adopt the agent's self-reported node id (KRAKEN_NODE_ID) }
+        os: { type: string, enum: [linux, windows], description: blank = adopt the agent's self-reported OS + Wine capability }
         wine_enabled: { type: boolean }
         address: { type: string, description: "Agent gRPC host:port" }
         public_host: { type: string }

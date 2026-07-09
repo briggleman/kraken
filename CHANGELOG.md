@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/briggleman/kraken/compare/v0.8.0...v0.8.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **setup:** latch onboarding completion + restrict /setup to internal networks ([#33](https://github.com/briggleman/kraken/issues/33)) ([c0541e2](https://github.com/briggleman/kraken/commit/c0541e2b602b900e649781be4365cc235ccfb42f))
+
 ## [0.8.0](https://github.com/briggleman/kraken/compare/v0.7.0...v0.8.0) (2026-07-09)
 
 

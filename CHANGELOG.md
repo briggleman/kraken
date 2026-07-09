@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/briggleman/kraken/compare/v0.8.2...v0.8.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* **enroll:** agent reports its port; registration prefill is IP-first ([#37](https://github.com/briggleman/kraken/issues/37)) ([6d2c429](https://github.com/briggleman/kraken/commit/6d2c42925111d619801fc580fe8fb424174acb71))
+
 ## [0.8.2](https://github.com/briggleman/kraken/compare/v0.8.1...v0.8.2) (2026-07-09)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/briggleman/kraken/compare/v0.5.0...v0.5.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **deploy:** panel-state volume must be nonroot-owned ([#23](https://github.com/briggleman/kraken/issues/23)) ([bcf372f](https://github.com/briggleman/kraken/commit/bcf372f95382e91c449a9ea58524b4b308ff7c01))
+* **panel:** keep auto-signed client cert in memory, drop panel-init sidecar ([#25](https://github.com/briggleman/kraken/issues/25)) ([d0199b1](https://github.com/briggleman/kraken/commit/d0199b1aa9d1f3e85a05567cc618236d8ff5a02e))
+
 ## [0.5.0](https://github.com/briggleman/kraken/compare/v0.4.0...v0.5.0) (2026-07-08)
 
 

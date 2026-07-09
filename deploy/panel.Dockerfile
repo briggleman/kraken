@@ -9,8 +9,12 @@
 # Build context is the repo root:
 #   docker build -f deploy/panel.Dockerfile -t ghcr.io/briggleman/kraken-panel:dev .
 
+# Both build stages run on the build host's native arch ($BUILDPLATFORM):
+# the web bundle is arch-neutral and Go cross-compiles to $TARGETARCH, so a
+# multi-platform build never pays the QEMU-emulation tax.
+
 # ---- web build ----------------------------------------------------------
-FROM node:20-alpine AS webbuild
+FROM --platform=$BUILDPLATFORM node:20-alpine AS webbuild
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -21,7 +25,7 @@ RUN mkdir -p /src/internal/panel/webui/dist
 RUN npm run build
 
 # ---- go build -----------------------------------------------------------
-FROM golang:1.26-alpine AS gobuild
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS gobuild
 WORKDIR /src
 RUN apk add --no-cache git
 COPY go.mod go.sum ./
@@ -34,8 +38,10 @@ COPY --from=webbuild /src/internal/panel/webui/dist ./internal/panel/webui/dist
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 ENV CGO_ENABLED=0
-RUN go build -trimpath \
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w \
       -X github.com/briggleman/kraken/internal/shared/version.Version=${VERSION} \
       -X github.com/briggleman/kraken/internal/shared/version.Commit=${COMMIT} \

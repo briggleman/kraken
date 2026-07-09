@@ -253,10 +253,22 @@ function SpecForm({ form, upd }: { form: any; upd: (mut: (d: any) => void) => vo
       <Section title="Platforms" onAdd={() => upd((d) => { (d.platforms ??= []).push({ kind: "linux-native", image: "" }); })}>
         {platforms.length === 0 && <Empty>No platforms — add at least one.</Empty>}
         {platforms.map((p, i) => (
-          <Row key={i} onRemove={() => upd((d) => d.platforms.splice(i, 1))}>
-            <Field><Select label="KIND" value={p.kind} options={PLATFORM_KINDS} onChange={(v) => upd((d) => (d.platforms[i].kind = v))} /></Field>
-            <Field grow><Input label="IMAGE" mono value={p.image ?? ""} onChange={(e) => upd((d) => (d.platforms[i].image = e.target.value))} placeholder="registry/image:tag" /></Field>
-          </Row>
+          <div key={i}>
+            <Row onRemove={() => upd((d) => d.platforms.splice(i, 1))}>
+              <Field><Select label="KIND" value={p.kind} options={PLATFORM_KINDS} onChange={(v) => upd((d) => (d.platforms[i].kind = v))} /></Field>
+              <Field grow><Input label="IMAGE" mono value={p.image ?? ""} onChange={(e) => upd((d) => (d.platforms[i].image = e.target.value))} placeholder="registry/image:tag" /></Field>
+            </Row>
+            {/* Per-platform overrides: a linux-wine placement of a Windows-first
+                game needs a different install (Linux SteamCMD + forced platform
+                type) and launch (xvfb-run wine …) than the spec-level commands.
+                Shown for linux-wine, or whenever an override is already set. */}
+            {(p.kind === "linux-wine" || p.install_script || p.startup_command) && (
+              <div style={{ display: "grid", gap: 10, margin: "8px 0 4px 12px" }}>
+                <Field grow><Area label="INSTALL SCRIPT OVERRIDE (OPTIONAL — replaces the spec install for this platform)" rows={2} value={p.install_script ?? ""} onChange={(v) => upd((d) => (d.platforms[i].install_script = v || undefined))} placeholder="steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit" /></Field>
+                <Field grow><Area label="STARTUP COMMAND OVERRIDE (OPTIONAL — replaces the spec startup for this platform)" rows={2} value={p.startup_command ?? ""} onChange={(v) => upd((d) => (d.platforms[i].startup_command = v || undefined))} placeholder="xvfb-run -a wine64 /data/<Game>/Binaries/Win64/<Server>-Win64-Shipping.exe -log -PORT={{PORT_GAME}}" /></Field>
+              </div>
+            )}
+          </div>
         ))}
       </Section>
 

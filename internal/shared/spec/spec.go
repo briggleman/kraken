@@ -76,10 +76,23 @@ type Spec struct {
 	Query *PlayerQuery `json:"query,omitempty"`
 }
 
-// Platform binds a PlatformKind to the Docker image used to run it.
+// Platform binds a PlatformKind to the Docker image used to run it, with
+// optional per-platform overrides for the install script and startup command.
+// Overrides exist because the same game can need materially different
+// commands per platform — e.g. a Windows-only server is installed with
+// `steamcmd.exe … C:\data` on windows-native but with the Linux SteamCMD +
+// `+@sSteamCmdForcePlatformType windows` on linux-wine, and launched via
+// `xvfb-run wine …` there. Empty overrides fall back to the spec-level
+// Install.Script / Startup.Command.
 type Platform struct {
 	Kind  PlatformKind `json:"kind"`
 	Image string       `json:"image"`
+	// InstallScript, when set, replaces Install.Script for servers placed on
+	// this platform. Variable placeholders are substituted as usual.
+	InstallScript string `json:"install_script,omitempty"`
+	// StartupCommand, when set, replaces Startup.Command for servers placed on
+	// this platform. Variable placeholders are substituted as usual.
+	StartupCommand string `json:"startup_command,omitempty"`
 }
 
 // PlayerQuery declares how to read a server's online-player count.
@@ -219,6 +232,28 @@ func (s *Spec) ImageFor(kind PlatformKind) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// InstallScriptFor returns the install script for the given platform kind:
+// the platform's override when set, else the spec-level Install.Script.
+func (s *Spec) InstallScriptFor(kind PlatformKind) string {
+	for _, p := range s.Platforms {
+		if p.Kind == kind && p.InstallScript != "" {
+			return p.InstallScript
+		}
+	}
+	return s.Install.Script
+}
+
+// StartupCommandFor returns the startup command for the given platform kind:
+// the platform's override when set, else the spec-level Startup.Command.
+func (s *Spec) StartupCommandFor(kind PlatformKind) string {
+	for _, p := range s.Platforms {
+		if p.Kind == kind && p.StartupCommand != "" {
+			return p.StartupCommand
+		}
+	}
+	return s.Startup.Command
 }
 
 // Validate performs structural validation beyond JSON Schema: it enforces

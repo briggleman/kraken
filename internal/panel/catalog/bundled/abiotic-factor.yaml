@@ -2,8 +2,9 @@ name: Abiotic Factor
 slug: abiotic-factor
 description: >-
   Abiotic Factor dedicated server (SteamCMD app 2857200). The server ships as a
-  Windows build (Unreal Engine 5), so this targets a Windows node (steam-win
-  image). Server name, world save, player cap, and password are launch options.
+  Windows build (Unreal Engine 5); it runs on a Windows node (steam-win image)
+  or on a Linux node via Wine (steam-wine image). Server name, world save,
+  player cap, and password are launch options.
 # Game appid 427410 for assets; server appid 2857200 for SteamCMD. See bundled/SPECS.md.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427410/739cb7f10e53f306d066b98920aa3ab0dc552ff4/capsule_616x353.jpg?t=1783386138
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/427410/789cca4e4e51a6649f5728d870d3a602e3c453fe.jpg
@@ -11,6 +12,19 @@ steam_app_ids:
   windows: 2857200
 platforms:
   - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+  # linux-wine: same Windows depot, pulled by the LINUX SteamCMD with the
+  # forced platform type, launched through Wine under headless X. The UE5
+  # wrapper exe respawns itself in ways Wine dislikes — launch the
+  # Win64-Shipping binary directly.
+  - kind: linux-wine
+    image: ghcr.io/briggleman/kraken-steam-wine:latest
+    install_script: |-
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    startup_command: >-
+      xvfb-run -a wine64 /data/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log
+      -SteamServerName="{{SERVER_NAME}}" -PORT={{PORT_GAME}} -QueryPort={{PORT_QUERY}}
+      -MaxServerPlayers={{MAX_PLAYERS}} -WorldSaveName={{WORLD_NAME}} -ServerPassword="{{SERVER_PASSWORD}}"
 install:
   # Run app_update twice: SteamCMD can report "Missing configuration" on the
   # first pass against a fresh appinfo cache; the second pass downloads.

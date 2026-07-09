@@ -624,13 +624,26 @@ func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 	timeout := 30
 	opts := container.StopOptions{Timeout: &timeout}
 	// Windows containers don't support arbitrary stop signals (the daemon sends a
-	// shutdown event then kills); only honor a custom signal on Linux.
+	// shutdown event then kills); only honor a custom signal on Linux. A
+	// Windows-only name (e.g. CTRL_SHUTDOWN_EVENT) can reach a Linux container
+	// when a Windows-first spec is placed on linux-wine — the daemon would
+	// reject it, so fall back to the default (SIGTERM) instead.
 	if !d.isWindows() {
-		if spec, ok := d.getSpec(serverID); ok && spec.StopSignal != "" {
+		if spec, ok := d.getSpec(serverID); ok && spec.StopSignal != "" && isPosixSignal(spec.StopSignal) {
 			opts.Signal = spec.StopSignal
 		}
 	}
 	return d.cli.ContainerStop(ctx, name, opts)
+}
+
+// isPosixSignal reports whether s names a signal a Linux daemon accepts:
+// SIG-prefixed names (SIGINT, SIGTERM, …) or a numeric value.
+func isPosixSignal(s string) bool {
+	if strings.HasPrefix(strings.ToUpper(s), "SIG") {
+		return true
+	}
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.ServerStatus, error) {

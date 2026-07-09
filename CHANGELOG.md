@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/briggleman/kraken/compare/v0.7.0...v0.8.0) (2026-07-09)
+
+
+### Features
+
+* **wine:** steam-wine image — Windows-only games on Linux nodes ([#30](https://github.com/briggleman/kraken/issues/30)) ([2c26cd8](https://github.com/briggleman/kraken/commit/2c26cd804ca4706a3290f76a5e67234489932987))
+
 ## [0.7.0](https://github.com/briggleman/kraken/compare/v0.6.0...v0.7.0) (2026-07-09)
 
 

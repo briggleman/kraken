@@ -75,7 +75,8 @@ func ensurePanelClient(cfg *config.Config, caCert, caKey []byte, logger *slog.Lo
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("issue panel client cert: %w", err)
 	}
-	logger.Info("Panel→Agent mTLS: auto-signed client cert against Agent-enrollment CA (in memory)")
+	logger.Info("Panel→Agent mTLS: auto-signed client cert against Agent-enrollment CA (in memory)",
+		"client_cert", mtls.SummarizePEM(certPEM), "ca_sha256", mtls.FingerprintPEM(caCert))
 	return certPEM, keyPEM, caCert, nil
 }
 
@@ -89,7 +90,7 @@ func ensureCA(ctx context.Context, st store.Store, cfg *config.Config, logger *s
 		return nil, nil
 	}
 	if c, k, err := st.GetCA(ctx); err == nil {
-		logger.Info("loaded self-generated Agent-enrollment CA from store")
+		logger.Info("loaded self-generated Agent-enrollment CA from store", "ca", mtls.SummarizePEM(c))
 		return c, k
 	}
 	c, k, err := mtls.GenerateCA()
@@ -100,8 +101,10 @@ func ensureCA(ctx context.Context, st store.Store, cfg *config.Config, logger *s
 	if err := st.SaveCA(ctx, c, k); err != nil {
 		logger.Error("could not persist generated CA", "err", err)
 	}
-	logger.Warn("generated a self-signed Agent-enrollment CA (no KRAKEN_CA_CERT/KEY set); " +
-		"persisted to the store — the in-memory dev store regenerates it on restart")
+	logger.Warn("generated a NEW self-signed Agent-enrollment CA (no KRAKEN_CA_CERT/KEY set); "+
+		"persisted to the store — the in-memory dev store regenerates it on restart; "+
+		"agents enrolled under a previous CA must re-enroll",
+		"ca", mtls.SummarizePEM(c))
 	return c, k
 }
 

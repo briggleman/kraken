@@ -65,6 +65,17 @@ export interface BootstrapToken {
   expires_at: string;
 }
 
+/** Lifecycle of a bootstrap token, polled by the setup wizard. */
+export interface EnrollStatus {
+  status: "pending" | "redeemed" | "expired";
+  node_name?: string;
+  ip?: string;
+  /** Hosts the agent baked into its cert — its reachable IPs/DNS names. */
+  hosts?: string[];
+  expires_at?: string;
+  redeemed_at?: string;
+}
+
 export interface PanelSettings {
   cloudflare_configured: boolean;
   unifi_configured: boolean;

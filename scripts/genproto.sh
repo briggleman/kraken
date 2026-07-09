@@ -9,6 +9,6 @@ PROTOC="${PROTOC:-protoc}"
 "$PROTOC" --proto_path=proto \
   --go_out=. --go_opt=module=github.com/briggleman/kraken \
   --go-grpc_out=. --go-grpc_opt=module=github.com/briggleman/kraken \
-  proto/cthulhu/agent/v1/agent.proto
+  proto/kraken/agent/v1/agent.proto
 
 echo "generated: internal/shared/agentpb/"

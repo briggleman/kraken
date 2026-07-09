@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.35.1
-// source: cthulhu/agent/v1/agent.proto
+// source: kraken/agent/v1/agent.proto
 
-// Package cthulhu.agent.v1 is the control-plane contract between the Panel and a
+// Package kraken.agent.v1 is the control-plane contract between the Panel and a
 // node Agent. The Agent runs the gRPC server (one per host); the Panel dials it
 // over mutual TLS. Request/response RPCs carry control actions; server-streaming
 // RPCs carry install progress, console output, and resource telemetry.
@@ -72,11 +72,11 @@ func (x ServerState) String() string {
 }
 
 func (ServerState) Descriptor() protoreflect.EnumDescriptor {
-	return file_cthulhu_agent_v1_agent_proto_enumTypes[0].Descriptor()
+	return file_kraken_agent_v1_agent_proto_enumTypes[0].Descriptor()
 }
 
 func (ServerState) Type() protoreflect.EnumType {
-	return &file_cthulhu_agent_v1_agent_proto_enumTypes[0]
+	return &file_kraken_agent_v1_agent_proto_enumTypes[0]
 }
 
 func (x ServerState) Number() protoreflect.EnumNumber {
@@ -85,7 +85,7 @@ func (x ServerState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ServerState.Descriptor instead.
 func (ServerState) EnumDescriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{0}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{0}
 }
 
 // PowerAction is a requested power transition for a server.
@@ -128,11 +128,11 @@ func (x PowerAction) String() string {
 }
 
 func (PowerAction) Descriptor() protoreflect.EnumDescriptor {
-	return file_cthulhu_agent_v1_agent_proto_enumTypes[1].Descriptor()
+	return file_kraken_agent_v1_agent_proto_enumTypes[1].Descriptor()
 }
 
 func (PowerAction) Type() protoreflect.EnumType {
-	return &file_cthulhu_agent_v1_agent_proto_enumTypes[1]
+	return &file_kraken_agent_v1_agent_proto_enumTypes[1]
 }
 
 func (x PowerAction) Number() protoreflect.EnumNumber {
@@ -141,7 +141,7 @@ func (x PowerAction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PowerAction.Descriptor instead.
 func (PowerAction) EnumDescriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
 // BackupState tracks the local archive's lifecycle. Backups are created
@@ -183,11 +183,11 @@ func (x BackupState) String() string {
 }
 
 func (BackupState) Descriptor() protoreflect.EnumDescriptor {
-	return file_cthulhu_agent_v1_agent_proto_enumTypes[2].Descriptor()
+	return file_kraken_agent_v1_agent_proto_enumTypes[2].Descriptor()
 }
 
 func (BackupState) Type() protoreflect.EnumType {
-	return &file_cthulhu_agent_v1_agent_proto_enumTypes[2]
+	return &file_kraken_agent_v1_agent_proto_enumTypes[2]
 }
 
 func (x BackupState) Number() protoreflect.EnumNumber {
@@ -196,7 +196,7 @@ func (x BackupState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BackupState.Descriptor instead.
 func (BackupState) EnumDescriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 // ReplicationState tracks the off-node (SFTP) mirror of a finished archive,
@@ -237,11 +237,11 @@ func (x ReplicationState) String() string {
 }
 
 func (ReplicationState) Descriptor() protoreflect.EnumDescriptor {
-	return file_cthulhu_agent_v1_agent_proto_enumTypes[3].Descriptor()
+	return file_kraken_agent_v1_agent_proto_enumTypes[3].Descriptor()
 }
 
 func (ReplicationState) Type() protoreflect.EnumType {
-	return &file_cthulhu_agent_v1_agent_proto_enumTypes[3]
+	return &file_kraken_agent_v1_agent_proto_enumTypes[3]
 }
 
 func (x ReplicationState) Number() protoreflect.EnumNumber {
@@ -250,7 +250,7 @@ func (x ReplicationState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ReplicationState.Descriptor instead.
 func (ReplicationState) EnumDescriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 type GetNodeInfoRequest struct {
@@ -261,7 +261,7 @@ type GetNodeInfoRequest struct {
 
 func (x *GetNodeInfoRequest) Reset() {
 	*x = GetNodeInfoRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[0]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -273,7 +273,7 @@ func (x *GetNodeInfoRequest) String() string {
 func (*GetNodeInfoRequest) ProtoMessage() {}
 
 func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[0]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -286,7 +286,7 @@ func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeInfoRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{0}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{0}
 }
 
 // PortMapping binds a container port to a host port for one of a server's ports.
@@ -302,7 +302,7 @@ type PortMapping struct {
 
 func (x *PortMapping) Reset() {
 	*x = PortMapping{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[1]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -314,7 +314,7 @@ func (x *PortMapping) String() string {
 func (*PortMapping) ProtoMessage() {}
 
 func (x *PortMapping) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[1]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -327,7 +327,7 @@ func (x *PortMapping) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortMapping.ProtoReflect.Descriptor instead.
 func (*PortMapping) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{1}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PortMapping) GetName() string {
@@ -382,7 +382,7 @@ type ServerSpec struct {
 
 func (x *ServerSpec) Reset() {
 	*x = ServerSpec{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[2]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +394,7 @@ func (x *ServerSpec) String() string {
 func (*ServerSpec) ProtoMessage() {}
 
 func (x *ServerSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[2]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +407,7 @@ func (x *ServerSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerSpec.ProtoReflect.Descriptor instead.
 func (*ServerSpec) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ServerSpec) GetServerId() string {
@@ -523,7 +523,7 @@ type SftpAccess struct {
 
 func (x *SftpAccess) Reset() {
 	*x = SftpAccess{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[3]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -535,7 +535,7 @@ func (x *SftpAccess) String() string {
 func (*SftpAccess) ProtoMessage() {}
 
 func (x *SftpAccess) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[3]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -548,7 +548,7 @@ func (x *SftpAccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SftpAccess.ProtoReflect.Descriptor instead.
 func (*SftpAccess) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SftpAccess) GetEnabled() bool {
@@ -593,7 +593,7 @@ type PlayerQuery struct {
 
 func (x *PlayerQuery) Reset() {
 	*x = PlayerQuery{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -605,7 +605,7 @@ func (x *PlayerQuery) String() string {
 func (*PlayerQuery) ProtoMessage() {}
 
 func (x *PlayerQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[4]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -618,7 +618,7 @@ func (x *PlayerQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerQuery.ProtoReflect.Descriptor instead.
 func (*PlayerQuery) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{4}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PlayerQuery) GetMethod() string {
@@ -651,7 +651,7 @@ type CreateServerRequest struct {
 
 func (x *CreateServerRequest) Reset() {
 	*x = CreateServerRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[5]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +663,7 @@ func (x *CreateServerRequest) String() string {
 func (*CreateServerRequest) ProtoMessage() {}
 
 func (x *CreateServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[5]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +676,7 @@ func (x *CreateServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateServerRequest.ProtoReflect.Descriptor instead.
 func (*CreateServerRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{5}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateServerRequest) GetSpec() *ServerSpec {
@@ -694,7 +694,7 @@ type CreateServerResponse struct {
 
 func (x *CreateServerResponse) Reset() {
 	*x = CreateServerResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[6]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -706,7 +706,7 @@ func (x *CreateServerResponse) String() string {
 func (*CreateServerResponse) ProtoMessage() {}
 
 func (x *CreateServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[6]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -719,7 +719,7 @@ func (x *CreateServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateServerResponse.ProtoReflect.Descriptor instead.
 func (*CreateServerResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{6}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{6}
 }
 
 type RemoveServerRequest struct {
@@ -732,7 +732,7 @@ type RemoveServerRequest struct {
 
 func (x *RemoveServerRequest) Reset() {
 	*x = RemoveServerRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[7]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -744,7 +744,7 @@ func (x *RemoveServerRequest) String() string {
 func (*RemoveServerRequest) ProtoMessage() {}
 
 func (x *RemoveServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[7]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -757,7 +757,7 @@ func (x *RemoveServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveServerRequest.ProtoReflect.Descriptor instead.
 func (*RemoveServerRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{7}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RemoveServerRequest) GetServerId() string {
@@ -782,7 +782,7 @@ type RemoveServerResponse struct {
 
 func (x *RemoveServerResponse) Reset() {
 	*x = RemoveServerResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[8]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -794,7 +794,7 @@ func (x *RemoveServerResponse) String() string {
 func (*RemoveServerResponse) ProtoMessage() {}
 
 func (x *RemoveServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[8]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -807,7 +807,7 @@ func (x *RemoveServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveServerResponse.ProtoReflect.Descriptor instead.
 func (*RemoveServerResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{8}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{8}
 }
 
 // RenderedFile is a config file's destination path and contents.
@@ -821,7 +821,7 @@ type RenderedFile struct {
 
 func (x *RenderedFile) Reset() {
 	*x = RenderedFile{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[9]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +833,7 @@ func (x *RenderedFile) String() string {
 func (*RenderedFile) ProtoMessage() {}
 
 func (x *RenderedFile) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[9]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +846,7 @@ func (x *RenderedFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderedFile.ProtoReflect.Descriptor instead.
 func (*RenderedFile) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{9}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RenderedFile) GetPath() string {
@@ -873,7 +873,7 @@ type ApplyConfigRequest struct {
 
 func (x *ApplyConfigRequest) Reset() {
 	*x = ApplyConfigRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -885,7 +885,7 @@ func (x *ApplyConfigRequest) String() string {
 func (*ApplyConfigRequest) ProtoMessage() {}
 
 func (x *ApplyConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -898,7 +898,7 @@ func (x *ApplyConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyConfigRequest.ProtoReflect.Descriptor instead.
 func (*ApplyConfigRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ApplyConfigRequest) GetServerId() string {
@@ -923,7 +923,7 @@ type ApplyConfigResponse struct {
 
 func (x *ApplyConfigResponse) Reset() {
 	*x = ApplyConfigResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -935,7 +935,7 @@ func (x *ApplyConfigResponse) String() string {
 func (*ApplyConfigResponse) ProtoMessage() {}
 
 func (x *ApplyConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -948,7 +948,7 @@ func (x *ApplyConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyConfigResponse.ProtoReflect.Descriptor instead.
 func (*ApplyConfigResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{11}
 }
 
 // FileEntry is one item in a directory listing.
@@ -965,7 +965,7 @@ type FileEntry struct {
 
 func (x *FileEntry) Reset() {
 	*x = FileEntry{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +977,7 @@ func (x *FileEntry) String() string {
 func (*FileEntry) ProtoMessage() {}
 
 func (x *FileEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +990,7 @@ func (x *FileEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileEntry.ProtoReflect.Descriptor instead.
 func (*FileEntry) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{12}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FileEntry) GetName() string {
@@ -1038,7 +1038,7 @@ type ListFilesRequest struct {
 
 func (x *ListFilesRequest) Reset() {
 	*x = ListFilesRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1050,7 +1050,7 @@ func (x *ListFilesRequest) String() string {
 func (*ListFilesRequest) ProtoMessage() {}
 
 func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1063,7 +1063,7 @@ func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
 func (*ListFilesRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListFilesRequest) GetServerId() string {
@@ -1090,7 +1090,7 @@ type ListFilesResponse struct {
 
 func (x *ListFilesResponse) Reset() {
 	*x = ListFilesResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1102,7 @@ func (x *ListFilesResponse) String() string {
 func (*ListFilesResponse) ProtoMessage() {}
 
 func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1115,7 +1115,7 @@ func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesResponse.ProtoReflect.Descriptor instead.
 func (*ListFilesResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{14}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListFilesResponse) GetPath() string {
@@ -1142,7 +1142,7 @@ type DownloadFilesRequest struct {
 
 func (x *DownloadFilesRequest) Reset() {
 	*x = DownloadFilesRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1154,7 +1154,7 @@ func (x *DownloadFilesRequest) String() string {
 func (*DownloadFilesRequest) ProtoMessage() {}
 
 func (x *DownloadFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1167,7 +1167,7 @@ func (x *DownloadFilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadFilesRequest.ProtoReflect.Descriptor instead.
 func (*DownloadFilesRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DownloadFilesRequest) GetServerId() string {
@@ -1194,7 +1194,7 @@ type DownloadFileRequest struct {
 
 func (x *DownloadFileRequest) Reset() {
 	*x = DownloadFileRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1206,7 +1206,7 @@ func (x *DownloadFileRequest) String() string {
 func (*DownloadFileRequest) ProtoMessage() {}
 
 func (x *DownloadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1219,7 +1219,7 @@ func (x *DownloadFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadFileRequest.ProtoReflect.Descriptor instead.
 func (*DownloadFileRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DownloadFileRequest) GetServerId() string {
@@ -1245,7 +1245,7 @@ type FileChunk struct {
 
 func (x *FileChunk) Reset() {
 	*x = FileChunk{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1257,7 @@ func (x *FileChunk) String() string {
 func (*FileChunk) ProtoMessage() {}
 
 func (x *FileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1270,7 @@ func (x *FileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChunk.ProtoReflect.Descriptor instead.
 func (*FileChunk) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FileChunk) GetData() []byte {
@@ -1291,7 +1291,7 @@ type ReadFileRequest struct {
 
 func (x *ReadFileRequest) Reset() {
 	*x = ReadFileRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1303,7 +1303,7 @@ func (x *ReadFileRequest) String() string {
 func (*ReadFileRequest) ProtoMessage() {}
 
 func (x *ReadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1316,7 @@ func (x *ReadFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFileRequest.ProtoReflect.Descriptor instead.
 func (*ReadFileRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReadFileRequest) GetServerId() string {
@@ -1352,7 +1352,7 @@ type ReadFileResponse struct {
 
 func (x *ReadFileResponse) Reset() {
 	*x = ReadFileResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1364,7 +1364,7 @@ func (x *ReadFileResponse) String() string {
 func (*ReadFileResponse) ProtoMessage() {}
 
 func (x *ReadFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1377,7 +1377,7 @@ func (x *ReadFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFileResponse.ProtoReflect.Descriptor instead.
 func (*ReadFileResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ReadFileResponse) GetContent() []byte {
@@ -1418,7 +1418,7 @@ type MakeDirRequest struct {
 
 func (x *MakeDirRequest) Reset() {
 	*x = MakeDirRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1430,7 +1430,7 @@ func (x *MakeDirRequest) String() string {
 func (*MakeDirRequest) ProtoMessage() {}
 
 func (x *MakeDirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1443,7 +1443,7 @@ func (x *MakeDirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MakeDirRequest.ProtoReflect.Descriptor instead.
 func (*MakeDirRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *MakeDirRequest) GetServerId() string {
@@ -1468,7 +1468,7 @@ type MakeDirResponse struct {
 
 func (x *MakeDirResponse) Reset() {
 	*x = MakeDirResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1480,7 +1480,7 @@ func (x *MakeDirResponse) String() string {
 func (*MakeDirResponse) ProtoMessage() {}
 
 func (x *MakeDirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1493,7 +1493,7 @@ func (x *MakeDirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MakeDirResponse.ProtoReflect.Descriptor instead.
 func (*MakeDirResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 type MovePathRequest struct {
@@ -1507,7 +1507,7 @@ type MovePathRequest struct {
 
 func (x *MovePathRequest) Reset() {
 	*x = MovePathRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1519,7 @@ func (x *MovePathRequest) String() string {
 func (*MovePathRequest) ProtoMessage() {}
 
 func (x *MovePathRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1532,7 @@ func (x *MovePathRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePathRequest.ProtoReflect.Descriptor instead.
 func (*MovePathRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *MovePathRequest) GetServerId() string {
@@ -1564,7 +1564,7 @@ type MovePathResponse struct {
 
 func (x *MovePathResponse) Reset() {
 	*x = MovePathResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1576,7 @@ func (x *MovePathResponse) String() string {
 func (*MovePathResponse) ProtoMessage() {}
 
 func (x *MovePathResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1589,7 @@ func (x *MovePathResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePathResponse.ProtoReflect.Descriptor instead.
 func (*MovePathResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 type CopyPathRequest struct {
@@ -1603,7 +1603,7 @@ type CopyPathRequest struct {
 
 func (x *CopyPathRequest) Reset() {
 	*x = CopyPathRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1615,7 +1615,7 @@ func (x *CopyPathRequest) String() string {
 func (*CopyPathRequest) ProtoMessage() {}
 
 func (x *CopyPathRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1628,7 +1628,7 @@ func (x *CopyPathRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyPathRequest.ProtoReflect.Descriptor instead.
 func (*CopyPathRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CopyPathRequest) GetServerId() string {
@@ -1660,7 +1660,7 @@ type CopyPathResponse struct {
 
 func (x *CopyPathResponse) Reset() {
 	*x = CopyPathResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1672,7 +1672,7 @@ func (x *CopyPathResponse) String() string {
 func (*CopyPathResponse) ProtoMessage() {}
 
 func (x *CopyPathResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1685,7 +1685,7 @@ func (x *CopyPathResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyPathResponse.ProtoReflect.Descriptor instead.
 func (*CopyPathResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 type WriteFileRequest struct {
@@ -1699,7 +1699,7 @@ type WriteFileRequest struct {
 
 func (x *WriteFileRequest) Reset() {
 	*x = WriteFileRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1711,7 +1711,7 @@ func (x *WriteFileRequest) String() string {
 func (*WriteFileRequest) ProtoMessage() {}
 
 func (x *WriteFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +1724,7 @@ func (x *WriteFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFileRequest.ProtoReflect.Descriptor instead.
 func (*WriteFileRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *WriteFileRequest) GetServerId() string {
@@ -1756,7 +1756,7 @@ type WriteFileResponse struct {
 
 func (x *WriteFileResponse) Reset() {
 	*x = WriteFileResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1768,7 +1768,7 @@ func (x *WriteFileResponse) String() string {
 func (*WriteFileResponse) ProtoMessage() {}
 
 func (x *WriteFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1781,7 +1781,7 @@ func (x *WriteFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFileResponse.ProtoReflect.Descriptor instead.
 func (*WriteFileResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 type DeletePathsRequest struct {
@@ -1794,7 +1794,7 @@ type DeletePathsRequest struct {
 
 func (x *DeletePathsRequest) Reset() {
 	*x = DeletePathsRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1806,7 +1806,7 @@ func (x *DeletePathsRequest) String() string {
 func (*DeletePathsRequest) ProtoMessage() {}
 
 func (x *DeletePathsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1819,7 +1819,7 @@ func (x *DeletePathsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePathsRequest.ProtoReflect.Descriptor instead.
 func (*DeletePathsRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DeletePathsRequest) GetServerId() string {
@@ -1844,7 +1844,7 @@ type DeletePathsResponse struct {
 
 func (x *DeletePathsResponse) Reset() {
 	*x = DeletePathsResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1856,7 +1856,7 @@ func (x *DeletePathsResponse) String() string {
 func (*DeletePathsResponse) ProtoMessage() {}
 
 func (x *DeletePathsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1869,7 +1869,7 @@ func (x *DeletePathsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePathsResponse.ProtoReflect.Descriptor instead.
 func (*DeletePathsResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 type BackupInfo struct {
@@ -1878,15 +1878,15 @@ type BackupInfo struct {
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
 	CreatedUnixMs int64                  `protobuf:"varint,4,opt,name=created_unix_ms,json=createdUnixMs,proto3" json:"created_unix_ms,omitempty"`
-	State         BackupState            `protobuf:"varint,5,opt,name=state,proto3,enum=cthulhu.agent.v1.BackupState" json:"state,omitempty"`
-	Replication   ReplicationState       `protobuf:"varint,6,opt,name=replication,proto3,enum=cthulhu.agent.v1.ReplicationState" json:"replication,omitempty"`
+	State         BackupState            `protobuf:"varint,5,opt,name=state,proto3,enum=kraken.agent.v1.BackupState" json:"state,omitempty"`
+	Replication   ReplicationState       `protobuf:"varint,6,opt,name=replication,proto3,enum=kraken.agent.v1.ReplicationState" json:"replication,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BackupInfo) Reset() {
 	*x = BackupInfo{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +1898,7 @@ func (x *BackupInfo) String() string {
 func (*BackupInfo) ProtoMessage() {}
 
 func (x *BackupInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[30]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +1911,7 @@ func (x *BackupInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupInfo.ProtoReflect.Descriptor instead.
 func (*BackupInfo) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{30}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *BackupInfo) GetId() string {
@@ -1970,7 +1970,7 @@ type CreateBackupRequest struct {
 
 func (x *CreateBackupRequest) Reset() {
 	*x = CreateBackupRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1982,7 +1982,7 @@ func (x *CreateBackupRequest) String() string {
 func (*CreateBackupRequest) ProtoMessage() {}
 
 func (x *CreateBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[31]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1995,7 +1995,7 @@ func (x *CreateBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBackupRequest.ProtoReflect.Descriptor instead.
 func (*CreateBackupRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CreateBackupRequest) GetServerId() string {
@@ -2029,7 +2029,7 @@ type ListBackupsRequest struct {
 
 func (x *ListBackupsRequest) Reset() {
 	*x = ListBackupsRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2041,7 +2041,7 @@ func (x *ListBackupsRequest) String() string {
 func (*ListBackupsRequest) ProtoMessage() {}
 
 func (x *ListBackupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[32]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2054,7 +2054,7 @@ func (x *ListBackupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackupsRequest.ProtoReflect.Descriptor instead.
 func (*ListBackupsRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListBackupsRequest) GetServerId() string {
@@ -2080,7 +2080,7 @@ type ListBackupsResponse struct {
 
 func (x *ListBackupsResponse) Reset() {
 	*x = ListBackupsResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2092,7 +2092,7 @@ func (x *ListBackupsResponse) String() string {
 func (*ListBackupsResponse) ProtoMessage() {}
 
 func (x *ListBackupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[33]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2105,7 +2105,7 @@ func (x *ListBackupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackupsResponse.ProtoReflect.Descriptor instead.
 func (*ListBackupsResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListBackupsResponse) GetBackups() []*BackupInfo {
@@ -2126,7 +2126,7 @@ type RestoreBackupRequest struct {
 
 func (x *RestoreBackupRequest) Reset() {
 	*x = RestoreBackupRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[34]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2138,7 +2138,7 @@ func (x *RestoreBackupRequest) String() string {
 func (*RestoreBackupRequest) ProtoMessage() {}
 
 func (x *RestoreBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[34]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2151,7 +2151,7 @@ func (x *RestoreBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreBackupRequest.ProtoReflect.Descriptor instead.
 func (*RestoreBackupRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{34}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *RestoreBackupRequest) GetServerId() string {
@@ -2183,7 +2183,7 @@ type RestoreBackupResponse struct {
 
 func (x *RestoreBackupResponse) Reset() {
 	*x = RestoreBackupResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[35]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2195,7 +2195,7 @@ func (x *RestoreBackupResponse) String() string {
 func (*RestoreBackupResponse) ProtoMessage() {}
 
 func (x *RestoreBackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[35]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2208,7 +2208,7 @@ func (x *RestoreBackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreBackupResponse.ProtoReflect.Descriptor instead.
 func (*RestoreBackupResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{35}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 type DeleteBackupRequest struct {
@@ -2222,7 +2222,7 @@ type DeleteBackupRequest struct {
 
 func (x *DeleteBackupRequest) Reset() {
 	*x = DeleteBackupRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2234,7 +2234,7 @@ func (x *DeleteBackupRequest) String() string {
 func (*DeleteBackupRequest) ProtoMessage() {}
 
 func (x *DeleteBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2247,7 +2247,7 @@ func (x *DeleteBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBackupRequest.ProtoReflect.Descriptor instead.
 func (*DeleteBackupRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{36}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DeleteBackupRequest) GetServerId() string {
@@ -2279,7 +2279,7 @@ type DeleteBackupResponse struct {
 
 func (x *DeleteBackupResponse) Reset() {
 	*x = DeleteBackupResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2291,7 +2291,7 @@ func (x *DeleteBackupResponse) String() string {
 func (*DeleteBackupResponse) ProtoMessage() {}
 
 func (x *DeleteBackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2304,7 +2304,7 @@ func (x *DeleteBackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBackupResponse.ProtoReflect.Descriptor instead.
 func (*DeleteBackupResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{37}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 type NodeInfo struct {
@@ -2324,7 +2324,7 @@ type NodeInfo struct {
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2336,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2349,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{38}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *NodeInfo) GetNodeId() string {
@@ -2428,7 +2428,7 @@ type InstallServerRequest struct {
 
 func (x *InstallServerRequest) Reset() {
 	*x = InstallServerRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2440,7 +2440,7 @@ func (x *InstallServerRequest) String() string {
 func (*InstallServerRequest) ProtoMessage() {}
 
 func (x *InstallServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2453,7 +2453,7 @@ func (x *InstallServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallServerRequest.ProtoReflect.Descriptor instead.
 func (*InstallServerRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{39}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *InstallServerRequest) GetServerId() string {
@@ -2508,7 +2508,7 @@ type InstallEvent struct {
 
 func (x *InstallEvent) Reset() {
 	*x = InstallEvent{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2520,7 +2520,7 @@ func (x *InstallEvent) String() string {
 func (*InstallEvent) ProtoMessage() {}
 
 func (x *InstallEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2533,7 +2533,7 @@ func (x *InstallEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallEvent.ProtoReflect.Descriptor instead.
 func (*InstallEvent) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{40}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *InstallEvent) GetEvent() isInstallEvent_Event {
@@ -2610,14 +2610,14 @@ func (*InstallEvent_Failed) isInstallEvent_Event() {}
 type PowerActionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	Action        PowerAction            `protobuf:"varint,2,opt,name=action,proto3,enum=cthulhu.agent.v1.PowerAction" json:"action,omitempty"`
+	Action        PowerAction            `protobuf:"varint,2,opt,name=action,proto3,enum=kraken.agent.v1.PowerAction" json:"action,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PowerActionRequest) Reset() {
 	*x = PowerActionRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[41]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2629,7 +2629,7 @@ func (x *PowerActionRequest) String() string {
 func (*PowerActionRequest) ProtoMessage() {}
 
 func (x *PowerActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[41]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2642,7 +2642,7 @@ func (x *PowerActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PowerActionRequest.ProtoReflect.Descriptor instead.
 func (*PowerActionRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{41}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *PowerActionRequest) GetServerId() string {
@@ -2661,14 +2661,14 @@ func (x *PowerActionRequest) GetAction() PowerAction {
 
 type PowerActionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	State         ServerState            `protobuf:"varint,1,opt,name=state,proto3,enum=cthulhu.agent.v1.ServerState" json:"state,omitempty"`
+	State         ServerState            `protobuf:"varint,1,opt,name=state,proto3,enum=kraken.agent.v1.ServerState" json:"state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PowerActionResponse) Reset() {
 	*x = PowerActionResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[42]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2680,7 +2680,7 @@ func (x *PowerActionResponse) String() string {
 func (*PowerActionResponse) ProtoMessage() {}
 
 func (x *PowerActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[42]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2693,7 +2693,7 @@ func (x *PowerActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PowerActionResponse.ProtoReflect.Descriptor instead.
 func (*PowerActionResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{42}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *PowerActionResponse) GetState() ServerState {
@@ -2712,7 +2712,7 @@ type GetServerStatusRequest struct {
 
 func (x *GetServerStatusRequest) Reset() {
 	*x = GetServerStatusRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2724,7 +2724,7 @@ func (x *GetServerStatusRequest) String() string {
 func (*GetServerStatusRequest) ProtoMessage() {}
 
 func (x *GetServerStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2737,7 +2737,7 @@ func (x *GetServerStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServerStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetServerStatusRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{43}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetServerStatusRequest) GetServerId() string {
@@ -2750,7 +2750,7 @@ func (x *GetServerStatusRequest) GetServerId() string {
 type ServerStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	State         ServerState            `protobuf:"varint,2,opt,name=state,proto3,enum=cthulhu.agent.v1.ServerState" json:"state,omitempty"`
+	State         ServerState            `protobuf:"varint,2,opt,name=state,proto3,enum=kraken.agent.v1.ServerState" json:"state,omitempty"`
 	LastStats     *ResourceStats         `protobuf:"bytes,3,opt,name=last_stats,json=lastStats,proto3" json:"last_stats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2758,7 +2758,7 @@ type ServerStatus struct {
 
 func (x *ServerStatus) Reset() {
 	*x = ServerStatus{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2770,7 +2770,7 @@ func (x *ServerStatus) String() string {
 func (*ServerStatus) ProtoMessage() {}
 
 func (x *ServerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2783,7 +2783,7 @@ func (x *ServerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerStatus.ProtoReflect.Descriptor instead.
 func (*ServerStatus) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{44}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ServerStatus) GetServerId() string {
@@ -2818,7 +2818,7 @@ type StreamConsoleRequest struct {
 
 func (x *StreamConsoleRequest) Reset() {
 	*x = StreamConsoleRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2830,7 +2830,7 @@ func (x *StreamConsoleRequest) String() string {
 func (*StreamConsoleRequest) ProtoMessage() {}
 
 func (x *StreamConsoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2843,7 +2843,7 @@ func (x *StreamConsoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamConsoleRequest.ProtoReflect.Descriptor instead.
 func (*StreamConsoleRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{45}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *StreamConsoleRequest) GetServerId() string {
@@ -2873,7 +2873,7 @@ type ConsoleLine struct {
 
 func (x *ConsoleLine) Reset() {
 	*x = ConsoleLine{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2885,7 +2885,7 @@ func (x *ConsoleLine) String() string {
 func (*ConsoleLine) ProtoMessage() {}
 
 func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2898,7 +2898,7 @@ func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleLine.ProtoReflect.Descriptor instead.
 func (*ConsoleLine) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{46}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ConsoleLine) GetServerId() string {
@@ -2939,7 +2939,7 @@ type SendCommandRequest struct {
 
 func (x *SendCommandRequest) Reset() {
 	*x = SendCommandRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2951,7 +2951,7 @@ func (x *SendCommandRequest) String() string {
 func (*SendCommandRequest) ProtoMessage() {}
 
 func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2964,7 +2964,7 @@ func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandRequest.ProtoReflect.Descriptor instead.
 func (*SendCommandRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SendCommandRequest) GetServerId() string {
@@ -2989,7 +2989,7 @@ type SendCommandResponse struct {
 
 func (x *SendCommandResponse) Reset() {
 	*x = SendCommandResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3001,7 +3001,7 @@ func (x *SendCommandResponse) String() string {
 func (*SendCommandResponse) ProtoMessage() {}
 
 func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3014,7 +3014,7 @@ func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandResponse.ProtoReflect.Descriptor instead.
 func (*SendCommandResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{48}
 }
 
 type StreamStatsRequest struct {
@@ -3028,7 +3028,7 @@ type StreamStatsRequest struct {
 
 func (x *StreamStatsRequest) Reset() {
 	*x = StreamStatsRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3040,7 +3040,7 @@ func (x *StreamStatsRequest) String() string {
 func (*StreamStatsRequest) ProtoMessage() {}
 
 func (x *StreamStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3053,7 +3053,7 @@ func (x *StreamStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamStatsRequest.ProtoReflect.Descriptor instead.
 func (*StreamStatsRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *StreamStatsRequest) GetServerId() string {
@@ -3092,7 +3092,7 @@ type ResourceStats struct {
 
 func (x *ResourceStats) Reset() {
 	*x = ResourceStats{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3104,7 +3104,7 @@ func (x *ResourceStats) String() string {
 func (*ResourceStats) ProtoMessage() {}
 
 func (x *ResourceStats) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3117,7 +3117,7 @@ func (x *ResourceStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceStats.ProtoReflect.Descriptor instead.
 func (*ResourceStats) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ResourceStats) GetServerId() string {
@@ -3233,7 +3233,7 @@ type NodeConfig struct {
 
 func (x *NodeConfig) Reset() {
 	*x = NodeConfig{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3245,7 +3245,7 @@ func (x *NodeConfig) String() string {
 func (*NodeConfig) ProtoMessage() {}
 
 func (x *NodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3258,7 +3258,7 @@ func (x *NodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeConfig.ProtoReflect.Descriptor instead.
 func (*NodeConfig) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{51}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *NodeConfig) GetBackupTarget() string {
@@ -3333,7 +3333,7 @@ type ApplyNodeConfigRequest struct {
 
 func (x *ApplyNodeConfigRequest) Reset() {
 	*x = ApplyNodeConfigRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3345,7 +3345,7 @@ func (x *ApplyNodeConfigRequest) String() string {
 func (*ApplyNodeConfigRequest) ProtoMessage() {}
 
 func (x *ApplyNodeConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3358,7 +3358,7 @@ func (x *ApplyNodeConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyNodeConfigRequest.ProtoReflect.Descriptor instead.
 func (*ApplyNodeConfigRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{52}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ApplyNodeConfigRequest) GetConfig() *NodeConfig {
@@ -3378,7 +3378,7 @@ type ApplyNodeConfigResponse struct {
 
 func (x *ApplyNodeConfigResponse) Reset() {
 	*x = ApplyNodeConfigResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3390,7 +3390,7 @@ func (x *ApplyNodeConfigResponse) String() string {
 func (*ApplyNodeConfigResponse) ProtoMessage() {}
 
 func (x *ApplyNodeConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3403,7 +3403,7 @@ func (x *ApplyNodeConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyNodeConfigResponse.ProtoReflect.Descriptor instead.
 func (*ApplyNodeConfigResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{53}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ApplyNodeConfigResponse) GetOk() bool {
@@ -3430,7 +3430,7 @@ type ReplicateBackupsRequest struct {
 
 func (x *ReplicateBackupsRequest) Reset() {
 	*x = ReplicateBackupsRequest{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3442,7 +3442,7 @@ func (x *ReplicateBackupsRequest) String() string {
 func (*ReplicateBackupsRequest) ProtoMessage() {}
 
 func (x *ReplicateBackupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3455,7 +3455,7 @@ func (x *ReplicateBackupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateBackupsRequest.ProtoReflect.Descriptor instead.
 func (*ReplicateBackupsRequest) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{54}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ReplicateBackupsRequest) GetServerId() string {
@@ -3482,7 +3482,7 @@ type ReplicateBackupsResponse struct {
 
 func (x *ReplicateBackupsResponse) Reset() {
 	*x = ReplicateBackupsResponse{}
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3494,7 +3494,7 @@ func (x *ReplicateBackupsResponse) String() string {
 func (*ReplicateBackupsResponse) ProtoMessage() {}
 
 func (x *ReplicateBackupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cthulhu_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3507,7 +3507,7 @@ func (x *ReplicateBackupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateBackupsResponse.ProtoReflect.Descriptor instead.
 func (*ReplicateBackupsResponse) Descriptor() ([]byte, []int) {
-	return file_cthulhu_agent_v1_agent_proto_rawDescGZIP(), []int{55}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ReplicateBackupsResponse) GetMirrored() int32 {
@@ -3524,25 +3524,25 @@ func (x *ReplicateBackupsResponse) GetSkipped() int32 {
 	return 0
 }
 
-var File_cthulhu_agent_v1_agent_proto protoreflect.FileDescriptor
+var File_kraken_agent_v1_agent_proto protoreflect.FileDescriptor
 
-const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
+const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1ccthulhu/agent/v1/agent.proto\x12\x10cthulhu.agent.v1\"\x14\n" +
+	"\x1bkraken/agent/v1/agent.proto\x12\x0fkraken.agent.v1\"\x14\n" +
 	"\x12GetNodeInfoRequest\"\x81\x01\n" +
 	"\vPortMapping\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12%\n" +
 	"\x0econtainer_port\x18\x03 \x01(\x05R\rcontainerPort\x12\x1b\n" +
-	"\thost_port\x18\x04 \x01(\x05R\bhostPort\"\xf9\x04\n" +
+	"\thost_port\x18\x04 \x01(\x05R\bhostPort\"\xf5\x04\n" +
 	"\n" +
 	"ServerSpec\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12'\n" +
-	"\x0fstartup_command\x18\x03 \x01(\tR\x0estartupCommand\x127\n" +
-	"\x03env\x18\x04 \x03(\v2%.cthulhu.agent.v1.ServerSpec.EnvEntryR\x03env\x12&\n" +
-	"\x0fmemory_limit_mb\x18\x05 \x01(\x03R\rmemoryLimitMb\x123\n" +
-	"\x05ports\x18\x06 \x03(\v2\x1d.cthulhu.agent.v1.PortMappingR\x05ports\x12\x1b\n" +
+	"\x0fstartup_command\x18\x03 \x01(\tR\x0estartupCommand\x126\n" +
+	"\x03env\x18\x04 \x03(\v2$.kraken.agent.v1.ServerSpec.EnvEntryR\x03env\x12&\n" +
+	"\x0fmemory_limit_mb\x18\x05 \x01(\x03R\rmemoryLimitMb\x122\n" +
+	"\x05ports\x18\x06 \x03(\v2\x1c.kraken.agent.v1.PortMappingR\x05ports\x12\x1b\n" +
 	"\tdata_path\x18\a \x01(\tR\bdataPath\x12\x1f\n" +
 	"\vstop_signal\x18\b \x01(\tR\n" +
 	"stopSignal\x12!\n" +
@@ -3551,9 +3551,9 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	" \x01(\tR\n" +
 	"readyRegex\x12(\n" +
 	"\x10restart_on_crash\x18\v \x01(\bR\x0erestartOnCrash\x12!\n" +
-	"\fmax_restarts\x18\f \x01(\x05R\vmaxRestarts\x12@\n" +
-	"\fplayer_query\x18\r \x01(\v2\x1d.cthulhu.agent.v1.PlayerQueryR\vplayerQuery\x120\n" +
-	"\x04sftp\x18\x0e \x01(\v2\x1c.cthulhu.agent.v1.SftpAccessR\x04sftp\x1a6\n" +
+	"\fmax_restarts\x18\f \x01(\x05R\vmaxRestarts\x12?\n" +
+	"\fplayer_query\x18\r \x01(\v2\x1c.kraken.agent.v1.PlayerQueryR\vplayerQuery\x12/\n" +
+	"\x04sftp\x18\x0e \x01(\v2\x1b.kraken.agent.v1.SftpAccessR\x04sftp\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x01\n" +
@@ -3566,9 +3566,9 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\vPlayerQuery\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"G\n" +
-	"\x13CreateServerRequest\x120\n" +
-	"\x04spec\x18\x01 \x01(\v2\x1c.cthulhu.agent.v1.ServerSpecR\x04spec\"\x16\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\"F\n" +
+	"\x13CreateServerRequest\x12/\n" +
+	"\x04spec\x18\x01 \x01(\v2\x1b.kraken.agent.v1.ServerSpecR\x04spec\"\x16\n" +
 	"\x14CreateServerResponse\"S\n" +
 	"\x13RemoveServerRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1f\n" +
@@ -3577,10 +3577,10 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\x14RemoveServerResponse\"<\n" +
 	"\fRenderedFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
-	"\acontent\x18\x02 \x01(\tR\acontent\"g\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\"f\n" +
 	"\x12ApplyConfigRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\x124\n" +
-	"\x05files\x18\x02 \x03(\v2\x1e.cthulhu.agent.v1.RenderedFileR\x05files\"\x15\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x123\n" +
+	"\x05files\x18\x02 \x03(\v2\x1d.kraken.agent.v1.RenderedFileR\x05files\"\x15\n" +
 	"\x13ApplyConfigResponse\"~\n" +
 	"\tFileEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
@@ -3590,10 +3590,10 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\vmod_unix_ms\x18\x05 \x01(\x03R\tmodUnixMs\"C\n" +
 	"\x10ListFilesRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\"^\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"]\n" +
 	"\x11ListFilesResponse\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\x125\n" +
-	"\aentries\x18\x02 \x03(\v2\x1b.cthulhu.agent.v1.FileEntryR\aentries\"I\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x124\n" +
+	"\aentries\x18\x02 \x03(\v2\x1a.kraken.agent.v1.FileEntryR\aentries\"I\n" +
 	"\x14DownloadFilesRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
 	"\x05paths\x18\x02 \x03(\tR\x05paths\"F\n" +
@@ -3633,24 +3633,24 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\x12DeletePathsRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
 	"\x05paths\x18\x02 \x03(\tR\x05paths\"\x15\n" +
-	"\x13DeletePathsResponse\"\xe7\x01\n" +
+	"\x13DeletePathsResponse\"\xe5\x01\n" +
 	"\n" +
 	"BackupInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\x12&\n" +
-	"\x0fcreated_unix_ms\x18\x04 \x01(\x03R\rcreatedUnixMs\x123\n" +
-	"\x05state\x18\x05 \x01(\x0e2\x1d.cthulhu.agent.v1.BackupStateR\x05state\x12D\n" +
-	"\vreplication\x18\x06 \x01(\x0e2\".cthulhu.agent.v1.ReplicationStateR\vreplication\"Z\n" +
+	"\x0fcreated_unix_ms\x18\x04 \x01(\x03R\rcreatedUnixMs\x122\n" +
+	"\x05state\x18\x05 \x01(\x0e2\x1c.kraken.agent.v1.BackupStateR\x05state\x12C\n" +
+	"\vreplication\x18\x06 \x01(\x0e2!.kraken.agent.v1.ReplicationStateR\vreplication\"Z\n" +
 	"\x13CreateBackupRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\"E\n" +
 	"\x12ListBackupsRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
-	"\x04slug\x18\x02 \x01(\tR\x04slug\"M\n" +
-	"\x13ListBackupsResponse\x126\n" +
-	"\abackups\x18\x01 \x03(\v2\x1c.cthulhu.agent.v1.BackupInfoR\abackups\"W\n" +
+	"\x04slug\x18\x02 \x01(\tR\x04slug\"L\n" +
+	"\x13ListBackupsResponse\x125\n" +
+	"\abackups\x18\x01 \x03(\v2\x1b.kraken.agent.v1.BackupInfoR\abackups\"W\n" +
 	"\x14RestoreBackupRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
@@ -3671,12 +3671,12 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\x04host\x18\a \x01(\tR\x04host\x12\x1f\n" +
 	"\vexternal_ip\x18\b \x01(\tR\n" +
 	"externalIp\x12\x1b\n" +
-	"\tsftp_port\x18\t \x01(\x05R\bsftpPort\"\x93\x02\n" +
+	"\tsftp_port\x18\t \x01(\x05R\bsftpPort\"\x92\x02\n" +
 	"\x14InstallServerRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12%\n" +
-	"\x0einstall_script\x18\x03 \x01(\tR\rinstallScript\x12A\n" +
-	"\x03env\x18\x04 \x03(\v2/.cthulhu.agent.v1.InstallServerRequest.EnvEntryR\x03env\x12&\n" +
+	"\x0einstall_script\x18\x03 \x01(\tR\rinstallScript\x12@\n" +
+	"\x03env\x18\x04 \x03(\v2..kraken.agent.v1.InstallServerRequest.EnvEntryR\x03env\x12&\n" +
 	"\x0fmemory_limit_mb\x18\x05 \x01(\x03R\rmemoryLimitMb\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -3686,19 +3686,19 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\bprogress\x18\x02 \x01(\x05H\x00R\bprogress\x12\x1e\n" +
 	"\tcompleted\x18\x03 \x01(\bH\x00R\tcompleted\x12\x18\n" +
 	"\x06failed\x18\x04 \x01(\tH\x00R\x06failedB\a\n" +
-	"\x05event\"h\n" +
+	"\x05event\"g\n" +
 	"\x12PowerActionRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\x125\n" +
-	"\x06action\x18\x02 \x01(\x0e2\x1d.cthulhu.agent.v1.PowerActionR\x06action\"J\n" +
-	"\x13PowerActionResponse\x123\n" +
-	"\x05state\x18\x01 \x01(\x0e2\x1d.cthulhu.agent.v1.ServerStateR\x05state\"5\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x124\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1c.kraken.agent.v1.PowerActionR\x06action\"I\n" +
+	"\x13PowerActionResponse\x122\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\"5\n" +
 	"\x16GetServerStatusRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xa0\x01\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\x9e\x01\n" +
 	"\fServerStatus\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\x123\n" +
-	"\x05state\x18\x02 \x01(\x0e2\x1d.cthulhu.agent.v1.ServerStateR\x05state\x12>\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x122\n" +
+	"\x05state\x18\x02 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\x12=\n" +
 	"\n" +
-	"last_stats\x18\x03 \x01(\v2\x1f.cthulhu.agent.v1.ResourceStatsR\tlastStats\"R\n" +
+	"last_stats\x18\x03 \x01(\v2\x1e.kraken.agent.v1.ResourceStatsR\tlastStats\"R\n" +
 	"\x14StreamConsoleRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1d\n" +
 	"\n" +
@@ -3749,9 +3749,9 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\x10sftp_private_key\x18\f \x01(\tR\x0esftpPrivateKey\x12$\n" +
 	"\x0esftp_base_path\x18\r \x01(\tR\fsftpBasePath\x12*\n" +
 	"\x11replicate_to_sftp\x18\x0e \x01(\bR\x0freplicateToSftp\x12-\n" +
-	"\x13sftp_known_host_key\x18\x0f \x01(\tR\x10sftpKnownHostKeyJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"N\n" +
-	"\x16ApplyNodeConfigRequest\x124\n" +
-	"\x06config\x18\x01 \x01(\v2\x1c.cthulhu.agent.v1.NodeConfigR\x06config\"A\n" +
+	"\x13sftp_known_host_key\x18\x0f \x01(\tR\x10sftpKnownHostKeyJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"M\n" +
+	"\x16ApplyNodeConfigRequest\x123\n" +
+	"\x06config\x18\x01 \x01(\v2\x1b.kraken.agent.v1.NodeConfigR\x06config\"A\n" +
 	"\x17ApplyNodeConfigResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06detail\x18\x02 \x01(\tR\x06detail\"J\n" +
@@ -3784,179 +3784,179 @@ const file_cthulhu_agent_v1_agent_proto_rawDesc = "" +
 	"\x1dREPLICATION_STATE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19REPLICATION_STATE_PENDING\x10\x01\x12\x1a\n" +
 	"\x16REPLICATION_STATE_DONE\x10\x02\x12\x1c\n" +
-	"\x18REPLICATION_STATE_FAILED\x10\x032\xde\x11\n" +
-	"\vNodeService\x12O\n" +
-	"\vGetNodeInfo\x12$.cthulhu.agent.v1.GetNodeInfoRequest\x1a\x1a.cthulhu.agent.v1.NodeInfo\x12]\n" +
-	"\fCreateServer\x12%.cthulhu.agent.v1.CreateServerRequest\x1a&.cthulhu.agent.v1.CreateServerResponse\x12]\n" +
-	"\fRemoveServer\x12%.cthulhu.agent.v1.RemoveServerRequest\x1a&.cthulhu.agent.v1.RemoveServerResponse\x12Z\n" +
-	"\vApplyConfig\x12$.cthulhu.agent.v1.ApplyConfigRequest\x1a%.cthulhu.agent.v1.ApplyConfigResponse\x12T\n" +
-	"\tListFiles\x12\".cthulhu.agent.v1.ListFilesRequest\x1a#.cthulhu.agent.v1.ListFilesResponse\x12V\n" +
-	"\rDownloadFiles\x12&.cthulhu.agent.v1.DownloadFilesRequest\x1a\x1b.cthulhu.agent.v1.FileChunk0\x01\x12Q\n" +
-	"\bReadFile\x12!.cthulhu.agent.v1.ReadFileRequest\x1a\".cthulhu.agent.v1.ReadFileResponse\x12T\n" +
-	"\fDownloadFile\x12%.cthulhu.agent.v1.DownloadFileRequest\x1a\x1b.cthulhu.agent.v1.FileChunk0\x01\x12N\n" +
-	"\aMakeDir\x12 .cthulhu.agent.v1.MakeDirRequest\x1a!.cthulhu.agent.v1.MakeDirResponse\x12Q\n" +
-	"\bMovePath\x12!.cthulhu.agent.v1.MovePathRequest\x1a\".cthulhu.agent.v1.MovePathResponse\x12Q\n" +
-	"\bCopyPath\x12!.cthulhu.agent.v1.CopyPathRequest\x1a\".cthulhu.agent.v1.CopyPathResponse\x12T\n" +
-	"\tWriteFile\x12\".cthulhu.agent.v1.WriteFileRequest\x1a#.cthulhu.agent.v1.WriteFileResponse\x12Z\n" +
-	"\vDeletePaths\x12$.cthulhu.agent.v1.DeletePathsRequest\x1a%.cthulhu.agent.v1.DeletePathsResponse\x12S\n" +
-	"\fCreateBackup\x12%.cthulhu.agent.v1.CreateBackupRequest\x1a\x1c.cthulhu.agent.v1.BackupInfo\x12Z\n" +
-	"\vListBackups\x12$.cthulhu.agent.v1.ListBackupsRequest\x1a%.cthulhu.agent.v1.ListBackupsResponse\x12`\n" +
-	"\rRestoreBackup\x12&.cthulhu.agent.v1.RestoreBackupRequest\x1a'.cthulhu.agent.v1.RestoreBackupResponse\x12]\n" +
-	"\fDeleteBackup\x12%.cthulhu.agent.v1.DeleteBackupRequest\x1a&.cthulhu.agent.v1.DeleteBackupResponse\x12Y\n" +
-	"\rInstallServer\x12&.cthulhu.agent.v1.InstallServerRequest\x1a\x1e.cthulhu.agent.v1.InstallEvent0\x01\x12Z\n" +
-	"\vPowerAction\x12$.cthulhu.agent.v1.PowerActionRequest\x1a%.cthulhu.agent.v1.PowerActionResponse\x12[\n" +
-	"\x0fGetServerStatus\x12(.cthulhu.agent.v1.GetServerStatusRequest\x1a\x1e.cthulhu.agent.v1.ServerStatus\x12X\n" +
-	"\rStreamConsole\x12&.cthulhu.agent.v1.StreamConsoleRequest\x1a\x1d.cthulhu.agent.v1.ConsoleLine0\x01\x12Z\n" +
-	"\vSendCommand\x12$.cthulhu.agent.v1.SendCommandRequest\x1a%.cthulhu.agent.v1.SendCommandResponse\x12V\n" +
-	"\vStreamStats\x12$.cthulhu.agent.v1.StreamStatsRequest\x1a\x1f.cthulhu.agent.v1.ResourceStats0\x01\x12f\n" +
-	"\x0fApplyNodeConfig\x12(.cthulhu.agent.v1.ApplyNodeConfigRequest\x1a).cthulhu.agent.v1.ApplyNodeConfigResponse\x12i\n" +
-	"\x10ReplicateBackups\x12).cthulhu.agent.v1.ReplicateBackupsRequest\x1a*.cthulhu.agent.v1.ReplicateBackupsResponseB>Z<github.com/briggleman/kraken/internal/shared/agentpb;agentpbb\x06proto3"
+	"\x18REPLICATION_STATE_FAILED\x10\x032\xac\x11\n" +
+	"\vNodeService\x12M\n" +
+	"\vGetNodeInfo\x12#.kraken.agent.v1.GetNodeInfoRequest\x1a\x19.kraken.agent.v1.NodeInfo\x12[\n" +
+	"\fCreateServer\x12$.kraken.agent.v1.CreateServerRequest\x1a%.kraken.agent.v1.CreateServerResponse\x12[\n" +
+	"\fRemoveServer\x12$.kraken.agent.v1.RemoveServerRequest\x1a%.kraken.agent.v1.RemoveServerResponse\x12X\n" +
+	"\vApplyConfig\x12#.kraken.agent.v1.ApplyConfigRequest\x1a$.kraken.agent.v1.ApplyConfigResponse\x12R\n" +
+	"\tListFiles\x12!.kraken.agent.v1.ListFilesRequest\x1a\".kraken.agent.v1.ListFilesResponse\x12T\n" +
+	"\rDownloadFiles\x12%.kraken.agent.v1.DownloadFilesRequest\x1a\x1a.kraken.agent.v1.FileChunk0\x01\x12O\n" +
+	"\bReadFile\x12 .kraken.agent.v1.ReadFileRequest\x1a!.kraken.agent.v1.ReadFileResponse\x12R\n" +
+	"\fDownloadFile\x12$.kraken.agent.v1.DownloadFileRequest\x1a\x1a.kraken.agent.v1.FileChunk0\x01\x12L\n" +
+	"\aMakeDir\x12\x1f.kraken.agent.v1.MakeDirRequest\x1a .kraken.agent.v1.MakeDirResponse\x12O\n" +
+	"\bMovePath\x12 .kraken.agent.v1.MovePathRequest\x1a!.kraken.agent.v1.MovePathResponse\x12O\n" +
+	"\bCopyPath\x12 .kraken.agent.v1.CopyPathRequest\x1a!.kraken.agent.v1.CopyPathResponse\x12R\n" +
+	"\tWriteFile\x12!.kraken.agent.v1.WriteFileRequest\x1a\".kraken.agent.v1.WriteFileResponse\x12X\n" +
+	"\vDeletePaths\x12#.kraken.agent.v1.DeletePathsRequest\x1a$.kraken.agent.v1.DeletePathsResponse\x12Q\n" +
+	"\fCreateBackup\x12$.kraken.agent.v1.CreateBackupRequest\x1a\x1b.kraken.agent.v1.BackupInfo\x12X\n" +
+	"\vListBackups\x12#.kraken.agent.v1.ListBackupsRequest\x1a$.kraken.agent.v1.ListBackupsResponse\x12^\n" +
+	"\rRestoreBackup\x12%.kraken.agent.v1.RestoreBackupRequest\x1a&.kraken.agent.v1.RestoreBackupResponse\x12[\n" +
+	"\fDeleteBackup\x12$.kraken.agent.v1.DeleteBackupRequest\x1a%.kraken.agent.v1.DeleteBackupResponse\x12W\n" +
+	"\rInstallServer\x12%.kraken.agent.v1.InstallServerRequest\x1a\x1d.kraken.agent.v1.InstallEvent0\x01\x12X\n" +
+	"\vPowerAction\x12#.kraken.agent.v1.PowerActionRequest\x1a$.kraken.agent.v1.PowerActionResponse\x12Y\n" +
+	"\x0fGetServerStatus\x12'.kraken.agent.v1.GetServerStatusRequest\x1a\x1d.kraken.agent.v1.ServerStatus\x12V\n" +
+	"\rStreamConsole\x12%.kraken.agent.v1.StreamConsoleRequest\x1a\x1c.kraken.agent.v1.ConsoleLine0\x01\x12X\n" +
+	"\vSendCommand\x12#.kraken.agent.v1.SendCommandRequest\x1a$.kraken.agent.v1.SendCommandResponse\x12T\n" +
+	"\vStreamStats\x12#.kraken.agent.v1.StreamStatsRequest\x1a\x1e.kraken.agent.v1.ResourceStats0\x01\x12d\n" +
+	"\x0fApplyNodeConfig\x12'.kraken.agent.v1.ApplyNodeConfigRequest\x1a(.kraken.agent.v1.ApplyNodeConfigResponse\x12g\n" +
+	"\x10ReplicateBackups\x12(.kraken.agent.v1.ReplicateBackupsRequest\x1a).kraken.agent.v1.ReplicateBackupsResponseB>Z<github.com/briggleman/kraken/internal/shared/agentpb;agentpbb\x06proto3"
 
 var (
-	file_cthulhu_agent_v1_agent_proto_rawDescOnce sync.Once
-	file_cthulhu_agent_v1_agent_proto_rawDescData []byte
+	file_kraken_agent_v1_agent_proto_rawDescOnce sync.Once
+	file_kraken_agent_v1_agent_proto_rawDescData []byte
 )
 
-func file_cthulhu_agent_v1_agent_proto_rawDescGZIP() []byte {
-	file_cthulhu_agent_v1_agent_proto_rawDescOnce.Do(func() {
-		file_cthulhu_agent_v1_agent_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_cthulhu_agent_v1_agent_proto_rawDesc), len(file_cthulhu_agent_v1_agent_proto_rawDesc)))
+func file_kraken_agent_v1_agent_proto_rawDescGZIP() []byte {
+	file_kraken_agent_v1_agent_proto_rawDescOnce.Do(func() {
+		file_kraken_agent_v1_agent_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_kraken_agent_v1_agent_proto_rawDesc), len(file_kraken_agent_v1_agent_proto_rawDesc)))
 	})
-	return file_cthulhu_agent_v1_agent_proto_rawDescData
+	return file_kraken_agent_v1_agent_proto_rawDescData
 }
 
-var file_cthulhu_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_cthulhu_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
-var file_cthulhu_agent_v1_agent_proto_goTypes = []any{
-	(ServerState)(0),                 // 0: cthulhu.agent.v1.ServerState
-	(PowerAction)(0),                 // 1: cthulhu.agent.v1.PowerAction
-	(BackupState)(0),                 // 2: cthulhu.agent.v1.BackupState
-	(ReplicationState)(0),            // 3: cthulhu.agent.v1.ReplicationState
-	(*GetNodeInfoRequest)(nil),       // 4: cthulhu.agent.v1.GetNodeInfoRequest
-	(*PortMapping)(nil),              // 5: cthulhu.agent.v1.PortMapping
-	(*ServerSpec)(nil),               // 6: cthulhu.agent.v1.ServerSpec
-	(*SftpAccess)(nil),               // 7: cthulhu.agent.v1.SftpAccess
-	(*PlayerQuery)(nil),              // 8: cthulhu.agent.v1.PlayerQuery
-	(*CreateServerRequest)(nil),      // 9: cthulhu.agent.v1.CreateServerRequest
-	(*CreateServerResponse)(nil),     // 10: cthulhu.agent.v1.CreateServerResponse
-	(*RemoveServerRequest)(nil),      // 11: cthulhu.agent.v1.RemoveServerRequest
-	(*RemoveServerResponse)(nil),     // 12: cthulhu.agent.v1.RemoveServerResponse
-	(*RenderedFile)(nil),             // 13: cthulhu.agent.v1.RenderedFile
-	(*ApplyConfigRequest)(nil),       // 14: cthulhu.agent.v1.ApplyConfigRequest
-	(*ApplyConfigResponse)(nil),      // 15: cthulhu.agent.v1.ApplyConfigResponse
-	(*FileEntry)(nil),                // 16: cthulhu.agent.v1.FileEntry
-	(*ListFilesRequest)(nil),         // 17: cthulhu.agent.v1.ListFilesRequest
-	(*ListFilesResponse)(nil),        // 18: cthulhu.agent.v1.ListFilesResponse
-	(*DownloadFilesRequest)(nil),     // 19: cthulhu.agent.v1.DownloadFilesRequest
-	(*DownloadFileRequest)(nil),      // 20: cthulhu.agent.v1.DownloadFileRequest
-	(*FileChunk)(nil),                // 21: cthulhu.agent.v1.FileChunk
-	(*ReadFileRequest)(nil),          // 22: cthulhu.agent.v1.ReadFileRequest
-	(*ReadFileResponse)(nil),         // 23: cthulhu.agent.v1.ReadFileResponse
-	(*MakeDirRequest)(nil),           // 24: cthulhu.agent.v1.MakeDirRequest
-	(*MakeDirResponse)(nil),          // 25: cthulhu.agent.v1.MakeDirResponse
-	(*MovePathRequest)(nil),          // 26: cthulhu.agent.v1.MovePathRequest
-	(*MovePathResponse)(nil),         // 27: cthulhu.agent.v1.MovePathResponse
-	(*CopyPathRequest)(nil),          // 28: cthulhu.agent.v1.CopyPathRequest
-	(*CopyPathResponse)(nil),         // 29: cthulhu.agent.v1.CopyPathResponse
-	(*WriteFileRequest)(nil),         // 30: cthulhu.agent.v1.WriteFileRequest
-	(*WriteFileResponse)(nil),        // 31: cthulhu.agent.v1.WriteFileResponse
-	(*DeletePathsRequest)(nil),       // 32: cthulhu.agent.v1.DeletePathsRequest
-	(*DeletePathsResponse)(nil),      // 33: cthulhu.agent.v1.DeletePathsResponse
-	(*BackupInfo)(nil),               // 34: cthulhu.agent.v1.BackupInfo
-	(*CreateBackupRequest)(nil),      // 35: cthulhu.agent.v1.CreateBackupRequest
-	(*ListBackupsRequest)(nil),       // 36: cthulhu.agent.v1.ListBackupsRequest
-	(*ListBackupsResponse)(nil),      // 37: cthulhu.agent.v1.ListBackupsResponse
-	(*RestoreBackupRequest)(nil),     // 38: cthulhu.agent.v1.RestoreBackupRequest
-	(*RestoreBackupResponse)(nil),    // 39: cthulhu.agent.v1.RestoreBackupResponse
-	(*DeleteBackupRequest)(nil),      // 40: cthulhu.agent.v1.DeleteBackupRequest
-	(*DeleteBackupResponse)(nil),     // 41: cthulhu.agent.v1.DeleteBackupResponse
-	(*NodeInfo)(nil),                 // 42: cthulhu.agent.v1.NodeInfo
-	(*InstallServerRequest)(nil),     // 43: cthulhu.agent.v1.InstallServerRequest
-	(*InstallEvent)(nil),             // 44: cthulhu.agent.v1.InstallEvent
-	(*PowerActionRequest)(nil),       // 45: cthulhu.agent.v1.PowerActionRequest
-	(*PowerActionResponse)(nil),      // 46: cthulhu.agent.v1.PowerActionResponse
-	(*GetServerStatusRequest)(nil),   // 47: cthulhu.agent.v1.GetServerStatusRequest
-	(*ServerStatus)(nil),             // 48: cthulhu.agent.v1.ServerStatus
-	(*StreamConsoleRequest)(nil),     // 49: cthulhu.agent.v1.StreamConsoleRequest
-	(*ConsoleLine)(nil),              // 50: cthulhu.agent.v1.ConsoleLine
-	(*SendCommandRequest)(nil),       // 51: cthulhu.agent.v1.SendCommandRequest
-	(*SendCommandResponse)(nil),      // 52: cthulhu.agent.v1.SendCommandResponse
-	(*StreamStatsRequest)(nil),       // 53: cthulhu.agent.v1.StreamStatsRequest
-	(*ResourceStats)(nil),            // 54: cthulhu.agent.v1.ResourceStats
-	(*NodeConfig)(nil),               // 55: cthulhu.agent.v1.NodeConfig
-	(*ApplyNodeConfigRequest)(nil),   // 56: cthulhu.agent.v1.ApplyNodeConfigRequest
-	(*ApplyNodeConfigResponse)(nil),  // 57: cthulhu.agent.v1.ApplyNodeConfigResponse
-	(*ReplicateBackupsRequest)(nil),  // 58: cthulhu.agent.v1.ReplicateBackupsRequest
-	(*ReplicateBackupsResponse)(nil), // 59: cthulhu.agent.v1.ReplicateBackupsResponse
-	nil,                              // 60: cthulhu.agent.v1.ServerSpec.EnvEntry
-	nil,                              // 61: cthulhu.agent.v1.InstallServerRequest.EnvEntry
+var file_kraken_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_kraken_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
+var file_kraken_agent_v1_agent_proto_goTypes = []any{
+	(ServerState)(0),                 // 0: kraken.agent.v1.ServerState
+	(PowerAction)(0),                 // 1: kraken.agent.v1.PowerAction
+	(BackupState)(0),                 // 2: kraken.agent.v1.BackupState
+	(ReplicationState)(0),            // 3: kraken.agent.v1.ReplicationState
+	(*GetNodeInfoRequest)(nil),       // 4: kraken.agent.v1.GetNodeInfoRequest
+	(*PortMapping)(nil),              // 5: kraken.agent.v1.PortMapping
+	(*ServerSpec)(nil),               // 6: kraken.agent.v1.ServerSpec
+	(*SftpAccess)(nil),               // 7: kraken.agent.v1.SftpAccess
+	(*PlayerQuery)(nil),              // 8: kraken.agent.v1.PlayerQuery
+	(*CreateServerRequest)(nil),      // 9: kraken.agent.v1.CreateServerRequest
+	(*CreateServerResponse)(nil),     // 10: kraken.agent.v1.CreateServerResponse
+	(*RemoveServerRequest)(nil),      // 11: kraken.agent.v1.RemoveServerRequest
+	(*RemoveServerResponse)(nil),     // 12: kraken.agent.v1.RemoveServerResponse
+	(*RenderedFile)(nil),             // 13: kraken.agent.v1.RenderedFile
+	(*ApplyConfigRequest)(nil),       // 14: kraken.agent.v1.ApplyConfigRequest
+	(*ApplyConfigResponse)(nil),      // 15: kraken.agent.v1.ApplyConfigResponse
+	(*FileEntry)(nil),                // 16: kraken.agent.v1.FileEntry
+	(*ListFilesRequest)(nil),         // 17: kraken.agent.v1.ListFilesRequest
+	(*ListFilesResponse)(nil),        // 18: kraken.agent.v1.ListFilesResponse
+	(*DownloadFilesRequest)(nil),     // 19: kraken.agent.v1.DownloadFilesRequest
+	(*DownloadFileRequest)(nil),      // 20: kraken.agent.v1.DownloadFileRequest
+	(*FileChunk)(nil),                // 21: kraken.agent.v1.FileChunk
+	(*ReadFileRequest)(nil),          // 22: kraken.agent.v1.ReadFileRequest
+	(*ReadFileResponse)(nil),         // 23: kraken.agent.v1.ReadFileResponse
+	(*MakeDirRequest)(nil),           // 24: kraken.agent.v1.MakeDirRequest
+	(*MakeDirResponse)(nil),          // 25: kraken.agent.v1.MakeDirResponse
+	(*MovePathRequest)(nil),          // 26: kraken.agent.v1.MovePathRequest
+	(*MovePathResponse)(nil),         // 27: kraken.agent.v1.MovePathResponse
+	(*CopyPathRequest)(nil),          // 28: kraken.agent.v1.CopyPathRequest
+	(*CopyPathResponse)(nil),         // 29: kraken.agent.v1.CopyPathResponse
+	(*WriteFileRequest)(nil),         // 30: kraken.agent.v1.WriteFileRequest
+	(*WriteFileResponse)(nil),        // 31: kraken.agent.v1.WriteFileResponse
+	(*DeletePathsRequest)(nil),       // 32: kraken.agent.v1.DeletePathsRequest
+	(*DeletePathsResponse)(nil),      // 33: kraken.agent.v1.DeletePathsResponse
+	(*BackupInfo)(nil),               // 34: kraken.agent.v1.BackupInfo
+	(*CreateBackupRequest)(nil),      // 35: kraken.agent.v1.CreateBackupRequest
+	(*ListBackupsRequest)(nil),       // 36: kraken.agent.v1.ListBackupsRequest
+	(*ListBackupsResponse)(nil),      // 37: kraken.agent.v1.ListBackupsResponse
+	(*RestoreBackupRequest)(nil),     // 38: kraken.agent.v1.RestoreBackupRequest
+	(*RestoreBackupResponse)(nil),    // 39: kraken.agent.v1.RestoreBackupResponse
+	(*DeleteBackupRequest)(nil),      // 40: kraken.agent.v1.DeleteBackupRequest
+	(*DeleteBackupResponse)(nil),     // 41: kraken.agent.v1.DeleteBackupResponse
+	(*NodeInfo)(nil),                 // 42: kraken.agent.v1.NodeInfo
+	(*InstallServerRequest)(nil),     // 43: kraken.agent.v1.InstallServerRequest
+	(*InstallEvent)(nil),             // 44: kraken.agent.v1.InstallEvent
+	(*PowerActionRequest)(nil),       // 45: kraken.agent.v1.PowerActionRequest
+	(*PowerActionResponse)(nil),      // 46: kraken.agent.v1.PowerActionResponse
+	(*GetServerStatusRequest)(nil),   // 47: kraken.agent.v1.GetServerStatusRequest
+	(*ServerStatus)(nil),             // 48: kraken.agent.v1.ServerStatus
+	(*StreamConsoleRequest)(nil),     // 49: kraken.agent.v1.StreamConsoleRequest
+	(*ConsoleLine)(nil),              // 50: kraken.agent.v1.ConsoleLine
+	(*SendCommandRequest)(nil),       // 51: kraken.agent.v1.SendCommandRequest
+	(*SendCommandResponse)(nil),      // 52: kraken.agent.v1.SendCommandResponse
+	(*StreamStatsRequest)(nil),       // 53: kraken.agent.v1.StreamStatsRequest
+	(*ResourceStats)(nil),            // 54: kraken.agent.v1.ResourceStats
+	(*NodeConfig)(nil),               // 55: kraken.agent.v1.NodeConfig
+	(*ApplyNodeConfigRequest)(nil),   // 56: kraken.agent.v1.ApplyNodeConfigRequest
+	(*ApplyNodeConfigResponse)(nil),  // 57: kraken.agent.v1.ApplyNodeConfigResponse
+	(*ReplicateBackupsRequest)(nil),  // 58: kraken.agent.v1.ReplicateBackupsRequest
+	(*ReplicateBackupsResponse)(nil), // 59: kraken.agent.v1.ReplicateBackupsResponse
+	nil,                              // 60: kraken.agent.v1.ServerSpec.EnvEntry
+	nil,                              // 61: kraken.agent.v1.InstallServerRequest.EnvEntry
 }
-var file_cthulhu_agent_v1_agent_proto_depIdxs = []int32{
-	60, // 0: cthulhu.agent.v1.ServerSpec.env:type_name -> cthulhu.agent.v1.ServerSpec.EnvEntry
-	5,  // 1: cthulhu.agent.v1.ServerSpec.ports:type_name -> cthulhu.agent.v1.PortMapping
-	8,  // 2: cthulhu.agent.v1.ServerSpec.player_query:type_name -> cthulhu.agent.v1.PlayerQuery
-	7,  // 3: cthulhu.agent.v1.ServerSpec.sftp:type_name -> cthulhu.agent.v1.SftpAccess
-	6,  // 4: cthulhu.agent.v1.CreateServerRequest.spec:type_name -> cthulhu.agent.v1.ServerSpec
-	13, // 5: cthulhu.agent.v1.ApplyConfigRequest.files:type_name -> cthulhu.agent.v1.RenderedFile
-	16, // 6: cthulhu.agent.v1.ListFilesResponse.entries:type_name -> cthulhu.agent.v1.FileEntry
-	2,  // 7: cthulhu.agent.v1.BackupInfo.state:type_name -> cthulhu.agent.v1.BackupState
-	3,  // 8: cthulhu.agent.v1.BackupInfo.replication:type_name -> cthulhu.agent.v1.ReplicationState
-	34, // 9: cthulhu.agent.v1.ListBackupsResponse.backups:type_name -> cthulhu.agent.v1.BackupInfo
-	61, // 10: cthulhu.agent.v1.InstallServerRequest.env:type_name -> cthulhu.agent.v1.InstallServerRequest.EnvEntry
-	1,  // 11: cthulhu.agent.v1.PowerActionRequest.action:type_name -> cthulhu.agent.v1.PowerAction
-	0,  // 12: cthulhu.agent.v1.PowerActionResponse.state:type_name -> cthulhu.agent.v1.ServerState
-	0,  // 13: cthulhu.agent.v1.ServerStatus.state:type_name -> cthulhu.agent.v1.ServerState
-	54, // 14: cthulhu.agent.v1.ServerStatus.last_stats:type_name -> cthulhu.agent.v1.ResourceStats
-	55, // 15: cthulhu.agent.v1.ApplyNodeConfigRequest.config:type_name -> cthulhu.agent.v1.NodeConfig
-	4,  // 16: cthulhu.agent.v1.NodeService.GetNodeInfo:input_type -> cthulhu.agent.v1.GetNodeInfoRequest
-	9,  // 17: cthulhu.agent.v1.NodeService.CreateServer:input_type -> cthulhu.agent.v1.CreateServerRequest
-	11, // 18: cthulhu.agent.v1.NodeService.RemoveServer:input_type -> cthulhu.agent.v1.RemoveServerRequest
-	14, // 19: cthulhu.agent.v1.NodeService.ApplyConfig:input_type -> cthulhu.agent.v1.ApplyConfigRequest
-	17, // 20: cthulhu.agent.v1.NodeService.ListFiles:input_type -> cthulhu.agent.v1.ListFilesRequest
-	19, // 21: cthulhu.agent.v1.NodeService.DownloadFiles:input_type -> cthulhu.agent.v1.DownloadFilesRequest
-	22, // 22: cthulhu.agent.v1.NodeService.ReadFile:input_type -> cthulhu.agent.v1.ReadFileRequest
-	20, // 23: cthulhu.agent.v1.NodeService.DownloadFile:input_type -> cthulhu.agent.v1.DownloadFileRequest
-	24, // 24: cthulhu.agent.v1.NodeService.MakeDir:input_type -> cthulhu.agent.v1.MakeDirRequest
-	26, // 25: cthulhu.agent.v1.NodeService.MovePath:input_type -> cthulhu.agent.v1.MovePathRequest
-	28, // 26: cthulhu.agent.v1.NodeService.CopyPath:input_type -> cthulhu.agent.v1.CopyPathRequest
-	30, // 27: cthulhu.agent.v1.NodeService.WriteFile:input_type -> cthulhu.agent.v1.WriteFileRequest
-	32, // 28: cthulhu.agent.v1.NodeService.DeletePaths:input_type -> cthulhu.agent.v1.DeletePathsRequest
-	35, // 29: cthulhu.agent.v1.NodeService.CreateBackup:input_type -> cthulhu.agent.v1.CreateBackupRequest
-	36, // 30: cthulhu.agent.v1.NodeService.ListBackups:input_type -> cthulhu.agent.v1.ListBackupsRequest
-	38, // 31: cthulhu.agent.v1.NodeService.RestoreBackup:input_type -> cthulhu.agent.v1.RestoreBackupRequest
-	40, // 32: cthulhu.agent.v1.NodeService.DeleteBackup:input_type -> cthulhu.agent.v1.DeleteBackupRequest
-	43, // 33: cthulhu.agent.v1.NodeService.InstallServer:input_type -> cthulhu.agent.v1.InstallServerRequest
-	45, // 34: cthulhu.agent.v1.NodeService.PowerAction:input_type -> cthulhu.agent.v1.PowerActionRequest
-	47, // 35: cthulhu.agent.v1.NodeService.GetServerStatus:input_type -> cthulhu.agent.v1.GetServerStatusRequest
-	49, // 36: cthulhu.agent.v1.NodeService.StreamConsole:input_type -> cthulhu.agent.v1.StreamConsoleRequest
-	51, // 37: cthulhu.agent.v1.NodeService.SendCommand:input_type -> cthulhu.agent.v1.SendCommandRequest
-	53, // 38: cthulhu.agent.v1.NodeService.StreamStats:input_type -> cthulhu.agent.v1.StreamStatsRequest
-	56, // 39: cthulhu.agent.v1.NodeService.ApplyNodeConfig:input_type -> cthulhu.agent.v1.ApplyNodeConfigRequest
-	58, // 40: cthulhu.agent.v1.NodeService.ReplicateBackups:input_type -> cthulhu.agent.v1.ReplicateBackupsRequest
-	42, // 41: cthulhu.agent.v1.NodeService.GetNodeInfo:output_type -> cthulhu.agent.v1.NodeInfo
-	10, // 42: cthulhu.agent.v1.NodeService.CreateServer:output_type -> cthulhu.agent.v1.CreateServerResponse
-	12, // 43: cthulhu.agent.v1.NodeService.RemoveServer:output_type -> cthulhu.agent.v1.RemoveServerResponse
-	15, // 44: cthulhu.agent.v1.NodeService.ApplyConfig:output_type -> cthulhu.agent.v1.ApplyConfigResponse
-	18, // 45: cthulhu.agent.v1.NodeService.ListFiles:output_type -> cthulhu.agent.v1.ListFilesResponse
-	21, // 46: cthulhu.agent.v1.NodeService.DownloadFiles:output_type -> cthulhu.agent.v1.FileChunk
-	23, // 47: cthulhu.agent.v1.NodeService.ReadFile:output_type -> cthulhu.agent.v1.ReadFileResponse
-	21, // 48: cthulhu.agent.v1.NodeService.DownloadFile:output_type -> cthulhu.agent.v1.FileChunk
-	25, // 49: cthulhu.agent.v1.NodeService.MakeDir:output_type -> cthulhu.agent.v1.MakeDirResponse
-	27, // 50: cthulhu.agent.v1.NodeService.MovePath:output_type -> cthulhu.agent.v1.MovePathResponse
-	29, // 51: cthulhu.agent.v1.NodeService.CopyPath:output_type -> cthulhu.agent.v1.CopyPathResponse
-	31, // 52: cthulhu.agent.v1.NodeService.WriteFile:output_type -> cthulhu.agent.v1.WriteFileResponse
-	33, // 53: cthulhu.agent.v1.NodeService.DeletePaths:output_type -> cthulhu.agent.v1.DeletePathsResponse
-	34, // 54: cthulhu.agent.v1.NodeService.CreateBackup:output_type -> cthulhu.agent.v1.BackupInfo
-	37, // 55: cthulhu.agent.v1.NodeService.ListBackups:output_type -> cthulhu.agent.v1.ListBackupsResponse
-	39, // 56: cthulhu.agent.v1.NodeService.RestoreBackup:output_type -> cthulhu.agent.v1.RestoreBackupResponse
-	41, // 57: cthulhu.agent.v1.NodeService.DeleteBackup:output_type -> cthulhu.agent.v1.DeleteBackupResponse
-	44, // 58: cthulhu.agent.v1.NodeService.InstallServer:output_type -> cthulhu.agent.v1.InstallEvent
-	46, // 59: cthulhu.agent.v1.NodeService.PowerAction:output_type -> cthulhu.agent.v1.PowerActionResponse
-	48, // 60: cthulhu.agent.v1.NodeService.GetServerStatus:output_type -> cthulhu.agent.v1.ServerStatus
-	50, // 61: cthulhu.agent.v1.NodeService.StreamConsole:output_type -> cthulhu.agent.v1.ConsoleLine
-	52, // 62: cthulhu.agent.v1.NodeService.SendCommand:output_type -> cthulhu.agent.v1.SendCommandResponse
-	54, // 63: cthulhu.agent.v1.NodeService.StreamStats:output_type -> cthulhu.agent.v1.ResourceStats
-	57, // 64: cthulhu.agent.v1.NodeService.ApplyNodeConfig:output_type -> cthulhu.agent.v1.ApplyNodeConfigResponse
-	59, // 65: cthulhu.agent.v1.NodeService.ReplicateBackups:output_type -> cthulhu.agent.v1.ReplicateBackupsResponse
+var file_kraken_agent_v1_agent_proto_depIdxs = []int32{
+	60, // 0: kraken.agent.v1.ServerSpec.env:type_name -> kraken.agent.v1.ServerSpec.EnvEntry
+	5,  // 1: kraken.agent.v1.ServerSpec.ports:type_name -> kraken.agent.v1.PortMapping
+	8,  // 2: kraken.agent.v1.ServerSpec.player_query:type_name -> kraken.agent.v1.PlayerQuery
+	7,  // 3: kraken.agent.v1.ServerSpec.sftp:type_name -> kraken.agent.v1.SftpAccess
+	6,  // 4: kraken.agent.v1.CreateServerRequest.spec:type_name -> kraken.agent.v1.ServerSpec
+	13, // 5: kraken.agent.v1.ApplyConfigRequest.files:type_name -> kraken.agent.v1.RenderedFile
+	16, // 6: kraken.agent.v1.ListFilesResponse.entries:type_name -> kraken.agent.v1.FileEntry
+	2,  // 7: kraken.agent.v1.BackupInfo.state:type_name -> kraken.agent.v1.BackupState
+	3,  // 8: kraken.agent.v1.BackupInfo.replication:type_name -> kraken.agent.v1.ReplicationState
+	34, // 9: kraken.agent.v1.ListBackupsResponse.backups:type_name -> kraken.agent.v1.BackupInfo
+	61, // 10: kraken.agent.v1.InstallServerRequest.env:type_name -> kraken.agent.v1.InstallServerRequest.EnvEntry
+	1,  // 11: kraken.agent.v1.PowerActionRequest.action:type_name -> kraken.agent.v1.PowerAction
+	0,  // 12: kraken.agent.v1.PowerActionResponse.state:type_name -> kraken.agent.v1.ServerState
+	0,  // 13: kraken.agent.v1.ServerStatus.state:type_name -> kraken.agent.v1.ServerState
+	54, // 14: kraken.agent.v1.ServerStatus.last_stats:type_name -> kraken.agent.v1.ResourceStats
+	55, // 15: kraken.agent.v1.ApplyNodeConfigRequest.config:type_name -> kraken.agent.v1.NodeConfig
+	4,  // 16: kraken.agent.v1.NodeService.GetNodeInfo:input_type -> kraken.agent.v1.GetNodeInfoRequest
+	9,  // 17: kraken.agent.v1.NodeService.CreateServer:input_type -> kraken.agent.v1.CreateServerRequest
+	11, // 18: kraken.agent.v1.NodeService.RemoveServer:input_type -> kraken.agent.v1.RemoveServerRequest
+	14, // 19: kraken.agent.v1.NodeService.ApplyConfig:input_type -> kraken.agent.v1.ApplyConfigRequest
+	17, // 20: kraken.agent.v1.NodeService.ListFiles:input_type -> kraken.agent.v1.ListFilesRequest
+	19, // 21: kraken.agent.v1.NodeService.DownloadFiles:input_type -> kraken.agent.v1.DownloadFilesRequest
+	22, // 22: kraken.agent.v1.NodeService.ReadFile:input_type -> kraken.agent.v1.ReadFileRequest
+	20, // 23: kraken.agent.v1.NodeService.DownloadFile:input_type -> kraken.agent.v1.DownloadFileRequest
+	24, // 24: kraken.agent.v1.NodeService.MakeDir:input_type -> kraken.agent.v1.MakeDirRequest
+	26, // 25: kraken.agent.v1.NodeService.MovePath:input_type -> kraken.agent.v1.MovePathRequest
+	28, // 26: kraken.agent.v1.NodeService.CopyPath:input_type -> kraken.agent.v1.CopyPathRequest
+	30, // 27: kraken.agent.v1.NodeService.WriteFile:input_type -> kraken.agent.v1.WriteFileRequest
+	32, // 28: kraken.agent.v1.NodeService.DeletePaths:input_type -> kraken.agent.v1.DeletePathsRequest
+	35, // 29: kraken.agent.v1.NodeService.CreateBackup:input_type -> kraken.agent.v1.CreateBackupRequest
+	36, // 30: kraken.agent.v1.NodeService.ListBackups:input_type -> kraken.agent.v1.ListBackupsRequest
+	38, // 31: kraken.agent.v1.NodeService.RestoreBackup:input_type -> kraken.agent.v1.RestoreBackupRequest
+	40, // 32: kraken.agent.v1.NodeService.DeleteBackup:input_type -> kraken.agent.v1.DeleteBackupRequest
+	43, // 33: kraken.agent.v1.NodeService.InstallServer:input_type -> kraken.agent.v1.InstallServerRequest
+	45, // 34: kraken.agent.v1.NodeService.PowerAction:input_type -> kraken.agent.v1.PowerActionRequest
+	47, // 35: kraken.agent.v1.NodeService.GetServerStatus:input_type -> kraken.agent.v1.GetServerStatusRequest
+	49, // 36: kraken.agent.v1.NodeService.StreamConsole:input_type -> kraken.agent.v1.StreamConsoleRequest
+	51, // 37: kraken.agent.v1.NodeService.SendCommand:input_type -> kraken.agent.v1.SendCommandRequest
+	53, // 38: kraken.agent.v1.NodeService.StreamStats:input_type -> kraken.agent.v1.StreamStatsRequest
+	56, // 39: kraken.agent.v1.NodeService.ApplyNodeConfig:input_type -> kraken.agent.v1.ApplyNodeConfigRequest
+	58, // 40: kraken.agent.v1.NodeService.ReplicateBackups:input_type -> kraken.agent.v1.ReplicateBackupsRequest
+	42, // 41: kraken.agent.v1.NodeService.GetNodeInfo:output_type -> kraken.agent.v1.NodeInfo
+	10, // 42: kraken.agent.v1.NodeService.CreateServer:output_type -> kraken.agent.v1.CreateServerResponse
+	12, // 43: kraken.agent.v1.NodeService.RemoveServer:output_type -> kraken.agent.v1.RemoveServerResponse
+	15, // 44: kraken.agent.v1.NodeService.ApplyConfig:output_type -> kraken.agent.v1.ApplyConfigResponse
+	18, // 45: kraken.agent.v1.NodeService.ListFiles:output_type -> kraken.agent.v1.ListFilesResponse
+	21, // 46: kraken.agent.v1.NodeService.DownloadFiles:output_type -> kraken.agent.v1.FileChunk
+	23, // 47: kraken.agent.v1.NodeService.ReadFile:output_type -> kraken.agent.v1.ReadFileResponse
+	21, // 48: kraken.agent.v1.NodeService.DownloadFile:output_type -> kraken.agent.v1.FileChunk
+	25, // 49: kraken.agent.v1.NodeService.MakeDir:output_type -> kraken.agent.v1.MakeDirResponse
+	27, // 50: kraken.agent.v1.NodeService.MovePath:output_type -> kraken.agent.v1.MovePathResponse
+	29, // 51: kraken.agent.v1.NodeService.CopyPath:output_type -> kraken.agent.v1.CopyPathResponse
+	31, // 52: kraken.agent.v1.NodeService.WriteFile:output_type -> kraken.agent.v1.WriteFileResponse
+	33, // 53: kraken.agent.v1.NodeService.DeletePaths:output_type -> kraken.agent.v1.DeletePathsResponse
+	34, // 54: kraken.agent.v1.NodeService.CreateBackup:output_type -> kraken.agent.v1.BackupInfo
+	37, // 55: kraken.agent.v1.NodeService.ListBackups:output_type -> kraken.agent.v1.ListBackupsResponse
+	39, // 56: kraken.agent.v1.NodeService.RestoreBackup:output_type -> kraken.agent.v1.RestoreBackupResponse
+	41, // 57: kraken.agent.v1.NodeService.DeleteBackup:output_type -> kraken.agent.v1.DeleteBackupResponse
+	44, // 58: kraken.agent.v1.NodeService.InstallServer:output_type -> kraken.agent.v1.InstallEvent
+	46, // 59: kraken.agent.v1.NodeService.PowerAction:output_type -> kraken.agent.v1.PowerActionResponse
+	48, // 60: kraken.agent.v1.NodeService.GetServerStatus:output_type -> kraken.agent.v1.ServerStatus
+	50, // 61: kraken.agent.v1.NodeService.StreamConsole:output_type -> kraken.agent.v1.ConsoleLine
+	52, // 62: kraken.agent.v1.NodeService.SendCommand:output_type -> kraken.agent.v1.SendCommandResponse
+	54, // 63: kraken.agent.v1.NodeService.StreamStats:output_type -> kraken.agent.v1.ResourceStats
+	57, // 64: kraken.agent.v1.NodeService.ApplyNodeConfig:output_type -> kraken.agent.v1.ApplyNodeConfigResponse
+	59, // 65: kraken.agent.v1.NodeService.ReplicateBackups:output_type -> kraken.agent.v1.ReplicateBackupsResponse
 	41, // [41:66] is the sub-list for method output_type
 	16, // [16:41] is the sub-list for method input_type
 	16, // [16:16] is the sub-list for extension type_name
@@ -3964,12 +3964,12 @@ var file_cthulhu_agent_v1_agent_proto_depIdxs = []int32{
 	0,  // [0:16] is the sub-list for field type_name
 }
 
-func init() { file_cthulhu_agent_v1_agent_proto_init() }
-func file_cthulhu_agent_v1_agent_proto_init() {
-	if File_cthulhu_agent_v1_agent_proto != nil {
+func init() { file_kraken_agent_v1_agent_proto_init() }
+func file_kraken_agent_v1_agent_proto_init() {
+	if File_kraken_agent_v1_agent_proto != nil {
 		return
 	}
-	file_cthulhu_agent_v1_agent_proto_msgTypes[40].OneofWrappers = []any{
+	file_kraken_agent_v1_agent_proto_msgTypes[40].OneofWrappers = []any{
 		(*InstallEvent_LogLine)(nil),
 		(*InstallEvent_Progress)(nil),
 		(*InstallEvent_Completed)(nil),
@@ -3979,18 +3979,18 @@ func file_cthulhu_agent_v1_agent_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cthulhu_agent_v1_agent_proto_rawDesc), len(file_cthulhu_agent_v1_agent_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kraken_agent_v1_agent_proto_rawDesc), len(file_kraken_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
 			NumMessages:   58,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_cthulhu_agent_v1_agent_proto_goTypes,
-		DependencyIndexes: file_cthulhu_agent_v1_agent_proto_depIdxs,
-		EnumInfos:         file_cthulhu_agent_v1_agent_proto_enumTypes,
-		MessageInfos:      file_cthulhu_agent_v1_agent_proto_msgTypes,
+		GoTypes:           file_kraken_agent_v1_agent_proto_goTypes,
+		DependencyIndexes: file_kraken_agent_v1_agent_proto_depIdxs,
+		EnumInfos:         file_kraken_agent_v1_agent_proto_enumTypes,
+		MessageInfos:      file_kraken_agent_v1_agent_proto_msgTypes,
 	}.Build()
-	File_cthulhu_agent_v1_agent_proto = out.File
-	file_cthulhu_agent_v1_agent_proto_goTypes = nil
-	file_cthulhu_agent_v1_agent_proto_depIdxs = nil
+	File_kraken_agent_v1_agent_proto = out.File
+	file_kraken_agent_v1_agent_proto_goTypes = nil
+	file_kraken_agent_v1_agent_proto_depIdxs = nil
 }

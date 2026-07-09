@@ -4,6 +4,7 @@ import type {
   Backup,
   BootstrapToken,
   CatalogItem,
+  EnrollStatus,
   DatabaseConfig,
   DatabaseInput,
   PanelSettings,
@@ -157,8 +158,11 @@ export const api = {
   importCatalog(id: string): Promise<Spec> {
     return request("POST", `/catalog/${id}/import`);
   },
-  createBootstrapToken(input: { node_name: string; ttl_seconds?: number }): Promise<BootstrapToken> {
-    return request("POST", "/agents/bootstrap-tokens", input);
+  createBootstrapToken(input?: { node_name?: string; ttl_seconds?: number }): Promise<BootstrapToken> {
+    return request("POST", "/agents/bootstrap-tokens", input ?? {});
+  },
+  enrollStatus(token: string): Promise<EnrollStatus> {
+    return request("GET", `/agents/enroll-status?token=${encodeURIComponent(token)}`);
   },
 
   listServers(): Promise<{ servers: Server[] | null }> {
@@ -368,14 +372,16 @@ export const api = {
     return request("GET", `/nodes/${id}`);
   },
   registerNode(input: {
-    name: string;
-    os: string;
-    wine_enabled: boolean;
+    name?: string; // blank = adopt the agent's self-reported node id
+    os?: string; // blank = adopt the agent's self-reported OS + Wine capability
+    wine_enabled?: boolean;
+    // Memory is backfilled from the agent on first contact; ports default to
+    // the standard pool when omitted.
     address: string;
     public_host?: string;
-    total_memory_mb: number;
-    port_start: number;
-    port_end: number;
+    total_memory_mb?: number;
+    port_start?: number;
+    port_end?: number;
   }): Promise<Node> {
     return request("POST", "/nodes", input);
   },

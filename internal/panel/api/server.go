@@ -116,22 +116,37 @@ func (s *Server) buildNodePool() *nodeclient.Pool {
 		tlsCfg, err := mtls.ClientTLSFromBytes(s.clientTLSCert, s.clientTLSKey, s.clientTLSCA, mtls.AgentServerName)
 		if err != nil {
 			s.logger.Error("in-memory mTLS config failed — falling back to insecure Agent pool", "err", err)
-			return nodeclient.NewInsecurePool()
+			return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
 		}
-		s.logger.Info("Panel→Agent gRPC secured with mutual TLS (auto-issued client cert)")
-		return nodeclient.NewTLSPool(tlsCfg)
+		s.logger.Info("Panel→Agent gRPC secured with mutual TLS (auto-issued client cert)",
+			"client_cert", mtls.SummarizePEM(s.clientTLSCert),
+			"trusted_ca", mtls.SummarizePEM(s.clientTLSCA),
+			"pinned_server_name", mtls.AgentServerName)
+		return nodeclient.NewTLSPool(tlsCfg, nodeclient.WithLogger(s.logger))
 	}
 	if !s.cfg.MutualTLS() {
 		s.logger.Warn("Panel→Agent gRPC is INSECURE (no mTLS) — set KRAKEN_TLS_CERT/KEY/CA to enable")
-		return nodeclient.NewInsecurePool()
+		return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
 	}
 	tlsCfg, err := mtls.ClientTLS(s.cfg.TLSCert, s.cfg.TLSKey, s.cfg.TLSCA, mtls.AgentServerName)
 	if err != nil {
 		s.logger.Error("mTLS config failed — falling back to insecure Agent pool", "err", err)
-		return nodeclient.NewInsecurePool()
+		return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
 	}
-	s.logger.Info("Panel→Agent gRPC secured with mutual TLS")
-	return nodeclient.NewTLSPool(tlsCfg)
+	s.logger.Info("Panel→Agent gRPC secured with mutual TLS (operator-provided files)",
+		"client_cert", summarizeCertFile(s.cfg.TLSCert),
+		"trusted_ca", summarizeCertFile(s.cfg.TLSCA),
+		"pinned_server_name", mtls.AgentServerName)
+	return nodeclient.NewTLSPool(tlsCfg, nodeclient.WithLogger(s.logger))
+}
+
+// summarizeCertFile is a best-effort SummarizePEM over a cert file path.
+func summarizeCertFile(path string) string {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return "unreadable: " + err.Error()
+	}
+	return mtls.SummarizePEM(pem)
 }
 
 // Handler returns the root HTTP handler.
@@ -284,8 +299,10 @@ func (s *Server) routes() chi.Router {
 			// Audit log (admin).
 			r.With(s.requirePermission(rbac.PermAuditView)).Get("/audit", s.handleListAudit)
 
-			// Agent bootstrap token issuance (admin) for mTLS enrollment.
+			// Agent bootstrap token issuance (admin) for mTLS enrollment, plus
+			// the token-lifecycle poll the setup wizard uses to show progress.
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/agents/bootstrap-tokens", s.handleCreateBootstrapToken)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Get("/agents/enroll-status", s.handleEnrollStatus)
 		})
 	})
 

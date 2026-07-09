@@ -61,11 +61,12 @@ function emit(obj: unknown, mode: Mode): string {
   return mode === "yaml" ? yaml.dump(obj, { lineWidth: 100 }) : JSON.stringify(obj, null, 2);
 }
 
-// Platform kinds with their glyphs: Linux is always Tux (never a terminal
-// icon), wine gets the glass, windows the four panes.
+// Platform kinds with their glyphs: anything that runs on Linux gets Tux
+// (never a terminal icon, and linux-wine is still Linux — no wine glass);
+// windows gets the four panes.
 const PLATFORM_KINDS: SelectOption[] = [
   { value: "linux-native", label: "linux-native", icon: "linux" },
-  { value: "linux-wine", label: "linux-wine", icon: "wine" },
+  { value: "linux-wine", label: "linux-wine", icon: "linux" },
   { value: "windows-native", label: "windows-native", icon: "windows" },
 ];
 const FIELD_TYPES = ["string", "text", "int", "float", "bool", "enum", "password"];

@@ -11,6 +11,7 @@ import { Input } from "@ds/components/core/Input";
 import { IconButton } from "@ds/components/core/IconButton";
 import { Toggle } from "@ds/components/core/Toggle";
 import { Select as DSelect } from "@ds/components/core/Select";
+import type { SelectOption } from "@ds/components/core/Select";
 
 const mono = "var(--font-mono)";
 
@@ -60,7 +61,13 @@ function emit(obj: unknown, mode: Mode): string {
   return mode === "yaml" ? yaml.dump(obj, { lineWidth: 100 }) : JSON.stringify(obj, null, 2);
 }
 
-const PLATFORM_KINDS = ["linux-native", "linux-wine", "windows-native"];
+// Platform kinds with their glyphs: Linux is always Tux (never a terminal
+// icon), wine gets the glass, windows the four panes.
+const PLATFORM_KINDS: SelectOption[] = [
+  { value: "linux-native", label: "linux-native", icon: "linux" },
+  { value: "linux-wine", label: "linux-wine", icon: "wine" },
+  { value: "windows-native", label: "windows-native", icon: "windows" },
+];
 const FIELD_TYPES = ["string", "text", "int", "float", "bool", "enum", "password"];
 
 export function SpecEditor() {
@@ -422,8 +429,8 @@ function Num({ label, value, onChange }: { label: string; value: number | undefi
   );
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
-  return <DSelect label={label} mono size="sm" value={value} options={options.map((o) => ({ value: o, label: o }))} onChange={onChange} />;
+function Select({ label, value, options, onChange }: { label: string; value: string; options: (string | SelectOption)[]; onChange: (v: string) => void }) {
+  return <DSelect label={label} mono size="sm" value={value} options={options.map((o) => (typeof o === "string" ? { value: o, label: o } : o))} onChange={onChange} />;
 }
 
 // BoolField is a labelled boolean, matched to the height of the labelled inputs

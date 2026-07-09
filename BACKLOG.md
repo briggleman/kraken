@@ -15,6 +15,17 @@ Deferred features and enhancements, roughly in priority order.
   (likely the highest-volume contribution), a Code of Conduct, and issue templates (bug /
   feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
 
+## Tooling & CI
+- **Bump Node 20 → 24 in GitHub Actions.** `actions/setup-node` is pinned to
+  `node-version: "20"` in three places: `.github/workflows/ci.yml` (the web
+  typecheck·build job + the CodeQL/analyze job) and
+  `.github/workflows/release-binaries.yml` (web bundle for the release
+  panel binary). Bump all three to `"24"` together. Companion (optional but
+  keeps dev/CI/image consistent): `deploy/panel.Dockerfile`'s webbuild stage
+  pins `node:20-alpine` — bump to `node:24-alpine` in the same pass and
+  verify the Vite build + `go:embed` output. Node 20 hits end-of-maintenance
+  April 2026, so this is overdue housekeeping; Node 24 is the active LTS.
+
 ## Platform
 - **Pull game specs from an external GitHub repo.** Today the catalog is
   `go:embed`ded in the panel binary (`internal/panel/catalog/bundled/*.yaml`),

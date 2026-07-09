@@ -50,13 +50,17 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `krakenctl — Kraken admin CLI
 
 Usage:
-  krakenctl enroll -panel URL -token TOKEN [-hosts h1,h2,...] [-out DIR]
+  krakenctl enroll -panel URL -token TOKEN [-hosts h1,h2,...] [-port N] [-out DIR]
       Enroll this Agent: generate a key + CSR, exchange the one-time bootstrap
       token for a signed Agent cert, and write agent.pem/agent-key.pem/ca.pem.
       Re-run with a fresh token to rotate the cert.
       -panel        Panel base URL (e.g. http://panel:8080)
       -token        one-time bootstrap token (from the admin API)
-      -hosts        extra DNS names / IPs for the Agent cert SAN
+      -hosts        IPs / DNS names the Panel can dial this agent at (SAN +
+                    registration prefill). Use real addresses — bare computer
+                    names don't resolve from a remote Panel.
+      -port         the agent's gRPC port (KRAKEN_AGENT_ADDR; default 9090) —
+                    lets the Panel prefill registration with the right port
       -out          output directory (default ./certs)
 
   krakenctl gen-certs [-out DIR] [-agent-hosts h1,h2,...]

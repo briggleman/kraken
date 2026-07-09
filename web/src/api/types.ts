@@ -70,8 +70,10 @@ export interface EnrollStatus {
   status: "pending" | "redeemed" | "expired";
   node_name?: string;
   ip?: string;
-  /** Hosts the agent baked into its cert — its reachable IPs/DNS names. */
+  /** Hosts the agent baked into its cert — its reachable IPs/DNS names (IPs first). */
   hosts?: string[];
+  /** The gRPC port the agent reports it serves on (prefill; 9090 default). */
+  agent_port?: number;
   expires_at?: string;
   redeemed_at?: string;
 }

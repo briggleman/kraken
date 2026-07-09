@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 func enroll(args []string) error {
 	var panelURL, token, hosts string
 	out := "./certs"
+	port := 9090
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-panel":
@@ -35,6 +37,15 @@ func enroll(args []string) error {
 			i++
 			if i < len(args) {
 				hosts = args[i]
+			}
+		case "-port":
+			i++
+			if i < len(args) {
+				p, err := strconv.Atoi(args[i])
+				if err != nil || p < 1 || p > 65535 {
+					return fmt.Errorf("-port must be a port number (the agent's KRAKEN_AGENT_ADDR port)")
+				}
+				port = p
 			}
 		case "-out":
 			i++
@@ -61,7 +72,10 @@ func enroll(args []string) error {
 		return fmt.Errorf("generate key/CSR: %w", err)
 	}
 
-	reqBody, _ := json.Marshal(map[string]string{"token": token, "csr": string(csrPEM)})
+	// agent_port tells the Panel where this agent will listen so the node
+	// registration can be prefilled with the right host:port — essential on
+	// hosts running more than one agent behind a single IP.
+	reqBody, _ := json.Marshal(map[string]any{"token": token, "csr": string(csrPEM), "agent_port": port})
 	url := strings.TrimRight(panelURL, "/") + "/api/v1/agents/enroll"
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))

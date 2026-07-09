@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -74,7 +75,7 @@ func run(logger *slog.Logger) error {
 	if !secure {
 		if panelURL := env("KRAKEN_PANEL_URL", ""); panelURL != "" {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			paths, aerr := enroll.EnsureCerts(ctx, panelURL, stateDir, nil, 90*time.Second, logger)
+			paths, aerr := enroll.EnsureCerts(ctx, panelURL, stateDir, nil, listenPort(addr), 90*time.Second, logger)
 			cancel()
 			if aerr != nil {
 				return fmt.Errorf("auto-enroll with Panel at %s: %w", panelURL, aerr)
@@ -200,6 +201,17 @@ func logTLSBundle(logger *slog.Logger, certFile, caFile string) {
 	} else {
 		logger.Info("mTLS: agent cert verifies against bundled CA")
 	}
+}
+
+// listenPort extracts the port from a listen address like ":9090" or
+// "192.168.0.75:9091"; 9090 when unparseable.
+func listenPort(addr string) int {
+	if _, p, err := net.SplitHostPort(addr); err == nil {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 && n < 65536 {
+			return n
+		}
+	}
+	return 9090
 }
 
 // isLoopbackAddr reports whether the host part of a listen address binds to

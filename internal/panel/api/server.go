@@ -34,6 +34,14 @@ type Server struct {
 	caKey     []byte
 	bootstrap *bootstrapRegistry
 
+	// In-memory Panel client TLS bundle from WithClientTLSBytes. When set,
+	// the Agent pool uses these bytes rather than reading cfg.TLS{Cert,Key,CA}
+	// off disk — sidesteps volume-permission gymnastics for the auto-issued
+	// cert (see cmd/panel/main.go and buildNodePool below).
+	clientTLSCert []byte
+	clientTLSKey  []byte
+	clientTLSCA   []byte
+
 	// onRestart, when set, asks the host process to exit cleanly so a supervisor
 	// restarts it (used after a UI-driven datastore change). Nil = no-op.
 	onRestart func()
@@ -57,12 +65,25 @@ func WithCA(cert, key []byte) Option {
 	}
 }
 
+// WithClientTLSBytes provides Panel client TLS material as raw PEM bytes,
+// used when the Panel auto-issues its own client cert at startup against
+// the Agent-enrollment CA (see cmd/panel/main.go). Takes precedence over
+// the KRAKEN_TLS_CERT/KEY/CA file-based path.
+func WithClientTLSBytes(cert, key, ca []byte) Option {
+	return func(s *Server) {
+		if len(cert) > 0 && len(key) > 0 && len(ca) > 0 {
+			s.clientTLSCert, s.clientTLSKey, s.clientTLSCA = cert, key, ca
+		}
+	}
+}
+
 // New constructs a Server and wires its routes. The Agent connection pool is
-// secure by default: when TLS certs are configured it dials Agents over mutual
-// TLS; only an explicitly cert-less (dev) config falls back to insecure, with a
-// warning.
+// secure by default: when TLS material is configured (either via
+// KRAKEN_TLS_* files or via WithClientTLSBytes) it dials Agents over mutual
+// TLS; only an explicitly cert-less (dev) config falls back to insecure,
+// with a warning.
 func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option) *Server {
-	s := &Server{cfg: cfg, store: st, nodes: defaultNodePool(cfg, logger), logger: logger, bootstrap: newBootstrapRegistry()}
+	s := &Server{cfg: cfg, store: st, logger: logger, bootstrap: newBootstrapRegistry()}
 	for _, o := range opts {
 		o(s)
 	}
@@ -78,23 +99,38 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 			logger.Info("Agent enrollment enabled (Panel will sign Agent certs)")
 		}
 	}
+	// Build the Agent pool now that all options have been applied. In-memory
+	// bytes (from Panel auto-issue) beat file paths (operator override); no
+	// TLS at all → plaintext with a warning.
+	s.nodes = s.buildNodePool()
 	s.router = s.routes()
 	return s
 }
 
-// defaultNodePool returns a mutual-TLS Agent pool when TLS is configured,
-// otherwise an insecure pool with a loud warning (dev only).
-func defaultNodePool(cfg *config.Config, logger *slog.Logger) *nodeclient.Pool {
-	if !cfg.MutualTLS() {
-		logger.Warn("Panel→Agent gRPC is INSECURE (no mTLS) — set KRAKEN_TLS_CERT/KEY/CA to enable")
+// buildNodePool returns an mTLS Agent pool built from whichever TLS source
+// was configured — WithClientTLSBytes for auto-issued in-memory certs,
+// KRAKEN_TLS_* paths for operator-provided files, or an insecure pool with a
+// warning when nothing is set.
+func (s *Server) buildNodePool() *nodeclient.Pool {
+	if len(s.clientTLSCert) > 0 {
+		tlsCfg, err := mtls.ClientTLSFromBytes(s.clientTLSCert, s.clientTLSKey, s.clientTLSCA, mtls.AgentServerName)
+		if err != nil {
+			s.logger.Error("in-memory mTLS config failed — falling back to insecure Agent pool", "err", err)
+			return nodeclient.NewInsecurePool()
+		}
+		s.logger.Info("Panel→Agent gRPC secured with mutual TLS (auto-issued client cert)")
+		return nodeclient.NewTLSPool(tlsCfg)
+	}
+	if !s.cfg.MutualTLS() {
+		s.logger.Warn("Panel→Agent gRPC is INSECURE (no mTLS) — set KRAKEN_TLS_CERT/KEY/CA to enable")
 		return nodeclient.NewInsecurePool()
 	}
-	tlsCfg, err := mtls.ClientTLS(cfg.TLSCert, cfg.TLSKey, cfg.TLSCA, mtls.AgentServerName)
+	tlsCfg, err := mtls.ClientTLS(s.cfg.TLSCert, s.cfg.TLSKey, s.cfg.TLSCA, mtls.AgentServerName)
 	if err != nil {
-		logger.Error("mTLS config failed — falling back to insecure Agent pool", "err", err)
+		s.logger.Error("mTLS config failed — falling back to insecure Agent pool", "err", err)
 		return nodeclient.NewInsecurePool()
 	}
-	logger.Info("Panel→Agent gRPC secured with mutual TLS")
+	s.logger.Info("Panel→Agent gRPC secured with mutual TLS")
 	return nodeclient.NewTLSPool(tlsCfg)
 }
 

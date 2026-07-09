@@ -70,3 +70,24 @@ func ClientTLS(certFile, keyFile, caFile, serverName string) (*tls.Config, error
 		MinVersion:   tls.VersionTLS12,
 	}, nil
 }
+
+// ClientTLSFromBytes is the byte-slice counterpart to ClientTLS. Used when the
+// Panel auto-issues its client cert against its own CA at startup and keeps
+// the bundle in memory rather than round-tripping through a filesystem the
+// distroless-nonroot process may not have write access to.
+func ClientTLSFromBytes(certPEM, keyPEM, caPEM []byte, serverName string) (*tls.Config, error) {
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("mtls: parse client keypair PEM: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("mtls: no CA certificates found in provided PEM")
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		ServerName:   serverName,
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}

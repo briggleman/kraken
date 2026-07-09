@@ -36,20 +36,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot init: chown the panel-state named volume to the nonroot uid the
-  # Panel image runs as (65532 in distroless). Docker creates named volumes
-  # root-owned by default; without this, the Panel's cert auto-issue at
-  # startup hits "permission denied" on /var/lib/kraken. Runs once per
-  # `up`, exits. Idempotent — safe to re-run on upgrades from images that
-  # created the volume root-owned.
-  panel-init:
-    image: alpine:3
-    container_name: kraken-panel-init
-    command: ["chown", "-R", "65532:65532", "/var/lib/kraken"]
-    volumes:
-      - panel-state:/var/lib/kraken
-    restart: "no"
-
   panel:
     image: ${KRAKEN_PANEL_IMAGE:-ghcr.io/briggleman/kraken-panel:latest}
     container_name: kraken-panel
@@ -57,8 +43,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      panel-init:
-        condition: service_completed_successfully
     # Host networking so the Panel binds :8080 directly and dials the
     # host-networked Agent on 127.0.0.1:9090 without cross-network gymnastics.
     network_mode: host

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/briggleman/kraken/internal/panel/config"
@@ -14,90 +14,85 @@ import (
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 // TestEnsurePanelClient_AutoIssue — with no operator-provided TLS envs, the
-// Panel signs itself a client cert against its own CA and points cfg.TLS*
-// at the resulting files, so defaultNodePool picks up mTLS on next dial.
+// Panel signs itself a client cert in memory against its own CA and returns
+// the PEM bundle (which api.New consumes via WithClientTLSBytes). No
+// filesystem writes — sidesteps volume permission constraints entirely.
 func TestEnsurePanelClient_AutoIssue(t *testing.T) {
 	caCert, caKey, err := mtls.GenerateCA()
 	if err != nil {
 		t.Fatalf("GenerateCA: %v", err)
 	}
-	dir := t.TempDir()
-	cfg := &config.Config{StateDir: dir}
+	cfg := &config.Config{StateDir: "/some/state/dir"}
 
-	if err := ensurePanelClient(cfg, caCert, caKey, testLogger()); err != nil {
+	certPEM, keyPEM, caPEM, err := ensurePanelClient(cfg, caCert, caKey, testLogger())
+	if err != nil {
 		t.Fatalf("ensurePanelClient: %v", err)
 	}
-	if !cfg.MutualTLS() {
-		t.Fatalf("MutualTLS should be true after auto-issue, cfg=%+v", cfg)
+	if len(certPEM) == 0 || len(keyPEM) == 0 || len(caPEM) == 0 {
+		t.Fatalf("expected non-empty bundle, got cert=%d key=%d ca=%d bytes",
+			len(certPEM), len(keyPEM), len(caPEM))
 	}
-	for _, p := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
-		st, err := os.Stat(p)
-		if err != nil || st.Size() == 0 {
-			t.Fatalf("expected non-empty file at %s: %v", p, err)
-		}
+
+	// Cert must chain to the CA when treated as a client cert.
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		t.Fatal("cert PEM did not decode")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse cert: %v", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		t.Fatal("ca PEM did not load")
+	}
+	if _, err := cert.Verify(x509.VerifyOptions{
+		Roots:     roots,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}); err != nil {
+		t.Fatalf("client-auth verify failed: %v", err)
+	}
+
+	// cfg.TLS* must remain untouched — the in-memory path bypasses the
+	// file-based nodepool entirely (see api.buildNodePool).
+	if cfg.MutualTLS() {
+		t.Error("cfg.MutualTLS() should stay false when the auto-issue is in-memory only")
 	}
 }
 
-// TestEnsurePanelClient_Idempotent — a re-run with the same state dir
-// reuses the existing bundle rather than re-signing. Guards against
-// rotating the Panel cert on every restart (which would invalidate any
-// pinned trust downstream).
-func TestEnsurePanelClient_Idempotent(t *testing.T) {
-	caCert, caKey, _ := mtls.GenerateCA()
-	dir := t.TempDir()
-	cfg := &config.Config{StateDir: dir}
-
-	if err := ensurePanelClient(cfg, caCert, caKey, testLogger()); err != nil {
-		t.Fatal(err)
-	}
-	firstCert, _ := os.ReadFile(cfg.TLSCert)
-
-	// Blow away cfg, run again — files still on disk, should be reused byte-
-	// for-byte.
-	cfg2 := &config.Config{StateDir: dir}
-	if err := ensurePanelClient(cfg2, caCert, caKey, testLogger()); err != nil {
-		t.Fatal(err)
-	}
-	secondCert, _ := os.ReadFile(cfg2.TLSCert)
-	if string(firstCert) != string(secondCert) {
-		t.Fatal("cert was re-signed on second call; should have been reused")
-	}
-}
-
-// TestEnsurePanelClient_OperatorOverride — when the operator has set the
-// TLS envs explicitly (KRAKEN_TLS_CERT/KEY/CA all present), skip the
-// auto-issue entirely so we don't clobber their PKI.
+// TestEnsurePanelClient_OperatorOverride — when KRAKEN_TLS_CERT/KEY/CA are
+// set, ensurePanelClient must not generate anything. api.buildNodePool
+// picks up the file-based path unmodified.
 func TestEnsurePanelClient_OperatorOverride(t *testing.T) {
 	caCert, caKey, _ := mtls.GenerateCA()
-	dir := t.TempDir()
 	cfg := &config.Config{
-		StateDir: dir,
-		TLSCert:  "/operator/panel.pem",
-		TLSKey:   "/operator/panel-key.pem",
-		TLSCA:    "/operator/ca.pem",
+		TLSCert: "/operator/panel.pem",
+		TLSKey:  "/operator/panel-key.pem",
+		TLSCA:   "/operator/ca.pem",
 	}
-	if err := ensurePanelClient(cfg, caCert, caKey, testLogger()); err != nil {
+	certPEM, keyPEM, caPEM, err := ensurePanelClient(cfg, caCert, caKey, testLogger())
+	if err != nil {
 		t.Fatal(err)
+	}
+	if certPEM != nil || keyPEM != nil || caPEM != nil {
+		t.Errorf("operator override should return nil bundle, got %d/%d/%d bytes",
+			len(certPEM), len(keyPEM), len(caPEM))
 	}
 	if cfg.TLSCert != "/operator/panel.pem" {
 		t.Errorf("operator TLSCert was overwritten: %q", cfg.TLSCert)
 	}
-	// No files should have been created in state dir.
-	if _, err := os.Stat(filepath.Join(dir, "panel-client.pem")); err == nil {
-		t.Error("panel-client.pem was created despite operator override")
-	}
 }
 
 // TestEnsurePanelClient_NoCA — no CA available (e.g. Panel couldn't load /
-// generate one). Function must not error, must not populate cfg.TLS*, and
-// must leave the Panel in its documented "insecure fallback" state.
+// generate one). Function must not error and must return an empty bundle,
+// leaving the Panel to fall back to the documented insecure state.
 func TestEnsurePanelClient_NoCA(t *testing.T) {
-	dir := t.TempDir()
-	cfg := &config.Config{StateDir: dir}
-	if err := ensurePanelClient(cfg, nil, nil, testLogger()); err != nil {
+	cfg := &config.Config{}
+	certPEM, keyPEM, caPEM, err := ensurePanelClient(cfg, nil, nil, testLogger())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.MutualTLS() {
-		t.Fatal("expected MutualTLS() to remain false when no CA is available")
+	if certPEM != nil || keyPEM != nil || caPEM != nil {
+		t.Fatal("expected nil bundle when no CA is available")
 	}
 }

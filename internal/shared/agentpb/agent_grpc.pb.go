@@ -24,31 +24,33 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NodeService_GetNodeInfo_FullMethodName      = "/kraken.agent.v1.NodeService/GetNodeInfo"
-	NodeService_CreateServer_FullMethodName     = "/kraken.agent.v1.NodeService/CreateServer"
-	NodeService_RemoveServer_FullMethodName     = "/kraken.agent.v1.NodeService/RemoveServer"
-	NodeService_ApplyConfig_FullMethodName      = "/kraken.agent.v1.NodeService/ApplyConfig"
-	NodeService_ListFiles_FullMethodName        = "/kraken.agent.v1.NodeService/ListFiles"
-	NodeService_DownloadFiles_FullMethodName    = "/kraken.agent.v1.NodeService/DownloadFiles"
-	NodeService_ReadFile_FullMethodName         = "/kraken.agent.v1.NodeService/ReadFile"
-	NodeService_DownloadFile_FullMethodName     = "/kraken.agent.v1.NodeService/DownloadFile"
-	NodeService_MakeDir_FullMethodName          = "/kraken.agent.v1.NodeService/MakeDir"
-	NodeService_MovePath_FullMethodName         = "/kraken.agent.v1.NodeService/MovePath"
-	NodeService_CopyPath_FullMethodName         = "/kraken.agent.v1.NodeService/CopyPath"
-	NodeService_WriteFile_FullMethodName        = "/kraken.agent.v1.NodeService/WriteFile"
-	NodeService_DeletePaths_FullMethodName      = "/kraken.agent.v1.NodeService/DeletePaths"
-	NodeService_CreateBackup_FullMethodName     = "/kraken.agent.v1.NodeService/CreateBackup"
-	NodeService_ListBackups_FullMethodName      = "/kraken.agent.v1.NodeService/ListBackups"
-	NodeService_RestoreBackup_FullMethodName    = "/kraken.agent.v1.NodeService/RestoreBackup"
-	NodeService_DeleteBackup_FullMethodName     = "/kraken.agent.v1.NodeService/DeleteBackup"
-	NodeService_InstallServer_FullMethodName    = "/kraken.agent.v1.NodeService/InstallServer"
-	NodeService_PowerAction_FullMethodName      = "/kraken.agent.v1.NodeService/PowerAction"
-	NodeService_GetServerStatus_FullMethodName  = "/kraken.agent.v1.NodeService/GetServerStatus"
-	NodeService_StreamConsole_FullMethodName    = "/kraken.agent.v1.NodeService/StreamConsole"
-	NodeService_SendCommand_FullMethodName      = "/kraken.agent.v1.NodeService/SendCommand"
-	NodeService_StreamStats_FullMethodName      = "/kraken.agent.v1.NodeService/StreamStats"
-	NodeService_ApplyNodeConfig_FullMethodName  = "/kraken.agent.v1.NodeService/ApplyNodeConfig"
-	NodeService_ReplicateBackups_FullMethodName = "/kraken.agent.v1.NodeService/ReplicateBackups"
+	NodeService_GetNodeInfo_FullMethodName          = "/kraken.agent.v1.NodeService/GetNodeInfo"
+	NodeService_CreateServer_FullMethodName         = "/kraken.agent.v1.NodeService/CreateServer"
+	NodeService_RemoveServer_FullMethodName         = "/kraken.agent.v1.NodeService/RemoveServer"
+	NodeService_ApplyConfig_FullMethodName          = "/kraken.agent.v1.NodeService/ApplyConfig"
+	NodeService_ListFiles_FullMethodName            = "/kraken.agent.v1.NodeService/ListFiles"
+	NodeService_DownloadFiles_FullMethodName        = "/kraken.agent.v1.NodeService/DownloadFiles"
+	NodeService_ReadFile_FullMethodName             = "/kraken.agent.v1.NodeService/ReadFile"
+	NodeService_DownloadFile_FullMethodName         = "/kraken.agent.v1.NodeService/DownloadFile"
+	NodeService_MakeDir_FullMethodName              = "/kraken.agent.v1.NodeService/MakeDir"
+	NodeService_MovePath_FullMethodName             = "/kraken.agent.v1.NodeService/MovePath"
+	NodeService_CopyPath_FullMethodName             = "/kraken.agent.v1.NodeService/CopyPath"
+	NodeService_WriteFile_FullMethodName            = "/kraken.agent.v1.NodeService/WriteFile"
+	NodeService_DeletePaths_FullMethodName          = "/kraken.agent.v1.NodeService/DeletePaths"
+	NodeService_CreateBackup_FullMethodName         = "/kraken.agent.v1.NodeService/CreateBackup"
+	NodeService_ListBackups_FullMethodName          = "/kraken.agent.v1.NodeService/ListBackups"
+	NodeService_RestoreBackup_FullMethodName        = "/kraken.agent.v1.NodeService/RestoreBackup"
+	NodeService_DeleteBackup_FullMethodName         = "/kraken.agent.v1.NodeService/DeleteBackup"
+	NodeService_InstallServer_FullMethodName        = "/kraken.agent.v1.NodeService/InstallServer"
+	NodeService_PowerAction_FullMethodName          = "/kraken.agent.v1.NodeService/PowerAction"
+	NodeService_GetServerStatus_FullMethodName      = "/kraken.agent.v1.NodeService/GetServerStatus"
+	NodeService_StreamConsole_FullMethodName        = "/kraken.agent.v1.NodeService/StreamConsole"
+	NodeService_SendCommand_FullMethodName          = "/kraken.agent.v1.NodeService/SendCommand"
+	NodeService_StreamStats_FullMethodName          = "/kraken.agent.v1.NodeService/StreamStats"
+	NodeService_ApplyNodeConfig_FullMethodName      = "/kraken.agent.v1.NodeService/ApplyNodeConfig"
+	NodeService_ReplicateBackups_FullMethodName     = "/kraken.agent.v1.NodeService/ReplicateBackups"
+	NodeService_BeginCertRotation_FullMethodName    = "/kraken.agent.v1.NodeService/BeginCertRotation"
+	NodeService_CompleteCertRotation_FullMethodName = "/kraken.agent.v1.NodeService/CompleteCertRotation"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -117,6 +119,16 @@ type NodeServiceClient interface {
 	// target to the configured SFTP remote. Drives the scheduled "replicate"
 	// cron action.
 	ReplicateBackups(ctx context.Context, in *ReplicateBackupsRequest, opts ...grpc.CallOption) (*ReplicateBackupsResponse, error)
+	// BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
+	// serving cert. The new key is held in memory (single pending slot, short
+	// TTL) until CompleteCertRotation delivers the signed certificate. The Panel
+	// drives this over the existing mutually-authenticated channel when the
+	// agent's cert nears expiry, so rotation needs no operator or token.
+	BeginCertRotation(ctx context.Context, in *BeginCertRotationRequest, opts ...grpc.CallOption) (*BeginCertRotationResponse, error)
+	// CompleteCertRotation delivers the CA-signed certificate for the pending
+	// key. The Agent verifies it (matches the pending key, chains to its trusted
+	// CA), persists the new bundle, and hot-swaps the serving cert in place.
+	CompleteCertRotation(ctx context.Context, in *CompleteCertRotationRequest, opts ...grpc.CallOption) (*CompleteCertRotationResponse, error)
 }
 
 type nodeServiceClient struct {
@@ -422,6 +434,26 @@ func (c *nodeServiceClient) ReplicateBackups(ctx context.Context, in *ReplicateB
 	return out, nil
 }
 
+func (c *nodeServiceClient) BeginCertRotation(ctx context.Context, in *BeginCertRotationRequest, opts ...grpc.CallOption) (*BeginCertRotationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BeginCertRotationResponse)
+	err := c.cc.Invoke(ctx, NodeService_BeginCertRotation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) CompleteCertRotation(ctx context.Context, in *CompleteCertRotationRequest, opts ...grpc.CallOption) (*CompleteCertRotationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteCertRotationResponse)
+	err := c.cc.Invoke(ctx, NodeService_CompleteCertRotation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServiceServer is the server API for NodeService service.
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
@@ -488,6 +520,16 @@ type NodeServiceServer interface {
 	// target to the configured SFTP remote. Drives the scheduled "replicate"
 	// cron action.
 	ReplicateBackups(context.Context, *ReplicateBackupsRequest) (*ReplicateBackupsResponse, error)
+	// BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
+	// serving cert. The new key is held in memory (single pending slot, short
+	// TTL) until CompleteCertRotation delivers the signed certificate. The Panel
+	// drives this over the existing mutually-authenticated channel when the
+	// agent's cert nears expiry, so rotation needs no operator or token.
+	BeginCertRotation(context.Context, *BeginCertRotationRequest) (*BeginCertRotationResponse, error)
+	// CompleteCertRotation delivers the CA-signed certificate for the pending
+	// key. The Agent verifies it (matches the pending key, chains to its trusted
+	// CA), persists the new bundle, and hot-swaps the serving cert in place.
+	CompleteCertRotation(context.Context, *CompleteCertRotationRequest) (*CompleteCertRotationResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
 
@@ -572,6 +614,12 @@ func (UnimplementedNodeServiceServer) ApplyNodeConfig(context.Context, *ApplyNod
 }
 func (UnimplementedNodeServiceServer) ReplicateBackups(context.Context, *ReplicateBackupsRequest) (*ReplicateBackupsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReplicateBackups not implemented")
+}
+func (UnimplementedNodeServiceServer) BeginCertRotation(context.Context, *BeginCertRotationRequest) (*BeginCertRotationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BeginCertRotation not implemented")
+}
+func (UnimplementedNodeServiceServer) CompleteCertRotation(context.Context, *CompleteCertRotationRequest) (*CompleteCertRotationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteCertRotation not implemented")
 }
 func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
 func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
@@ -1009,6 +1057,42 @@ func _NodeService_ReplicateBackups_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_BeginCertRotation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginCertRotationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).BeginCertRotation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_BeginCertRotation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).BeginCertRotation(ctx, req.(*BeginCertRotationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_CompleteCertRotation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteCertRotationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).CompleteCertRotation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_CompleteCertRotation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).CompleteCertRotation(ctx, req.(*CompleteCertRotationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1095,6 +1179,14 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicateBackups",
 			Handler:    _NodeService_ReplicateBackups_Handler,
+		},
+		{
+			MethodName: "BeginCertRotation",
+			Handler:    _NodeService_BeginCertRotation_Handler,
+		},
+		{
+			MethodName: "CompleteCertRotation",
+			Handler:    _NodeService_CompleteCertRotation_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

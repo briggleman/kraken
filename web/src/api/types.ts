@@ -324,13 +324,26 @@ export interface SettingGroup {
   fields: SettingField[];
 }
 
+// ServerVariable is a launch variable (rendered into the startup command /
+// container env at start) with this server's current value. Editable only
+// while the server is stopped; edits apply on the next start.
+export interface ServerVariable {
+  key: string;
+  label?: string;
+  value: string;
+  rules?: string;
+  user_editable: boolean;
+}
+
 export interface ServerSettings {
   groups: SettingGroup[];
   values: Record<string, string>;
+  variables?: ServerVariable[];
 }
 
 export interface UpdateSettingsResult {
   values: Record<string, string>;
+  variables?: ServerVariable[];
   applied: boolean;
   restart_needed: boolean;
 }

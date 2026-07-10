@@ -280,8 +280,12 @@ export const api = {
     }
     return res.blob();
   },
-  updateServerSettings(id: string, values: Record<string, string>): Promise<UpdateSettingsResult> {
-    return request("PUT", `/servers/${id}/settings`, { values });
+  updateServerSettings(
+    id: string,
+    values: Record<string, string>,
+    variables?: Record<string, string>, // launch-variable edits: stopped servers only, apply on next start
+  ): Promise<UpdateSettingsResult> {
+    return request("PUT", `/servers/${id}/settings`, { values, ...(variables && Object.keys(variables).length ? { variables } : {}) });
   },
 
   listSpecs(): Promise<{ specs: Spec[] | null }> {

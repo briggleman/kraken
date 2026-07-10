@@ -14,10 +14,39 @@ import (
 )
 
 // settingsResponse is the payload for the server Settings tab: the spec's grouped
-// schema plus the server's current values.
+// schema plus the server's current values, and the spec's launch variables with
+// this server's resolved values.
 type settingsResponse struct {
 	Groups []spec.SettingGroup `json:"groups"`
 	Values map[string]string   `json:"values"`
+	// Variables are the spec's launch variables (rendered into the startup
+	// command / container env at start). Editable only while the server is
+	// stopped; edits apply on the next start.
+	Variables []variableView `json:"variables"`
+}
+
+// variableView is a launch variable surfaced on the Settings tab: the spec's
+// declaration plus this server's current value.
+type variableView struct {
+	Key          string `json:"key"`
+	Label        string `json:"label,omitempty"`
+	Value        string `json:"value"`
+	Rules        string `json:"rules,omitempty"`
+	UserEditable bool   `json:"user_editable"`
+}
+
+// variableViews pairs each spec variable with the server's stored value
+// (falling back to the spec default for variables added after deploy).
+func variableViews(sp *spec.Spec, sv *store.Server) []variableView {
+	out := make([]variableView, 0, len(sp.Variables))
+	for _, v := range sp.Variables {
+		val, ok := sv.Vars[v.Key]
+		if !ok {
+			val = v.Default
+		}
+		out = append(out, variableView{Key: v.Key, Label: v.Label, Value: val, Rules: v.Rules, UserEditable: v.UserEditable})
+	}
+	return out
 }
 
 func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request) {
@@ -34,11 +63,15 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	if groups == nil {
 		groups = []spec.SettingGroup{}
 	}
-	writeJSON(w, http.StatusOK, settingsResponse{Groups: groups, Values: values})
+	writeJSON(w, http.StatusOK, settingsResponse{Groups: groups, Values: values, Variables: variableViews(sp, sv)})
 }
 
 type updateSettingsRequest struct {
 	Values map[string]string `json:"values"`
+	// Variables are launch-variable edits. Only accepted while the server is
+	// stopped — they render into the startup command, so a running container
+	// would silently keep the old values until its next start.
+	Variables map[string]string `json:"variables,omitempty"`
 }
 
 func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +84,38 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	sv, sp, ok := s.loadServerAndSpec(ctx, w, chi.URLParam(r, "id"))
 	if !ok {
 		return
+	}
+
+	// Launch-variable edits: stopped servers only. The next start re-renders
+	// the startup command and container env from the stored vars, so no
+	// reinstall is needed (variables referenced by the install script only
+	// take effect after a reinstall).
+	if len(req.Variables) > 0 {
+		switch sv.State {
+		case store.StateRunning, store.StateStarting, store.StateStopping:
+			writeError(w, http.StatusConflict, "stop the server to edit launch variables; they apply on the next start")
+			return
+		}
+		if err := sp.ValidateVarOverrides(req.Variables); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		editable := make(map[string]bool, len(sp.Variables))
+		for _, v := range sp.Variables {
+			if v.UserEditable {
+				editable[v.Key] = true
+			}
+		}
+		if sv.Vars == nil {
+			sv.Vars = map[string]string{}
+		}
+		for k, v := range req.Variables {
+			if !editable[k] {
+				writeError(w, http.StatusBadRequest, "variable "+k+" is not editable")
+				return
+			}
+			sv.Vars[k] = v
+		}
 	}
 
 	// Validate each supplied value against its field; ignore unknown keys.
@@ -95,6 +160,7 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	restartNeeded := sv.State == store.StateRunning && applied
 	writeJSON(w, http.StatusOK, map[string]any{
 		"values":         sv.Settings,
+		"variables":      variableViews(sp, sv),
 		"applied":        applied,
 		"restart_needed": restartNeeded,
 	})

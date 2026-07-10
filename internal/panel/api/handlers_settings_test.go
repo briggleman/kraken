@@ -1,9 +1,12 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/briggleman/kraken/internal/panel/store"
 )
 
 func createSettingsSpec(t *testing.T, h http.Handler, token string) string {
@@ -96,6 +99,109 @@ func TestServerSettings_NoSettingsBlock_ReturnsEmptyGroups(t *testing.T) {
 	}
 	if string(raw.Groups) != "[]" {
 		t.Fatalf("groups must serialize as [], got %s", raw.Groups)
+	}
+}
+
+// Launch variables surface on the Settings tab with the server's values; they
+// are editable only while the server is stopped and only when user_editable.
+func TestServerSettings_LaunchVariables(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: %d", rec.Code)
+	}
+	rec := do(t, h, http.MethodPost, "/api/v1/specs", token, map[string]any{
+		"name": "Valheim-like", "slug": "varsgame",
+		"platforms": []map[string]string{{"kind": "linux-native", "image": "busybox:latest"}},
+		"install":   map[string]any{"script": "echo install"},
+		"startup": map[string]any{
+			"command": "./run -name {{SERVER_NAME}}",
+			"stop":    map[string]string{"type": "signal", "value": "SIGINT"},
+		},
+		"ports": []map[string]any{{"name": "game", "protocol": "udp", "default": 2456, "required": true}},
+		"variables": []map[string]any{
+			{"key": "SERVER_NAME", "label": "Server name", "default": "Kraken", "user_editable": true},
+			{"key": "INTERNAL_FLAG", "default": "locked", "user_editable": false},
+		},
+		"resources": map[string]int{"min_memory_mb": 256},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create spec: %d %s", rec.Code, rec.Body.String())
+	}
+	var sp struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sp)
+
+	rec = do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{"spec_id": sp.ID, "name": "vars-01"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	// GET exposes the variables with the server's resolved values.
+	rec = do(t, h, http.MethodGet, "/api/v1/servers/"+created.ID+"/settings", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get settings: %d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Variables []struct {
+			Key          string `json:"key"`
+			Value        string `json:"value"`
+			UserEditable bool   `json:"user_editable"`
+		} `json:"variables"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if len(got.Variables) != 2 || got.Variables[0].Key != "SERVER_NAME" || got.Variables[0].Value != "Kraken" || !got.Variables[0].UserEditable {
+		t.Fatalf("unexpected variables: %+v", got.Variables)
+	}
+
+	// Editing a user-editable variable on a stopped server persists.
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"variables": map[string]string{"SERVER_NAME": "Midgard"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update variables: %d %s", rec.Code, rec.Body.String())
+	}
+	sv, err := st.GetServer(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get server: %v", err)
+	}
+	if sv.Vars["SERVER_NAME"] != "Midgard" {
+		t.Fatalf("variable not persisted: %q", sv.Vars["SERVER_NAME"])
+	}
+
+	// Non-editable variables are rejected.
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"variables": map[string]string{"INTERNAL_FLAG": "changed"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("non-editable variable: expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	// Shell metacharacters are rejected (CWE-78 guard).
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"variables": map[string]string{"SERVER_NAME": "pwn; rm -rf /"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("shell metachar: expected 400, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	// A running server locks launch variables.
+	sv.State = store.StateRunning
+	if err := st.UpdateServer(context.Background(), sv); err != nil {
+		t.Fatalf("set running: %v", err)
+	}
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"variables": map[string]string{"SERVER_NAME": "TooLate"},
+	})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("running server: expected 409, got %d (%s)", rec.Code, rec.Body.String())
 	}
 }
 

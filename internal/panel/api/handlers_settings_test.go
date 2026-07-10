@@ -46,6 +46,59 @@ func createSettingsSpec(t *testing.T, h http.Handler, token string) string {
 	return sp.ID
 }
 
+// A spec with no settings block must return groups: [] (not null) — the
+// Settings tab crashed to a black screen dereferencing null.length.
+func TestServerSettings_NoSettingsBlock_ReturnsEmptyGroups(t *testing.T) {
+	h := newTestServer(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: %d", rec.Code)
+	}
+	rec := do(t, h, http.MethodPost, "/api/v1/specs", token, map[string]any{
+		"name": "Launch-args only", "slug": "no-settings",
+		"platforms": []map[string]string{{"kind": "linux-native", "image": "busybox:latest"}},
+		"install":   map[string]any{"script": "echo install"},
+		"startup": map[string]any{
+			"command": "./run",
+			"stop":    map[string]string{"type": "signal", "value": "SIGINT"},
+		},
+		"ports":     []map[string]any{{"name": "game", "protocol": "udp", "default": 2456, "required": true}},
+		"resources": map[string]int{"min_memory_mb": 256},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create spec: %d %s", rec.Code, rec.Body.String())
+	}
+	var sp struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sp)
+
+	rec = do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{"spec_id": sp.ID, "name": "no-settings-01"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	rec = do(t, h, http.MethodGet, "/api/v1/servers/"+created.ID+"/settings", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get settings: %d %s", rec.Code, rec.Body.String())
+	}
+	var raw struct {
+		Groups json.RawMessage `json:"groups"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if string(raw.Groups) != "[]" {
+		t.Fatalf("groups must serialize as [], got %s", raw.Groups)
+	}
+}
+
 func TestServerSettings_GetAndUpdate(t *testing.T) {
 	h := newTestServer(t)
 	token := login(t, h)

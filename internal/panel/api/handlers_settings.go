@@ -28,7 +28,13 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	}
 	// Ensure values include any settings added to the spec since creation.
 	values := sp.ResolveSettings(sv.Settings)
-	writeJSON(w, http.StatusOK, settingsResponse{Groups: sp.Settings.Groups, Values: values})
+	// Specs without a settings block have a nil Groups slice, which would
+	// serialize as JSON null; the UI expects an array.
+	groups := sp.Settings.Groups
+	if groups == nil {
+		groups = []spec.SettingGroup{}
+	}
+	writeJSON(w, http.StatusOK, settingsResponse{Groups: groups, Values: values})
 }
 
 type updateSettingsRequest struct {

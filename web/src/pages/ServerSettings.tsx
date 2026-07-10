@@ -138,7 +138,7 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
 
   useEffect(() => {
     api.getServerSettings(id)
-      .then((d) => { setData(d); setValues(d.values); })
+      .then((d) => { setData(d); setValues(d.values ?? {}); })
       .catch((e) => setError(e instanceof Error ? e.message : "failed to load settings"));
   }, [id]);
 
@@ -161,7 +161,16 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
 
   if (error && !data) return <div style={{ fontFamily: mono, color: "var(--status-crashed)", padding: 20 }}>{error}</div>;
   if (!data) return <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>Loading settings…</div>;
-  if (data.groups.length === 0) return <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>This game has no configurable settings defined in its spec.</div>;
+  // Older panels serialize a spec without settings as groups: null.
+  const groups = data.groups ?? [];
+  if (groups.length === 0) {
+    return (
+      <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>
+        This game has no Settings-tab options — its configuration (if any) is set via launch
+        variables on the deploy screen.
+      </div>
+    );
+  }
 
   return (
     <div style={{ paddingBottom: 30 }}>
@@ -186,7 +195,7 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
         </div>
       )}
 
-      {data.groups.map((g) => (
+      {groups.map((g) => (
         <section key={g.id} style={{ marginBottom: 32 }}>
           <div style={{ marginBottom: 14 }}>
             <h3 style={groupLabel}>{g.label || g.id}</h3>
@@ -194,7 +203,7 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
             <div style={{ height: 1, background: "var(--border-subtle)", marginTop: 12 }} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(380px,1fr))", gap: 16 }}>
-            {g.fields.map((f) => (
+            {(g.fields ?? []).map((f) => (
               <SettingCard key={f.key} field={f} value={values[f.key] ?? f.default ?? ""} onChange={(v) => set(f.key, v)} />
             ))}
           </div>

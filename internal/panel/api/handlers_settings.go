@@ -20,9 +20,12 @@ type settingsResponse struct {
 	Groups []spec.SettingGroup `json:"groups"`
 	Values map[string]string   `json:"values"`
 	// Variables are the spec's launch variables (rendered into the startup
-	// command / container env at start). Editable only while the server is
-	// stopped; edits apply on the next start.
+	// command / container env at start). Editable any time; changes apply on
+	// the next start.
 	Variables []variableView `json:"variables"`
+	// HotReload mirrors the spec: the game re-reads config files live, so
+	// saved settings (not launch variables) apply without a restart.
+	HotReload bool `json:"hot_reload"`
 }
 
 // variableView is a launch variable surfaced on the Settings tab: the spec's
@@ -63,7 +66,11 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	if groups == nil {
 		groups = []spec.SettingGroup{}
 	}
-	writeJSON(w, http.StatusOK, settingsResponse{Groups: groups, Values: values, Variables: variableViews(sp, sv)})
+	writeJSON(w, http.StatusOK, settingsResponse{
+		Groups: groups, Values: values,
+		Variables: variableViews(sp, sv),
+		HotReload: sp.Settings.HotReload,
+	})
 }
 
 type updateSettingsRequest struct {
@@ -86,16 +93,13 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Launch-variable edits: stopped servers only. The next start re-renders
-	// the startup command and container env from the stored vars, so no
-	// reinstall is needed (variables referenced by the install script only
-	// take effect after a reinstall).
+	// Launch-variable edits are accepted in any server state — the next start
+	// re-renders the startup command and container env from the stored vars,
+	// so no reinstall is needed (variables referenced by the install script
+	// only take effect after a reinstall). A running server keeps its old
+	// values until restarted; the response's restart_needed says so.
+	varsChanged := false
 	if len(req.Variables) > 0 {
-		switch sv.State {
-		case store.StateRunning, store.StateStarting, store.StateStopping:
-			writeError(w, http.StatusConflict, "stop the server to edit launch variables; they apply on the next start")
-			return
-		}
 		if err := sp.ValidateVarOverrides(req.Variables); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -114,7 +118,10 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 				writeError(w, http.StatusBadRequest, "variable "+k+" is not editable")
 				return
 			}
-			sv.Vars[k] = v
+			if sv.Vars[k] != v {
+				sv.Vars[k] = v
+				varsChanged = true
+			}
 		}
 	}
 
@@ -157,12 +164,18 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	restartNeeded := sv.State == store.StateRunning && applied
+	// A running server needs a restart when launch variables changed (baked
+	// into the start command) or when config files were pushed to a game that
+	// doesn't hot-reload them. Hot-reload games pick up pushed config live.
+	running := sv.State == store.StateRunning
+	restartNeeded := running && (varsChanged || (applied && !sp.Settings.HotReload))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"values":         sv.Settings,
-		"variables":      variableViews(sp, sv),
-		"applied":        applied,
-		"restart_needed": restartNeeded,
+		"values":            sv.Settings,
+		"variables":         variableViews(sp, sv),
+		"applied":           applied,
+		"restart_needed":    restartNeeded,
+		"hot_reload":        sp.Settings.HotReload,
+		"variables_changed": varsChanged,
 	})
 }
 

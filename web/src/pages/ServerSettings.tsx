@@ -130,9 +130,6 @@ function SettingCard({ field, value, onChange }: { field: SettingField; value: s
 
 export function ServerSettingsPanel({ id, state, onRequestRestart }: { id: string; state: ServerState; onRequestRestart: () => void }) {
   const running = state === "running";
-  // Launch variables render into the start command, so a live (or transitioning)
-  // container would silently keep the old values — lock them until it's stopped.
-  const varsLocked = state === "running" || state === "starting" || state === "stopping";
   const [data, setData] = useState<Settings | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [varValues, setVarValues] = useState<Record<string, string>>({});
@@ -167,10 +164,12 @@ export function ServerSettingsPanel({ id, state, onRequestRestart }: { id: strin
       setVarsDirty(false);
       setNotice(
         res.restart_needed
-          ? "Saved. Restart the server to apply the new settings."
-          : savedVars
-            ? "Saved. Launch variables apply the next time the server starts."
-            : "Settings saved.",
+          ? "Saved. Restart the server for the changes to take effect."
+          : running && res.applied && res.hot_reload
+            ? "Saved — applied to the running server live (this game hot-reloads its config)."
+            : savedVars
+              ? "Saved. Launch variables apply the next time the server starts."
+              : "Settings saved.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
@@ -220,9 +219,7 @@ export function ServerSettingsPanel({ id, state, onRequestRestart }: { id: strin
           <div style={{ marginBottom: 14 }}>
             <h3 style={groupLabel}>Launch variables</h3>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>
-              {varsLocked
-                ? "Baked into the start command when the server boots — stop the server to edit them; changes apply on the next start."
-                : "Baked into the start command when the server boots. Changes apply the next time the server starts."}
+              Baked into the start command when the server boots — changes always need a restart to take effect.
             </div>
             <div style={{ height: 1, background: "var(--border-subtle)", marginTop: 12 }} />
           </div>
@@ -234,7 +231,7 @@ export function ServerSettingsPanel({ id, state, onRequestRestart }: { id: strin
                   key: v.key,
                   label: v.label || v.key,
                   type: "string",
-                  read_only: varsLocked || !v.user_editable,
+                  read_only: !v.user_editable,
                   help: v.rules ? `rules: ${v.rules}` : undefined,
                 }}
                 value={varValues[v.key] ?? v.value}

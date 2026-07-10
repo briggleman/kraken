@@ -192,16 +192,111 @@ func TestServerSettings_LaunchVariables(t *testing.T) {
 		t.Fatalf("shell metachar: expected 400, got %d (%s)", rec.Code, rec.Body.String())
 	}
 
-	// A running server locks launch variables.
+	// A running server accepts variable edits too — the response just flags
+	// that a restart is required (vars are baked into the start command).
 	sv.State = store.StateRunning
 	if err := st.UpdateServer(context.Background(), sv); err != nil {
 		t.Fatalf("set running: %v", err)
 	}
 	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
-		"variables": map[string]string{"SERVER_NAME": "TooLate"},
+		"variables": map[string]string{"SERVER_NAME": "Asgard"},
 	})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("running server: expected 409, got %d (%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("running server: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var upd struct {
+		RestartNeeded    bool `json:"restart_needed"`
+		VariablesChanged bool `json:"variables_changed"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &upd)
+	if !upd.RestartNeeded || !upd.VariablesChanged {
+		t.Fatalf("running var edit must flag a restart: %s", rec.Body.String())
+	}
+}
+
+// hot_reload specs report no restart needed after a settings save on a running
+// server — the game re-reads pushed config files live.
+func TestServerSettings_HotReload(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: %d", rec.Code)
+	}
+	rec := do(t, h, http.MethodPost, "/api/v1/specs", token, map[string]any{
+		"name": "Hotreload Game", "slug": "hotgame",
+		"platforms": []map[string]string{{"kind": "linux-native", "image": "busybox:latest"}},
+		"install":   map[string]any{"script": "echo install"},
+		"startup": map[string]any{
+			"command": "./run",
+			"stop":    map[string]string{"type": "signal", "value": "SIGINT"},
+		},
+		"ports": []map[string]any{{"name": "game", "protocol": "udp", "default": 2456, "required": true}},
+		"settings": map[string]any{
+			"hot_reload": true,
+			"groups": []map[string]any{
+				{"id": "world", "fields": []map[string]any{
+					{"key": "motd", "type": "string", "default": "hi"},
+				}},
+			},
+		},
+		"config_files": []map[string]any{
+			{"path": "/data/server.cfg", "format": "source-cvar", "bindings": map[string]any{"motd": "motd"}},
+		},
+		"resources": map[string]int{"min_memory_mb": 256},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create spec: %d %s", rec.Code, rec.Body.String())
+	}
+	var sp struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sp)
+
+	rec = do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{"spec_id": sp.ID, "name": "hot-01"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+
+	// GET surfaces the flag so the UI can phrase its save notice.
+	rec = do(t, h, http.MethodGet, "/api/v1/servers/"+created.ID+"/settings", token, nil)
+	var got struct {
+		HotReload bool `json:"hot_reload"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if !got.HotReload {
+		t.Fatalf("expected hot_reload: true in settings response: %s", rec.Body.String())
+	}
+
+	sv, err := st.GetServer(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get server: %v", err)
+	}
+	sv.State = store.StateRunning
+	if err := st.UpdateServer(context.Background(), sv); err != nil {
+		t.Fatalf("set running: %v", err)
+	}
+
+	// Settings save on a running hot-reload game: applied live, no restart.
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"values": map[string]string{"motd": "welcome"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update settings: %d %s", rec.Code, rec.Body.String())
+	}
+	var upd struct {
+		Applied       bool `json:"applied"`
+		RestartNeeded bool `json:"restart_needed"`
+		HotReload     bool `json:"hot_reload"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &upd)
+	if !upd.Applied || upd.RestartNeeded || !upd.HotReload {
+		t.Fatalf("hot-reload save should apply without restart: %s", rec.Body.String())
 	}
 }
 

@@ -324,15 +324,32 @@ export interface SettingGroup {
   fields: SettingField[];
 }
 
+// ServerVariable is a launch variable (rendered into the startup command /
+// container env at start) with this server's current value. Editable any
+// time; changes apply on the next start.
+export interface ServerVariable {
+  key: string;
+  label?: string;
+  value: string;
+  rules?: string;
+  user_editable: boolean;
+}
+
 export interface ServerSettings {
   groups: SettingGroup[];
   values: Record<string, string>;
+  variables?: ServerVariable[];
+  /** The game re-reads config files live — saved settings apply without a restart. */
+  hot_reload?: boolean;
 }
 
 export interface UpdateSettingsResult {
   values: Record<string, string>;
+  variables?: ServerVariable[];
   applied: boolean;
   restart_needed: boolean;
+  hot_reload?: boolean;
+  variables_changed?: boolean;
 }
 
 export interface FileEntry {

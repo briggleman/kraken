@@ -334,6 +334,11 @@ function SpecForm({ form, upd }: { form: any; upd: (mut: (d: any) => void) => vo
       </Section>
 
       <Section title="Settings groups" onAdd={() => upd((d) => { (d.settings ??= {}).groups ??= []; d.settings.groups.push({ id: "", label: "", fields: [] }); })}>
+        <ToggleRow
+          label="Hot reload (game re-reads its config files live — saved settings apply without a restart)"
+          checked={!!form.settings?.hot_reload}
+          onChange={(v) => upd((d) => { (d.settings ??= {}).hot_reload = v || undefined; })}
+        />
         {groups.length === 0 && <Empty>No settings groups. These render game options into config files.</Empty>}
         {groups.map((g, gi) => (
           <div key={gi} style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: 14, background: "var(--bg-inset)" }}>

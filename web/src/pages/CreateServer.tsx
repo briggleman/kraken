@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Node, Spec, SpecVariable } from "@/api/types";
+import type { Node, Spec } from "@/api/types";
 import { Button } from "@ds/components/core/Button";
 import { Card } from "@ds/components/core/Card";
 import { Input } from "@ds/components/core/Input";
@@ -95,13 +95,11 @@ export function CreateWizard({
   const [specId, setSpecId] = useState<string | null>(null);
   const [nodeId, setNodeId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [steamGuard, setSteamGuard] = useState("");
   const [installBepInEx, setInstallBepInEx] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const spec = useMemo(() => specs.find((s) => s.id === specId) ?? null, [specs, specId]);
-  const editable: SpecVariable[] = (spec?.variables ?? []).filter((v) => v.user_editable);
   // Mirrors the scheduler's eligibility: only show nodes the selected game can
   // actually be placed on — online, platform match, enough unreserved memory,
   // and enough free game ports.
@@ -140,7 +138,9 @@ export function CreateWizard({
     if (!specId) return;
     setBusy(true);
     try {
-      await onDeploy({ spec_id: specId, name: name.trim(), variables: overrides, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined });
+      // No per-game variable overrides here: the wizard is identical for every
+      // game, and launch variables are edited on the server's Settings tab.
+      await onDeploy({ spec_id: specId, name: name.trim(), variables: {}, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined });
     } finally {
       setBusy(false);
     }
@@ -288,17 +288,12 @@ export function CreateWizard({
               mono
               helper={name.length > 64 ? "Must be 64 or fewer characters." : "A unique name for your server."}
             />
-            {editable.map((v) => (
-              <div key={v.key} style={{ marginTop: 14 }}>
-                <Input
-                  label={(v.label || v.key).toUpperCase()}
-                  value={overrides[v.key] ?? v.default}
-                  onChange={(e) => setOverrides((o) => ({ ...o, [v.key]: e.target.value }))}
-                  mono
-                  helper={v.rules || undefined}
-                />
+            {(spec?.variables ?? []).some((v) => v.user_editable) && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" }}>
+                Game options (server name, world, passwords…) are configured on the server's
+                Settings tab after deploy.
               </div>
-            ))}
+            )}
             {spec?.install?.bepinex_compatible && (
               <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18, cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13.5, color: "var(--text-secondary)" }}>
                 <Toggle checked={installBepInEx} onChange={setInstallBepInEx} />

@@ -321,7 +321,7 @@ export function ServerDetail() {
         ))}
       </div>
 
-      {tab === "settings" && <ServerSettingsPanel id={id} running={running} onRequestRestart={() => power("restart")} />}
+      {tab === "settings" && <ServerSettingsPanel id={id} state={server.state} onRequestRestart={() => power("restart")} />}
       {tab === "networking" && <ServerNetworkingPanel id={id} />}
       {tab === "files" && <ServerFilesPanel id={id} name={server.name} />}
       {tab === "backups" && <ServerBackupsPanel id={id} onRequestRestart={() => power("restart")} />}

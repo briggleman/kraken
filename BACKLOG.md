@@ -27,6 +27,16 @@ Deferred features and enhancements, roughly in priority order.
   April 2026, so this is overdue housekeeping; Node 24 is the active LTS.
 
 ## Platform
+- **Active hot reload via RCON.** The spec-level `settings.hot_reload` flag
+  (added 2026-07-10) only changes the post-save message — it assumes the game
+  re-reads its config files on its own. Some games instead need an explicit
+  reload command sent over RCON (or a REST/console equivalent) to pick up
+  pushed config. Extend the spec schema with a reload trigger (e.g.
+  `settings.reload: { type: rcon, command: "reloadcfg" }`), have the Agent
+  execute it after `ApplyConfig` on a running server, and report success back
+  so the Settings tab can say "applied live" with confidence. The per-spec
+  `query` block (player count) already established the per-game RCON/REST
+  plumbing patterns to build on.
 - **Pull game specs from an external GitHub repo.** Today the catalog is
   `go:embed`ded in the panel binary (`internal/panel/catalog/bundled/*.yaml`),
   so adding or updating a spec requires a Kraken release. Move to a

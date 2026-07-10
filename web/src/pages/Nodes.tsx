@@ -106,7 +106,7 @@ export function Nodes() {
       )}
 
       {configuring && (
-        <NodeConfigModal node={configuring} onClose={() => setConfiguring(null)} />
+        <NodeConfigModal node={configuring} onClose={() => { setConfiguring(null); refresh(); }} />
       )}
 
       {adding && (
@@ -182,11 +182,16 @@ const selectStyle: React.CSSProperties = {
   outline: "none",
 };
 
-// NodeConfigModal edits a node's System settings: where backups are stored
-// (local disk or SFTP remote) and whether they're mirrored to an SFTP remote.
-// Secrets are write-only — blank inputs leave the stored value untouched.
+// NodeConfigModal edits a node's System settings: schedulable capacity (total
+// memory + game-port range), where backups are stored (local disk or SFTP
+// remote) and whether they're mirrored to an SFTP remote. Secrets are
+// write-only — blank inputs leave the stored value untouched.
 function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void }) {
   const [cfg, setCfg] = useState<NodeConfig | null>(null);
+  // Capacity (PATCH /nodes/{id}) — seeded from the node record.
+  const [memMB, setMemMB] = useState(String(node.total_memory_mb || ""));
+  const [portStart, setPortStart] = useState(String(node.ports?.ranges?.[0]?.start ?? ""));
+  const [portEnd, setPortEnd] = useState(String(node.ports?.ranges?.[0]?.end ?? ""));
   const [target, setTarget] = useState("local");
   const [backupDir, setBackupDir] = useState("");
   // SFTP
@@ -228,6 +233,32 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
     setBusy(true);
     setError(null);
     setNotice(null);
+    // Capacity first: only PATCH the fields the operator changed. A validation
+    // error here aborts the save so it doesn't get lost behind the config toast.
+    try {
+      const patch: { total_memory_mb?: number; port_start?: number; port_end?: number } = {};
+      if (memMB.trim() !== "" && +memMB !== node.total_memory_mb) patch.total_memory_mb = +memMB;
+      const curStart = node.ports?.ranges?.[0]?.start;
+      const curEnd = node.ports?.ranges?.[0]?.end;
+      if (portStart.trim() !== "" || portEnd.trim() !== "") {
+        if (portStart.trim() === "" || portEnd.trim() === "") {
+          setError("Set both port range fields (or clear both to leave unchanged).");
+          setBusy(false);
+          return;
+        }
+        if (+portStart !== curStart || +portEnd !== curEnd) {
+          patch.port_start = +portStart;
+          patch.port_end = +portEnd;
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        await api.updateNode(node.id, patch);
+      }
+    } catch (e) {
+      setError(msg(e));
+      setBusy(false);
+      return;
+    }
     // Only send secrets when the operator typed a new value (blank keeps stored).
     const input: NodeConfigUpdate = {
       backup_target: target,
@@ -268,8 +299,31 @@ function NodeConfigModal({ node, onClose }: { node: Node; onClose: () => void })
         <Card glow padding={24}>
           <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 8 }}>// NODE SETTINGS</div>
           <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 4px", color: "var(--text-primary)" }}>{node.name}</h2>
-          <p style={{ margin: "0 0 18px", fontSize: 13, color: "var(--text-secondary)" }}>Where this node stores backups, and whether they're mirrored off-node.</p>
+          <p style={{ margin: "0 0 18px", fontSize: 13, color: "var(--text-secondary)" }}>Schedulable capacity, where this node stores backups, and whether they're mirrored off-node.</p>
 
+          <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: "1.5px", color: "var(--text-faint)", marginBottom: 12 }}>CAPACITY</div>
+          <Input
+            label="TOTAL MEMORY (MB)"
+            type="number"
+            value={memMB}
+            onChange={(e) => setMemMB(e.target.value)}
+            mono
+            helper={`Memory the scheduler may hand to game servers. ${node.allocated_memory_mb}MB is already reserved by servers on this node.`}
+            style={{ marginBottom: 14 }}
+          />
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Input label="PORT START" type="number" value={portStart} onChange={(e) => setPortStart(e.target.value)} mono placeholder="28000" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input label="PORT END" type="number" value={portEnd} onChange={(e) => setPortEnd(e.target.value)} mono placeholder="28999" />
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-faint)", margin: "6px 0 14px" }}>
+            Game ports the scheduler allocates from. Changing the range never touches running servers — their ports stay reserved. Nodes sharing one IP need non-overlapping ranges.
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 14, fontFamily: mono, fontSize: 11, letterSpacing: "1.5px", color: "var(--text-faint)", marginBottom: 12 }}>BACKUPS</div>
           <Select
             label="BACKUP TARGET"
             value={target}

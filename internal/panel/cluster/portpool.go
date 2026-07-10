@@ -89,6 +89,14 @@ func (p *PortPool) Release(port int) {
 	delete(p.allocated, port)
 }
 
+// SetRanges replaces the pool's configured ranges while preserving current
+// allocations. Ports already allocated outside the new ranges stay reserved
+// (their servers keep running); they simply return to no pool when released.
+func (p *PortPool) SetRanges(ranges ...PortRange) {
+	p.ensure()
+	p.Ranges = ranges
+}
+
 // portPoolJSON is the serialized form of a PortPool, including allocations so
 // reservations survive a round-trip through storage.
 type portPoolJSON struct {

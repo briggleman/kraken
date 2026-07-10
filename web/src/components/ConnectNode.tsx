@@ -451,20 +451,25 @@ export function ConnectNode({
             {advancedOpen ? "▾" : "▸"} ADVANCED (NAME · MEMORY · PORT RANGE)
           </button>
           {advancedOpen && (
-            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <div style={{ flex: 2 }}>
-                <Input label="NAME OVERRIDE" value={advName} onChange={(e) => setAdvName(e.target.value)} placeholder="blank = agent's KRAKEN_NODE_ID" mono />
+            <>
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <div style={{ flex: 2 }}>
+                  <Input label="NAME OVERRIDE" value={advName} onChange={(e) => setAdvName(e.target.value)} placeholder="blank = agent's KRAKEN_NODE_ID" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="MEMORY (MB)" type="number" value={advMem} onChange={(e) => setAdvMem(e.target.value)} placeholder="auto" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="PORT START" type="number" value={advPortStart} onChange={(e) => setAdvPortStart(e.target.value)} placeholder="28000" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="PORT END" type="number" value={advPortEnd} onChange={(e) => setAdvPortEnd(e.target.value)} placeholder="28999" mono />
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <Input label="MEMORY (MB)" type="number" value={advMem} onChange={(e) => setAdvMem(e.target.value)} placeholder="auto" mono />
+              <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
+                Blank port range = 28000–28999. When several nodes share one IP, give each its own range.
               </div>
-              <div style={{ flex: 1 }}>
-                <Input label="PORT START" type="number" value={advPortStart} onChange={(e) => setAdvPortStart(e.target.value)} placeholder="28000" mono />
-              </div>
-              <div style={{ flex: 1 }}>
-                <Input label="PORT END" type="number" value={advPortEnd} onChange={(e) => setAdvPortEnd(e.target.value)} placeholder="28999" mono />
-              </div>
-            </div>
+            </>
           )}
         </div>
       )}

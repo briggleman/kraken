@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/briggleman/kraken/internal/panel/cluster"
@@ -148,6 +149,51 @@ func TestPlace_NoCapacity(t *testing.T) {
 	_, err := Place(crossPlatformSpec(), []*cluster.Node{tiny})
 	if !errors.Is(err, ErrNoPlacement) {
 		t.Fatalf("expected ErrNoPlacement, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "lin-tiny: insufficient memory (256MB available)") {
+		t.Fatalf("error should name the node and its memory shortfall, got: %v", err)
+	}
+}
+
+// The placement error must say WHY each node was rejected — an offline node, a
+// platform mismatch, and an unconfigured port pool all look identical from the
+// bare "no node can host this spec" message.
+func TestPlace_ErrorNamesEachRejectedNode(t *testing.T) {
+	off := linuxNode("lin-off", 16384, true)
+	off.Status = cluster.NodeOffline
+	win := windowsNode("win-1", 16384)
+	noPorts := linuxNode("lin-noports", 16384, true)
+	noPorts.Ports = cluster.NewPortPool()
+
+	// linux-only spec: the Windows node is a platform mismatch.
+	linuxOnly := &spec.Spec{
+		Slug:      "linonly",
+		Platforms: []spec.Platform{{Kind: spec.LinuxNative, Image: "img/linux"}},
+		Ports:     []spec.Port{{Name: "game", Protocol: spec.UDP, Default: 7777}},
+		Resources: spec.Resources{MinMemoryMB: 2048},
+	}
+	_, err := Place(linuxOnly, []*cluster.Node{off, win, noPorts})
+	if !errors.Is(err, ErrNoPlacement) {
+		t.Fatalf("expected ErrNoPlacement, got %v", err)
+	}
+	for _, want := range []string{
+		"lin-off: offline",
+		"win-1: windows node cannot run linux-native",
+		"lin-noports: no port range configured",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q, got: %v", want, err)
+		}
+	}
+}
+
+func TestPlace_ErrorWithNoNodes(t *testing.T) {
+	_, err := Place(crossPlatformSpec(), nil)
+	if !errors.Is(err, ErrNoPlacement) {
+		t.Fatalf("expected ErrNoPlacement, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "no nodes registered") {
+		t.Fatalf("expected 'no nodes registered' detail, got: %v", err)
 	}
 }
 

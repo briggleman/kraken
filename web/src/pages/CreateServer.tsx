@@ -102,11 +102,33 @@ export function CreateWizard({
 
   const spec = useMemo(() => specs.find((s) => s.id === specId) ?? null, [specs, specId]);
   const editable: SpecVariable[] = (spec?.variables ?? []).filter((v) => v.user_editable);
-  const onlineNodes = nodes.filter((n) => n.status === "online");
-  const placedNode = nodes.find((n) => n.id === nodeId) ?? null;
+  // Mirrors the scheduler's eligibility: only show nodes the selected game can
+  // actually be placed on — online, platform match, enough unreserved memory,
+  // and enough free game ports.
+  const eligibleNodes = useMemo(() => {
+    const specKinds = (spec?.platforms ?? []).map((p) => p.kind);
+    const nodeKinds = (n: Node): string[] =>
+      n.os === "linux" ? (n.wine_enabled ? ["linux-native", "linux-wine"] : ["linux-native"]) : ["windows-native"];
+    const freePorts = (n: Node): number | null => {
+      if (n.ports == null) return null; // panel predates port info — don't rule out
+      const total = (n.ports.ranges ?? []).reduce(
+        (sum, r) => sum + (r.end >= r.start ? r.end - r.start + 1 : 0), 0);
+      return total - (n.ports.allocated?.length ?? 0);
+    };
+    return nodes.filter((n) => {
+      if (n.status !== "online") return false;
+      if (!spec) return true;
+      if (!specKinds.some((k) => nodeKinds(n).includes(k))) return false;
+      if (n.total_memory_mb - n.allocated_memory_mb < spec.resources.min_memory_mb) return false;
+      const free = freePorts(n);
+      return free === null || free >= (spec.ports?.length ?? 0);
+    });
+  }, [nodes, spec]);
+  const placedNode = eligibleNodes.find((n) => n.id === nodeId) ?? eligibleNodes[0] ?? null;
 
   const nameErr = name.trim() === "" || name.length > 64;
-  const canNext = step === 0 ? !!specId : step === 2 ? !nameErr : true;
+  const canNext =
+    step === 0 ? !!specId : step === 1 ? eligibleNodes.length > 0 : step === 2 ? !nameErr : true;
 
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const back = () => (step === 0 ? onCancel() : setStep((s) => s - 1));
@@ -210,13 +232,15 @@ export function CreateWizard({
         {step === 1 && (
           <div>
             <div style={SECTION_LABEL}>NODE PLACEMENT</div>
-            {onlineNodes.length === 0 && (
+            {eligibleNodes.length === 0 && (
               <div style={{ fontFamily: mono, fontSize: 12.5, color: "var(--text-muted)", marginBottom: 12 }}>
-                No nodes online — the scheduler will place this server when one comes up.
+                No node can host {spec?.name ?? "this game"} right now — it needs an online node
+                matching its platform ({(spec?.platforms ?? []).map((p) => p.kind).join(", ") || "any"})
+                with {spec ? `${spec.resources.min_memory_mb}MB of` : "enough"} free memory and free game ports.
               </div>
             )}
-            {nodes.map((n, i) => {
-              const sel = nodeId ? nodeId === n.id : i === 0;
+            {eligibleNodes.map((n, i) => {
+              const sel = placedNode ? placedNode.id === n.id : i === 0;
               return (
                 <div
                   key={n.id}

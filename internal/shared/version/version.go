@@ -6,7 +6,7 @@ var (
 	// this line on every tagged release — do not edit manually; land
 	// Conventional Commits (feat/fix/…) on main and let the release-please PR
 	// bump it. Overrideable at build time via `-ldflags "-X …Version=…"`.
-	Version = "0.8.3" // x-release-please-version
+	Version = "0.9.0" // x-release-please-version
 	// Commit is the git commit the binary was built from.
 	Commit = "none"
 	// Date is the build timestamp (RFC3339).

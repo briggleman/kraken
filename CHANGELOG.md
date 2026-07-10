@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/briggleman/kraken/compare/v0.8.3...v0.9.0) (2026-07-10)
+
+
+### Features
+
+* node capacity editing, eligible-node placement filter, default port ranges, per-node scheduler errors ([#40](https://github.com/briggleman/kraken/issues/40)) ([9ad7125](https://github.com/briggleman/kraken/commit/9ad7125ff7603df6ec05a4ac2a377bf8a34bdd8c))
+
 ## [0.8.3](https://github.com/briggleman/kraken/compare/v0.8.2...v0.8.3) (2026-07-09)
 
 

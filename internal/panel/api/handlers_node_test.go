@@ -51,6 +51,33 @@ func registerNode(t *testing.T, h http.Handler, token, addr string) string {
 	return n.ID
 }
 
+// Registering without a port range must fall back to the default pool — an
+// empty pool would make the node permanently unschedulable (every spec needs
+// at least one port).
+func TestRegisterNode_DefaultsPortRange(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-noports")
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes", token, map[string]any{
+		"name": "no-ports-node", "os": "linux", "address": addr, "total_memory_mb": 8192,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register node: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var n struct {
+		Ports struct {
+			Ranges []struct{ Start, End int } `json:"ranges"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(n.Ports.Ranges) != 1 || n.Ports.Ranges[0].Start != 28000 || n.Ports.Ranges[0].End != 28999 {
+		t.Fatalf("expected default port range 28000-28999, got %+v", n.Ports.Ranges)
+	}
+}
+
 func TestPanelToAgent_NodeInfoAndPower(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)

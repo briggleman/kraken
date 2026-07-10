@@ -247,7 +247,7 @@ func (s *Server) AutoRegisterLocalNode(ctx context.Context) {
 		WineEnabled: true,            // allow Wine-on-Linux placements where available
 		Status:      cluster.NodeOffline,
 		Address:     s.cfg.LocalAgentAddr,
-		Ports:       cluster.NewPortPool(cluster.PortRange{Start: 28000, End: 28999}),
+		Ports:       cluster.NewPortPool(defaultPortRange),
 	}
 	if err := s.store.CreateNode(ctx, n); err != nil {
 		s.logger.Warn("quickstart: could not register local node", "err", err)

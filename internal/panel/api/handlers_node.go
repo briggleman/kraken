@@ -15,6 +15,13 @@ import (
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
+// defaultPortRange is the game-port pool a node gets when registration doesn't
+// specify one. A node must never be created with an empty pool — the scheduler
+// can't allocate ports from it, which makes the node permanently unschedulable.
+// Operators running several nodes on one IP should still give each its own
+// range (the panel allocates per node and doesn't know they share an IP).
+var defaultPortRange = cluster.PortRange{Start: 28000, End: 28999}
+
 type registerNodeRequest struct {
 	Name        string `json:"name"` // optional; taken from the agent (KRAKEN_NODE_ID) when blank
 	OS          string `json:"os"`   // "linux" | "windows"; optional, agent-reported when blank
@@ -87,7 +94,7 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 	if req.PortStart > 0 && req.PortEnd >= req.PortStart {
 		n.Ports = cluster.NewPortPool(cluster.PortRange{Start: req.PortStart, End: req.PortEnd})
 	} else {
-		n.Ports = cluster.NewPortPool()
+		n.Ports = cluster.NewPortPool(defaultPortRange)
 	}
 	if err := s.store.CreateNode(r.Context(), n); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not register node")

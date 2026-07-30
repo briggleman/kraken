@@ -9,7 +9,7 @@ description: >-
   Boot once, then edit ServerName / Password / MaxPlayerCount / region via
   the Files tab or SFTP. Recommend 8 GB for 2 players, 12 GB for 4, 16 GB for 10.
 # Steam main-capsule + community-icon (game appid 3041230). See bundled/SPECS.md.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3041230/58031ef98f88d5602171eb018d9306c7383a6e6a/capsule_616x353.jpg?t=1782370662
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3041230/3e9ad197ff39345193cd44c1d9a072b482865a9f/library_hero_2x.jpg?t=1783932953
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/3041230/f8ae552a1c3eb4a6d3015867a6a4a64c02b9cd8d.jpg
 steam_app_ids:
   windows: 4129620

@@ -11,10 +11,14 @@ const DEFS: Record<string, { def: IconDefinition; label: string }> = {
  * Renders the FontAwesome brand glyph for a server's host OS. The brands
  * package ships only icon definitions (no React renderer is installed), so we
  * draw the path data into an inline SVG ourselves, inheriting currentColor.
+ *
+ * `label` overrides the accessible name and tooltip — used where the glyph means
+ * something narrower than the bare OS (the coral Windows mark for Wine).
  */
-export function OsIcon({ os, size = 15, style }: { os: string; size?: number; style?: React.CSSProperties }) {
+export function OsIcon({ os, size = 15, label, style }: { os: string; size?: number; label?: string; style?: React.CSSProperties }) {
   const entry = DEFS[os];
   if (!entry) return null;
+  const name = label ?? entry.label;
   const [width, height, , , path] = entry.def.icon;
   const d = Array.isArray(path) ? path.join("") : path;
   return (
@@ -24,10 +28,10 @@ export function OsIcon({ os, size = 15, style }: { os: string; size?: number; st
       viewBox={`0 0 ${width} ${height}`}
       fill="currentColor"
       role="img"
-      aria-label={entry.label}
+      aria-label={name}
       style={style}
     >
-      <title>{entry.label}</title>
+      <title>{name}</title>
       <path d={d} />
     </svg>
   );

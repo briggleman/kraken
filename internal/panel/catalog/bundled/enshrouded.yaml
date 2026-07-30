@@ -5,7 +5,7 @@ description: >-
   this targets a Windows node (steam-win image). All configuration lives in
   enshrouded_server.json, generated from the Settings tab. Enshrouded is
   memory-hungry — 16 GB is recommended for a full 16-slot group.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1203620/27a14997cb232ac8c62f8e92b156af1fcf766a58/capsule_616x353_alt_assets_1.jpg?t=1782800102
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1203620/18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero_2x.jpg?t=1782800102
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1203620/b51ff4aa19722a1f3587b35f37f590a998f36a9a.jpg
 steam_app_ids:
   windows: 2278520

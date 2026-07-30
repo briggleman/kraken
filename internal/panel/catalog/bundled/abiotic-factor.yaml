@@ -6,7 +6,7 @@ description: >-
   or on a Linux node via Wine (steam-wine image). Server name, world save,
   player cap, and password are launch options.
 # Game appid 427410 for assets; server appid 2857200 for SteamCMD. See bundled/SPECS.md.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427410/739cb7f10e53f306d066b98920aa3ab0dc552ff4/capsule_616x353.jpg?t=1783386138
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427410/8177ceb0ea9c18d8fcbc561758be19fb06985471/library_hero_2x.jpg?t=1785170446
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/427410/789cca4e4e51a6649f5728d870d3a602e3c453fe.jpg
 steam_app_ids:
   windows: 2857200

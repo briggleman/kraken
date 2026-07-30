@@ -34,10 +34,15 @@
 # -----------------------------------------------------------------------------
 #
 # Where game-server data lives on the host:
-#   `agent` service → volumes → `./server-data:/data`. The LEFT side is
-#   a host path — change it to whatever disk / RAID / ZFS pool you want
-#   (e.g. `/srv/kraken/data:/data`). One subdirectory per server is
-#   created under it. Same idea for `./agent-backups:/agent-backups`.
+#   `agent` service → volumes → the data-root line. Change it to whatever
+#   disk / RAID / ZFS pool you want; one subdirectory per server is created
+#   under it. Keep BOTH sides of the colon the same path, and keep
+#   KRAKEN_DATA_DIR equal to it: the Agent hands bind sources to the host's
+#   Docker daemon, which resolves them on the host, so a container-only path
+#   would point game servers at a different directory than the Agent's file
+#   browser, backups, and SFTP use. (If you truly need different paths, set
+#   KRAKEN_HOST_DATA_DIR to the host one.) Backups have no such constraint —
+#   only the Agent touches them — so `./agent-backups:/agent-backups` is fine.
 #
 # Pin a specific release instead of :latest:
 #   Both images accept `:vX.Y.Z` tags (see the Releases page). Pinning
@@ -206,7 +211,10 @@ services:
       # makes 127.0.0.1 resolve to the Panel container. Remove this line
       # only if you plan to manage certs manually via `krakenctl enroll`.
       KRAKEN_PANEL_URL: http://127.0.0.1:8080
-      KRAKEN_DATA_DIR: /data
+      # Must match the host side of the data-root volume below, character for
+      # character — the daemon resolves bind sources on the host, not in this
+      # container's namespace.
+      KRAKEN_DATA_DIR: /srv/kraken/data
       KRAKEN_BACKUP_DIR: /agent-backups
       KRAKEN_STATE_DIR: /var/lib/kraken
     volumes:
@@ -215,11 +223,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
       # === HOST PATHS TO CUSTOMIZE ===========================================
-      # LEFT of the colon is the host path. Change to any location with
-      # enough space for your games — absolute paths (e.g. /srv/kraken/
-      # data) or a mounted disk work fine. One subdir per server appears
-      # inside.
-      - ./server-data:/data
+      # Data root: change to any location with enough space for your games (a
+      # mounted disk is fine). Keep BOTH sides identical and equal to
+      # KRAKEN_DATA_DIR above — the Agent's bind sources are resolved by the
+      # host's daemon, so a container-only path would split game data away from
+      # the file browser, backups, and SFTP. One subdir per server appears
+      # inside. To use different paths anyway, set KRAKEN_HOST_DATA_DIR to the
+      # host one.
+      - /srv/kraken/data:/srv/kraken/data
+      # Backups: Agent-only, never bind-mounted into a game container, so the
+      # container path can be anything.
       - ./agent-backups:/agent-backups
       # =======================================================================
 

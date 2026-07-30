@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/briggleman/kraken/compare/v0.10.0...v0.11.0) (2026-07-30)
+
+
+### Features
+
+* specs list view with hero art and neutral platform marks ([#45](https://github.com/briggleman/kraken/issues/45)) ([55cf798](https://github.com/briggleman/kraken/commit/55cf798e666b7272dde8a0a0922514bfa4d14b29))
+
 ## [0.10.0](https://github.com/briggleman/kraken/compare/v0.9.0...v0.10.0) (2026-07-10)
 
 

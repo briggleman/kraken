@@ -10,12 +10,14 @@ Consistent Catalog / Specs cards mean **every spec uses the same two
 derivatives**, always sourced from the **game** appid (not the dedicated-
 server appid, which usually has no CDN assets).
 
-### `banner_url` → the store **main capsule** (`capsule_616x353.jpg`)
-Wide 616×353 store banner. Kraken cards crop this horizontally.
-Pattern (path may include a hash directory and an `_alt_assets_N` suffix
-depending on how the store owner packages assets):
+### `banner_url` → the **library hero** (`library_hero_2x.jpg`)
+Ultra-wide (~3840×1240) key art with no title text baked in — the right shape
+for the full-bleed rows on `/specs`, which crop hard horizontally. Prefer
+`library_hero_2x`; fall back to `library_hero` when a game has no 2x asset
+(Factorio). Pattern (the hash directory differs per asset, so it can't be
+derived from the capsule URL):
 ```
-https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/<game_appid>/[<hash>/]capsule_616x353[_alt_assets_N].jpg?t=<ts>
+https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/<game_appid>/[<hash>/]library_hero_2x.jpg?t=<ts>
 ```
 
 ### `icon_url` → the **community icon**
@@ -27,26 +29,31 @@ https://shared.fastly.steamstatic.com/community_assets/images/apps/<game_appid>/
 
 ## How to find the URLs
 
-For any game appid, this shell one-liner harvests both:
+Ask the store API for the asset manifest — no scraping, no age gate. It returns
+every derivative plus the `asset_url_format` prefix they hang off:
 
 ```bash
 appid=427520
-curl -sS "https://store.steampowered.com/app/${appid}" -A "Mozilla/5.0" \
-  -H "Accept-Language: en-US" \
-  -b "wants_mature_content=1;birthtime=568022401;mature_content=1" |
-  grep -oE 'https://[^"'"'"']*(capsule_616x353[^"'"'"']*\.jpg|community_assets/images/apps/'"$appid"'/[a-f0-9]+\.jpg)' |
-  sort -u
+curl -sS --get "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/" \
+  --data-urlencode "input_json={\"ids\":[{\"appid\":$appid}],\"context\":{\"language\":\"english\",\"country_code\":\"US\"},\"data_request\":{\"include_assets\":true}}" |
+  python -c "
+import sys, json
+a = json.load(sys.stdin)['response']['store_items'][0]['assets']
+base = 'https://shared.fastly.steamstatic.com/store_item_assets/' + a['asset_url_format']
+hero = a.get('library_hero_2x') or a.get('library_hero')
+print('banner_url:', base.replace('\${FILENAME}', hero))
+print('icon_url:  https://shared.fastly.steamstatic.com/community_assets/images/apps/$appid/%s.jpg' % a['community_icon'])
+"
 ```
 
-Pin the exact URLs you get (including any `?t=<timestamp>` cache-buster) into
+Pin the exact URLs you get (including the `?t=<timestamp>` cache-buster) into
 `banner_url` / `icon_url` verbatim — the timestamp keeps the CDN version
-stable across builds.
+stable across builds. Confirm each one returns `200` (`curl -I`) before
+committing.
 
-If the store page requires an age gate, the `wants_mature_content` /
-`birthtime` cookies above bypass it. If the returned page has zero matches,
-the game may not have public store assets (Jagex-published titles have done
-this) — leave `banner_url` / `icon_url` unset and the card falls back to the
-no-image style.
+A game with no public store entry has no `assets` block at all (Jagex-published
+titles have done this) — leave `banner_url` / `icon_url` unset and the row falls
+back to the no-image hatch.
 
 ## Appid selection
 

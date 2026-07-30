@@ -154,7 +154,9 @@ function OsTabs({ value, onChange }: { value: AgentTarget; onChange: (v: AgentTa
               textTransform: "uppercase",
             }}
           >
-            <OsIcon os={os} size={14} style={{ color: active ? "var(--accent)" : "var(--text-secondary)" }} />
+            {/* Follows the label's color rather than going teal — the accent
+                border + wash already carry the active state. */}
+            <OsIcon os={os} size={14} style={{ color: active ? "var(--text-primary)" : "var(--text-secondary)" }} />
             {os === "linux" ? "Linux Install" : "Windows Install"}
           </button>
         );

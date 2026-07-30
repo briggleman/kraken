@@ -19,11 +19,12 @@ const SECTION_LABEL: React.CSSProperties = {
   marginBottom: 14,
 };
 
-// Platform badges derived from a spec's declared platforms.
+// Platform badges derived from a spec's declared platforms. Native platforms are
+// neutral (Tux and the Windows panes read alike); coral is reserved for wine.
 function platformBadges(spec: Spec) {
   const kinds = (spec.platforms ?? []).map((p) => p.kind);
-  const out: { tone: "accent" | "coral" | "neutral"; label: string }[] = [];
-  if (kinds.some((k) => k.startsWith("linux"))) out.push({ tone: "accent", label: "LINUX" });
+  const out: { tone: "coral" | "neutral"; label: string }[] = [];
+  if (kinds.some((k) => k.startsWith("linux"))) out.push({ tone: "neutral", label: "LINUX" });
   if (kinds.some((k) => k === "windows-native")) out.push({ tone: "neutral", label: "WINDOWS" });
   if (kinds.some((k) => k === "linux-wine")) out.push({ tone: "coral", label: "WINE" });
   return out;
@@ -83,16 +84,19 @@ function StepDots({ step }: { step: number }) {
 export function CreateWizard({
   specs,
   nodes,
+  initialSpecId,
   onCancel,
   onDeploy,
 }: {
   specs: Spec[];
   nodes: Node[];
+  /** Preselect a game and open on Placement — used by the Deploy button on a spec row. */
+  initialSpecId?: string;
   onCancel: () => void;
   onDeploy: (input: { spec_id: string; name: string; variables: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean }) => Promise<void>;
 }) {
-  const [step, setStep] = useState(0);
-  const [specId, setSpecId] = useState<string | null>(null);
+  const [step, setStep] = useState(initialSpecId ? 1 : 0);
+  const [specId, setSpecId] = useState<string | null>(initialSpecId ?? null);
   const [nodeId, setNodeId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [steamGuard, setSteamGuard] = useState("");
@@ -258,7 +262,7 @@ export function CreateWizard({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <OsIcon os={n.os} size={16} style={{ color: "var(--accent)" }} />
+                    <OsIcon os={n.os} size={16} style={{ color: "var(--text-muted)" }} />
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-primary)" }}>{n.name}</span>
                     <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                       {n.os}

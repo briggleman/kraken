@@ -1,7 +1,7 @@
 name: Palworld
 slug: palworld
 description: Palworld dedicated server with the full PalWorldSettings.ini option set.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1623730/c961ac047294838bfe382bf193ade5c64b19e573/capsule_616x353.jpg?t=1782406665
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1623730/2d3bef9d1a0ad28c0ea002ec4522e12e7218fbff/library_hero_2x.jpg?t=1784714419
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1623730/804ab521bcc4720021d63744a245ab8c0ca19ade.jpg
 steam_app_ids:
   linux: 2394010

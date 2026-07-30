@@ -7,13 +7,13 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/agent/config"
 	"github.com/briggleman/kraken/internal/agent/enroll"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/mtls"
@@ -29,33 +30,43 @@ import (
 )
 
 func main() {
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.Parse()
-	if *showVersion {
+	cfg, modes, err := config.Load(os.Args[1:])
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if modes.ShowVersion {
 		fmt.Println("kraken-agent", version.String())
+		return
+	}
+	if modes.PrintConfig {
+		fmt.Print(cfg.YAML())
 		return
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	if err := run(logger); err != nil {
+	if err := run(logger, cfg); err != nil {
 		logger.Error("agent exited with error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger) error {
-	addr := env("KRAKEN_AGENT_ADDR", ":9090")
-	nodeID := env("KRAKEN_NODE_ID", "abyss-node-01")
-	nodeOS := env("KRAKEN_NODE_OS", "linux")
-	wine := env("KRAKEN_NODE_WINE", "true") == "true"
+func run(logger *slog.Logger, cfg *config.Config) error {
+	// Components that still read KRAKEN_* directly (the Docker runtime's data,
+	// backup, and isolation settings) must see the same values resolved here.
+	if err := cfg.Export(); err != nil {
+		return err
+	}
+	if cfg.ConfigFile != "" {
+		logger.Info("configuration loaded", "file", cfg.ConfigFile, "root", cfg.Root)
+	}
 
-	// KRAKEN_STATE_DIR groups Agent-owned state (mTLS bundle, SFTP host key,
-	// … more later) under one directory so systemd / containers point at
-	// /var/lib/kraken and get sensible defaults for everything. Legacy
-	// default is cwd-relative so existing dev setups keep working unchanged.
-	stateDir := env("KRAKEN_STATE_DIR", ".")
+	addr, nodeID, nodeOS := cfg.Addr, cfg.NodeID, cfg.NodeOS
 
 	// Resolve mTLS material up-front — needed for the safety guard below and
 	// then again to configure the gRPC server. When all three are set the
@@ -63,37 +74,36 @@ func run(logger *slog.Logger) error {
 	// accepts plaintext connections and the NodeService is effectively
 	// unauthenticated. Plaintext + a non-loopback listen address = anyone
 	// with LAN reach can drive the Agent's docker socket, so we refuse.
-	cert, key, ca := env("KRAKEN_TLS_CERT", ""), env("KRAKEN_TLS_KEY", ""), env("KRAKEN_TLS_CA", "")
-	secure := cert != "" && key != "" && ca != ""
+	cert, key, ca := cfg.TLSCert, cfg.TLSKey, cfg.TLSCA
+	secure := cfg.Secure()
 
-	// Auto-enroll: if TLS isn't configured but KRAKEN_PANEL_URL is set,
-	// enroll with the Panel over its loopback-gated /setup/local-enroll →
-	// /agents/enroll flow. The persisted cert bundle survives across
-	// restarts (subsequent boots reuse it without contacting the Panel).
-	// A separate host / non-quickstart operator sets KRAKEN_TLS_* directly
-	// (via `krakenctl enroll`) and this branch is skipped entirely.
-	if !secure {
-		if panelURL := env("KRAKEN_PANEL_URL", ""); panelURL != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			paths, aerr := enroll.EnsureCerts(ctx, panelURL, stateDir, nil, listenPort(addr), 90*time.Second, logger)
-			cancel()
-			if aerr != nil {
-				return fmt.Errorf("auto-enroll with Panel at %s: %w", panelURL, aerr)
-			}
-			cert, key, ca = paths.Cert, paths.Key, paths.CA
-			secure = true
+	// Auto-enroll: if TLS isn't configured but a Panel URL is, enroll over the
+	// Panel's loopback-gated /setup/local-enroll → /agents/enroll flow. The
+	// persisted cert bundle survives across restarts (subsequent boots reuse it
+	// without contacting the Panel). An operator who enrolled by hand (via
+	// `krakenctl enroll`, or by dropping the bundle under <root>/certs) has TLS
+	// configured already and skips this branch entirely.
+	if !secure && cfg.PanelURL != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		paths, aerr := enroll.EnsureCerts(ctx, cfg.PanelURL, cfg.StateDir, nil, listenPort(addr), 90*time.Second, logger)
+		cancel()
+		if aerr != nil {
+			return fmt.Errorf("auto-enroll with Panel at %s: %w", cfg.PanelURL, aerr)
 		}
+		cert, key, ca = paths.Cert, paths.Key, paths.CA
+		secure = true
 	}
 
 	if secure {
 		logTLSBundle(logger, cert, ca)
 	}
 
-	if !secure && !isLoopbackAddr(addr) && env("KRAKEN_ALLOW_INSECURE_GRPC", "") != "1" {
+	if !secure && !isLoopbackAddr(addr) && !cfg.InsecureGRPCAllowed() {
 		return fmt.Errorf("agent: refusing to serve plaintext gRPC on non-loopback address %q — "+
-			"enroll with the Panel (set KRAKEN_PANEL_URL for auto-enroll, or run `krakenctl enroll` to populate KRAKEN_TLS_CERT/KEY/CA), "+
-			"bind loopback with KRAKEN_AGENT_ADDR=127.0.0.1:9090, "+
-			"or opt in explicitly with KRAKEN_ALLOW_INSECURE_GRPC=1", addr)
+			"enroll with the Panel (--panel-url for auto-enroll, or run `krakenctl enroll` and point --tls-cert/--tls-key/--tls-ca at the bundle; "+
+			"a bundle under <root>/certs is picked up automatically), "+
+			"bind loopback with --addr 127.0.0.1:9090, "+
+			"or opt in explicitly with --allow-insecure-grpc", addr)
 	}
 
 	lis, err := net.Listen("tcp", addr)
@@ -102,8 +112,8 @@ func run(logger *slog.Logger) error {
 	}
 
 	// Select the container backend: Docker by default, the in-memory fake when
-	// KRAKEN_RUNTIME=fake or the Docker daemon is unreachable.
-	rt := selectRuntime(logger, nodeID, nodeOS, wine)
+	// the runtime is set to "fake" or the Docker daemon is unreachable.
+	rt := selectRuntime(logger, cfg)
 	if closer, ok := rt.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
 	}
@@ -147,9 +157,8 @@ func run(logger *slog.Logger) error {
 	// SFTP server for power-user file access — a separate SSH listener that
 	// chroots each per-server login to that server's data dir. No-op on the
 	// fake runtime. The host key persists so the server's identity is stable.
-	sftpAddr := env("KRAKEN_SFTP_ADDR", ":2022")
-	hostKeyPath := env("KRAKEN_SFTP_HOST_KEY", filepath.Join(stateDir, "sftp_host_key"))
-	if sftpSrv, serr := agent.StartSFTP(rt, sftpAddr, hostKeyPath, logger); serr != nil {
+	sftpAddr := cfg.SFTPAddr
+	if sftpSrv, serr := agent.StartSFTP(rt, sftpAddr, cfg.SFTPHostKey, logger); serr != nil {
 		logger.Warn("SFTP server not started", "err", serr)
 	} else if sftpSrv != nil {
 		logger.Info("SFTP server listening", "addr", sftpAddr)
@@ -231,27 +240,22 @@ func isLoopbackAddr(addr string) bool {
 	return false
 }
 
-// selectRuntime returns the Docker runtime unless KRAKEN_RUNTIME=fake or the
-// Docker daemon cannot be reached, in which case it falls back to the fake.
-func selectRuntime(logger *slog.Logger, nodeID, nodeOS string, wine bool) agent.Runtime {
-	if env("KRAKEN_RUNTIME", "docker") == "fake" {
-		logger.Warn("using fake runtime (KRAKEN_RUNTIME=fake)")
-		return agent.NewFakeRuntime(nodeID, nodeOS, wine, version.Version)
+// selectRuntime returns the Docker runtime unless the configured runtime is
+// "fake" or the Docker daemon cannot be reached, in which case it falls back to
+// the fake.
+func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
+	wine := cfg.WineEnabled()
+	if cfg.Runtime == "fake" {
+		logger.Warn("using fake runtime (runtime=fake)")
+		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	drt, err := agent.NewDockerRuntime(ctx, nodeID, wine, version.Version)
+	drt, err := agent.NewDockerRuntime(ctx, cfg.NodeID, wine, version.Version)
 	if err != nil {
 		logger.Warn("Docker unavailable; falling back to fake runtime", "err", err)
-		return agent.NewFakeRuntime(nodeID, nodeOS, wine, version.Version)
+		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version)
 	}
 	logger.Info("using Docker runtime")
 	return drt
-}
-
-func env(key, def string) string {
-	if v, ok := os.LookupEnv(key); ok && v != "" {
-		return v
-	}
-	return def
 }

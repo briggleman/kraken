@@ -8,19 +8,28 @@ import (
 	"strings"
 )
 
-// hostDir is the host directory holding a server's data. It is bind-mounted into
-// the server's container as the data root, so the Agent can manipulate files
-// natively (no Docker archive API or helper containers) on any OS.
-func (d *DockerRuntime) hostDir(serverID string) string {
+// localDir is the Agent's own path to the directory holding a server's data —
+// what every native file op, backup walk, and the SFTP jail operate on. Use
+// bindSource instead for anything handed to the Docker daemon.
+func (d *DockerRuntime) localDir(serverID string) string {
 	return filepath.Join(d.dataDir, serverID)
 }
 
-// hostOf maps an in-container absolute path (under the data root, as returned by
-// safePath) to its host filesystem path.
-func (d *DockerRuntime) hostOf(serverID, containerAbs string) string {
+// bindSource is the *daemon-visible* path to a server's data directory: the
+// source side of the bind mount in ContainerCreate. The daemon resolves bind
+// sources against the host filesystem, not the Agent's mount namespace, so this
+// is only the same string as localDir when the Agent shares the host's view of
+// the data root (see hostDataDir in NewDockerRuntime).
+func (d *DockerRuntime) bindSource(serverID string) string {
+	return filepath.Join(d.hostDataDir, serverID)
+}
+
+// localOf maps an in-container absolute path (under the data root, as returned
+// by safePath) to the Agent's own filesystem path.
+func (d *DockerRuntime) localOf(serverID, containerAbs string) string {
 	rel := strings.TrimPrefix(containerAbs, d.dataRoot())
 	rel = strings.TrimPrefix(rel, "/")
-	return filepath.Join(d.hostDir(serverID), filepath.FromSlash(rel))
+	return filepath.Join(d.localDir(serverID), filepath.FromSlash(rel))
 }
 
 // containerDataTarget is the in-container mount point for a server's data dir
@@ -79,7 +88,7 @@ func copyFileFS(src, dst string, info os.FileInfo) error {
 // withinHostDir reports whether p is inside the server's host data dir (a
 // defense-in-depth guard against archive/zip path traversal on restore).
 func (d *DockerRuntime) withinHostDir(serverID, p string) bool {
-	root := filepath.Clean(d.hostDir(serverID))
+	root := filepath.Clean(d.localDir(serverID))
 	c := filepath.Clean(p)
 	return c == root || strings.HasPrefix(c, root+string(os.PathSeparator))
 }

@@ -89,7 +89,8 @@ database URL, secrets key, and a bootstrap admin.
 | `KRAKEN_SFTP_ADDR` | `:2022` | Agent SFTP listen address. **Expose only to trusted networks** — it's authenticated but externally reachable. |
 | `KRAKEN_STATE_DIR` | `.` (cwd) | Directory that groups Agent state (SFTP host key today). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
 | `KRAKEN_SFTP_HOST_KEY` | `${STATE_DIR}/sftp_host_key` | Path to the SSH host key (ed25519, generated on first run). |
-| `KRAKEN_DATA_DIR` | `server-data` | Host directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
+| `KRAKEN_DATA_DIR` | `server-data` | Directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
+| `KRAKEN_HOST_DATA_DIR` | _(= `DATA_DIR`)_ | Only for a **containerized Agent** whose data root is mounted at a different path inside the container: the host path the Docker daemon should bind. Prefer mounting at the same path on both sides and leaving this unset. |
 | `KRAKEN_BACKUP_DIR` | `backups` | Local backup destination (before optional replication). |
 | `KRAKEN_NODE_ID` | _(hostname)_ | Stable node identity. |
 | `KRAKEN_NODE_OS` | _(detected)_ | `linux` or `windows` — the OS this node runs containers for. |

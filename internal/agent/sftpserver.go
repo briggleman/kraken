@@ -159,7 +159,7 @@ func (d *DockerRuntime) authorizeSFTPPassword(username, password string) (string
 	if bcrypt.CompareHashAndPassword([]byte(acc.GetPasswordHash()), []byte(password)) != nil {
 		return "", false
 	}
-	return d.hostDir(username), true
+	return d.localDir(username), true
 }
 
 // authorizeSFTPKey validates an SFTP public-key login against the server's
@@ -173,7 +173,7 @@ func (d *DockerRuntime) authorizeSFTPKey(username string, key ssh.PublicKey) (st
 	for _, line := range acc.GetAuthorizedKeys() {
 		pk, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
 		if err == nil && bytes.Equal(pk.Marshal(), want) {
-			return d.hostDir(username), true
+			return d.localDir(username), true
 		}
 	}
 	return "", false

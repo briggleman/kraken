@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/briggleman/kraken/compare/v0.9.0...v0.10.0) (2026-07-10)
+
+
+### Features
+
+* uniform create wizard, unified settings tab with hot_reload-aware messaging ([#42](https://github.com/briggleman/kraken/issues/42)) ([6b8d967](https://github.com/briggleman/kraken/commit/6b8d96734c3826fa5009df1616ad7d6ecb7cd155))
+
 ## [0.9.0](https://github.com/briggleman/kraken/compare/v0.8.3...v0.9.0) (2026-07-10)
 
 

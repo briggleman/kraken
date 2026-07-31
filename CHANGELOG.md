@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/briggleman/kraken/compare/v0.13.0...v0.14.0) (2026-07-31)
+
+
+### Features
+
+* **ui:** show agent version on /nodes and a panel version stamp ([#57](https://github.com/briggleman/kraken/issues/57)) ([5b0a91d](https://github.com/briggleman/kraken/commit/5b0a91d46dc77c6585cb3d373966ba5d170b2e0a))
+
 ## [0.13.0](https://github.com/briggleman/kraken/compare/v0.12.0...v0.13.0) (2026-07-31)
 
 

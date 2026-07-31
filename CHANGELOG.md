@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/briggleman/kraken/compare/v0.11.0...v0.11.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **agent:** resolve bind-mount sources against the host, not the Agent ([#48](https://github.com/briggleman/kraken/issues/48)) ([a51c80d](https://github.com/briggleman/kraken/commit/a51c80db2bf4087b9dc0ab36733f063ccb39f6ba))
+
 ## [0.11.0](https://github.com/briggleman/kraken/compare/v0.10.0...v0.11.0) (2026-07-30)
 
 

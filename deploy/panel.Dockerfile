@@ -14,7 +14,7 @@
 # multi-platform build never pays the QEMU-emulation tax.
 
 # ---- web build ----------------------------------------------------------
-FROM --platform=$BUILDPLATFORM node:20-alpine AS webbuild
+FROM --platform=$BUILDPLATFORM node:24-alpine AS webbuild
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

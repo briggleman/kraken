@@ -240,9 +240,15 @@ func isLoopbackAddr(addr string) bool {
 	return false
 }
 
-// selectRuntime returns the Docker runtime unless the configured runtime is
-// "fake" or the Docker daemon cannot be reached, in which case it falls back to
-// the fake.
+// selectRuntime returns the Docker runtime, or the in-memory fake when the
+// operator asked for one explicitly.
+//
+// An unreachable Docker daemon is no longer a reason to fall back: the fake
+// reports plenty of memory and happily "runs" servers, so a node with a stopped
+// Docker Desktop looked healthy and accepted placements that went nowhere. The
+// Docker runtime instead comes up degraded, reports its runtime as unavailable in
+// NodeInfo (the Panel shows the node as partial and won't schedule onto it), and
+// recovers on its own when the daemon returns.
 func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
 	wine := cfg.WineEnabled()
 	if cfg.Runtime == "fake" {
@@ -251,11 +257,19 @@ func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	drt, err := agent.NewDockerRuntime(ctx, cfg.NodeID, wine, version.Version)
+	drt, err := agent.NewDockerRuntime(ctx, cfg.NodeID, cfg.NodeOS, wine, version.Version)
 	if err != nil {
-		logger.Warn("Docker unavailable; falling back to fake runtime", "err", err)
+		// Only a client that can't be constructed at all lands here (e.g. a
+		// malformed DOCKER_HOST); an unreachable daemon does not.
+		logger.Error("could not initialize the Docker runtime; falling back to the fake runtime — this node cannot run game servers",
+			"err", err)
 		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version)
 	}
-	logger.Info("using Docker runtime")
+	if ok, rerr := drt.RuntimeHealth(); !ok {
+		logger.Warn("Docker daemon unreachable — serving in a degraded state; the Panel will show this node as partial. "+
+			"Start Docker and the Agent picks it up on its own (no restart needed)", "err", rerr)
+	} else {
+		logger.Info("using Docker runtime", "mode", drt.OSType())
+	}
 	return drt
 }

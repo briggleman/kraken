@@ -102,6 +102,11 @@ func nodeLabel(n *cluster.Node) string {
 // rejectionReason explains why one node did not receive the placement.
 func rejectionReason(s *spec.Spec, n *cluster.Node, reserveErr error) string {
 	if !n.Schedulable() {
+		// "partial" alone would send the operator hunting for a network problem;
+		// the runtime error names the actual fault (usually a stopped Docker).
+		if n.Status == cluster.NodePartial && n.RuntimeError != "" {
+			return fmt.Sprintf("partial — agent up but its container runtime is unreachable: %s", n.RuntimeError)
+		}
 		return string(n.Status)
 	}
 	supported := false

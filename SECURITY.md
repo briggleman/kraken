@@ -277,6 +277,19 @@ missing row → `store.ErrNotFound` → **404**. Applied to all read and id-base
 write/delete paths. Regression test: `TestPostgresMalformedIDIsNotFound`.
 _After:_ same request → `404`; SQLi-in-path → `404`; no 500s in the Panel log.
 
+## Node-local secret exposure (2026-07-31)
+
+- **Persisted runtime specs on the Agent (`<state>/agent-specs/<serverID>.json`, mode 0600).**
+  Added so a restarted Agent can re-adopt its running servers' crash watchdogs. A spec
+  carries the server's environment, which for some games includes admin/RCON passwords.
+  This widens nothing materially: `ApplyConfig` already writes rendered config files
+  containing the same secrets into the server's data dir, and both live on a host whose
+  Docker socket the Agent controls — an attacker with file access there has already won.
+  The files are written 0600 (the state dir 0700) rather than inheriting the data dir's
+  0755, and they are removed with the server. Encrypting them would require a node-local
+  key sitting next to the ciphertext, which buys nothing; if node-local secrets are ever
+  sealed, this and the rendered configs should be done together.
+
 ## Open recommendations (not yet addressed)
 
 - **Flat Agent certificate identity.** Every Agent cert carries the same logical

@@ -8,6 +8,11 @@ const STATES = {
   offline:    { color: '#9FB6B1', label: 'Offline',    icon: 'offline', ring: '#5B7470' },
   installing: { color: '#38B6FF', label: 'Installing', icon: 'installing' },
   crashed:    { color: '#FF5C57', label: 'Crashed',    icon: 'crashed' },
+  // Degraded, not down: reachable but not doing its job. Shares the stopping
+  // amber (--status-stopping) and carries the warning triangle, so it never
+  // reads as either healthy green or dead grey — and never relies on hue alone
+  // to separate it from Stopping.
+  partial:    { color: '#F4A24C', label: 'Partial',    icon: 'crashed' },
 };
 
 function rgba(hex, a) {

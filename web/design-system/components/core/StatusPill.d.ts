@@ -1,7 +1,9 @@
 import * as React from 'react';
 
 export type ServerStatus =
-  | 'running' | 'starting' | 'stopping' | 'offline' | 'installing' | 'crashed';
+  | 'running' | 'starting' | 'stopping' | 'offline' | 'installing' | 'crashed'
+  /** Reachable but degraded — used for nodes whose container runtime is down. */
+  | 'partial';
 
 export interface StatusPillProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Server state. Default `running`. */

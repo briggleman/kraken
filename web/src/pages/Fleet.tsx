@@ -57,6 +57,7 @@ export function Fleet() {
   const running = servers.filter((s) => s.state === "running").length;
   const attention = servers.filter((s) => s.state === "crashed").length;
   const onlineNodes = nodes.filter((n) => n.status === "online").length;
+  const partialNodes = nodes.filter((n) => n.status === "partial").length;
   const fleetMem = useMemo(() => {
     const total = nodes.reduce((a, n) => a + n.total_memory_mb, 0);
     const used = nodes.reduce((a, n) => a + n.allocated_memory_mb, 0);
@@ -112,18 +113,27 @@ export function Fleet() {
               nodes.map((n) => (
                 <span
                   key={n.id}
-                  title={`${n.name} · ${n.status}`}
+                  title={n.status === "partial"
+                    ? `${n.name} · partial — agent up, container runtime unreachable${n.runtime_error ? `: ${n.runtime_error}` : ""}`
+                    : `${n.name} · ${n.status}`}
                   style={{
                     flex: 1,
                     height: 6,
                     borderRadius: 3,
-                    background: n.status === "online" ? "var(--status-running)" : "var(--status-offline)",
+                    background: nodeBarColor(n.status),
                     boxShadow: n.status === "online" ? "0 0 6px rgba(54,229,166,.6)" : "none",
                   }}
                 />
               ))
             )}
           </div>
+          {/* A partial node reads as up on every other surface, so say it here:
+              its servers still report state, but nothing new can start on it. */}
+          {partialNodes > 0 && (
+            <div style={{ fontSize: 12, color: "var(--status-stopping)", marginTop: 10 }}>
+              {partialNodes} degraded — container runtime down
+            </div>
+          )}
         </MetricCard>
         <MetricCard label="FLEET MEMORY" value={fleetMem} suffix="%">
           <MetricBar pct={fleetMem} />
@@ -250,6 +260,15 @@ export function Fleet() {
       )}
     </main>
   );
+}
+
+// nodeBarColor tints one node's health bar. Partial gets its own amber: it is
+// neither serving nor gone, and grouping it with offline hides the one status
+// whose fix (start Docker) is different from the others.
+function nodeBarColor(status: Node["status"]): string {
+  if (status === "online") return "var(--status-running)";
+  if (status === "partial") return "var(--status-stopping)";
+  return "var(--status-offline)";
 }
 
 function EmptyState({ onDeploy, hasSpecs }: { onDeploy: () => void; hasSpecs: boolean }) {

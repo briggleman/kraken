@@ -17,6 +17,10 @@ Type=simple
 User=kraken
 Group=kraken
 SupplementaryGroups=docker
+# install.sh writes agent.env. A config file works too — drop
+# /etc/kraken/agent.yaml (see deploy/agent.example.yaml) and the Agent finds it
+# on its own; anything in agent.env still wins, so the two can coexist during a
+# migration.
 EnvironmentFile=-/etc/kraken/agent.env
 Environment=KRAKEN_STATE_DIR=/var/lib/kraken
 ExecStart=/usr/local/bin/kraken-agent

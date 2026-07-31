@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/briggleman/kraken/compare/v0.12.0...v0.13.0) (2026-07-31)
+
+
+### Features
+
+* **nodes:** tri-state health (online/partial/offline) + watchdog re-adoption ([#52](https://github.com/briggleman/kraken/issues/52)) ([#55](https://github.com/briggleman/kraken/issues/55)) ([f0c2883](https://github.com/briggleman/kraken/commit/f0c288303d6d6b5d18da0d14c8f6ec74ebe237b4))
+
 ## [0.12.0](https://github.com/briggleman/kraken/compare/v0.11.1...v0.12.0) (2026-07-31)
 
 

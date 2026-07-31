@@ -410,6 +410,7 @@ func (c *Config) Export() error {
 	vars := map[string]string{
 		"KRAKEN_DATA_DIR":   c.DataDir,
 		"KRAKEN_BACKUP_DIR": c.BackupDir,
+		"KRAKEN_STATE_DIR":  c.StateDir,
 	}
 	if c.WindowsIsolation != "" {
 		vars["KRAKEN_WINDOWS_ISOLATION"] = c.WindowsIsolation

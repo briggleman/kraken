@@ -26,6 +26,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -47,13 +48,22 @@ type DockerRuntime struct {
 	nodeID      string
 	wineEnabled bool
 	version     string
-	osType      string // daemon OS: "linux" or "windows" (one daemon per agent)
 	dataDir     string // the Agent's own root for per-server data dirs (native file ops, backups, SFTP)
 	hostDataDir string // the same root as the Docker daemon sees it — bind-mount sources only
 	backupDir   string // node-local directory for backup archives (env default)
+	specDir     string // persisted runtime specs, so a restarted Agent knows what it manages
 	// winIsolation is the isolation mode for Windows containers (Hyper-V by
 	// default; see windowsIsolation). Unused on Linux daemons.
 	winIsolation container.Isolation
+
+	// hmu guards the container-runtime health snapshot, refreshed on every
+	// NodeInfo poll (see checkHealth). osType lives here because the daemon's
+	// container mode is only knowable while the daemon is reachable: it starts as
+	// the operator-configured value and is corrected on first contact.
+	hmu        sync.Mutex
+	osType     string // daemon OS: "linux" or "windows" (one daemon per agent)
+	runtimeOK  bool
+	runtimeErr string
 
 	// bmu guards the backup targets, which the Panel can hot-swap at runtime via
 	// ApplyNodeConfig. backups is the primary store; replicate, when non-nil, is
@@ -91,21 +101,25 @@ type playerSample struct {
 	at                  time.Time
 }
 
-// NewDockerRuntime connects to the local Docker daemon (honoring DOCKER_HOST)
-// and returns a runtime. It verifies connectivity with a ping.
-func NewDockerRuntime(ctx context.Context, nodeID string, wineEnabled bool, version string) (*DockerRuntime, error) {
+// NewDockerRuntime returns a runtime backed by the local Docker daemon
+// (honoring DOCKER_HOST). An unreachable daemon is *not* an error: the Agent
+// still answers RPCs, reports its identity, and serves file operations, but
+// reports its container runtime as unavailable so the Panel can show the node as
+// partial rather than pretending it is either healthy or gone. The daemon is
+// re-probed on every NodeInfo poll, so one that comes up later is picked up
+// without restarting the Agent. Only a client that cannot be constructed at all
+// (a malformed DOCKER_HOST) is fatal.
+//
+// nodeOS is the operator's declared container mode, used until the daemon can be
+// asked directly.
+func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bool, version string) (*DockerRuntime, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker: new client: %w", err)
 	}
-	if _, err := cli.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("docker: ping daemon: %w", err)
-	}
-	// The daemon is either all-Linux or all-Windows containers; capture which so
-	// the runtime can pick OS-appropriate paths, shell, and stop semantics.
-	osType := "linux"
-	if info, err := cli.Info(ctx); err == nil && info.OSType != "" {
-		osType = info.OSType
+	osType := nodeOS
+	if osType != "windows" {
+		osType = "linux"
 	}
 	backupDir := os.Getenv("KRAKEN_BACKUP_DIR")
 	if backupDir == "" {
@@ -123,9 +137,73 @@ func NewDockerRuntime(ctx context.Context, nodeID string, wineEnabled bool, vers
 		dataDir = abs
 	}
 	hostDataDir := resolveHostDataDir(dataDir)
-	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}}
+	// "agent-specs", not "specs": the state dir defaults to the working directory,
+	// and in a source checkout that is the repo root — where specs/ is the tracked
+	// Game Spec library. Runtime state must not land in it.
+	stateDir := os.Getenv("KRAKEN_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "."
+	}
+	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}}
 	d.backups = selectBackupTarget(backupDir)
+	// Rehydrate what this node was managing before the restart, then re-arm the
+	// watchdogs for whatever is still running. Order matters: adoption reads the
+	// spec map for each server's restart policy and ready regex.
+	d.loadSpecs()
+	d.checkHealth(ctx)
 	return d, nil
+}
+
+// checkHealth probes the Docker daemon and refreshes the cached health snapshot,
+// returning it. Called at startup and on every NodeInfo poll, so a daemon that
+// dies (or comes back) is reflected within one Panel poll instead of requiring an
+// Agent restart.
+//
+// The first successful probe of a session also corrects the container mode from
+// the daemon itself and re-adopts crash watchdogs — a daemon coming back up is
+// indistinguishable, from the Agent's point of view, from an Agent restart.
+func (d *DockerRuntime) checkHealth(ctx context.Context) (bool, string) {
+	_, perr := d.cli.Ping(ctx)
+
+	var mode string
+	if perr == nil {
+		if info, ierr := d.cli.Info(ctx); ierr == nil && info.OSType != "" {
+			mode = info.OSType
+		}
+	}
+
+	d.hmu.Lock()
+	was := d.runtimeOK
+	d.runtimeOK = perr == nil
+	if perr != nil {
+		d.runtimeErr = perr.Error()
+	} else {
+		d.runtimeErr = ""
+		if mode != "" && mode != d.osType {
+			slog.Info("docker daemon container mode differs from the configured node OS; using the daemon's",
+				"configured", d.osType, "daemon", mode)
+			d.osType = mode
+		}
+	}
+	ok, rerr, recovered := d.runtimeOK, d.runtimeErr, !was && perr == nil
+	d.hmu.Unlock()
+
+	switch {
+	case recovered:
+		slog.Info("docker daemon reachable", "mode", d.OSType())
+		d.adoptRunning(ctx)
+	case was && perr != nil:
+		slog.Error("docker daemon became unreachable — this node cannot install, start, or observe servers until it is back", "err", perr)
+	}
+	return ok, rerr
+}
+
+// RuntimeHealth reports whether the Docker daemon was reachable at the last
+// probe, and why not when it wasn't.
+func (d *DockerRuntime) RuntimeHealth() (bool, string) {
+	d.hmu.Lock()
+	defer d.hmu.Unlock()
+	return d.runtimeOK, d.runtimeErr
 }
 
 // resolveHostDataDir returns the data root as the *Docker daemon* sees it.
@@ -202,7 +280,7 @@ func windowsIsolation() container.Isolation {
 // applyIsolation sets the Windows isolation mode on a container's HostConfig.
 // No-op on Linux daemons, where Isolation is meaningless.
 func (d *DockerRuntime) applyIsolation(host *container.HostConfig) {
-	if d.osType == "windows" {
+	if d.isWindows() {
 		host.Isolation = d.winIsolation
 	}
 }
@@ -388,13 +466,19 @@ var _ Runtime = (*DockerRuntime)(nil)
 // Close releases the Docker client.
 func (d *DockerRuntime) Close() error { return d.cli.Close() }
 
-// OSType reports the daemon's container OS ("linux" or "windows").
-func (d *DockerRuntime) OSType() string { return d.osType }
+// OSType reports the daemon's container OS ("linux" or "windows"). Until the
+// daemon has been reached once this is the operator-configured node OS.
+func (d *DockerRuntime) OSType() string {
+	d.hmu.Lock()
+	defer d.hmu.Unlock()
+	return d.osType
+}
 
 func (d *DockerRuntime) putSpec(spec *agentpb.ServerSpec) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.specs[spec.ServerId] = spec
+	d.mu.Unlock()
+	d.persistSpec(spec)
 }
 
 func (d *DockerRuntime) getSpec(serverID string) (*agentpb.ServerSpec, bool) {
@@ -404,28 +488,115 @@ func (d *DockerRuntime) getSpec(serverID string) (*agentpb.ServerSpec, bool) {
 	return s, ok
 }
 
-func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error) {
-	info, err := d.cli.Info(ctx)
+// specFile is the on-disk location of one server's persisted runtime spec.
+func (d *DockerRuntime) specFile(serverID string) string {
+	return filepath.Join(d.specDir, serverID+".json")
+}
+
+// persistSpec writes a server's runtime spec alongside the Agent's own state.
+//
+// The Panel is the source of truth and re-pushes specs on power actions, but a
+// restarted Agent needs them *before* the next push: to re-arm crash watchdogs
+// for servers that never stopped, and to recreate a container on start without
+// waiting for the Panel to notice. Best-effort — a write failure costs recovery
+// after a restart, not correctness now.
+//
+// Mode 0600: a spec carries the server's environment, which can include game
+// admin and RCON passwords. That is not a new exposure (rendered config files
+// with the same secrets already land in the server's data dir) but it is no
+// reason to widen it.
+func (d *DockerRuntime) persistSpec(spec *agentpb.ServerSpec) {
+	if err := os.MkdirAll(d.specDir, 0o700); err != nil {
+		slog.Warn("could not create spec dir; this server will not be re-adopted after an Agent restart", "dir", d.specDir, "err", err)
+		return
+	}
+	b, err := protojson.Marshal(spec)
 	if err != nil {
-		return nil, fmt.Errorf("docker: info: %w", err)
+		slog.Warn("could not encode spec for persistence", "server", spec.GetServerId(), "err", err)
+		return
+	}
+	if err := os.WriteFile(d.specFile(spec.GetServerId()), b, 0o600); err != nil {
+		slog.Warn("could not persist spec; this server will not be re-adopted after an Agent restart", "server", spec.GetServerId(), "err", err)
+	}
+}
+
+// forgetSpec drops a removed server's persisted spec.
+func (d *DockerRuntime) forgetSpec(serverID string) {
+	if err := os.Remove(d.specFile(serverID)); err != nil && !os.IsNotExist(err) {
+		slog.Warn("could not remove persisted spec", "server", serverID, "err", err)
+	}
+}
+
+// loadSpecs rehydrates the spec map from disk at startup. Best-effort per file:
+// an unreadable or corrupt spec is logged and skipped rather than taking the
+// whole Agent down, since the Panel will re-push it on the next power action.
+func (d *DockerRuntime) loadSpecs() {
+	entries, err := os.ReadDir(d.specDir)
+	if err != nil {
+		return // no persisted specs (fresh node, or a pre-persistence Agent)
+	}
+	loaded := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		b, rerr := os.ReadFile(filepath.Join(d.specDir, e.Name()))
+		if rerr != nil {
+			slog.Warn("could not read persisted spec", "file", e.Name(), "err", rerr)
+			continue
+		}
+		var spec agentpb.ServerSpec
+		if uerr := protojson.Unmarshal(b, &spec); uerr != nil {
+			slog.Warn("could not decode persisted spec", "file", e.Name(), "err", uerr)
+			continue
+		}
+		if spec.GetServerId() == "" {
+			continue
+		}
+		d.mu.Lock()
+		d.specs[spec.GetServerId()] = &spec
+		d.mu.Unlock()
+		loaded++
+	}
+	if loaded > 0 {
+		slog.Info("restored persisted server specs", "count", loaded, "dir", d.specDir)
+	}
+}
+
+// NodeInfo reports the node's identity, capacity, and container-runtime health.
+// It does not fail when Docker is unreachable: an Agent that can be dialed is
+// materially different from one that is down, and collapsing the two into a
+// transport error is what made an unreachable daemon look like an offline node.
+// Capacity fields are simply absent in that case (the Panel only backfills
+// values it doesn't already have).
+func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error) {
+	ok, rerr := d.checkHealth(ctx)
+	d.bmu.RLock()
+	sftpPort := d.sftpPort
+	d.bmu.RUnlock()
+	out := &agentpb.NodeInfo{
+		NodeId:        d.nodeID,
+		Os:            d.OSType(),
+		WineEnabled:   d.wineEnabled,
+		AgentVersion:  d.version,
+		Host:          PrimaryIP(),
+		ExternalIp:    ExternalIP(ctx),
+		SftpPort:      sftpPort,
+		RuntimeStatus: agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
+	}
+	if !ok {
+		out.RuntimeStatus = agentpb.RuntimeStatus_RUNTIME_STATUS_UNAVAILABLE
+		out.RuntimeError = rerr
+		return out, nil
+	}
+	if info, err := d.cli.Info(ctx); err == nil {
+		out.TotalMemoryMb = info.MemTotal / (1024 * 1024)
 	}
 	running, _ := d.cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", labelManaged+"=true")),
 	})
-	d.bmu.RLock()
-	sftpPort := d.sftpPort
-	d.bmu.RUnlock()
-	return &agentpb.NodeInfo{
-		NodeId:         d.nodeID,
-		Os:             info.OSType,
-		WineEnabled:    d.wineEnabled,
-		AgentVersion:   d.version,
-		TotalMemoryMb:  info.MemTotal / (1024 * 1024),
-		RunningServers: int32(len(running)),
-		Host:           PrimaryIP(),
-		ExternalIp:     ExternalIP(ctx),
-		SftpPort:       sftpPort,
-	}, nil
+	out.RunningServers = int32(len(running))
+	return out, nil
 }
 
 func (d *DockerRuntime) Create(ctx context.Context, spec *agentpb.ServerSpec) error {
@@ -451,6 +622,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 	d.mu.Lock()
 	delete(d.specs, serverID)
 	d.mu.Unlock()
+	d.forgetSpec(serverID)
 	return nil
 }
 
@@ -855,7 +1027,7 @@ func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, er
 }
 
 // isWindows reports whether this agent's daemon runs Windows containers.
-func (d *DockerRuntime) isWindows() bool { return d.osType == "windows" }
+func (d *DockerRuntime) isWindows() bool { return d.OSType() == "windows" }
 
 // dataRoot is the in-container mount point for the server's data dir, and the
 // namespace the file browser is confined to. Windows containers use C:\data,

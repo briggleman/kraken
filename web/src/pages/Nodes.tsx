@@ -21,6 +21,7 @@ const mono = "var(--font-mono)";
 
 const STATUS_MAP: Record<Node["status"], { status: ServerStatus; label: string }> = {
   online: { status: "running", label: "Online" },
+  partial: { status: "partial", label: "Partial" },
   offline: { status: "offline", label: "Offline" },
   cordoned: { status: "stopping", label: "Cordoned" },
 };
@@ -28,14 +29,25 @@ const STATUS_MAP: Record<Node["status"], { status: ServerStatus; label: string }
 export function Nodes() {
   const { confirm } = useDialog();
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [panelVersion, setPanelVersion] = useState("");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Node | null>(null);
 
   const refresh = () => {
-    api.listNodes().then((n) => setNodes(n.nodes ?? [])).catch((e) => Toaster.error(msg(e)));
+    api.listNodes().then((n) => {
+      setNodes(n.nodes ?? []);
+      setPanelVersion(n.panel_version ?? "");
+    }).catch((e) => Toaster.error(msg(e)));
   };
   useEffect(refresh, []);
+
+  // The Panel polls each agent on its own, so keep the list fresh rather than
+  // making the operator hit Ping to notice a node went partial or offline.
+  useEffect(() => {
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, []);
 
   const ping = async (id: string) => {
     setBusy(id);
@@ -79,8 +91,19 @@ export function Nodes() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text-primary)" }}>{n.name}</span>
                       <Badge tone={n.os.toLowerCase() === "windows" ? "neutral" : "accent"}>{n.os.toUpperCase()}</Badge>
+                      {panelVersion && n.agent_version && n.agent_version !== panelVersion && (
+                        <span title={`agent ${n.agent_version} · panel ${panelVersion} — agents should match the Panel's version`}>
+                          <Badge tone="neutral">AGENT {n.agent_version}</Badge>
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>{n.address}</div>
+                    {n.status === "partial" && (
+                      <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--status-stopping)", marginTop: 6, wordBreak: "break-word" }}>
+                        agent up, container runtime unreachable — start Docker on this host; the agent reconnects on its own
+                        {n.runtime_error ? <div style={{ color: "var(--text-muted)", marginTop: 4 }}>{n.runtime_error}</div> : null}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ flex: "0 1 200px", minWidth: 150 }}>

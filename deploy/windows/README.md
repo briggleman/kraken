@@ -155,6 +155,12 @@ Expected: a log line `agent serving with mutual TLS  addr=:9090`. On
 the Panel side, **Settings → Nodes** should flip `windows-01` to
 **online** within a few seconds.
 
+If it shows **partial** instead, the Agent is connected but can't reach
+Docker (the log says so, with the daemon's own error). Start Docker
+Desktop — the Agent re-probes on each Panel poll and promotes itself to
+online without a restart. A partial node is deliberately not schedulable:
+nothing placed there could start.
+
 Ctrl-C to stop when you're done smoke-testing.
 
 ### Persistent — install as a Windows Service with `nssm`
@@ -213,5 +219,6 @@ process just reconnects to the Panel with the new cert.
 | Panel logs `connect: connection refused` dialing the Agent | Windows Firewall closed, or `-hosts` in the enroll step doesn't match what the Panel resolves | Reopen `9090/tcp`; re-enroll with the actual LAN hostname/IP |
 | `krakenctl enroll` returns `invalid bootstrap token` | Token already used or expired | Mint a fresh one; enrol within 15 minutes |
 | Agent starts, Panel reports `cert verify failed` | Wrong CA, or clock skew > a few minutes between hosts | Re-enroll to refresh the bundle; check the Windows Time service is running |
-| Agent logs `using fake runtime (Docker unavailable)` | Docker Desktop is off or misconfigured | Start Docker Desktop; Agent auto-detects Docker on the next connection attempt |
+| Panel shows the node **partial**, Agent logs `Docker daemon unreachable — serving in a degraded state` | Docker Desktop is off or misconfigured | Start Docker Desktop. The Agent re-probes on every Panel poll and flips itself back to online — no restart, no re-enroll |
+| Node still reads **online** minutes after the Agent died | Panel predates the node-health poller | Upgrade the Panel; it now polls every node every 20s instead of only when you press Ping |
 | Windows containers won't launch, Hyper-V error | Docker Desktop is in Linux-containers mode | Right-click tray → *Switch to Windows containers* |

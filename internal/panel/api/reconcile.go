@@ -29,6 +29,43 @@ func (s *Server) StartReconciler(ctx context.Context, interval time.Duration) {
 	}()
 }
 
+// StartNodeReconciler launches a background loop that polls every registered
+// node's Agent and persists its health (online / partial / offline).
+//
+// Without it a node's status only moved when something asked for it — the Ping
+// button, the setup wizard, or the connect-node flow — so a host whose Agent died
+// (or whose Docker stopped) went on reading "online" indefinitely, and the
+// scheduler kept sending servers to it. The interval is deliberately slower than
+// the server reconciler: each pass is a gRPC round trip per node that also
+// re-pushes node config and checks cert expiry.
+func (s *Server) StartNodeReconciler(ctx context.Context, interval time.Duration) {
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.reconcileNodesOnce(ctx)
+			}
+		}
+	}()
+}
+
+func (s *Server) reconcileNodesOnce(ctx context.Context) {
+	nodes, err := s.store.ListNodes(ctx)
+	if err != nil {
+		return
+	}
+	for _, n := range nodes {
+		// reconcileNode persists the status transition (including offline on
+		// failure), which is the whole point of the poll — the error is expected
+		// and already logged there.
+		_, _ = s.reconcileNode(ctx, n)
+	}
+}
+
 // reconcileLiveStates are the states worth polling the Agent about. Offline and
 // installing are driven by operator/install flows and left untouched.
 func reconcileLive(st store.ServerState) bool {

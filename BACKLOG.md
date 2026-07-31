@@ -27,7 +27,7 @@ Deferred features and enhancements, roughly in priority order.
   April 2026, so this is overdue housekeeping; Node 24 is the active LTS.
 
 ## Platform
-- **Agent self-update, Panel-brokered.** ← _next up (designed 2026-07-30)_
+- **Agent self-update, Panel-brokered.** ← _next up; prerequisite + phases 1–2 shipped 2026-07-31_
   Let agents move to a new version without an operator hand-editing binaries on
   every host. Pieces that already exist: `NodeInfo.agent_version`
   (`proto/kraken/agent/v1/agent.proto`), the two-phase
@@ -37,14 +37,19 @@ Deferred features and enhancements, roughly in priority order.
   (`internal/panel/api/handlers_server.go`) so a restarted Agent recovers its
   specs on the next power action.
 
-  **Prerequisite — monitor re-adoption on Agent startup.** Watchdogs are only
-  ever attached by `Power(START|RESTART)` (`internal/agent/docker.go`), and
-  nothing adopts already-running containers at boot. So every Agent restart
-  silently drops `restart_on_crash` and ready-regex detection for servers that
-  are already up — invisible, because `GetServerStatus` reads Docker directly
-  and keeps reporting correct state. Rare with manual restarts; routine once
-  updates are automated. Fix first, ships on its own: list containers by
-  `kraken.managed=true` at startup, rehydrate the spec map, re-attach monitors.
+  ~~**Prerequisite — monitor re-adoption on Agent startup.**~~ **Done 2026-07-31.**
+  Watchdogs were only ever attached by `Power(START|RESTART)`, so every Agent
+  restart silently dropped `restart_on_crash` and ready-regex detection for
+  servers already up — invisible, because `GetServerStatus` reads Docker directly
+  and kept reporting correct state. The Agent now persists each runtime spec under
+  `<state>/agent-specs`, reloads it at boot, and `adoptRunning`
+  (`internal/agent/monitor.go`) re-arms watchdogs for every `kraken.managed=true`
+  container — at startup *and* whenever Docker becomes reachable again, which from
+  the Agent's point of view is the same event. Adoption scans for the ready line
+  from the container's actual start time, and skips the probe entirely past
+  `adoptReadyGrace` so a server that has been up for hours can't regress to
+  "starting". Verified live: container left running with no monitor → new runtime
+  adopts it → `SIGKILL` → auto-restarted (`TestAdoptRunningRestoresCrashRestart`).
 
   **Two decisions that shape everything else.** (1) The Panel brokers updates
   rather than agents polling GitHub — LAN agents need no outbound internet, one
@@ -89,12 +94,14 @@ Deferred features and enhancements, roughly in priority order.
   Record the install method (`self` / `image` / `package`) and only self-update
   when it's `self`; two updaters fighting over one file is worse than none.
 
-  Phasing: (1) monitor re-adoption; (2) visibility only — Panel compares
-  `agent_version` to its own and flags "update available" per node, zero risk
-  and it reveals how much skew actually exists; (3) manual per-node update with
-  the two-phase RPC, staging, and rollback; (4) policy (fleet-wide, or
-  "only nodes with zero running servers", or a maintenance window) once (3) has
-  been boring for a while. Steps 1–2 are ~a day each and useful alone; step 3
+  Phasing: ~~(1) monitor re-adoption~~ and ~~(2) visibility~~ shipped 2026-07-31 —
+  the node list carries `panel_version`, each node carries the `agent_version` seen
+  on last contact, and the Nodes page badges any node whose build differs. It
+  reports *mismatch*, not "update available": without a semver comparison the Panel
+  can't honestly claim the agent is the older one, and both versions are in the
+  badge's tooltip. Remaining: (3) manual per-node update with the two-phase RPC,
+  staging, and rollback; (4) policy (fleet-wide, or "only nodes with zero running
+  servers", or a maintenance window) once (3) has been boring for a while. Step 3
   holds the real cost and wants testing on a real Windows host.
 
   Open questions: is `install_method` explicit config or inferred (container
@@ -175,6 +182,24 @@ Deferred features and enhancements, roughly in priority order.
   pattern: Linux SteamCMD + `+@sSteamCmdForcePlatformType windows`,
   launch via `wine-headless`), deploy, verify ready + a real client join.
 
+
+### Done (2026-07-31)
+- ~~**Tri-state node health: online / partial / offline.**~~ Shipped. `NodeInfo` gained
+  `runtime_status` + `runtime_error` (`RuntimeStatus` enum; `UNSPECIFIED` reads as healthy so
+  a pre-upgrade fleet doesn't go all-partial). The Agent no longer swaps in the **fake
+  runtime** when Docker is unreachable — that made a node with a stopped Docker Desktop
+  report 16GB free and accept placements that could never start. It serves degraded
+  instead, re-probes the daemon on every `NodeInfo` poll, and promotes itself on recovery
+  (no restart, no re-enroll). New `cluster.NodePartial` is unschedulable by construction
+  (`Schedulable()` is `== NodeOnline`), and the scheduler's rejection names the daemon's
+  own error rather than just "partial". A new **node reconciler** (`StartNodeReconciler`,
+  20s) polls every Agent — node status previously only moved when someone pressed **Ping**,
+  so a dead Agent read "online" indefinitely. UI: amber `partial` StatusPill (warning
+  triangle, so it isn't hue-alone against Stopping), the runtime error verbatim on the
+  Nodes page, an amber node bar + "n degraded" on the Fleet tile, and named exclusions in
+  the deploy wizard's placement step. _Also fixed in passing:_ adoption made a
+  no-ready-regex server's state deterministic at arm time instead of racing the watchdog
+  goroutine, which could show a brief phantom `starting`.
 
 ### Done (2026-07-09)
 - ~~**Wine runtime (`images/steam-wine`) for Windows-only games on Linux nodes.**~~ Shipped.

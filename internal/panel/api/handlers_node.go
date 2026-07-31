@@ -14,6 +14,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/version"
 )
 
 // defaultPortRange is the game-port pool a node gets when registration doesn't
@@ -176,7 +177,11 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list nodes")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"nodes": nodes})
+	// panel_version rides along so the UI can flag agents whose build doesn't match
+	// the Panel's. Agents track the Panel (Panel↔Agent is a versioned gRPC
+	// contract, and both are built from the same tag), so "matches the Panel" is
+	// the definition of up to date.
+	writeJSON(w, http.StatusOK, map[string]any{"nodes": nodes, "panel_version": version.Version})
 }
 
 func (s *Server) handleGetNode(w http.ResponseWriter, r *http.Request) {
@@ -222,15 +227,40 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	defer cancel()
 	info, err := client.GetNodeInfo(cctx, &agentpb.GetNodeInfoRequest{})
 	if err != nil {
-		if n.Status != cluster.NodeOffline {
+		// The Agent itself is unreachable, so whatever it last said about its
+		// container runtime is no longer knowable — drop it rather than leave a
+		// stale reason attached to an offline node.
+		if n.Status != cluster.NodeOffline || n.RuntimeError != "" {
+			s.logger.Info("node unreachable", "node", n.ID, "name", n.Name, "addr", n.Address, "err", err)
 			n.Status = cluster.NodeOffline
+			n.RuntimeError = ""
 			_ = s.store.UpdateNode(ctx, n)
 		}
 		return nil, err
 	}
 	changed := false
-	if n.Status != cluster.NodeOnline {
-		n.Status = cluster.NodeOnline
+	// The Agent answered, so it is up — but an Agent that can't reach Docker can't
+	// run anything. Distinguish the two: online means "ready for work", partial
+	// means "reachable, runtime down" (unschedulable, with the reason attached).
+	// RUNTIME_STATUS_UNSPECIFIED comes from an Agent built before the field existed
+	// and is read as healthy, so a version-skewed fleet doesn't go all-partial.
+	status := cluster.NodeOnline
+	runtimeErr := ""
+	if info.GetRuntimeStatus() == agentpb.RuntimeStatus_RUNTIME_STATUS_UNAVAILABLE {
+		status = cluster.NodePartial
+		runtimeErr = info.GetRuntimeError()
+	}
+	if n.Status != status {
+		s.logger.Info("node status changed", "node", n.ID, "name", n.Name, "from", n.Status, "to", status, "runtime_err", runtimeErr)
+		n.Status = status
+		changed = true
+	}
+	if n.RuntimeError != runtimeErr {
+		n.RuntimeError = runtimeErr
+		changed = true
+	}
+	if info.AgentVersion != "" && n.AgentVersion != info.AgentVersion {
+		n.AgentVersion = info.AgentVersion
 		changed = true
 	}
 	if n.PublicHost == "" && info.Host != "" {
@@ -341,10 +371,15 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		"os":              info.Os,
 		"wine_enabled":    info.WineEnabled,
 		"agent_version":   info.AgentVersion,
+		"panel_version":   version.Version,
 		"total_memory_mb": info.TotalMemoryMb,
 		"running_servers": info.RunningServers,
 		"host":            info.Host,
 		"public_host":     n.PublicHost,
+		// The Agent answered; status distinguishes a node ready for work from one
+		// whose container runtime is down (see reconcileNode).
+		"status":        string(n.Status),
+		"runtime_error": n.RuntimeError,
 	})
 }
 

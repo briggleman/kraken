@@ -159,8 +159,9 @@ React primitives, imported via `@ds/components/core/<Name>`:
 - **IconButton** — `icon` (required), `size` `sm`(30px)|`md`(36px), `variant`
   `secondary`(default)|`ghost`|`accent`.
 - **Badge** — `tone` `accent`|`coral`|`info`|`neutral`. Compact mono tag for platforms/slugs/attrs.
-- **StatusPill** — `status` (six states), optional `label`. Hue + icon + label; `starting` spins. Use
-  anywhere server state is shown.
+- **StatusPill** — `status` (seven states), optional `label`. Hue + icon + label; `starting` spins. Use
+  anywhere server state is shown. `partial` is the node-only degraded state (amber + warning
+  triangle): reachable but not doing its job, distinguished from `stopping` by glyph, not hue.
 - **Card** — `glow?` (teal glow + stronger border for live/primary), `dashed?`
   (empty/placeholder/permission), `padding?` (default 22). The base translucent surface.
 - **Input** — mono UPPERCASE `label`, `value`, `placeholder`, `helper`, `error`, `focused`, `mono`.

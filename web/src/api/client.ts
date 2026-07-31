@@ -372,7 +372,8 @@ export const api = {
     return request("DELETE", `/servers/${id}/schedules/${scheduleId}`);
   },
 
-  listNodes(): Promise<{ nodes: Node[] | null }> {
+  /** panel_version comes back so callers can flag agents whose build differs. */
+  listNodes(): Promise<{ nodes: Node[] | null; panel_version?: string }> {
     return request("GET", "/nodes");
   },
   getNode(id: string): Promise<Node> {

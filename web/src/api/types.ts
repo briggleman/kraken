@@ -290,7 +290,17 @@ export interface Node {
   name: string;
   os: "linux" | "windows";
   wine_enabled: boolean;
-  status: "online" | "offline" | "cordoned";
+  /**
+   * online — ready for work. partial — the agent answers but can't reach its
+   * container runtime (see runtime_error); nothing can start there, so the
+   * scheduler skips it. offline — the agent is unreachable. cordoned — reachable
+   * but held back from new placements.
+   */
+  status: "online" | "partial" | "offline" | "cordoned";
+  /** Why the container runtime is unreachable; set while status is "partial". */
+  runtime_error?: string;
+  /** Agent build seen on last contact — compare with the list's panel_version. */
+  agent_version?: string;
   address: string;
   public_host: string;
   external_ip?: string;

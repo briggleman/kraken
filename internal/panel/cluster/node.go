@@ -22,6 +22,13 @@ type NodeStatus string
 const (
 	// NodeOnline nodes accept new servers.
 	NodeOnline NodeStatus = "online"
+	// NodePartial nodes answer the Panel but can't reach their container runtime
+	// (Docker is stopped, mid-restart, or switching container modes). The Agent is
+	// healthy and its file operations still work, but nothing can be installed,
+	// started, or observed, so the node is not schedulable. This is a distinct
+	// state on purpose: reported as offline it sends operators to check the network
+	// and the firewall, when the fix is to start Docker.
+	NodePartial NodeStatus = "partial"
 	// NodeOffline nodes are unreachable and not schedulable.
 	NodeOffline NodeStatus = "offline"
 	// NodeCordoned nodes are reachable but excluded from new placements.
@@ -61,6 +68,16 @@ type Node struct {
 	// 0 when SFTP is disabled. Used to show connection details on the Files tab.
 	SFTPPort int `json:"sftp_port,omitempty"`
 
+	// RuntimeError is why the node's container runtime is unreachable, as reported
+	// by the Agent. Set while Status is partial, cleared on recovery — it is the
+	// operator's whole diagnosis, so it is surfaced verbatim in the UI.
+	RuntimeError string `json:"runtime_error,omitempty"`
+
+	// AgentVersion is the Agent build observed on last contact. Compared against
+	// the Panel's own version to surface fleet version skew; empty until first
+	// contact.
+	AgentVersion string `json:"agent_version,omitempty"`
+
 	Ports *PortPool `json:"ports"`
 }
 
@@ -94,7 +111,9 @@ func (n *Node) Supports(kind spec.PlatformKind) bool {
 // AvailableMemoryMB is the unreserved memory on the node.
 func (n *Node) AvailableMemoryMB() int { return n.TotalMemoryMB - n.AllocatedMemoryMB }
 
-// Schedulable reports whether the node currently accepts new placements.
+// Schedulable reports whether the node currently accepts new placements. Only
+// fully online nodes do: partial (no container runtime), offline, and cordoned
+// nodes are all excluded.
 func (n *Node) Schedulable() bool { return n.Status == NodeOnline }
 
 // PortRequest names a port a server needs and the preferred number to try first

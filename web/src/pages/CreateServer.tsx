@@ -241,6 +241,14 @@ export function CreateWizard({
                 No node can host {spec?.name ?? "this game"} right now — it needs an online node
                 matching its platform ({(spec?.platforms ?? []).map((p) => p.kind).join(", ") || "any"})
                 with {spec ? `${spec.resources.min_memory_mb}MB of` : "enough"} free memory and free game ports.
+                {/* A partial node looks present everywhere else, so name it here
+                    rather than let it vanish from the list without explanation. */}
+                {nodes.some((n) => n.status === "partial") && (
+                  <div style={{ color: "var(--status-stopping)", marginTop: 8 }}>
+                    {nodes.filter((n) => n.status === "partial").map((n) => n.name).join(", ")} excluded:
+                    the agent is up but its container runtime is unreachable. Start Docker on that host.
+                  </div>
+                )}
               </div>
             )}
             {eligibleNodes.map((n, i) => {

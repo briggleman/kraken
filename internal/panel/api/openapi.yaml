@@ -539,6 +539,7 @@ paths:
                 type: object
                 properties:
                   nodes: { type: array, items: { $ref: '#/components/schemas/Node' } }
+                  panel_version: { type: string, description: the Panel's own build — an agent_version that differs is version skew }
     post:
       tags: [Nodes]
       summary: Register a node
@@ -1009,7 +1010,16 @@ components:
         name: { type: string }
         os: { type: string, enum: [linux, windows] }
         wine_enabled: { type: boolean }
-        status: { type: string, enum: [online, offline, cordoned] }
+        status:
+          type: string
+          enum: [online, partial, offline, cordoned]
+          description: >-
+            online = ready for work; partial = the Agent answers but cannot reach
+            its container runtime (see runtime_error) and is not schedulable;
+            offline = the Agent is unreachable; cordoned = reachable but excluded
+            from new placements.
+        runtime_error: { type: string, description: why the container runtime is unreachable (set while status is partial) }
+        agent_version: { type: string, description: Agent build seen on last contact; compare with panel_version on the list response }
         address: { type: string }
         public_host: { type: string }
         external_ip: { type: string }

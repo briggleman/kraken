@@ -16,15 +16,7 @@ Deferred features and enhancements, roughly in priority order.
   feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
 
 ## Tooling & CI
-- **Bump Node 20 → 24 in GitHub Actions.** `actions/setup-node` is pinned to
-  `node-version: "20"` in three places: `.github/workflows/ci.yml` (the web
-  typecheck·build job + the CodeQL/analyze job) and
-  `.github/workflows/release-binaries.yml` (web bundle for the release
-  panel binary). Bump all three to `"24"` together. Companion (optional but
-  keeps dev/CI/image consistent): `deploy/panel.Dockerfile`'s webbuild stage
-  pins `node:20-alpine` — bump to `node:24-alpine` in the same pass and
-  verify the Vite build + `go:embed` output. Node 20 hits end-of-maintenance
-  April 2026, so this is overdue housekeeping; Node 24 is the active LTS.
+- _Node 20 → 24: done 2026-07-31 (see below)._
 
 ## Platform
 - **Active hot reload via RCON.** The spec-level `settings.hot_reload` flag
@@ -99,6 +91,18 @@ Deferred features and enhancements, roughly in priority order.
   pattern: Linux SteamCMD + `+@sSteamCmdForcePlatformType windows`,
   launch via `wine-headless`), deploy, verify ready + a real client join.
 
+
+### Done (2026-07-31)
+- ~~**Bump Node 20 → 24.**~~ Shipped. Four pins, not three: `.github/workflows/ci.yml`
+  (**the `go` job** — it builds the web bundle so `//go:embed all:dist` has real assets —
+  **and the `web` job**), `.github/workflows/release-binaries.yml`, and
+  `deploy/panel.Dockerfile`'s webbuild stage (`node:20-alpine` → `node:24-alpine`).
+  _The old note here was wrong about the second `ci.yml` pin: CodeQL runs from GitHub's
+  default setup and has no `setup-node` step to bump._ Node 20 left maintenance in
+  April 2026. Verified: clean `npm ci` + Vite build on Node 24.16, then a full
+  `panel.Dockerfile` image build — the running container served the real embedded bundle
+  (`/assets/index-*.js`, 200, 476 kB), not the "UI not built" stub, which was the
+  `go:embed` risk worth checking.
 
 ### Done (2026-07-09)
 - ~~**Wine runtime (`images/steam-wine`) for Windows-only games on Linux nodes.**~~ Shipped.

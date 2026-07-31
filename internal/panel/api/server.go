@@ -21,6 +21,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/webui"
 	"github.com/briggleman/kraken/internal/shared/mtls"
+	"github.com/briggleman/kraken/internal/shared/version"
 )
 
 // Server holds the API dependencies and exposes an http.Handler.
@@ -239,6 +240,11 @@ func (s *Server) routes() chi.Router {
 			// API reference. Not public.
 			r.Get("/openapi.yaml", s.handleOpenAPISpec)
 
+			// The Panel's own build, for the version stamp in the UI footer and to
+			// compare against each node's agent_version. Authenticated (not public)
+			// so an unauthenticated caller can't fingerprint the build.
+			r.Get("/version", s.handleVersion)
+
 			// Game spec catalog.
 			r.With(s.requirePermission(rbac.PermSpecView)).Get("/specs", s.handleListSpecs)
 			r.With(s.requirePermission(rbac.PermSpecView)).Get("/specs/{id}", s.handleGetSpec)
@@ -352,6 +358,17 @@ func (s *Server) routes() chi.Router {
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleVersion reports the Panel's build. The UI shows `version` as a footer
+// stamp and compares it against each node's agent_version; commit and date are
+// there so a bug report can name an exact build.
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version": version.Version,
+		"commit":  version.Commit,
+		"date":    version.Date,
+	})
 }
 
 // secureHeaders sets conservative response security headers. The Panel serves

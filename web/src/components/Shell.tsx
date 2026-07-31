@@ -169,6 +169,48 @@ function UserMenu() {
   );
 }
 
+/** Build stamp, pinned to the bottom-right corner of every authenticated screen.
+ *  Deliberately quiet — it exists so a bug report can name an exact build without
+ *  anyone digging. Sits under the toaster's z-index (a toast may briefly cover it)
+ *  and ignores pointer events so it can never intercept a click. */
+function VersionStamp() {
+  const [v, setV] = useState<string>("");
+  const [title, setTitle] = useState<string>("");
+
+  useEffect(() => {
+    let live = true;
+    api
+      .version()
+      .then((info) => {
+        if (!live) return;
+        setV(info.version);
+        setTitle(`Kraken Panel ${info.version}${info.commit && info.commit !== "none" ? ` · commit ${info.commit}` : ""}${info.date && info.date !== "unknown" ? ` · built ${info.date}` : ""}`);
+      })
+      .catch(() => {/* a missing version is not worth an error toast */});
+    return () => { live = false; };
+  }, []);
+
+  if (!v) return null;
+  return (
+    <div
+      title={title}
+      style={{
+        position: "fixed",
+        right: 14,
+        bottom: 10,
+        zIndex: 20,
+        pointerEvents: "none",
+        fontFamily: mono,
+        fontSize: 10.5,
+        letterSpacing: 0.5,
+        color: "var(--text-faint)",
+      }}
+    >
+      v{v}
+    </div>
+  );
+}
+
 /** Authenticated app shell: ambient backdrop + top bar (with the username menu) +
  *  full-width routed content. */
 export function Shell() {
@@ -225,6 +267,8 @@ export function Shell() {
 
         <Outlet />
       </div>
+
+      <VersionStamp />
     </div>
   );
 }

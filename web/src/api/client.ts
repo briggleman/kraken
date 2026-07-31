@@ -18,6 +18,7 @@ import type {
   NodeConfig,
   NodeConfigUpdate,
   NodeConfigUpdateResult,
+  PanelVersion,
   PowerActionName,
   Role,
   ScheduleAction,
@@ -140,6 +141,10 @@ export const api = {
   },
 
   // --- first-run setup & catalog ---
+  /** The Panel's own build — the footer stamp, and the baseline for node version skew. */
+  version(): Promise<PanelVersion> {
+    return request("GET", "/version");
+  },
   setupStatus(): Promise<SetupStatus> {
     return request("GET", "/setup/status");
   },

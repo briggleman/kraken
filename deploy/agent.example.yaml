@@ -1,0 +1,91 @@
+# Kraken Agent configuration — copy to <root>/agent.yaml and edit.
+#
+#   kraken-agent --root /var/lib/kraken          # finds <root>/agent.yaml
+#   kraken-agent --config /etc/kraken/agent.yaml # or name it explicitly
+#
+# Every key here has a matching flag (--node-id) and environment variable
+# (KRAKEN_NODE_ID). Precedence, lowest to highest:
+#
+#   defaults  <  paths derived from root  <  this file  <  KRAKEN_* env  <  flags
+#
+# Environment outranks the file so adding a config file to a host already driven
+# by compose / systemd / nssm env vars doesn't silently change its settings.
+#
+# Check what the Agent actually resolved without starting it:
+#
+#   kraken-agent --root /var/lib/kraken --print-config
+#
+# JSON works too — this file is parsed as YAML, and JSON is valid YAML.
+
+# ---- the one setting most installs need ---------------------------------
+
+# Everything else defaults beneath this directory:
+#   <root>/state         mTLS bundle, SFTP host key
+#   <root>/server-data   per-server game data (one subdir per server)
+#   <root>/backups       local backup archives
+#   <root>/certs         agent.pem + agent-key.pem + ca.pem, adopted
+#                        automatically once all three exist — which is exactly
+#                        what `krakenctl enroll -out <root>/certs` writes
+root: /var/lib/kraken
+
+# ---- identity ----------------------------------------------------------
+
+# Stable identity in the Panel's node list. Set this per host: changing it later
+# re-registers the node and orphans the servers installed under the old ID.
+node_id: node-01
+
+# "linux" or "windows" — must match the Docker daemon's container mode.
+node_os: linux
+
+# Advertise Wine so Windows-only games can be placed on this Linux node.
+# wine: true
+
+# ---- listeners ---------------------------------------------------------
+
+# gRPC (Panel → Agent) and SFTP (operators → game files). Both must be
+# reachable from the Panel / your LAN; the browser also opens the gRPC port's
+# host directly for console and stats.
+# addr: ":9090"
+# sftp_addr: ":2022"
+
+# ---- enrollment --------------------------------------------------------
+
+# Two ways to get the mTLS bundle this Agent serves with:
+#
+#  1. Auto-enroll — set panel_url and the Agent fetches a bundle on first start,
+#     persisting it under <root>/state for later restarts. Convenient when the
+#     Panel is co-located.
+#  2. `krakenctl enroll -out <root>/certs` — mint a bootstrap token in the Panel
+#     (Settings → Nodes → Add node), run enroll on this host, and the bundle is
+#     picked up from <root>/certs with nothing to configure here.
+#
+# panel_url: http://panel.lan:8080
+
+# Or name the bundle explicitly, if it lives somewhere other than <root>/certs:
+# tls_cert: /etc/kraken/certs/agent.pem
+# tls_key:  /etc/kraken/certs/agent-key.pem
+# tls_ca:   /etc/kraken/certs/ca.pem
+
+# ---- rarely needed -----------------------------------------------------
+
+# Override individual paths instead of taking the root layout:
+# state_dir:  /var/lib/kraken/state
+# data_dir:   /srv/games
+# backup_dir: /mnt/backups/kraken
+
+# Only for a CONTAINERIZED Agent whose data root is mounted at a different path
+# inside the container than on the host. Bind sources are resolved by the host's
+# Docker daemon, so it needs the host path. Prefer mounting the data root at the
+# same absolute path on both sides and leaving this unset.
+# host_data_dir: /srv/kraken/data
+
+# Windows container isolation. Hyper-V works across host/base-image build
+# mismatches; "process" is faster but requires them to match.
+# windows_isolation: hyperv
+
+# "docker" (default) or "fake" for a runtime-less smoke test.
+# runtime: docker
+
+# Serve plaintext gRPC on a non-loopback address. This hands the Docker socket
+# to any host that can reach the port — enroll instead.
+# allow_insecure_grpc: false

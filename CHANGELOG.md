@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/briggleman/kraken/compare/v0.11.1...v0.12.0) (2026-07-31)
+
+
+### Features
+
+* **agent:** config file, flags, and a --root layout ([#49](https://github.com/briggleman/kraken/issues/49)) ([#51](https://github.com/briggleman/kraken/issues/51)) ([06b9365](https://github.com/briggleman/kraken/commit/06b936555e2c935808a6025c9d21f50fc0237611))
+
 ## [0.11.1](https://github.com/briggleman/kraken/compare/v0.11.0...v0.11.1) (2026-07-30)
 
 

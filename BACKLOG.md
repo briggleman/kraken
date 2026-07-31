@@ -19,6 +19,82 @@ Deferred features and enhancements, roughly in priority order.
 - _Node 20 → 24: done 2026-07-31 (see below)._
 
 ## Platform
+- **Agent self-update, Panel-brokered.** ← _next up (designed 2026-07-30)_
+  Let agents move to a new version without an operator hand-editing binaries on
+  every host. Pieces that already exist: `NodeInfo.agent_version`
+  (`proto/kraken/agent/v1/agent.proto`), the two-phase
+  `BeginCertRotation`/`CompleteCertRotation` pattern to copy, per-release
+  `SHA256SUMS` (`.github/workflows/release-binaries.yml`), `inContainer()`
+  (`internal/agent/docker.go`), and `rePushServerSpec`
+  (`internal/panel/api/handlers_server.go`) so a restarted Agent recovers its
+  specs on the next power action.
+
+  **Prerequisite — monitor re-adoption on Agent startup.** Watchdogs are only
+  ever attached by `Power(START|RESTART)` (`internal/agent/docker.go`), and
+  nothing adopts already-running containers at boot. So every Agent restart
+  silently drops `restart_on_crash` and ready-regex detection for servers that
+  are already up — invisible, because `GetServerStatus` reads Docker directly
+  and keeps reporting correct state. Rare with manual restarts; routine once
+  updates are automated. Fix first, ships on its own: list containers by
+  `kraken.managed=true` at startup, rehydrate the spec map, re-attach monitors.
+
+  **Two decisions that shape everything else.** (1) The Panel brokers updates
+  rather than agents polling GitHub — LAN agents need no outbound internet, one
+  download serves the fleet, and the operator controls *when* (updating the box
+  hosting nothing, not the one mid-session). (2) Agents track **the Panel's
+  version, not `latest`** — Panel↔Agent is a versioned gRPC contract, and since
+  both are built from the same tag the Panel is a compatible target by
+  construction. "Up to date" then means "matches the Panel", and updating the
+  Panel is the single trigger for the fleet.
+
+  Flow: Panel fetches its own tag's artifacts + `SHA256SUMS`, verifies, caches,
+  and serves the bytes itself (so air-gapped installs work by side-loading).
+  `BeginAgentUpdate{version, sha256}` → Agent streams from the Panel, verifies
+  the hash, execs `--version` to prove the binary runs on this host, stages it,
+  ACKs. `CompleteAgentUpdate` → swap + exit. Panel polls `GetNodeInfo` until
+  `agent_version` matches, or alarms. Staging stays reversible; the
+  irreversible step is a separate call. The Agent accepts a *version*, never an
+  arbitrary URL.
+
+  The swap, per OS: on **Linux**, `rename(2)` the new binary over the old path
+  (works while running — the process holds the old inode; `open(O_TRUNC)` would
+  fail `ETXTBSY`, a rename won't), and restart needs `Restart=always` or a
+  dedicated exit code matched by `RestartForceExitStatus`, since
+  `deploy/systemd/kraken-agent.service`'s `Restart=on-failure` won't restart a
+  clean exit. On **Windows**, a running `.exe` can't be overwritten but *can* be
+  renamed: `agent.exe` → `agent.exe.old`, write the new one, delete `.old` next
+  boot; nssm already restarts on exit, so this works with no extra machinery
+  (a native `service install` would need SCM recovery config instead). The
+  `--root`/`<root>/bin` layout gives the updater a known writable staging spot,
+  and `--print-config` shows which binary is live.
+
+  Rollback: keep the previous binary plus a "first boot after update" marker.
+  Clear it once the Agent reaches serving; on the next start, a marker with a
+  failure count reverts to the previous binary — otherwise `Restart=always`
+  cheerfully crashloops a bad build forever. The pre-swap `--version` exec
+  catches truncated downloads, wrong arch, and missing DLLs before anything is
+  swapped.
+
+  Must not self-update: **containerized** agents (the image is the unit — refuse
+  via `inContainer()` and show "managed by image tag"), and **package-managed**
+  installs once the winget item below lands (`winget upgrade` owns the binary).
+  Record the install method (`self` / `image` / `package`) and only self-update
+  when it's `self`; two updaters fighting over one file is worse than none.
+
+  Phasing: (1) monitor re-adoption; (2) visibility only — Panel compares
+  `agent_version` to its own and flags "update available" per node, zero risk
+  and it reveals how much skew actually exists; (3) manual per-node update with
+  the two-phase RPC, staging, and rollback; (4) policy (fleet-wide, or
+  "only nodes with zero running servers", or a maintenance window) once (3) has
+  been boring for a while. Steps 1–2 are ~a day each and useful alone; step 3
+  holds the real cost and wants testing on a real Windows host.
+
+  Open questions: is `install_method` explicit config or inferred (container
+  detection plus a marker the winget package drops)? And is fleet-wide update
+  wanted at all, or is per-node-with-confirmation the honest ceiling for a home
+  platform where one node going down ends a game session? Worth signing
+  `SHA256SUMS` (cosign or GitHub build attestation) independently of this — the
+  Panel→GitHub link currently trusts TLS plus the workflow.
 - **Active hot reload via RCON.** The spec-level `settings.hot_reload` flag
   (added 2026-07-10) only changes the post-save message — it assumes the game
   re-reads its config files on its own. Some games instead need an explicit

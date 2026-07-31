@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -45,6 +47,15 @@ type monitor struct {
 // monitor is cancelled and replaced, which resets the crash-restart counter —
 // so a manual start/restart always gets a clean budget.
 func (d *DockerRuntime) startMonitor(serverID string) {
+	d.armMonitor(serverID, time.Now(), true)
+}
+
+// armMonitor installs a watchdog for a server. `since` bounds the readiness log
+// scan so an earlier run's ready line can't be matched. probeReady=false skips
+// readiness detection entirely and treats the server as up — used when adopting a
+// server that has been running long enough that its ready line may have rotated
+// out of the log (see adoptRunning).
+func (d *DockerRuntime) armMonitor(serverID string, since time.Time, probeReady bool) {
 	spec, _ := d.getSpec(serverID)
 
 	d.stopMonitor(serverID)
@@ -63,7 +74,7 @@ func (d *DockerRuntime) startMonitor(serverID string) {
 		if m.maxRestarts <= 0 {
 			m.maxRestarts = defaultMaxRestarts
 		}
-		if rx := spec.GetReadyRegex(); rx != "" {
+		if rx := spec.GetReadyRegex(); rx != "" && probeReady {
 			if re, err := regexp.Compile(rx); err == nil {
 				m.readyRe = re
 			} else {
@@ -72,11 +83,80 @@ func (d *DockerRuntime) startMonitor(serverID string) {
 		}
 	}
 
+	// With no readiness probe the server is up as soon as its container is, so
+	// settle on that here rather than leaving a STARTING window until the run
+	// goroutine is scheduled. The Panel polls Status on its own clock, and an
+	// adopted server that has been serving for hours must not blip back to
+	// "starting" just because the Agent restarted.
+	if m.readyRe == nil {
+		m.state = agentpb.ServerState_SERVER_STATE_RUNNING
+	}
+
 	d.monMu.Lock()
 	d.monitors[serverID] = m
 	d.monMu.Unlock()
 
-	go m.run(time.Now())
+	go m.run(since)
+}
+
+// adoptReadyGrace bounds how far back adoption will scan for a ready line. A
+// container that has been up longer than this is adopted as ready outright: its
+// ready line may have rotated out of the log, and reporting a server that has
+// been serving players for an hour as "starting" is worse than skipping the probe.
+const adoptReadyGrace = 10 * time.Minute
+
+// adoptRunning re-arms watchdogs for the servers that are already running.
+//
+// Monitors are otherwise only ever armed by Power(START|RESTART), so without this
+// every Agent restart silently dropped restart_on_crash and ready-regex detection
+// for servers that never stopped. It was invisible: Status falls back to
+// inspecting the container, so the Panel kept reporting the right state while the
+// crash watchdog was simply gone. Called at startup and whenever the Docker
+// daemon comes back, which from the Agent's point of view is the same event.
+//
+// Idempotent: a server that already has a monitor is left alone, so a repeated
+// call can't reset a live crash-restart budget.
+func (d *DockerRuntime) adoptRunning(ctx context.Context) {
+	list, err := d.cli.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", labelManaged+"=true")),
+	})
+	if err != nil {
+		slog.Warn("watchdog: could not list managed containers to adopt", "err", err)
+		return
+	}
+	for _, c := range list {
+		serverID := c.Labels[labelServerID]
+		if serverID == "" {
+			continue
+		}
+		if _, watched := d.monitorState(serverID); watched {
+			continue
+		}
+		spec, ok := d.getSpec(serverID)
+		if !ok {
+			slog.Warn("watchdog: adopting a running server with no known spec — crash auto-restart stays off until the Panel pushes it again",
+				"server", serverID)
+		}
+		started := startedAt(ctx, d.cli, c.ID)
+		probeReady := spec.GetReadyRegex() != "" && time.Since(started) < adoptReadyGrace
+		d.armMonitor(serverID, started, probeReady)
+		slog.Info("watchdog: adopted running server", "server", serverID,
+			"restart_on_crash", spec.GetRestartOnCrash(), "ready_probe", probeReady)
+	}
+}
+
+// startedAt returns when a container was last started, falling back to now when
+// the daemon won't say (which only costs the readiness scan its history).
+func startedAt(ctx context.Context, cli *client.Client, containerID string) time.Time {
+	insp, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil || insp.State == nil || insp.State.StartedAt == "" {
+		return time.Now()
+	}
+	t, perr := time.Parse(time.RFC3339Nano, insp.State.StartedAt)
+	if perr != nil {
+		return time.Now()
+	}
+	return t
 }
 
 // stopMonitor cancels and forgets a server's watchdog (e.g. on server removal).

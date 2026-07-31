@@ -19,6 +19,17 @@ enum ServerState {
   SERVER_STATE_CRASHED = 6;
 }
 
+// RuntimeStatus reports whether the Agent can reach its container runtime (the
+// local Docker daemon). An Agent that answers RPCs but can't reach Docker is
+// reachable-but-useless: it can serve identity and file operations, but cannot
+// install, start, or observe a game server. UNSPECIFIED means the Agent predates
+// this field and must be read as healthy, not as unavailable.
+enum RuntimeStatus {
+  RUNTIME_STATUS_UNSPECIFIED = 0;
+  RUNTIME_STATUS_OK = 1;
+  RUNTIME_STATUS_UNAVAILABLE = 2;
+}
+
 // PowerAction is a requested power transition for a server.
 enum PowerAction {
   POWER_ACTION_UNSPECIFIED = 0;
@@ -362,6 +373,8 @@ message NodeInfo {
   string external_ip = 8;      // detected outward-facing/WAN IP (egress echo), if any
   int32 sftp_port = 9;         // port the Agent's SFTP server listens on (0 → SFTP disabled)
   int64 cert_not_after_unix = 10; // mTLS serving cert expiry (unix seconds; 0 → no TLS)
+  RuntimeStatus runtime_status = 11; // can the Agent reach its Docker daemon?
+  string runtime_error = 12;         // why not, when runtime_status is UNAVAILABLE
 }
 
 message InstallServerRequest {

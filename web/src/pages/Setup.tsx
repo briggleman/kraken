@@ -438,10 +438,21 @@ export function Setup() {
                     marginBottom: 10,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                     <OsIcon os="docker" size={16} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-primary)" }}>{n.name}</span>
-                    <span style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)" }}>{n.address}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                        <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-primary)" }}>{n.name}</span>
+                        <span style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)" }}>{n.address}</span>
+                      </div>
+                      {/* Setup waits for an *online* node, so a partial one would
+                          otherwise stall the wizard with no reason given. */}
+                      {n.status === "partial" && (
+                        <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--status-stopping)", marginTop: 5 }}>
+                          agent connected, but Docker is unreachable on that host — start Docker and this flips to online
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {n.status === "online" ? (

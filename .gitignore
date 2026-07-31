@@ -48,6 +48,10 @@ Thumbs.db
 server-data/
 backups/
 agent-backups/
+# Persisted runtime specs written by the Agent under its state dir. Deliberately
+# not named "specs/" — that is the tracked Game Spec library, and the state dir
+# defaults to the working directory.
+agent-specs/
 *.sqlite
 *.log
 

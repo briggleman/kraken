@@ -30,6 +30,11 @@ Kraken is a personal project with the goal of being something I've built to use 
   per-game destination paths (`{{SLUG}}` templating) and optional replication to an
   SFTP/NAS target.
 - **Scheduling.** Cron-style schedules for power actions and backups.
+- **Node health, three states.** The Panel polls every Agent continuously: **online**
+  (ready for work), **partial** (the Agent answers but its Docker daemon is
+  unreachable — unschedulable, with the daemon's own error shown), **offline** (the
+  Agent can't be reached). An Agent that starts without Docker comes up degraded and
+  promotes itself once Docker appears; no restart, no re-enroll.
 - **Networking automation.** Optional Cloudflare DNS and UniFi port-forward integration.
 - **Auth & RBAC.** argon2id passwords, optional 2FA per spec, role-based access
   (Owner / Admin / Operator / Read-only) with per-server object-level authorization.
@@ -109,14 +114,14 @@ variable names below, lowercased and de-prefixed (`KRAKEN_NODE_ID` → `--node-i
 | `KRAKEN_CONFIG` | `--config` | _(searched)_ | Config file path (YAML; JSON also parses). |
 | `KRAKEN_AGENT_ADDR` | `--addr` | `:9090` | Agent gRPC listen address (mutual TLS). |
 | `KRAKEN_SFTP_ADDR` | `--sftp-addr` | `:2022` | Agent SFTP listen address. **Expose only to trusted networks** — it's authenticated but externally reachable. |
-| `KRAKEN_STATE_DIR` | `--state-dir` | `.` (cwd, or `<root>/state`) | Directory that groups Agent state (SFTP host key today). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
+| `KRAKEN_STATE_DIR` | `--state-dir` | `.` (cwd, or `<root>/state`) | Directory that groups Agent state (SFTP host key, and `agent-specs/` — the runtime specs that let a restarted Agent re-adopt its running servers' crash watchdogs). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
 | `KRAKEN_SFTP_HOST_KEY` | `--sftp-host-key` | `${STATE_DIR}/sftp_host_key` | Path to the SSH host key (ed25519, generated on first run). |
 | `KRAKEN_DATA_DIR` | `--data-dir` | `server-data` (or `<root>/server-data`) | Directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
 | `KRAKEN_HOST_DATA_DIR` | `--host-data-dir` | _(= `DATA_DIR`)_ | Only for a **containerized Agent** whose data root is mounted at a different path inside the container: the host path the Docker daemon should bind. Prefer mounting at the same path on both sides and leaving this unset. |
 | `KRAKEN_BACKUP_DIR` | `--backup-dir` | `backups` (or `<root>/backups`) | Local backup destination (before optional replication). |
 | `KRAKEN_NODE_ID` | `--node-id` | `abyss-node-01` | Stable node identity. Set it per host — changing it later re-registers the node and orphans servers installed under the old ID. |
 | `KRAKEN_NODE_OS` | `--node-os` | `linux` | `linux` or `windows` — the OS this node runs containers for. |
-| `KRAKEN_RUNTIME` | `--runtime` | `docker` | Set to `fake` to run without Docker (dev/testing). |
+| `KRAKEN_RUNTIME` | `--runtime` | `docker` | Set to `fake` to run without Docker (dev/testing). Note the default no longer falls back to the fake when Docker is unreachable — the Agent serves degraded and the node shows as **partial** instead of looking healthy. |
 | `KRAKEN_WINDOWS_ISOLATION` | `--windows-isolation` | `hyperv` | Windows container isolation: `hyperv` (default), `process`, or `default` (defer to the daemon). |
 | `KRAKEN_NODE_WINE` | `--wine` | `true` | Advertise Wine so Windows-only games can be placed on this Linux node. |
 | `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | `--tls-cert` / `--tls-key` / `--tls-ca` | _(unset; `<root>/certs` when complete)_ | mTLS material presented/verified by the Agent. All three or none. |

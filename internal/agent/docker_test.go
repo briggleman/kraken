@@ -16,15 +16,22 @@ import (
 // pull busybox and create/run actual containers.
 func newDockerRuntime(t *testing.T) *agent.DockerRuntime {
 	t.Helper()
-	// Keep test data/backups in temp dirs so integration runs don't litter the
-	// source tree with server-data/ and backups/.
+	// Keep test data/backups/specs in temp dirs so integration runs don't litter
+	// the source tree with server-data/, backups/, and specs/.
 	t.Setenv("KRAKEN_DATA_DIR", t.TempDir())
 	t.Setenv("KRAKEN_BACKUP_DIR", t.TempDir())
+	t.Setenv("KRAKEN_STATE_DIR", t.TempDir())
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rt, err := agent.NewDockerRuntime(ctx, "itest-node", true, "test")
+	rt, err := agent.NewDockerRuntime(ctx, "itest-node", "linux", true, "test")
 	if err != nil {
-		t.Skipf("docker unavailable, skipping integration test: %v", err)
+		t.Skipf("docker client unavailable, skipping integration test: %v", err)
+	}
+	// An unreachable daemon is no longer a constructor error — the runtime comes
+	// up degraded on purpose — so these integration tests check health explicitly.
+	if ok, herr := rt.RuntimeHealth(); !ok {
+		_ = rt.Close()
+		t.Skipf("docker daemon unreachable, skipping integration test: %s", herr)
 	}
 	if rt.OSType() != "linux" {
 		_ = rt.Close()

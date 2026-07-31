@@ -185,6 +185,11 @@ func run(logger *slog.Logger) error {
 	defer stopReconcile()
 	srv.StartReconciler(reconcileCtx, 4*time.Second)
 
+	// Node health: polls each Agent so online / partial / offline reflects reality
+	// without an operator pressing Ping. Slower than the server reconciler — one
+	// gRPC round trip per node per pass.
+	srv.StartNodeReconciler(reconcileCtx, 20*time.Second)
+
 	// Background scheduler: runs due cron tasks (restart / backup / command).
 	srv.StartScheduler(reconcileCtx, 30*time.Second)
 

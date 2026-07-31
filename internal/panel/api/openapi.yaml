@@ -25,6 +25,7 @@ tags:
   - name: Settings
   - name: DNS
   - name: Audit
+  - name: Meta
 security:
   - bearerAuth: []
 paths:
@@ -65,6 +66,25 @@ paths:
                 properties:
                   user: { $ref: '#/components/schemas/User' }
                   role: { type: object }
+  /version:
+    get:
+      tags: [Meta]
+      summary: Panel build version
+      description: >-
+        The Panel's own build. Shown as the version stamp in the UI and compared
+        against each node's agent_version to surface fleet version skew.
+        Authenticated, so an unauthenticated caller can't fingerprint the build.
+      responses:
+        '200':
+          description: Build metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string, example: 0.13.0 }
+                  commit: { type: string }
+                  date: { type: string }
   /auth/change-password:
     post:
       tags: [Auth]

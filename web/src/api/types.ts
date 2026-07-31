@@ -280,6 +280,13 @@ export interface Spec {
   install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean };
 }
 
+/** The Panel's build, from GET /version. */
+export interface PanelVersion {
+  version: string;
+  commit: string;
+  date: string;
+}
+
 export interface NodePortRange {
   start: number;
   end: number;

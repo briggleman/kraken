@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
-import type { SettingField, ServerSettings as Settings } from "@/api/types";
+import type { SettingField, ServerSettings as Settings, ServerState } from "@/api/types";
 import { Button } from "@ds/components/core/Button";
 import { Card } from "@ds/components/core/Card";
 import { Toggle } from "@ds/components/core/Toggle";
@@ -128,9 +128,12 @@ function SettingCard({ field, value, onChange }: { field: SettingField; value: s
   );
 }
 
-export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: string; running: boolean; onRequestRestart: () => void }) {
+export function ServerSettingsPanel({ id, state, onRequestRestart }: { id: string; state: ServerState; onRequestRestart: () => void }) {
+  const running = state === "running";
   const [data, setData] = useState<Settings | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [varValues, setVarValues] = useState<Record<string, string>>({});
+  const [varsDirty, setVarsDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,20 +141,36 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
 
   useEffect(() => {
     api.getServerSettings(id)
-      .then((d) => { setData(d); setValues(d.values); })
+      .then((d) => {
+        setData(d);
+        setValues(d.values ?? {});
+        setVarValues(Object.fromEntries((d.variables ?? []).map((v) => [v.key, v.value])));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "failed to load settings"));
   }, [id]);
 
   const set = (k: string, v: string) => { setValues((prev) => ({ ...prev, [k]: v })); setDirty(true); setNotice(null); };
+  const setVar = (k: string, v: string) => { setVarValues((prev) => ({ ...prev, [k]: v })); setVarsDirty(true); setNotice(null); };
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.updateServerSettings(id, values);
+      const res = await api.updateServerSettings(id, values, varsDirty ? varValues : undefined);
       setValues(res.values);
+      if (res.variables) setVarValues(Object.fromEntries(res.variables.map((v) => [v.key, v.value])));
       setDirty(false);
-      setNotice(res.restart_needed ? "Saved. Restart the server to apply the new settings." : "Settings saved.");
+      const savedVars = varsDirty;
+      setVarsDirty(false);
+      setNotice(
+        res.restart_needed
+          ? "Saved. Restart the server for the changes to take effect."
+          : running && res.applied && res.hot_reload
+            ? "Saved — applied to the running server live (this game hot-reloads its config)."
+            : savedVars
+              ? "Saved. Launch variables apply the next time the server starts."
+              : "Settings saved.",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
     } finally {
@@ -161,7 +180,16 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
 
   if (error && !data) return <div style={{ fontFamily: mono, color: "var(--status-crashed)", padding: 20 }}>{error}</div>;
   if (!data) return <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>Loading settings…</div>;
-  if (data.groups.length === 0) return <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>This game has no configurable settings defined in its spec.</div>;
+  // Older panels serialize a spec without settings as groups: null.
+  const groups = data.groups ?? [];
+  const vars = data.variables ?? [];
+  if (groups.length === 0 && vars.length === 0) {
+    return (
+      <div style={{ fontFamily: mono, color: "var(--text-muted)", padding: 20 }}>
+        This game has no configurable settings or launch variables in its spec.
+      </div>
+    );
+  }
 
   return (
     <div style={{ paddingBottom: 30 }}>
@@ -172,7 +200,7 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
             Adjust this server's game settings. Changes are written to the config and take effect after a restart.
           </p>
         </div>
-        <Button variant="primary" disabled={!dirty || busy} icon="check" onClick={save}>{busy ? "Saving…" : "Save"}</Button>
+        <Button variant="primary" disabled={!(dirty || varsDirty) || busy} icon="check" onClick={save}>{busy ? "Saving…" : "Save"}</Button>
       </div>
 
       {error && <div style={{ color: "var(--status-crashed)", fontFamily: mono, fontSize: 13, marginBottom: 14 }}>{error}</div>}
@@ -186,7 +214,35 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
         </div>
       )}
 
-      {data.groups.map((g) => (
+      {vars.length > 0 && (
+        <section style={{ marginBottom: 32 }}>
+          <div style={{ marginBottom: 14 }}>
+            <h3 style={groupLabel}>Launch variables</h3>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>
+              Baked into the start command when the server boots — changes always need a restart to take effect.
+            </div>
+            <div style={{ height: 1, background: "var(--border-subtle)", marginTop: 12 }} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(380px,1fr))", gap: 16 }}>
+            {vars.map((v) => (
+              <SettingCard
+                key={v.key}
+                field={{
+                  key: v.key,
+                  label: v.label || v.key,
+                  type: "string",
+                  read_only: !v.user_editable,
+                  help: v.rules ? `rules: ${v.rules}` : undefined,
+                }}
+                value={varValues[v.key] ?? v.value}
+                onChange={(val) => setVar(v.key, val)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {groups.map((g) => (
         <section key={g.id} style={{ marginBottom: 32 }}>
           <div style={{ marginBottom: 14 }}>
             <h3 style={groupLabel}>{g.label || g.id}</h3>
@@ -194,7 +250,7 @@ export function ServerSettingsPanel({ id, running, onRequestRestart }: { id: str
             <div style={{ height: 1, background: "var(--border-subtle)", marginTop: 12 }} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(380px,1fr))", gap: 16 }}>
-            {g.fields.map((f) => (
+            {(g.fields ?? []).map((f) => (
               <SettingCard key={f.key} field={f} value={values[f.key] ?? f.default ?? ""} onChange={(v) => set(f.key, v)} />
             ))}
           </div>

@@ -45,10 +45,12 @@ function lineColor(stream: string): string {
 }
 
 // platformBadge maps a platform kind to an Abyssal Badge (tone + label + icon).
-function platformBadge(kind: PlatformKind): { tone: "accent" | "coral" | "neutral"; label: string; icon: "linux" | "windows" | "wine" } {
+// Native platforms stay neutral so Tux and the Windows panes read identically;
+// coral is reserved for wine, the one kind that means more than a bare OS.
+function platformBadge(kind: PlatformKind): { tone: "coral" | "neutral"; label: string; icon: "linux" | "windows" | "wine" } {
   if (kind === "windows-native") return { tone: "neutral", label: "WINDOWS", icon: "windows" };
   if (kind === "linux-wine") return { tone: "coral", label: "WINE", icon: "wine" };
-  return { tone: "accent", label: "LINUX", icon: "linux" };
+  return { tone: "neutral", label: "LINUX", icon: "linux" };
 }
 
 // isPrivateHost reports whether a connect host is on a private network (RFC1918 /
@@ -321,7 +323,7 @@ export function ServerDetail() {
         ))}
       </div>
 
-      {tab === "settings" && <ServerSettingsPanel id={id} running={running} onRequestRestart={() => power("restart")} />}
+      {tab === "settings" && <ServerSettingsPanel id={id} state={server.state} onRequestRestart={() => power("restart")} />}
       {tab === "networking" && <ServerNetworkingPanel id={id} />}
       {tab === "files" && <ServerFilesPanel id={id} name={server.name} />}
       {tab === "backups" && <ServerBackupsPanel id={id} onRequestRestart={() => power("restart")} />}

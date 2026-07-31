@@ -5,7 +5,7 @@ description: >-
   world, password, and public listing are launch options. No ready_regex is set,
   so the server is marked running once the process is up — add one (e.g. a log
   line that prints when the world finishes loading) for stricter gating.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/892970/36a52fe644b589a70b05e476a4b319a6d9e02cfe/capsule_616x353.jpg?t=1782131035
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/892970/f9ef3ded2cf7ff376208a63e1fc3c86c5f92e42d/library_hero_2x.jpg?t=1782131035
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/892970/2f64c9a826e2c6cf3253fea4834c2e612db09143.jpg
 steam_app_ids:
   linux: 896660

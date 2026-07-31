@@ -83,20 +83,43 @@ database URL, secrets key, and a bootstrap admin.
 
 ### Agent
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `KRAKEN_AGENT_ADDR` | `:9090` | Agent gRPC listen address (mutual TLS). |
-| `KRAKEN_SFTP_ADDR` | `:2022` | Agent SFTP listen address. **Expose only to trusted networks** — it's authenticated but externally reachable. |
-| `KRAKEN_STATE_DIR` | `.` (cwd) | Directory that groups Agent state (SFTP host key today). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
-| `KRAKEN_SFTP_HOST_KEY` | `${STATE_DIR}/sftp_host_key` | Path to the SSH host key (ed25519, generated on first run). |
-| `KRAKEN_DATA_DIR` | `server-data` | Host directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
-| `KRAKEN_BACKUP_DIR` | `backups` | Local backup destination (before optional replication). |
-| `KRAKEN_NODE_ID` | _(hostname)_ | Stable node identity. |
-| `KRAKEN_NODE_OS` | _(detected)_ | `linux` or `windows` — the OS this node runs containers for. |
-| `KRAKEN_RUNTIME` | _(real Docker)_ | Set to `fake` to run without Docker (dev/testing). |
-| `KRAKEN_WINDOWS_ISOLATION` | `hyperv` | Windows container isolation: `hyperv` (default), `process`, or `default` (defer to the daemon). |
-| `KRAKEN_NODE_WINE` | _(off)_ | Enable the Wine code path for the node. |
-| `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | _(unset)_ | mTLS material presented/verified by the Agent. |
+The Agent also accepts a **config file** and **flags** for every setting below.
+Precedence, lowest to highest: defaults → paths derived from `--root` → config
+file → `KRAKEN_*` environment → flags. Environment outranks the file so adding a
+file to an env-driven host (compose, systemd, nssm) changes nothing.
+
+```sh
+kraken-agent --root /var/lib/kraken               # one dir; state/, server-data/,
+                                                  # backups/, certs/ derived from it
+kraken-agent --config /etc/kraken/agent.yaml      # or name it explicitly
+kraken-agent --root /var/lib/kraken --print-config  # show what resolved, then exit
+```
+
+Without `--config`, the Agent reads the first of `$KRAKEN_CONFIG`,
+`<root>/agent.yaml`, `./agent.yaml`, or `/etc/kraken/agent.yaml`
+(`%ProgramData%\Kraken\agent.yaml` on Windows). A complete mTLS bundle under
+`<root>/certs` — exactly what `krakenctl enroll -out <root>/certs` writes — is
+adopted without configuring TLS paths. Annotated sample:
+[`deploy/agent.example.yaml`](deploy/agent.example.yaml). Flag names are the
+variable names below, lowercased and de-prefixed (`KRAKEN_NODE_ID` → `--node-id`).
+
+| Variable | Flag | Default | Purpose |
+|---|---|---|---|
+| `KRAKEN_ROOT` | `--root` | _(unset)_ | One directory the paths below default beneath: `state`, `server-data`, `backups`, `certs`. |
+| `KRAKEN_CONFIG` | `--config` | _(searched)_ | Config file path (YAML; JSON also parses). |
+| `KRAKEN_AGENT_ADDR` | `--addr` | `:9090` | Agent gRPC listen address (mutual TLS). |
+| `KRAKEN_SFTP_ADDR` | `--sftp-addr` | `:2022` | Agent SFTP listen address. **Expose only to trusted networks** — it's authenticated but externally reachable. |
+| `KRAKEN_STATE_DIR` | `--state-dir` | `.` (cwd, or `<root>/state`) | Directory that groups Agent state (SFTP host key today). Set to `/var/lib/kraken` in production; `KRAKEN_SFTP_HOST_KEY` defaults under this. |
+| `KRAKEN_SFTP_HOST_KEY` | `--sftp-host-key` | `${STATE_DIR}/sftp_host_key` | Path to the SSH host key (ed25519, generated on first run). |
+| `KRAKEN_DATA_DIR` | `--data-dir` | `server-data` (or `<root>/server-data`) | Directory bind-mounted into containers as `/data` (or `C:\data`); one subdir per server. |
+| `KRAKEN_HOST_DATA_DIR` | `--host-data-dir` | _(= `DATA_DIR`)_ | Only for a **containerized Agent** whose data root is mounted at a different path inside the container: the host path the Docker daemon should bind. Prefer mounting at the same path on both sides and leaving this unset. |
+| `KRAKEN_BACKUP_DIR` | `--backup-dir` | `backups` (or `<root>/backups`) | Local backup destination (before optional replication). |
+| `KRAKEN_NODE_ID` | `--node-id` | `abyss-node-01` | Stable node identity. Set it per host — changing it later re-registers the node and orphans servers installed under the old ID. |
+| `KRAKEN_NODE_OS` | `--node-os` | `linux` | `linux` or `windows` — the OS this node runs containers for. |
+| `KRAKEN_RUNTIME` | `--runtime` | `docker` | Set to `fake` to run without Docker (dev/testing). |
+| `KRAKEN_WINDOWS_ISOLATION` | `--windows-isolation` | `hyperv` | Windows container isolation: `hyperv` (default), `process`, or `default` (defer to the daemon). |
+| `KRAKEN_NODE_WINE` | `--wine` | `true` | Advertise Wine so Windows-only games can be placed on this Linux node. |
+| `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | `--tls-cert` / `--tls-key` / `--tls-ca` | _(unset; `<root>/certs` when complete)_ | mTLS material presented/verified by the Agent. All three or none. |
 
 ## Deploy
 

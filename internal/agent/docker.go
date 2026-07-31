@@ -48,7 +48,8 @@ type DockerRuntime struct {
 	wineEnabled bool
 	version     string
 	osType      string // daemon OS: "linux" or "windows" (one daemon per agent)
-	dataDir     string // host root for per-server data dirs (bind-mounted into containers)
+	dataDir     string // the Agent's own root for per-server data dirs (native file ops, backups, SFTP)
+	hostDataDir string // the same root as the Docker daemon sees it — bind-mount sources only
 	backupDir   string // node-local directory for backup archives (env default)
 	// winIsolation is the isolation mode for Windows containers (Hyper-V by
 	// default; see windowsIsolation). Unused on Linux daemons.
@@ -121,9 +122,62 @@ func NewDockerRuntime(ctx context.Context, nodeID string, wineEnabled bool, vers
 	if abs, aerr := filepath.Abs(dataDir); aerr == nil {
 		dataDir = abs
 	}
-	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, backupDir: backupDir, winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}}
+	hostDataDir := resolveHostDataDir(dataDir)
+	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}}
 	d.backups = selectBackupTarget(backupDir)
 	return d, nil
+}
+
+// resolveHostDataDir returns the data root as the *Docker daemon* sees it.
+//
+// Bind sources in ContainerCreate are resolved by the daemon against the host
+// filesystem, never against the Agent's mount namespace. A bare-metal Agent
+// shares that view, so the two are identical. A containerized Agent does not:
+// with `-v /srv/kraken/data:/data` and KRAKEN_DATA_DIR=/data it would ask the
+// daemon to bind the host's /data — a different (usually empty, daemon-created)
+// directory than the one its own file ops, backups, and SFTP jail see. Game
+// servers then read and write somewhere the Agent can't see, silently.
+//
+// KRAKEN_HOST_DATA_DIR names the host path explicitly. Leaving it unset is
+// correct whenever the Agent's view matches the host's — bare metal, or a
+// container that mounts the data root at the same absolute path it uses
+// internally (the arrangement deploy/ ships, and the one to prefer: there is no
+// second value to keep in sync).
+func resolveHostDataDir(dataDir string) string {
+	v := strings.TrimSpace(os.Getenv("KRAKEN_HOST_DATA_DIR"))
+	if v == "" {
+		if inContainer() {
+			// Not an error — same-path mounts are the recommended setup and need
+			// no override — but it is the one misconfiguration that fails silently,
+			// so say what will be handed to the daemon.
+			slog.Warn("containerized Agent with no KRAKEN_HOST_DATA_DIR — game-container bind mounts will use this path as the daemon sees it; "+
+				"mount the data root at the same absolute path inside this container, or set KRAKEN_HOST_DATA_DIR to the host path",
+				"data_dir", dataDir)
+		}
+		return dataDir
+	}
+	if abs, err := filepath.Abs(v); err == nil {
+		v = abs
+	}
+	if v != dataDir {
+		slog.Info("data root differs between Agent and Docker daemon", "agent_view", dataDir, "daemon_view", v)
+	}
+	return v
+}
+
+// inContainer reports whether this process looks containerized. Only used to
+// decide whether to warn about an unset KRAKEN_HOST_DATA_DIR, so a false
+// negative (Windows containers have no /.dockerenv) costs a hint, not
+// correctness.
+func inContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	if b, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		s := string(b)
+		return strings.Contains(s, "/docker/") || strings.Contains(s, "/containerd/")
+	}
+	return false
 }
 
 // windowsIsolation resolves the isolation mode for Windows containers. It
@@ -380,7 +434,7 @@ func (d *DockerRuntime) Create(ctx context.Context, spec *agentpb.ServerSpec) er
 	}
 	// Ensure the host data directory exists (idempotent); it is bind-mounted into
 	// the container as the data volume.
-	if err := os.MkdirAll(d.hostDir(spec.ServerId), 0o755); err != nil {
+	if err := os.MkdirAll(d.localDir(spec.ServerId), 0o755); err != nil {
 		return fmt.Errorf("docker: create data dir: %w", err)
 	}
 	d.putSpec(spec)
@@ -392,7 +446,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 	name := containerName(serverID)
 	_ = d.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
 	if deleteData {
-		_ = os.RemoveAll(d.hostDir(serverID))
+		_ = os.RemoveAll(d.localDir(serverID))
 	}
 	d.mu.Lock()
 	delete(d.specs, serverID)
@@ -403,7 +457,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
 	dataPath := d.containerDataTarget(req.ServerId)
 	// Ensure the host data dir exists even if Create was not called.
-	if err := os.MkdirAll(d.hostDir(req.ServerId), 0o755); err != nil {
+	if err := os.MkdirAll(d.localDir(req.ServerId), 0o755); err != nil {
 		return d.fail(emit, "create data dir: "+err.Error())
 	}
 
@@ -425,7 +479,7 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		// Hyper-V-isolated Windows containers reject Mounts-API bind mounts with
 		// "CreateComputeSystem ... The request is not supported". Binds works under
 		// both isolation modes and on Linux.
-		Binds: []string{d.hostDir(req.ServerId) + ":" + dataPath},
+		Binds: []string{d.bindSource(req.ServerId) + ":" + dataPath},
 	}
 	if req.MemoryLimitMb > 0 {
 		host.Resources.Memory = req.MemoryLimitMb * 1024 * 1024
@@ -567,7 +621,7 @@ func (d *DockerRuntime) ApplyConfig(_ context.Context, serverID string, files ma
 		if err != nil {
 			return err
 		}
-		host := d.hostOf(serverID, abs)
+		host := d.localOf(serverID, abs)
 		if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
 			return fmt.Errorf("docker: config dir for %s: %w", p, err)
 		}
@@ -608,7 +662,7 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 	}
 	host := &container.HostConfig{
 		// Binds (not the Mounts API) — required for Hyper-V Windows isolation; see Install.
-		Binds:        []string{d.hostDir(spec.ServerId) + ":" + dataPath},
+		Binds:        []string{d.bindSource(spec.ServerId) + ":" + dataPath},
 		PortBindings: bindings,
 	}
 	if spec.MemoryLimitMb > 0 {
@@ -785,7 +839,7 @@ func (d *DockerRuntime) StreamStats(ctx context.Context, serverID string, _ int3
 // directory natively (works the same on Linux and Windows).
 func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, error) {
 	var total int64
-	err := filepath.WalkDir(d.hostDir(serverID), func(_ string, e os.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(d.localDir(serverID), func(_ string, e os.DirEntry, walkErr error) error {
 		if walkErr != nil || e.IsDir() {
 			return nil // best-effort: skip unreadable entries
 		}
@@ -852,7 +906,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 	if err != nil {
 		return nil, err
 	}
-	ents, err := os.ReadDir(d.hostOf(serverID, dir))
+	ents, err := os.ReadDir(d.localOf(serverID, dir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -888,7 +942,7 @@ func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxByt
 	if maxBytes <= 0 {
 		maxBytes = 1 << 20 // 1 MiB default
 	}
-	host := d.hostOf(serverID, fp)
+	host := d.localOf(serverID, fp)
 	st, err := os.Stat(host)
 	if err != nil {
 		return nil, 0, false, false, fmt.Errorf("docker: %s not found", p)
@@ -917,7 +971,7 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 	if err != nil {
 		return err
 	}
-	host := d.hostOf(serverID, fp)
+	host := d.localOf(serverID, fp)
 	st, err := os.Stat(host)
 	if err != nil {
 		return fmt.Errorf("docker: %s not found", p)
@@ -937,13 +991,13 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 func (d *DockerRuntime) ZipFiles(_ context.Context, serverID string, paths []string, w io.Writer) error {
 	zw := zip.NewWriter(w)
 	defer zw.Close()
-	root := d.hostDir(serverID)
+	root := d.localDir(serverID)
 	for _, p := range paths {
 		src, err := d.safePath(p)
 		if err != nil {
 			return err
 		}
-		hostSrc := d.hostOf(serverID, src)
+		hostSrc := d.localOf(serverID, src)
 		err = filepath.WalkDir(hostSrc, func(fp string, e os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -987,7 +1041,7 @@ func (d *DockerRuntime) MakeDir(_ context.Context, serverID, p string) error {
 	if dir == d.dataRoot() {
 		return nil
 	}
-	if err := os.MkdirAll(d.hostOf(serverID, dir), 0o755); err != nil {
+	if err := os.MkdirAll(d.localOf(serverID, dir), 0o755); err != nil {
 		return fmt.Errorf("docker: mkdir %s: %w", p, err)
 	}
 	return nil
@@ -999,7 +1053,7 @@ func (d *DockerRuntime) WriteFile(_ context.Context, serverID, p string, content
 	if err != nil {
 		return err
 	}
-	host := d.hostOf(serverID, fp)
+	host := d.localOf(serverID, fp)
 	if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
 		return fmt.Errorf("docker: dir for %s: %w", p, err)
 	}
@@ -1019,7 +1073,7 @@ func (d *DockerRuntime) DeletePaths(_ context.Context, serverID string, paths []
 		if sp == d.dataRoot() {
 			continue // never delete the data root
 		}
-		if err := os.RemoveAll(d.hostOf(serverID, sp)); err != nil {
+		if err := os.RemoveAll(d.localOf(serverID, sp)); err != nil {
 			return fmt.Errorf("docker: delete %s: %w", p, err)
 		}
 	}
@@ -1039,11 +1093,11 @@ func (d *DockerRuntime) MovePath(_ context.Context, serverID, src, dst string) e
 	if s == d.dataRoot() || dp == d.dataRoot() {
 		return fmt.Errorf("docker: cannot move the data root")
 	}
-	hostDst := d.hostOf(serverID, dp)
+	hostDst := d.localOf(serverID, dp)
 	if err := os.MkdirAll(filepath.Dir(hostDst), 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(d.hostOf(serverID, s), hostDst); err != nil {
+	if err := os.Rename(d.localOf(serverID, s), hostDst); err != nil {
 		return fmt.Errorf("docker: move %s → %s: %w", src, dst, err)
 	}
 	return nil
@@ -1065,7 +1119,7 @@ func (d *DockerRuntime) CopyPath(_ context.Context, serverID, src, dst string) e
 	if dp == d.dataRoot() {
 		return fmt.Errorf("docker: cannot copy onto the data root")
 	}
-	if err := copyTreeFS(d.hostOf(serverID, s), d.hostOf(serverID, dp)); err != nil {
+	if err := copyTreeFS(d.localOf(serverID, s), d.localOf(serverID, dp)); err != nil {
 		return fmt.Errorf("docker: copy %s → %s: %w", src, dst, err)
 	}
 	return nil
@@ -1176,7 +1230,7 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 func (d *DockerRuntime) archiveDataDir(serverID string, w io.Writer) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-	root := d.hostDir(serverID)
+	root := d.localDir(serverID)
 	walkErr := filepath.WalkDir(root, func(fp string, e os.DirEntry, werr error) error {
 		if werr != nil {
 			return werr
@@ -1310,7 +1364,7 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 }
 
 func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id string) error {
-	root := d.hostDir(serverID)
+	root := d.localDir(serverID)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}

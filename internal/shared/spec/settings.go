@@ -59,6 +59,12 @@ type SettingGroup struct {
 // Settings is the game's editable configuration surface.
 type Settings struct {
 	Groups []SettingGroup `json:"groups,omitempty"`
+	// HotReload declares that the game re-reads its config files while running,
+	// so saved settings apply live without a restart. It only changes what the
+	// UI tells the operator after a save — config files are pushed to the node
+	// either way. Launch variables are never hot-reloadable (they're baked into
+	// the start command at boot).
+	HotReload bool `json:"hot_reload,omitempty"`
 }
 
 // fields returns every field across all groups.

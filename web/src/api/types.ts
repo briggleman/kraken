@@ -280,6 +280,11 @@ export interface Spec {
   install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean };
 }
 
+export interface NodePortRange {
+  start: number;
+  end: number;
+}
+
 export interface Node {
   id: string;
   name: string;
@@ -291,6 +296,8 @@ export interface Node {
   external_ip?: string;
   total_memory_mb: number;
   allocated_memory_mb: number;
+  /** Game-port pool: configured ranges (null when none) + allocated ports. */
+  ports?: { ranges: NodePortRange[] | null; allocated?: number[] } | null;
 }
 
 export type PowerActionName = "start" | "stop" | "restart" | "kill";
@@ -317,15 +324,32 @@ export interface SettingGroup {
   fields: SettingField[];
 }
 
+// ServerVariable is a launch variable (rendered into the startup command /
+// container env at start) with this server's current value. Editable any
+// time; changes apply on the next start.
+export interface ServerVariable {
+  key: string;
+  label?: string;
+  value: string;
+  rules?: string;
+  user_editable: boolean;
+}
+
 export interface ServerSettings {
   groups: SettingGroup[];
   values: Record<string, string>;
+  variables?: ServerVariable[];
+  /** The game re-reads config files live — saved settings apply without a restart. */
+  hot_reload?: boolean;
 }
 
 export interface UpdateSettingsResult {
   values: Record<string, string>;
+  variables?: ServerVariable[];
   applied: boolean;
   restart_needed: boolean;
+  hot_reload?: boolean;
+  variables_changed?: boolean;
 }
 
 export interface FileEntry {

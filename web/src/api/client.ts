@@ -280,8 +280,12 @@ export const api = {
     }
     return res.blob();
   },
-  updateServerSettings(id: string, values: Record<string, string>): Promise<UpdateSettingsResult> {
-    return request("PUT", `/servers/${id}/settings`, { values });
+  updateServerSettings(
+    id: string,
+    values: Record<string, string>,
+    variables?: Record<string, string>, // launch-variable edits: stopped servers only, apply on next start
+  ): Promise<UpdateSettingsResult> {
+    return request("PUT", `/servers/${id}/settings`, { values, ...(variables && Object.keys(variables).length ? { variables } : {}) });
   },
 
   listSpecs(): Promise<{ specs: Spec[] | null }> {
@@ -390,6 +394,11 @@ export const api = {
   },
   nodeInfo(id: string): Promise<Record<string, unknown>> {
     return request("GET", `/nodes/${id}/info`);
+  },
+  // Capacity edits only; omitted fields stay unchanged. Port-range changes
+  // preserve existing allocations (running servers keep their ports).
+  updateNode(id: string, input: { total_memory_mb?: number; port_start?: number; port_end?: number }): Promise<Node> {
+    return request("PATCH", `/nodes/${id}`, input);
   },
   deleteNode(id: string): Promise<void> {
     return request("DELETE", `/nodes/${id}`);

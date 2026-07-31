@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -14,6 +15,13 @@ import (
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
+
+// defaultPortRange is the game-port pool a node gets when registration doesn't
+// specify one. A node must never be created with an empty pool — the scheduler
+// can't allocate ports from it, which makes the node permanently unschedulable.
+// Operators running several nodes on one IP should still give each its own
+// range (the panel allocates per node and doesn't know they share an IP).
+var defaultPortRange = cluster.PortRange{Start: 28000, End: 28999}
 
 type registerNodeRequest struct {
 	Name        string `json:"name"` // optional; taken from the agent (KRAKEN_NODE_ID) when blank
@@ -87,7 +95,7 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 	if req.PortStart > 0 && req.PortEnd >= req.PortStart {
 		n.Ports = cluster.NewPortPool(cluster.PortRange{Start: req.PortStart, End: req.PortEnd})
 	} else {
-		n.Ports = cluster.NewPortPool()
+		n.Ports = cluster.NewPortPool(defaultPortRange)
 	}
 	if err := s.store.CreateNode(r.Context(), n); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not register node")
@@ -95,6 +103,71 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address)
 	writeJSON(w, http.StatusCreated, n)
+}
+
+// updateNodeRequest carries the operator-editable capacity fields. Pointer
+// fields distinguish "leave unchanged" (absent) from an explicit value.
+type updateNodeRequest struct {
+	TotalMemMB *int `json:"total_memory_mb,omitempty"`
+	PortStart  *int `json:"port_start,omitempty"`
+	PortEnd    *int `json:"port_end,omitempty"`
+}
+
+// handleUpdateNode edits a node's schedulable capacity: total memory and the
+// game-port range. Port-range changes preserve existing allocations, so running
+// servers keep their ports; only future placements draw from the new range.
+func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
+	var req updateNodeRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid node body")
+		return
+	}
+	n, err := s.store.GetNode(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "node not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get node")
+		return
+	}
+	if n.Ports == nil {
+		n.Ports = cluster.NewPortPool()
+	}
+
+	if req.TotalMemMB != nil {
+		if *req.TotalMemMB <= 0 {
+			writeError(w, http.StatusBadRequest, "total_memory_mb must be positive")
+			return
+		}
+		if *req.TotalMemMB < n.AllocatedMemoryMB {
+			writeError(w, http.StatusBadRequest,
+				fmt.Sprintf("total_memory_mb cannot be below the %dMB already reserved by servers on this node", n.AllocatedMemoryMB))
+			return
+		}
+		n.TotalMemoryMB = *req.TotalMemMB
+	}
+
+	if (req.PortStart == nil) != (req.PortEnd == nil) {
+		writeError(w, http.StatusBadRequest, "port_start and port_end must be set together")
+		return
+	}
+	if req.PortStart != nil {
+		start, end := *req.PortStart, *req.PortEnd
+		if start < 1 || end > 65535 || end < start {
+			writeError(w, http.StatusBadRequest, "port range must satisfy 1 <= start <= end <= 65535")
+			return
+		}
+		n.Ports.SetRanges(cluster.PortRange{Start: start, End: end})
+	}
+
+	if err := s.store.UpdateNode(r.Context(), n); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update node")
+		return
+	}
+	s.logger.Info("node capacity updated", "id", n.ID, "name", n.Name,
+		"total_memory_mb", n.TotalMemoryMB, "ports", n.Ports.Ranges)
+	writeJSON(w, http.StatusOK, n)
 }
 
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {

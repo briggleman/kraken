@@ -79,7 +79,12 @@ services:
       KRAKEN_AGENT_ADDR: 127.0.0.1:9090
       KRAKEN_SFTP_ADDR: ${KRAKEN_SFTP_ADDR:-:2022}
       KRAKEN_NODE_OS: linux
-      KRAKEN_DATA_DIR: /data
+      # Same absolute path inside the container as on the host — see the volume
+      # mount below. The Agent hands bind sources to the host's Docker daemon,
+      # which resolves them on the HOST, so a container-only path like /data
+      # would send game servers to a different directory than the one the
+      # Agent's file browser, backups, and SFTP see. Same-path keeps one value.
+      KRAKEN_DATA_DIR: ${KRAKEN_DATA_DIR:-/var/lib/kraken/server-data}
       KRAKEN_BACKUP_DIR: /agent-backups
       KRAKEN_STATE_DIR: /var/lib/kraken
       # Auto-enroll with the co-located Panel on first start; cert bundle
@@ -87,7 +92,13 @@ services:
       KRAKEN_PANEL_URL: http://127.0.0.1:8080
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${KRAKEN_DATA_DIR:-./server-data}:/data
+      # Mounted at the same path on both sides so the Agent's view and the
+      # daemon's view of the data root are one string (see KRAKEN_DATA_DIR).
+      # If you must mount it elsewhere inside the container, set
+      # KRAKEN_HOST_DATA_DIR to the host path instead.
+      - ${KRAKEN_DATA_DIR:-/var/lib/kraken/server-data}:${KRAKEN_DATA_DIR:-/var/lib/kraken/server-data}
+      # Backups are only ever read and written by the Agent itself — never
+      # bind-mounted into a game container — so any container path is fine.
       - ${KRAKEN_BACKUP_DIR:-./agent-backups}:/agent-backups
       - agent-state:/var/lib/kraken
 

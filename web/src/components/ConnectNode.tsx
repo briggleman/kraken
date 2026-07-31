@@ -154,7 +154,9 @@ function OsTabs({ value, onChange }: { value: AgentTarget; onChange: (v: AgentTa
               textTransform: "uppercase",
             }}
           >
-            <OsIcon os={os} size={14} style={{ color: active ? "var(--accent)" : "var(--text-secondary)" }} />
+            {/* Follows the label's color rather than going teal — the accent
+                border + wash already carry the active state. */}
+            <OsIcon os={os} size={14} style={{ color: active ? "var(--text-primary)" : "var(--text-secondary)" }} />
             {os === "linux" ? "Linux Install" : "Windows Install"}
           </button>
         );
@@ -451,20 +453,25 @@ export function ConnectNode({
             {advancedOpen ? "▾" : "▸"} ADVANCED (NAME · MEMORY · PORT RANGE)
           </button>
           {advancedOpen && (
-            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <div style={{ flex: 2 }}>
-                <Input label="NAME OVERRIDE" value={advName} onChange={(e) => setAdvName(e.target.value)} placeholder="blank = agent's KRAKEN_NODE_ID" mono />
+            <>
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <div style={{ flex: 2 }}>
+                  <Input label="NAME OVERRIDE" value={advName} onChange={(e) => setAdvName(e.target.value)} placeholder="blank = agent's KRAKEN_NODE_ID" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="MEMORY (MB)" type="number" value={advMem} onChange={(e) => setAdvMem(e.target.value)} placeholder="auto" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="PORT START" type="number" value={advPortStart} onChange={(e) => setAdvPortStart(e.target.value)} placeholder="28000" mono />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Input label="PORT END" type="number" value={advPortEnd} onChange={(e) => setAdvPortEnd(e.target.value)} placeholder="28999" mono />
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <Input label="MEMORY (MB)" type="number" value={advMem} onChange={(e) => setAdvMem(e.target.value)} placeholder="auto" mono />
+              <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
+                Blank port range = 28000–28999. When several nodes share one IP, give each its own range.
               </div>
-              <div style={{ flex: 1 }}>
-                <Input label="PORT START" type="number" value={advPortStart} onChange={(e) => setAdvPortStart(e.target.value)} placeholder="28000" mono />
-              </div>
-              <div style={{ flex: 1 }}>
-                <Input label="PORT END" type="number" value={advPortEnd} onChange={(e) => setAdvPortEnd(e.target.value)} placeholder="28999" mono />
-              </div>
-            </div>
+            </>
           )}
         </div>
       )}

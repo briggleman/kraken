@@ -9,8 +9,10 @@ import { Icon } from "@ds/components/core/Icon";
 
 const mono = "var(--font-mono)";
 
-const PLATFORM_BADGE: Record<string, { label: string; tone: "accent" | "coral" | "neutral" }> = {
-  "linux-native": { label: "LINUX", tone: "accent" },
+// Native platforms are neutral (Tux and the Windows panes read alike); coral is
+// reserved for wine, the one kind that means more than a bare OS.
+const PLATFORM_BADGE: Record<string, { label: string; tone: "coral" | "neutral" }> = {
+  "linux-native": { label: "LINUX", tone: "neutral" },
   "linux-wine": { label: "WINE", tone: "coral" },
   "windows-native": { label: "WINDOWS", tone: "neutral" },
 };

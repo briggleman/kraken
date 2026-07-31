@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Node, Spec, SpecVariable } from "@/api/types";
+import type { Node, Spec } from "@/api/types";
 import { Button } from "@ds/components/core/Button";
 import { Card } from "@ds/components/core/Card";
 import { Input } from "@ds/components/core/Input";
@@ -19,11 +19,12 @@ const SECTION_LABEL: React.CSSProperties = {
   marginBottom: 14,
 };
 
-// Platform badges derived from a spec's declared platforms.
+// Platform badges derived from a spec's declared platforms. Native platforms are
+// neutral (Tux and the Windows panes read alike); coral is reserved for wine.
 function platformBadges(spec: Spec) {
   const kinds = (spec.platforms ?? []).map((p) => p.kind);
-  const out: { tone: "accent" | "coral" | "neutral"; label: string }[] = [];
-  if (kinds.some((k) => k.startsWith("linux"))) out.push({ tone: "accent", label: "LINUX" });
+  const out: { tone: "coral" | "neutral"; label: string }[] = [];
+  if (kinds.some((k) => k.startsWith("linux"))) out.push({ tone: "neutral", label: "LINUX" });
   if (kinds.some((k) => k === "windows-native")) out.push({ tone: "neutral", label: "WINDOWS" });
   if (kinds.some((k) => k === "linux-wine")) out.push({ tone: "coral", label: "WINE" });
   return out;
@@ -83,30 +84,53 @@ function StepDots({ step }: { step: number }) {
 export function CreateWizard({
   specs,
   nodes,
+  initialSpecId,
   onCancel,
   onDeploy,
 }: {
   specs: Spec[];
   nodes: Node[];
+  /** Preselect a game and open on Placement — used by the Deploy button on a spec row. */
+  initialSpecId?: string;
   onCancel: () => void;
   onDeploy: (input: { spec_id: string; name: string; variables: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean }) => Promise<void>;
 }) {
-  const [step, setStep] = useState(0);
-  const [specId, setSpecId] = useState<string | null>(null);
+  const [step, setStep] = useState(initialSpecId ? 1 : 0);
+  const [specId, setSpecId] = useState<string | null>(initialSpecId ?? null);
   const [nodeId, setNodeId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [steamGuard, setSteamGuard] = useState("");
   const [installBepInEx, setInstallBepInEx] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const spec = useMemo(() => specs.find((s) => s.id === specId) ?? null, [specs, specId]);
-  const editable: SpecVariable[] = (spec?.variables ?? []).filter((v) => v.user_editable);
-  const onlineNodes = nodes.filter((n) => n.status === "online");
-  const placedNode = nodes.find((n) => n.id === nodeId) ?? null;
+  // Mirrors the scheduler's eligibility: only show nodes the selected game can
+  // actually be placed on — online, platform match, enough unreserved memory,
+  // and enough free game ports.
+  const eligibleNodes = useMemo(() => {
+    const specKinds = (spec?.platforms ?? []).map((p) => p.kind);
+    const nodeKinds = (n: Node): string[] =>
+      n.os === "linux" ? (n.wine_enabled ? ["linux-native", "linux-wine"] : ["linux-native"]) : ["windows-native"];
+    const freePorts = (n: Node): number | null => {
+      if (n.ports == null) return null; // panel predates port info — don't rule out
+      const total = (n.ports.ranges ?? []).reduce(
+        (sum, r) => sum + (r.end >= r.start ? r.end - r.start + 1 : 0), 0);
+      return total - (n.ports.allocated?.length ?? 0);
+    };
+    return nodes.filter((n) => {
+      if (n.status !== "online") return false;
+      if (!spec) return true;
+      if (!specKinds.some((k) => nodeKinds(n).includes(k))) return false;
+      if (n.total_memory_mb - n.allocated_memory_mb < spec.resources.min_memory_mb) return false;
+      const free = freePorts(n);
+      return free === null || free >= (spec.ports?.length ?? 0);
+    });
+  }, [nodes, spec]);
+  const placedNode = eligibleNodes.find((n) => n.id === nodeId) ?? eligibleNodes[0] ?? null;
 
   const nameErr = name.trim() === "" || name.length > 64;
-  const canNext = step === 0 ? !!specId : step === 2 ? !nameErr : true;
+  const canNext =
+    step === 0 ? !!specId : step === 1 ? eligibleNodes.length > 0 : step === 2 ? !nameErr : true;
 
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const back = () => (step === 0 ? onCancel() : setStep((s) => s - 1));
@@ -118,7 +142,9 @@ export function CreateWizard({
     if (!specId) return;
     setBusy(true);
     try {
-      await onDeploy({ spec_id: specId, name: name.trim(), variables: overrides, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined });
+      // No per-game variable overrides here: the wizard is identical for every
+      // game, and launch variables are edited on the server's Settings tab.
+      await onDeploy({ spec_id: specId, name: name.trim(), variables: {}, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined });
     } finally {
       setBusy(false);
     }
@@ -210,13 +236,15 @@ export function CreateWizard({
         {step === 1 && (
           <div>
             <div style={SECTION_LABEL}>NODE PLACEMENT</div>
-            {onlineNodes.length === 0 && (
+            {eligibleNodes.length === 0 && (
               <div style={{ fontFamily: mono, fontSize: 12.5, color: "var(--text-muted)", marginBottom: 12 }}>
-                No nodes online — the scheduler will place this server when one comes up.
+                No node can host {spec?.name ?? "this game"} right now — it needs an online node
+                matching its platform ({(spec?.platforms ?? []).map((p) => p.kind).join(", ") || "any"})
+                with {spec ? `${spec.resources.min_memory_mb}MB of` : "enough"} free memory and free game ports.
               </div>
             )}
-            {nodes.map((n, i) => {
-              const sel = nodeId ? nodeId === n.id : i === 0;
+            {eligibleNodes.map((n, i) => {
+              const sel = placedNode ? placedNode.id === n.id : i === 0;
               return (
                 <div
                   key={n.id}
@@ -234,7 +262,7 @@ export function CreateWizard({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <OsIcon os={n.os} size={16} style={{ color: "var(--accent)" }} />
+                    <OsIcon os={n.os} size={16} style={{ color: "var(--text-muted)" }} />
                     <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-primary)" }}>{n.name}</span>
                     <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                       {n.os}
@@ -264,17 +292,12 @@ export function CreateWizard({
               mono
               helper={name.length > 64 ? "Must be 64 or fewer characters." : "A unique name for your server."}
             />
-            {editable.map((v) => (
-              <div key={v.key} style={{ marginTop: 14 }}>
-                <Input
-                  label={(v.label || v.key).toUpperCase()}
-                  value={overrides[v.key] ?? v.default}
-                  onChange={(e) => setOverrides((o) => ({ ...o, [v.key]: e.target.value }))}
-                  mono
-                  helper={v.rules || undefined}
-                />
+            {(spec?.variables ?? []).some((v) => v.user_editable) && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-muted)" }}>
+                Game options (server name, world, passwords…) are configured on the server's
+                Settings tab after deploy.
               </div>
-            ))}
+            )}
             {spec?.install?.bepinex_compatible && (
               <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18, cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13.5, color: "var(--text-secondary)" }}>
                 <Toggle checked={installBepInEx} onChange={setInstallBepInEx} />

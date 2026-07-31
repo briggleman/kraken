@@ -51,6 +51,96 @@ func registerNode(t *testing.T, h http.Handler, token, addr string) string {
 	return n.ID
 }
 
+// Registering without a port range must fall back to the default pool — an
+// empty pool would make the node permanently unschedulable (every spec needs
+// at least one port).
+func TestRegisterNode_DefaultsPortRange(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-noports")
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes", token, map[string]any{
+		"name": "no-ports-node", "os": "linux", "address": addr, "total_memory_mb": 8192,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register node: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var n struct {
+		Ports struct {
+			Ranges []struct{ Start, End int } `json:"ranges"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(n.Ports.Ranges) != 1 || n.Ports.Ranges[0].Start != 28000 || n.Ports.Ranges[0].End != 28999 {
+		t.Fatalf("expected default port range 28000-28999, got %+v", n.Ports.Ranges)
+	}
+}
+
+// PATCH /nodes/{id} edits capacity: memory and port range, independently or
+// together, with validation that keeps the scheduler's math sane.
+func TestUpdateNode_Capacity(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-cap")
+	nodeID := registerNode(t, h, token, addr) // 16384MB, ports 27000-27100
+
+	type nodeView struct {
+		TotalMemoryMB int `json:"total_memory_mb"`
+		Ports         struct {
+			Ranges []struct{ Start, End int } `json:"ranges"`
+		} `json:"ports"`
+	}
+
+	// Memory + port range together.
+	rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+nodeID, token, map[string]any{
+		"total_memory_mb": 32768, "port_start": 29000, "port_end": 29999,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update node: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var n nodeView
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n.TotalMemoryMB != 32768 {
+		t.Fatalf("memory not updated: %d", n.TotalMemoryMB)
+	}
+	if len(n.Ports.Ranges) != 1 || n.Ports.Ranges[0].Start != 29000 || n.Ports.Ranges[0].End != 29999 {
+		t.Fatalf("port range not updated: %+v", n.Ports.Ranges)
+	}
+
+	// Omitted fields stay unchanged.
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+nodeID, token, map[string]any{"total_memory_mb": 8192})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("memory-only update: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	n = nodeView{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n.TotalMemoryMB != 8192 || len(n.Ports.Ranges) != 1 || n.Ports.Ranges[0].Start != 29000 {
+		t.Fatalf("memory-only update disturbed ports: %+v", n)
+	}
+
+	// Validation failures.
+	for name, body := range map[string]map[string]any{
+		"half port range":   {"port_start": 30000},
+		"inverted range":    {"port_start": 300, "port_end": 200},
+		"zero memory":       {"total_memory_mb": 0},
+		"port out of range": {"port_start": 60000, "port_end": 70000},
+	} {
+		if rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+nodeID, token, body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d (%s)", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	if rec := do(t, h, http.MethodPatch, "/api/v1/nodes/missing", token, map[string]any{"total_memory_mb": 1024}); rec.Code != http.StatusNotFound {
+		t.Errorf("missing node: expected 404, got %d", rec.Code)
+	}
+}
+
 func TestPanelToAgent_NodeInfoAndPower(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)

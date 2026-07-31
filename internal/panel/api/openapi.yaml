@@ -561,6 +561,24 @@ paths:
           description: Node
           content:
             application/json: { schema: { $ref: '#/components/schemas/Node' } }
+    patch:
+      tags: [Nodes]
+      summary: Update a node's schedulable capacity (total memory, game-port range)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                total_memory_mb: { type: integer, description: Must cover memory already reserved by servers on the node }
+                port_start: { type: integer, description: Set together with port_end; existing allocations are preserved }
+                port_end: { type: integer }
+      responses:
+        '200':
+          description: Updated node
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Node' } }
+        '400': { description: Invalid capacity values }
     delete: { tags: [Nodes], summary: Deregister a node, responses: { '204': { description: Deleted } } }
   /nodes/{id}/info:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]

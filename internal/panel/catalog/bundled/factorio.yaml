@@ -7,7 +7,7 @@ description: >-
   network tuning are written to server-settings.json from the Settings tab.
   Admins (server-adminlist.json) and map-gen tweaks are managed via the Files
   tab / SFTP; map-gen changes only apply to a fresh world.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427520/capsule_616x353.jpg?t=1763986204
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/427520/library_hero.jpg?t=1763986204
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/427520/267f5a89f36ab287e600a4e7d4e73d3d11f0fd7d.jpg
 platforms:
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }

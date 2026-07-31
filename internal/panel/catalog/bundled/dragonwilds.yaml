@@ -9,7 +9,7 @@ description: >-
 # Steam main-capsule + community-icon (game appid 1374490 = RS: Dragonwilds).
 # Server appid 4019830 has no CDN assets; always use the game appid. See
 # bundled/SPECS.md.
-banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1374490/91ab96a83047ad282e9741a597a9f83a17d2121d/capsule_616x353_alt_assets_2.jpg?t=1783424384
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1374490/26888710528ba20ab11743212140ca36930569d3/library_hero_2x.jpg?t=1785319638
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1374490/8e307e43b46f4dc3554487c491015ba2b24ff235.jpg
 steam_app_ids:
   linux: 4019830

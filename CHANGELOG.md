@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.12.0](https://github.com/briggleman/kraken/compare/v0.11.1...v0.12.0) (2026-07-31)
+
+
+### Features
+
+* **agent:** config file, flags, and a --root layout ([#49](https://github.com/briggleman/kraken/issues/49)) ([#51](https://github.com/briggleman/kraken/issues/51)) ([06b9365](https://github.com/briggleman/kraken/commit/06b936555e2c935808a6025c9d21f50fc0237611))
+
+## [0.11.1](https://github.com/briggleman/kraken/compare/v0.11.0...v0.11.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **agent:** resolve bind-mount sources against the host, not the Agent ([#48](https://github.com/briggleman/kraken/issues/48)) ([a51c80d](https://github.com/briggleman/kraken/commit/a51c80db2bf4087b9dc0ab36733f063ccb39f6ba))
+
+## [0.11.0](https://github.com/briggleman/kraken/compare/v0.10.0...v0.11.0) (2026-07-30)
+
+
+### Features
+
+* specs list view with hero art and neutral platform marks ([#45](https://github.com/briggleman/kraken/issues/45)) ([55cf798](https://github.com/briggleman/kraken/commit/55cf798e666b7272dde8a0a0922514bfa4d14b29))
+
+## [0.10.0](https://github.com/briggleman/kraken/compare/v0.9.0...v0.10.0) (2026-07-10)
+
+
+### Features
+
+* uniform create wizard, unified settings tab with hot_reload-aware messaging ([#42](https://github.com/briggleman/kraken/issues/42)) ([6b8d967](https://github.com/briggleman/kraken/commit/6b8d96734c3826fa5009df1616ad7d6ecb7cd155))
+
+## [0.9.0](https://github.com/briggleman/kraken/compare/v0.8.3...v0.9.0) (2026-07-10)
+
+
+### Features
+
+* node capacity editing, eligible-node placement filter, default port ranges, per-node scheduler errors ([#40](https://github.com/briggleman/kraken/issues/40)) ([9ad7125](https://github.com/briggleman/kraken/commit/9ad7125ff7603df6ec05a4ac2a377bf8a34bdd8c))
+
 ## [0.8.3](https://github.com/briggleman/kraken/compare/v0.8.2...v0.8.3) (2026-07-09)
 
 

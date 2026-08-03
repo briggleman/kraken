@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import type { Node, PowerActionName, Server, Spec } from "@/api/types";
@@ -14,6 +14,22 @@ import { CreateWizard } from "./CreateServer";
 const mono = "var(--font-mono)";
 const GRID = "28px 1.5fr 1.1fr 1fr .6fr 44px .7fr .9fr";
 
+// The fleet is meant to sit open on a second monitor, so it polls instead of
+// rendering one snapshot forever. Paused while the tab is hidden — a backgrounded
+// dashboard nobody is reading should not keep three endpoints warm.
+const POLL_MS = 10_000;
+// How often the "updated Ns ago" stamp re-renders. Coarser than POLL_MS on
+// purpose: the stamp only needs to look alive, not tick like a clock.
+const CLOCK_MS = 5_000;
+
+function agoLabel(sinceMs: number): string {
+  const s = Math.max(0, Math.round(sinceMs / 1000));
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
+}
+
 export function Fleet() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,17 +39,65 @@ export function Fleet() {
   const [deploying, setDeploying] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState("");
+  // `loaded` gates every derived number below. Without it an unanswered fetch
+  // renders as a healthy empty fleet — zero running, zero needing attention,
+  // "all healthy" — which is the one thing this panel must never claim.
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastLoaded, setLastLoaded] = useState<number | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
-  const refresh = () => {
-    Promise.all([api.listServers(), api.listSpecs(), api.listNodes()])
-      .then(([s, sp, n]) => {
-        setServers(s.servers ?? []);
-        setSpecs(sp.specs ?? []);
-        setNodes(n.nodes ?? []);
-      })
-      .catch((e) => Toaster.error(e instanceof Error ? e.message : "failed to load fleet"));
-  };
-  useEffect(refresh, []);
+  const refresh = useCallback(async () => {
+    try {
+      const [s, sp, n] = await Promise.all([api.listServers(), api.listSpecs(), api.listNodes()]);
+      setServers(s.servers ?? []);
+      setSpecs(sp.specs ?? []);
+      setNodes(n.nodes ?? []);
+      setLoadError(null);
+      setLoaded(true);
+      setLastLoaded(Date.now());
+    } catch (e) {
+      // Deliberately keep the last good data. A failed poll means "these numbers
+      // are old", not "the fleet is empty" — the banner says which, and the
+      // timestamp says how old. Errors surface on the page, not in a toast that
+      // dismisses itself while the condition persists.
+      setLoadError(e instanceof Error ? e.message : "failed to load fleet");
+    }
+  }, []);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    const start = () => {
+      stop();
+      timer = window.setInterval(() => void refresh(), POLL_MS);
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void refresh(); // catch up immediately on return, then resume the cadence
+        start();
+      }
+    };
+    void refresh();
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refresh]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTs(Date.now()), CLOCK_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Honor a deploy hand-off from the setup wizard ("Deploy your first server").
   useEffect(() => {
@@ -85,6 +149,12 @@ export function Fleet() {
 
   const crashedName = servers.find((s) => s.state === "crashed")?.name;
 
+  // Every tile reads "—" until a fetch has actually landed, so a pending or
+  // failed load can never be mistaken for a quiet, healthy fleet.
+  const stat = (n: number) => (loaded ? n : "—");
+  const freshness = lastLoaded == null ? null : agoLabel(nowTs - lastLoaded);
+  const stale = loaded && loadError !== null;
+
   return (
     <main style={{ maxWidth: "var(--container-max)", margin: "0 auto", padding: "34px 30px 70px" }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 26 }}>
@@ -94,21 +164,41 @@ export function Fleet() {
             Servers
           </h1>
         </div>
-        <Button variant="primary" icon="plus" onClick={() => setDeploying(true)}>New server</Button>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {freshness && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontFamily: mono,
+                fontSize: 11,
+                letterSpacing: "1px",
+                color: stale ? "var(--coral-soft)" : "var(--text-muted)",
+              }}
+            >
+              {stale && <Icon name="octagon" size={12} />}
+              {stale ? `stale — last updated ${freshness}` : `updated ${freshness}`}
+            </span>
+          )}
+          <Button variant="primary" icon="plus" onClick={() => setDeploying(true)}>New server</Button>
+        </div>
       </div>
 
       {/* metric tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 26 }}>
-        <MetricCard label="RUNNING SERVERS" value={running} />
-        <MetricCard label="NEEDS ATTENTION" value={attention} accent={attention ? "var(--status-crashed)" : undefined}>
+        <MetricCard label="RUNNING SERVERS" value={stat(running)} />
+        <MetricCard label="NEEDS ATTENTION" value={stat(attention)} accent={loaded && attention ? "var(--status-crashed)" : undefined}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 14 }}>
-            {attention ? `${crashedName ?? "a server"} crashed` : "all healthy"}
+            {!loaded ? "awaiting fleet state" : attention ? `${crashedName ?? "a server"} crashed` : "all healthy"}
           </div>
         </MetricCard>
-        <MetricCard label="NODES ONLINE" value={onlineNodes} suffix={`/${nodes.length || 0}`}>
+        <MetricCard label="NODES ONLINE" value={stat(onlineNodes)} suffix={loaded ? `/${nodes.length || 0}` : undefined}>
           <div style={{ display: "flex", gap: 5, marginTop: 16 }}>
-            {nodes.length === 0 ? (
-              <span style={{ fontSize: 12, color: "var(--text-faint)" }}>no nodes</span>
+            {!loaded ? (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>
+            ) : nodes.length === 0 ? (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>no nodes</span>
             ) : (
               nodes.map((n) => (
                 <span
@@ -135,13 +225,41 @@ export function Fleet() {
             </div>
           )}
         </MetricCard>
-        <MetricCard label="FLEET MEMORY" value={fleetMem} suffix="%">
-          <MetricBar pct={fleetMem} />
+        <MetricCard label="FLEET MEMORY" value={stat(fleetMem)} suffix={loaded ? "%" : undefined}>
+          <MetricBar pct={loaded ? fleetMem : 0} />
         </MetricCard>
       </div>
 
+      {/* A failed refresh on top of good data keeps the table — the numbers are
+          real, just old. The banner says so and offers the retry. */}
+      {stale && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            padding: "12px 18px",
+            marginBottom: 16,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-danger)",
+            background: "var(--danger-wash)",
+          }}
+        >
+          <Icon name="octagon" size={16} style={{ color: "var(--status-crashed)", flex: "none" }} />
+          <span style={{ fontSize: 13.5, color: "var(--text-secondary)", flex: 1, minWidth: 240 }}>
+            Showing the last known state from {freshness}. Refreshing is failing:{" "}
+            <span style={{ fontFamily: mono, fontSize: 12.5, color: "var(--coral-soft)" }}>{loadError}</span>
+          </span>
+          <Button size="sm" variant="secondary" icon="refresh" onClick={() => void refresh()}>Retry</Button>
+        </div>
+      )}
 
-      {servers.length === 0 ? (
+      {!loaded && loadError ? (
+        <LoadFailed error={loadError} onRetry={() => void refresh()} />
+      ) : !loaded ? (
+        <LoadingState />
+      ) : servers.length === 0 ? (
         <EmptyState onDeploy={() => setDeploying(true)} hasSpecs={specs.length > 0} />
       ) : (
         <Card padding={0} style={{ overflow: "hidden", background: "rgba(5,19,24,.55)" }}>
@@ -269,6 +387,45 @@ function nodeBarColor(status: Node["status"]): string {
   if (status === "online") return "var(--status-running)";
   if (status === "partial") return "var(--status-stopping)";
   return "var(--status-offline)";
+}
+
+// Distinct from EmptyState on purpose: "we haven't looked yet" and "there is
+// nothing there" are different facts, and the old code showed the second for both.
+function LoadingState() {
+  return (
+    <Card dashed style={{ textAlign: "center", padding: "80px 20px" }}>
+      <span
+        style={{
+          display: "inline-block",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: "var(--accent)",
+          boxShadow: "var(--glow-accent-dot)",
+          animation: "abyssalPulseDot 2.2s infinite",
+          marginBottom: 14,
+        }}
+      />
+      <div style={{ fontFamily: mono, fontSize: 13, color: "var(--text-secondary)" }}>Reading fleet state…</div>
+    </Card>
+  );
+}
+
+// The first load failed, so there is no data to fall back on. Say what broke and
+// what it does not mean — an operator seeing red on a control panel needs to know
+// whether their servers are affected before anything else.
+function LoadFailed({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <Card style={{ textAlign: "center", padding: "64px 20px", border: "1px solid var(--border-danger)", background: "var(--danger-wash)" }}>
+      <Icon name="octagon" size={26} style={{ color: "var(--status-crashed)" }} />
+      <div style={{ fontSize: 16, color: "var(--text-primary)", margin: "12px 0 8px" }}>Can't read the fleet.</div>
+      <div style={{ fontFamily: mono, fontSize: 12.5, color: "var(--coral-soft)", marginBottom: 10, wordBreak: "break-word" }}>{error}</div>
+      <div style={{ fontSize: 13, color: "var(--text-secondary)", maxWidth: 460, margin: "0 auto 20px", lineHeight: 1.6 }}>
+        The Panel is unreachable or your session has expired. Your servers are unaffected — this is the Panel's view of them, not their state.
+      </div>
+      <Button variant="secondary" icon="refresh" onClick={onRetry}>Retry</Button>
+    </Card>
+  );
 }
 
 function EmptyState({ onDeploy, hasSpecs }: { onDeploy: () => void; hasSpecs: boolean }) {

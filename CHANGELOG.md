@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/briggleman/kraken/compare/v0.14.1...v0.14.2) (2026-08-03)
+
+
+### Bug Fixes
+
+* **ui:** show a crashed server's last output instead of a dead end ([#65](https://github.com/briggleman/kraken/issues/65)) ([a20ac1b](https://github.com/briggleman/kraken/commit/a20ac1b308aaa730572cf0705654a5ec2709184b))
+
 ## [0.14.1](https://github.com/briggleman/kraken/compare/v0.14.0...v0.14.1) (2026-08-03)
 
 

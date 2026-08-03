@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/briggleman/kraken/compare/v0.14.2...v0.15.0) (2026-08-03)
+
+
+### Features
+
+* **panel:** content security policy and hardened response headers ([#67](https://github.com/briggleman/kraken/issues/67)) ([ba8bb35](https://github.com/briggleman/kraken/commit/ba8bb355e72ddc6ef20a2ac299376cf1dc201550))
+* **ui:** self-host the brand faces instead of fetching Google Fonts ([#68](https://github.com/briggleman/kraken/issues/68)) ([2c11530](https://github.com/briggleman/kraken/commit/2c11530c7cabeb6591a3360b18bd0cd126834e92))
+
 ## [0.14.2](https://github.com/briggleman/kraken/compare/v0.14.1...v0.14.2) (2026-08-03)
 
 

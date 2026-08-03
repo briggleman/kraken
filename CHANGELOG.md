@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/briggleman/kraken/compare/v0.14.0...v0.14.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **ui:** stop the fleet dashboard reporting state it does not have ([#63](https://github.com/briggleman/kraken/issues/63)) ([897e3e7](https://github.com/briggleman/kraken/commit/897e3e7f4aac76ae5dd6ee06935c923664ab5aaa))
+
 ## [0.14.0](https://github.com/briggleman/kraken/compare/v0.13.0...v0.14.0) (2026-07-31)
 
 

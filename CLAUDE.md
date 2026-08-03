@@ -126,6 +126,7 @@ the git log and release-please changelog stay clean without it.
 
 ## Pointers
 
+- Product context (users, positioning, constraints) → **[PRODUCT.md](PRODUCT.md)**
 - Design language → **[web/DESIGN.md](web/DESIGN.md)**
 - Roadmap / deferred work → **[BACKLOG.md](BACKLOG.md)**
 - Security posture & audit history → **[SECURITY.md](SECURITY.md)**

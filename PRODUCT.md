@@ -124,11 +124,18 @@ unreachable). Node health is exactly three states: **online**, **partial**,
 hosts, agent addresses), it is an **IP or DNS name — never a Windows computer
 name**. The Agent reports its real listening port for prefills.
 
+**Telemetry — decided 2026-08-03.** *The shipped product collects nothing*, and
+that is the default to preserve: no analytics, crash reporting, or usage
+collection exists in the Panel, Agent, or UI. Separately, **the reference
+deployment deliberately runs Cloudflare Web Analytics**, whose beacon Cloudflare
+injects at the edge — accepted because that telemetry feeds Cloudflare's own
+security tooling for an internet-exposed control plane. That decision belongs to
+the deployment, not the product: the Panel's CSP allows the beacon host only when
+an operator sets `KRAKEN_CSP_SCRIPT_SRC`, so no other install inherits it. Adding
+collection *to the software* remains a separate decision requiring its own yes.
+
 **Explicitly undecided — do not invent an answer:**
 
-- **Telemetry stance.** Nothing is collected today and no collection exists in
-  the code, but a "never, under any circumstances" commitment has not been made.
-  Adding any collection is a product decision requiring an explicit yes.
 - **Openness to outside contributions.** Whether external PRs are accepted at
   all, and under what bar, is deliberately unresolved (see BACKLOG.md). GPL-3.0
   is the license context.

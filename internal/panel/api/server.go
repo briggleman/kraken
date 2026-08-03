@@ -180,7 +180,7 @@ func (s *Server) routes() chi.Router {
 	// Note: middleware.RealIP is intentionally omitted — it trusts client-supplied
 	// X-Forwarded-For/X-Real-IP, which are spoofable without a trusted proxy and
 	// would corrupt audit-log source IPs. clientIP() uses the real TCP peer.
-	r.Use(secureHeaders)
+	r.Use(s.secureHeaders)
 	r.Use(middleware.Recoverer)
 	r.Use(s.metricsMiddleware)
 	// Coarse safety net only — it must sit ABOVE the longest legitimate handler
@@ -371,13 +371,63 @@ func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// secureHeaders sets conservative response security headers. The Panel serves
-// JSON/YAML and a metrics endpoint (no HTML), so nosniff is the key one — it
-// stops browsers MIME-sniffing a response into something executable.
-func secureHeaders(next http.Handler) http.Handler {
+// buildCSP renders the Content-Security-Policy value.
+//
+// The Panel embeds and serves the whole web UI, so this is the load-bearing
+// security header — not an afterthought behind nosniff. Every directive below is
+// as tight as the actual bundle allows:
+//
+//   - script-src 'self' — the built bundle carries no inline script and no eval
+//     (verified against dist/assets/*.js), so neither escape hatch is needed.
+//   - style-src omits 'unsafe-inline' — the design system's inline styles are
+//     applied by React through the CSSOM, which CSP does not govern; only literal
+//     style="…" attributes in markup would need it, and index.html has none.
+//     fonts.googleapis.com serves the @import in tokens/fonts.css.
+//   - img-src https: — Game Specs carry operator-supplied icon_url / banner_url
+//     pointing at arbitrary CDNs. Tighten this and game artwork disappears.
+//   - connect-src 'self' — the REST API plus the same-origin console WebSocket.
+//
+// Deliberately absent: upgrade-insecure-requests. Plain-http LAN installs are a
+// first-class deployment and it would break their subresource loads.
+func buildCSP(cfg *config.Config) string {
+	scriptSrc := append([]string{"'self'"}, cfg.CSPScriptSrc...)
+	connectSrc := append([]string{"'self'"}, cfg.CSPConnectSrc...)
+	return strings.Join([]string{
+		"default-src 'self'",
+		"base-uri 'none'",
+		"object-src 'none'",
+		"frame-ancestors 'none'",
+		"frame-src 'none'",
+		"form-action 'self'",
+		"script-src " + strings.Join(scriptSrc, " "),
+		"style-src 'self' https://fonts.googleapis.com",
+		"font-src 'self' https://fonts.gstatic.com",
+		"img-src 'self' data: https:",
+		"connect-src " + strings.Join(connectSrc, " "),
+		"manifest-src 'self'",
+	}, "; ")
+}
+
+// secureHeaders sets conservative response security headers. Referrer-Policy
+// matters more than it looks: Panel URLs carry server UUIDs, and no-referrer
+// keeps them out of the Referer sent to a Game Spec's artwork CDN.
+func (s *Server) secureHeaders(next http.Handler) http.Handler {
+	// Computed once at router construction — the policy is static per process.
+	policy := buildCSP(s.cfg)
+	header := "Content-Security-Policy"
+	if s.cfg.CSPMode == config.CSPReportOnly {
+		header = "Content-Security-Policy-Report-Only"
+	}
+	emitCSP := s.cfg.CSPMode != config.CSPOff
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		if emitCSP {
+			w.Header().Set(header, policy)
+		}
 		next.ServeHTTP(w, r)
 	})
 }

@@ -304,12 +304,15 @@ tight as the real bundle allows, and each directive is pinned to evidence:
 
 - **`script-src 'self'`** — no `'unsafe-inline'`, no `'unsafe-eval'`. `index.html`
   carries no inline script and the built bundle contains no `eval(`.
-- **`style-src 'self' https://fonts.googleapis.com`** — notably **without**
-  `'unsafe-inline'`, even though the entire design system is inline styles. React
-  applies them through the CSSOM, which CSP does not govern; only literal
-  `style="…"` attributes in markup would need the exception. Verified live under
-  full enforcement across the login, Fleet and admin Settings screens: fully
-  styled, zero console violations.
+- **`style-src 'self'` / `font-src 'self'`** — no third-party origin at all. The
+  `style-src` value is notably **without** `'unsafe-inline'`, even though the
+  entire design system is inline styles: React applies them through the CSSOM,
+  which CSP does not govern, and only literal `style="…"` attributes in markup
+  would need the exception. Verified live under full enforcement across the
+  login, Fleet and admin Settings screens: fully styled, zero console violations.
+  The brand faces were on Google's CDN until they were vendored into
+  `web/public/fonts` (OFL 1.1, licenses shipped alongside); the test asserts
+  neither `fonts.googleapis.com` nor `fonts.gstatic.com` can return.
 - **`img-src 'self' data: https:`** — deliberately permissive. Game Specs carry
   operator-supplied `icon_url` / `banner_url` pointing at arbitrary CDNs
   (Steam, Thunderstore, GitHub); tightening this silently removes game artwork.

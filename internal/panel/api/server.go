@@ -382,7 +382,8 @@ func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 //   - style-src omits 'unsafe-inline' — the design system's inline styles are
 //     applied by React through the CSSOM, which CSP does not govern; only literal
 //     style="…" attributes in markup would need it, and index.html has none.
-//     fonts.googleapis.com serves the @import in tokens/fonts.css.
+//   - style-src / font-src are 'self' only because the brand faces are
+//     self-hosted from web/public/fonts. Nothing here reaches a font CDN.
 //   - img-src https: — Game Specs carry operator-supplied icon_url / banner_url
 //     pointing at arbitrary CDNs. Tighten this and game artwork disappears.
 //   - connect-src 'self' — the REST API plus the same-origin console WebSocket.
@@ -400,8 +401,8 @@ func buildCSP(cfg *config.Config) string {
 		"frame-src 'none'",
 		"form-action 'self'",
 		"script-src " + strings.Join(scriptSrc, " "),
-		"style-src 'self' https://fonts.googleapis.com",
-		"font-src 'self' https://fonts.gstatic.com",
+		"style-src 'self'",
+		"font-src 'self'",
 		"img-src 'self' data: https:",
 		"connect-src " + strings.Join(connectSrc, " "),
 		"manifest-src 'self'",

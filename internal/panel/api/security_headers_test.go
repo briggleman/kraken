@@ -61,14 +61,23 @@ func TestCSP_EnforcedByDefault(t *testing.T) {
 		"base-uri 'none'",
 		"frame-ancestors 'none'",
 		"form-action 'self'",
-		"style-src 'self' https://fonts.googleapis.com",
-		"font-src 'self' https://fonts.gstatic.com",
+		// The brand faces are self-hosted, so no font CDN belongs in either.
+		"style-src 'self'",
+		"font-src 'self'",
 		// Game Specs carry operator-supplied artwork URLs on arbitrary CDNs.
 		"img-src 'self' data: https:",
 		"connect-src 'self'",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("CSP missing %q\n  got: %s", want, csp)
+		}
+	}
+	// Regression guard: the fonts were on Google's CDN until they were vendored
+	// into web/public/fonts. If either host comes back, the LAN-first promise and
+	// this policy have both quietly regressed.
+	for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
+		if strings.Contains(csp, host) {
+			t.Errorf("CSP allows %s — the brand faces are self-hosted: %s", host, csp)
 		}
 	}
 	// The bundle has no inline script and no eval, so neither escape hatch

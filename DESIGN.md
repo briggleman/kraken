@@ -17,22 +17,29 @@ emoji.
 
 ## 1. Project layout (in this repo)
 
+This file lives at the repo root; the UI it governs lives under `web/`. Paths below are
+**repo-root-relative**.
+
 ```
-design-system/
-  styles.css            ← global entry point. Imports every token file.
-  tokens/
-    fonts.css           ← Space Grotesk + JetBrains Mono (Google Fonts)
-    colors.css          ← all color variables
-    typography.css      ← families + weights
-    spacing.css         ← 4px spacing scale, radius, elevation, layout
-    effects.css         ← gradients, glows, blur, easing/duration, keyframes
-  components/core/       ← React primitives (.jsx + .d.ts), consumed via the @ds alias
-src/                     ← the Kraken app (pages, shell, api client)
-public/                  ← favicons, PWA manifest, brand glyph (kraken-glyph-teal.png)
+web/
+  design-system/
+    styles.css            ← global entry point. Imports every token file.
+    tokens/
+      fonts.css           ← Space Grotesk + JetBrains Mono (Google Fonts)
+      colors.css          ← all color variables
+      typography.css      ← families + weights
+      spacing.css         ← 4px spacing scale, radius, elevation, layout
+      effects.css         ← gradients, glows, blur, easing/duration, keyframes
+    components/core/      ← React primitives (.jsx + .d.ts), consumed via the @ds alias
+  src/                    ← the Kraken app (pages, shell, api client)
+  public/                 ← favicons, PWA manifest, brand glyph (kraken-glyph-teal.png)
 ```
 
+In sections 2–9 a bare token filename (`tokens/colors.css`, `components/core/`) is relative to
+`web/design-system/` — the shorthand the design system uses for itself.
+
 Components are imported as `@ds/components/core/<Name>` and styled with inline styles that read CSS
-variables — no Tailwind. The brand mark is `public/kraken-glyph-teal.png`.
+variables — no Tailwind. The brand mark is `web/public/kraken-glyph-teal.png`.
 
 ---
 
@@ -127,7 +134,7 @@ Cards get NO drop shadow by default — depth comes from the translucent fill ov
 
 **Ambient atmosphere (full-page chrome ONLY — never behind dense data):** fixed depth gradient +
 radial top-glow, drifting god-rays, a rising-particle canvas, inset fog/vignette. See
-`src/components/AmbientBackground.tsx`.
+`web/src/components/AmbientBackground.tsx`.
 
 **Surfaces & glass:** nearly every surface is a semi-transparent fill (~`rgba(7,23,29,.5)`) over the
 depth gradient + a 1px teal border (12–14%), radius 13–15px. Focus/selected: teal border 30% + a 3px
@@ -206,7 +213,7 @@ Operator-to-operator: **precise, calm, technical**, with a thin thread of deep-s
 
 ## 9. Working rules
 
-1. **Link `design-system/styles.css`** for all tokens + fonts. Never duplicate token values inline —
+1. **Link `web/design-system/styles.css`** for all tokens + fonts. Never duplicate token values inline —
    use the CSS variables (`var(--accent)`, `var(--sp-4)`, …).
 2. **Use the components** in `components/core/` for any control they cover.
 3. **Don't break the rules that make this system itself:** one teal accent only; status = hue + icon +

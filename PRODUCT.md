@@ -145,7 +145,7 @@ name**. The Agent reports its real listening port for prefills.
   problem and the fix in one line. Machine-readable values (ports, IDs,
   addresses, permission names, file paths) are always presented as such.
 - **Visual authority already exists and is binding:** the Abyssal design system,
-  documented at [`web/DESIGN.md`](web/DESIGN.md) with tokens in
+  documented at [`DESIGN.md`](DESIGN.md) with tokens in
   `web/design-system/`. It is the single source of truth for the visual
   language; this file does not restate or reopen it.
 - **Brand mark:** `web/public/kraken-glyph-teal.png`.

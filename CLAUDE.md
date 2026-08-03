@@ -71,7 +71,7 @@ Dev login on a fresh DB: `admin` / `admin` (override via
 - **Web:** React + TS + Vite — **no Tailwind**. Never hard-code hex/sizes; use the
   Abyssal CSS variables (`var(--accent)`, `var(--bg-surface)`, `var(--status-running)`…).
   Design-system components are imported via the `@ds` alias (`@ds/components/core/<Name>`),
-  each `.jsx` + a sibling `.d.ts`. See **[web/DESIGN.md](web/DESIGN.md)** — the single
+  each `.jsx` + a sibling `.d.ts`. See **[DESIGN.md](DESIGN.md)** — the single
   source of truth for the design language.
 - **Storage:** server data is host-native via **bind mounts** (`KRAKEN_DATA_DIR/<serverID>`,
   default `./server-data`, mounted to `/data` or `C:\data`). All file ops + backups are
@@ -127,7 +127,7 @@ the git log and release-please changelog stay clean without it.
 ## Pointers
 
 - Product context (users, positioning, constraints) → **[PRODUCT.md](PRODUCT.md)**
-- Design language → **[web/DESIGN.md](web/DESIGN.md)**
+- Design language → **[DESIGN.md](DESIGN.md)**
 - Roadmap / deferred work → **[BACKLOG.md](BACKLOG.md)**
 - Security posture & audit history → **[SECURITY.md](SECURITY.md)**
 - Project overview → **[README.md](README.md)**

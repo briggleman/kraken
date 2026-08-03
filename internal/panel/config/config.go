@@ -16,6 +16,13 @@ import (
 )
 
 // Config holds all Panel runtime configuration.
+// Content-Security-Policy modes for KRAKEN_CSP.
+const (
+	CSPEnforce    = "enforce"
+	CSPReportOnly = "report-only"
+	CSPOff        = "off"
+)
+
 type Config struct {
 	// Env is the deployment environment: "dev", "staging", or "prod".
 	Env string
@@ -60,6 +67,19 @@ type Config struct {
 	// to loopback + private ranges (RFC 1918, link-local, IPv6 ULA) so setup
 	// is never drivable from the public internet, even with valid credentials.
 	SetupAllowedCIDRs []string
+
+	// CSPMode selects how the Content-Security-Policy header is emitted:
+	// "enforce" (default), "report-only" for a dry run that reports violations
+	// without blocking, or "off" for the escape hatch when a reverse proxy
+	// already sets its own policy (two CSP headers intersect, which is usually
+	// stricter than either author intended).
+	CSPMode string
+	// CSPScriptSrc and CSPConnectSrc are extra sources appended to those
+	// directives. The shipped policy is same-origin only; a Panel fronted by a
+	// CDN that injects a script (Cloudflare Web Analytics, for one) needs its
+	// host allowed here rather than in the default everyone else inherits.
+	CSPScriptSrc  []string
+	CSPConnectSrc []string
 
 	// Mutual-TLS for Panel→Agent gRPC. When all three are set the Panel dials
 	// Agents over mTLS; otherwise it falls back to an insecure connection (dev).
@@ -133,9 +153,19 @@ func Load() (*Config, error) {
 		LocalAgentAddr:         env("KRAKEN_LOCAL_AGENT_ADDR", "127.0.0.1:9090"),
 		AllowedOrigins:         envList("KRAKEN_ALLOWED_ORIGINS"),
 		SetupAllowedCIDRs:      envList("KRAKEN_SETUP_ALLOWED_CIDRS"),
+		CSPMode:                strings.ToLower(strings.TrimSpace(env("KRAKEN_CSP", CSPEnforce))),
+		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
+		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()
+	}
+	// An unrecognized mode falls back to enforcing rather than silently serving
+	// no policy: a typo in KRAKEN_CSP must not disable a security header.
+	switch c.CSPMode {
+	case CSPEnforce, CSPReportOnly, CSPOff:
+	default:
+		c.CSPMode = CSPEnforce
 	}
 	_, c.AllowedOriginsFromEnv = os.LookupEnv("KRAKEN_ALLOWED_ORIGINS")
 	_, c.SessionTTLFromEnv = os.LookupEnv("KRAKEN_SESSION_TTL")

@@ -80,6 +80,9 @@ database URL, secrets key, and a bootstrap admin.
 | `KRAKEN_SESSION_TTL` | `24h` | Session lifetime (Go duration). |
 | `KRAKEN_ALLOWED_ORIGINS` | _(localhost dev)_ | Comma-separated allowed origins for CORS + WebSocket upgrades. Same-origin is always allowed. |
 | `KRAKEN_SETUP_ALLOWED_CIDRS` | _(loopback + private ranges)_ | Comma-separated CIDRs/IPs allowed to reach the `/setup/*` API (first-run wizard, datastore config, local enrollment). Checked against the real TCP peer — spoofable proxy headers are ignored; behind a reverse proxy on another host, add the proxy's address. |
+| `KRAKEN_CSP` | `enforce` | Content-Security-Policy mode: `enforce`, `report-only` (log violations without blocking — use this for a day after a topology change), or `off` (only when a reverse proxy already sets its own policy; two CSP headers intersect, which is stricter than either author intended). An unrecognized value falls back to `enforce`. |
+| `KRAKEN_CSP_SCRIPT_SRC` | _(unset)_ | Comma-separated extra `script-src` sources. The shipped policy is same-origin only; a Panel fronted by a CDN that injects a script needs its host here — e.g. `https://static.cloudflareinsights.com` for Cloudflare Web Analytics. |
+| `KRAKEN_CSP_CONNECT_SRC` | _(unset)_ | Comma-separated extra `connect-src` sources, for a telemetry or monitoring endpoint on another origin. |
 | `KRAKEN_QUICKSTART` | `true` in dev | Auto-register the co-located Agent as the `local` node. |
 | `KRAKEN_ENV` | _(empty)_ | `dev` enables quickstart and dev conveniences. |
 | `KRAKEN_LOCAL_AGENT_ADDR` | `127.0.0.1:9090` | Address the Panel dials for the co-located Agent (quickstart). |

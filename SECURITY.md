@@ -290,6 +290,46 @@ _After:_ same request → `404`; SQLi-in-path → `404`; no 500s in the Panel lo
   key sitting next to the ciphertext, which buys nothing; if node-local secrets are ever
   sealed, this and the rendered configs should be done together.
 
+## Browser response headers / CSP (2026-08-03)
+
+Prompted by walking a live internet-exposed deployment: the Panel set only
+`X-Content-Type-Options` and `X-Frame-Options`, on the stated reasoning that it
+"serves JSON/YAML and a metrics endpoint (no HTML)". That stopped being true when
+the Panel began embedding and serving the whole web UI, which makes a
+Content-Security-Policy the load-bearing header rather than an afterthought.
+
+Added a CSP plus `Referrer-Policy: no-referrer` and a minimal `Permissions-Policy`
+(`buildCSP` / `secureHeaders` in `internal/panel/api/server.go`). The policy is as
+tight as the real bundle allows, and each directive is pinned to evidence:
+
+- **`script-src 'self'`** — no `'unsafe-inline'`, no `'unsafe-eval'`. `index.html`
+  carries no inline script and the built bundle contains no `eval(`.
+- **`style-src 'self' https://fonts.googleapis.com`** — notably **without**
+  `'unsafe-inline'`, even though the entire design system is inline styles. React
+  applies them through the CSSOM, which CSP does not govern; only literal
+  `style="…"` attributes in markup would need the exception. Verified live under
+  full enforcement across the login, Fleet and admin Settings screens: fully
+  styled, zero console violations.
+- **`img-src 'self' data: https:`** — deliberately permissive. Game Specs carry
+  operator-supplied `icon_url` / `banner_url` pointing at arbitrary CDNs
+  (Steam, Thunderstore, GitHub); tightening this silently removes game artwork.
+- **`frame-ancestors 'none'`** alongside the existing `X-Frame-Options: DENY`.
+- **No `upgrade-insecure-requests`.** Plain-`http://` LAN installs are a
+  first-class deployment and it would break their subresource loads.
+
+`KRAKEN_CSP` selects `enforce` (default) / `report-only` / `off`; an unrecognized
+value falls back to enforcing so a typo cannot silently drop the header.
+`KRAKEN_CSP_SCRIPT_SRC` and `KRAKEN_CSP_CONNECT_SRC` widen those two directives
+per-deployment — a Panel behind a CDN that injects a script (Cloudflare Web
+Analytics) allows that host locally rather than in the default every other
+operator inherits. Covered by `internal/panel/api/security_headers_test.go`,
+including assertions that `'unsafe-inline'`, `'unsafe-eval'` and
+`upgrade-insecure-requests` never appear.
+
+Not addressed here: `Strict-Transport-Security` is still left to whatever
+terminates TLS (Cloudflare sets it on the reference deployment). The Panel serves
+plaintext HTTP on a LAN by design, so it is the wrong layer to assert HSTS.
+
 ## Open recommendations (not yet addressed)
 
 - **Flat Agent certificate identity.** Every Agent cert carries the same logical

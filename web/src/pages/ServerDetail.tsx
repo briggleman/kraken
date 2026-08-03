@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { useDialog } from "@/components/Dialog";
 import { Toaster } from "@ds/components/core/Toast";
-import { useServerStream } from "@/api/useServerStream";
+import { useServerStream, type StreamMode } from "@/api/useServerStream";
 import type { Node, PlatformKind, PowerActionName, Server, Spec } from "@/api/types";
 import { StatusPill } from "@ds/components/core/StatusPill";
 import { MetricCard, MetricBar } from "@ds/components/core/MetricCard";
@@ -19,7 +19,13 @@ import { ServerBackupsPanel } from "./ServerBackups";
 import { ServerSchedulesPanel } from "./ServerSchedules";
 
 const mono = "var(--font-mono)";
+// Output is still arriving.
 const LIVE_STATES = ["running", "starting", "stopping"];
+// The container is stopped or dead, but Docker holds its logs until the next
+// start — so the console can still replay what the server said on its way out.
+// This is the whole point of the crashed case: the one moment you need the
+// output is the moment the process is gone.
+const REPLAY_STATES = ["crashed", "offline"];
 const POWER_LABEL: Record<PowerActionName, string> = {
   start: "Starting server…",
   stop: "Stopping server…",
@@ -154,7 +160,11 @@ export function ServerDetail() {
   }, [server?.spec_id]);
 
   const live = !!server && LIVE_STATES.includes(server.state);
-  const { lines, stats, cpuHistory, memHistory, connected, send } = useServerStream(id, live);
+  const replay = !!server && REPLAY_STATES.includes(server.state);
+  const streamMode: StreamMode = live ? "live" : replay ? "replay" : "off";
+  const { lines, stats, cpuHistory, memHistory, status, connected, reconnect, send } =
+    useServerStream(id, streamMode);
+  const canCommand = live && connected;
 
   const consoleRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -337,23 +347,41 @@ export function ServerDetail() {
       )}
 
       {/* live console */}
-      <Card padding={0} glow={connected} style={{ display: tab === "console" ? "block" : "none", overflow: "hidden", background: "var(--bg-inset)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", background: "rgba(6,22,28,.6)" }}>
-          <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-secondary)" }}>live console — {server.name}</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: mono, fontSize: 11, color: connected ? "var(--accent)" : "var(--text-muted)" }}>
-            {connected ? (
+      <Card padding={0} glow={live && connected} style={{ display: tab === "console" ? "block" : "none", overflow: "hidden", background: "var(--bg-inset)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", background: "rgba(6,22,28,.6)" }}>
+          <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-secondary)" }}>console — {server.name}</span>
+          {/* Driven by the stream mode, not by the socket: on a replayed crash the
+              socket can sit open with nothing left to send, and calling that "live"
+              is exactly the kind of unearned green light this panel must avoid. */}
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: mono, fontSize: 11, color: live && connected ? "var(--accent)" : status === "retrying" ? "var(--coral-soft)" : "var(--text-muted)" }}>
+            {live && connected ? (
               <>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "abyssalPulseDot 2.2s infinite" }} />
                 live
               </>
+            ) : live && status === "retrying" ? (
+              <>
+                ○ disconnected — reconnecting…
+                <Button size="sm" variant="ghost" icon="refresh" onClick={reconnect}>Retry</Button>
+              </>
+            ) : live ? (
+              "○ connecting…"
+            ) : replay ? (
+              "○ not live — last output"
             ) : (
-              live ? "○ connecting…" : "○ offline"
+              "○ no output yet"
             )}
           </span>
         </div>
         <div ref={consoleRef} style={{ padding: "15px 18px", fontFamily: mono, fontSize: 12.5, lineHeight: 1.85, height: 320, overflowY: "auto" }}>
           {lines.length === 0 ? (
-            <div style={{ color: "var(--text-faint)" }}>{live ? "waiting for output…" : "server is offline — start it to stream the console"}</div>
+            <div style={{ color: "var(--text-muted)" }}>
+              {live
+                ? "waiting for output…"
+                : replay
+                ? "No retained output. A server's logs are kept until it is next started, then replaced."
+                : "Installing — console output begins when the server starts."}
+            </div>
           ) : (
             lines.map((l, i) => (
               <div key={i} style={{ color: lineColor(l.stream), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{l.text}</div>
@@ -365,11 +393,11 @@ export function ServerDetail() {
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submitCommand()}
-            placeholder={connected ? "type a command…" : "console offline"}
-            disabled={!connected}
+            placeholder={canCommand ? "type a command…" : live ? "reconnecting…" : "commands need a running server"}
+            disabled={!canCommand}
             style={{ flex: 1, padding: "10px 14px", borderRadius: "var(--radius-sm)", background: "rgba(2,12,16,.7)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)", fontFamily: mono, fontSize: 12.5, outline: "none" }}
           />
-          <Button size="sm" variant="secondary" disabled={!connected || !command.trim()} onClick={submitCommand}>send</Button>
+          <Button size="sm" variant="secondary" disabled={!canCommand || !command.trim()} onClick={submitCommand}>send</Button>
         </div>
       </Card>
 

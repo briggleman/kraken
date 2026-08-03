@@ -88,13 +88,30 @@ Deferred features and enhancements, roughly in priority order.
 
   Phasing: ~~(1) monitor re-adoption~~ and ~~(2) visibility~~ shipped 2026-07-31 —
   the node list carries `panel_version`, each node carries the `agent_version` seen
-  on last contact, and the Nodes page badges any node whose build differs. It
-  reports *mismatch*, not "update available": without a semver comparison the Panel
-  can't honestly claim the agent is the older one, and both versions are in the
-  badge's tooltip. Remaining: (3) manual per-node update with the two-phase RPC,
-  staging, and rollback; (4) policy (fleet-wide, or "only nodes with zero running
-  servers", or a maintenance window) once (3) has been boring for a while. Step 3
-  holds the real cost and wants testing on a real Windows host.
+  on last contact, and `/nodes` flags any node whose build differs (2026-07-31: the
+  flag moved onto the address line, next to the agent version itself). It reports
+  *mismatch*, not "update available": without a semver comparison the Panel can't
+  honestly claim the agent is the older one, and both versions are in the tooltip.
+  Remaining: (3) manual per-node update with the two-phase RPC, staging, and
+  rollback; (4) policy (fleet-wide, or "only nodes with zero running servers", or a
+  maintenance window) once (3) has been boring for a while. Step 3 holds the real
+  cost and wants testing on a real Windows host.
+
+  **The mismatch flag needs a better trigger — fold this into (3).** A
+  string comparison against `panel_version` fires on *every* release, because
+  release-please bumps the version whether or not anything agent-side changed.
+  Observed immediately: 0.14.0 was panel-only (`internal/panel/api/` + `web/`), the
+  agent artifacts are byte-for-byte the size of 0.13.0's and differ only by the
+  stamped string — yet both live nodes flagged `≠ panel 0.14.0` and had to be
+  updated purely to clear an amber marker. An indicator that is amber most of the
+  time is one operators learn to ignore, which costs more than having no indicator.
+  The honest trigger isn't "the versions differ", it's "**the Panel is holding a
+  different agent binary than this node is running**" — which is exactly what (3)
+  already knows, since the Panel fetches and caches its tag's agent artifacts and
+  verifies their `SHA256SUMS`. Compare the artifact (hash, or a version the Panel
+  only advances when the agent artifact actually changes) rather than the release
+  tag. Cheap interim if (3) slips: a `minAgentVersion` constant in the Panel, bumped
+  by hand only when agent-affecting changes ship, and flag `agent < minAgentVersion`.
 
   Open questions: is `install_method` explicit config or inferred (container
   detection plus a marker the winget package drops)? And is fleet-wide update

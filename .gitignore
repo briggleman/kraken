@@ -57,3 +57,19 @@ agent-specs/
 
 # Local agent / editor tooling
 .claude/
+
+# Impeccable design skill (.impeccable/). Deny-by-default: the skill writes a
+# lot of regenerable runtime state here — live-mode session journals, locks,
+# caches, preview artifacts, hook state, generated sketches/mocks — and adds
+# more over time. Only the durable records below are tracked, so they travel
+# with the repo and a new file the skill invents can't sneak into a commit.
+.impeccable/*
+!.impeccable/config.json
+!.impeccable/design.json
+!.impeccable/surfaces/
+!.impeccable/critique/
+.impeccable/critique/*
+!.impeccable/critique/ignore.md
+!.impeccable/live/
+.impeccable/live/*
+!.impeccable/live/config.json

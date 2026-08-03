@@ -25,7 +25,7 @@ web/
   design-system/
     styles.css            ← global entry point. Imports every token file.
     tokens/
-      fonts.css           ← Space Grotesk + JetBrains Mono (Google Fonts)
+      fonts.css           ← Space Grotesk + JetBrains Mono (@font-face, self-hosted)
       colors.css          ← all color variables
       typography.css      ← families + weights
       spacing.css         ← 4px spacing scale, radius, elevation, layout
@@ -33,7 +33,11 @@ web/
     components/core/      ← React primitives (.jsx + .d.ts), consumed via the @ds alias
   src/                    ← the Kraken app (pages, shell, api client)
   public/                 ← favicons, PWA manifest, brand glyph (kraken-glyph-teal.png)
+    fonts/                ← the two brand faces as variable woff2 + their OFL licenses
 ```
+
+The faces are **self-hosted, never fetched from a font CDN** — Kraken runs on LAN-first
+installs with no outbound internet, and the Panel's CSP allows no third-party origin.
 
 In sections 2–9 a bare token filename (`tokens/colors.css`, `components/core/`) is relative to
 `web/design-system/` — the shorthand the design system uses for itself.

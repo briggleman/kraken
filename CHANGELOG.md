@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/briggleman/kraken/compare/v0.15.0...v0.15.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **web:** bump react-router to 7.18.2 and clear npm advisories ([#70](https://github.com/briggleman/kraken/issues/70)) ([543c222](https://github.com/briggleman/kraken/commit/543c2229c7cb3eea37b8b4cbe22faddd43e1d7e9))
+
 ## [0.15.0](https://github.com/briggleman/kraken/compare/v0.14.2...v0.15.0) (2026-08-03)
 
 

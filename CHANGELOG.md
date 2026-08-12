@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/briggleman/kraken/compare/v0.15.1...v0.15.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **deps:** bump grpc-go to 1.82.1 and x/text to 0.39.0 ([#71](https://github.com/briggleman/kraken/issues/71)) ([7750c3f](https://github.com/briggleman/kraken/commit/7750c3fa0e1174b539bb79d9eb0918f35c7ae329))
+
 ## [0.15.1](https://github.com/briggleman/kraken/compare/v0.15.0...v0.15.1) (2026-08-11)
 
 

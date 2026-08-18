@@ -30,7 +30,7 @@ LDFLAGS := -s -w \
            -X $(MOD).Date=$(DATE)
 
 .DEFAULT_GOAL := build
-.PHONY: help build build-web build-go proto \
+.PHONY: help build build-web build-go proto embed-agents \
         test test-race fmt vet staticcheck lint check \
         db-up db-down db-reset \
         dev-panel dev-agent dev-web seed \
@@ -55,6 +55,14 @@ build: build-web build-go
 ## Regenerate gRPC bindings from proto/.
 proto:
 	./scripts/genproto.sh
+
+## Cross-build the agent for every node platform into the Panel's embed dir,
+## so the next Panel build can push agent updates (release builds run this;
+## dev builds may skip it — the update endpoint then reports 503).
+embed-agents:
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o internal/panel/agentbin/dist/kraken-agent-linux-amd64       ./cmd/agent
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o internal/panel/agentbin/dist/kraken-agent-linux-arm64       ./cmd/agent
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o internal/panel/agentbin/dist/kraken-agent-windows-amd64.exe ./cmd/agent
 
 # ---- test / lint ---------------------------------------------------------
 
@@ -149,6 +157,7 @@ down:
 ## Remove bin/ and the generated web bundle (committed markers preserved).
 clean:
 	rm -rf bin/
+	rm -f internal/panel/agentbin/dist/kraken-agent-*
 	node web/scripts/clean-dist.mjs
 
 ## Print the version make would stamp into a build.

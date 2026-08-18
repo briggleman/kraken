@@ -73,3 +73,5 @@ agent-specs/
 !.impeccable/live/
 .impeccable/live/*
 !.impeccable/live/config.json
+# build artifacts — populated by `make embed-agents` / release CI
+internal/panel/agentbin/dist/kraken-agent-*

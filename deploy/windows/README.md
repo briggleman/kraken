@@ -69,6 +69,12 @@ agent retries on its next start.
 
 ## Day-2 operations
 
+**Upgrading**: the easiest path is the Panel itself — when a node's agent
+version drifts from the Panel's, the Nodes page shows an **UPDATE** action
+that pushes the Panel's own agent build to the node over mTLS; the agent
+verifies the checksum, swaps its binary, restarts, and reverts on its own if
+the new build fails to start. Re-running the installer works too:
+
 ```powershell
 # Upgrade to the latest release (stops, swaps binaries, restarts):
 powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1

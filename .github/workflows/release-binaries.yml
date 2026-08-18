@@ -80,6 +80,15 @@ jobs:
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           MOD="github.com/briggleman/kraken/internal/shared/version"
           LDFLAGS="-s -w -X ${MOD}.Version=${VERSION} -X ${MOD}.Commit=${COMMIT} -X ${MOD}.Date=${DATE}"
+          # Embed the agent builds for every node platform into the Panel
+          # (internal/panel/agentbin) BEFORE compiling it, so a release Panel
+          # can push agent updates matching its own version. Same LDFLAGS as
+          # the released agent assets — the embedded copies are byte-identical.
+          for t in "linux amd64 " "linux arm64 " "windows amd64 .exe"; do
+            set -- $t
+            GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "${LDFLAGS}" \
+              -o "internal/panel/agentbin/dist/kraken-agent-$1-$2${3:-}" ./cmd/agent
+          done
           mkdir -p dist
           for cmd in panel agent krakenctl; do
             OUT="dist/kraken-${cmd}-${GOOS}-${GOARCH}${{ matrix.ext }}"

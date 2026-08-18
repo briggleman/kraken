@@ -263,6 +263,14 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.AgentVersion = info.AgentVersion
 		changed = true
 	}
+	if info.Arch != "" && n.Arch != info.Arch {
+		n.Arch = info.Arch
+		changed = true
+	}
+	if n.LastUpdateError != info.LastUpdateError {
+		n.LastUpdateError = info.LastUpdateError
+		changed = true
+	}
 	if n.PublicHost == "" && info.Host != "" {
 		n.PublicHost = info.Host
 		changed = true

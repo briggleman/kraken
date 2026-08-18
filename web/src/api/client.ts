@@ -398,6 +398,9 @@ export const api = {
   }): Promise<Node> {
     return request("POST", "/nodes", input);
   },
+  updateNodeAgent(id: string): Promise<{ from_version: string; to_version: string; restarting: boolean }> {
+    return request("POST", `/nodes/${id}/agent-update`);
+  },
   nodeInfo(id: string): Promise<Record<string, unknown>> {
     return request("GET", `/nodes/${id}/info`);
   },

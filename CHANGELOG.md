@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/briggleman/kraken/compare/v0.15.2...v0.16.0) (2026-08-18)
+
+
+### Features
+
+* single-command remote agent enrollment ([#74](https://github.com/briggleman/kraken/issues/74)) ([c1f69c0](https://github.com/briggleman/kraken/commit/c1f69c069135ba7aa9296e7fc7783694a48afbe0))
+
 ## [0.15.2](https://github.com/briggleman/kraken/compare/v0.15.1...v0.15.2) (2026-08-11)
 
 

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,16 +48,36 @@ func main() {
 		return
 	}
 
+	if modes.Service != "" {
+		// Windows service control (install/uninstall/start/stop). Errors on
+		// other platforms, where systemd/compose own the lifecycle.
+		if err := serviceControl(modes.Service, cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if isWindowsService() {
+		// Running under the Windows Service Control Manager: stdout goes
+		// nowhere, so logs are written to <state-dir>/agent.log, and shutdown
+		// is driven by SCM stop requests instead of console signals.
+		if err := runService(cfg); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	if err := run(logger, cfg); err != nil {
+	if err := run(context.Background(), logger, cfg); err != nil {
 		logger.Error("agent exited with error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger, cfg *config.Config) error {
+func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	// Components that still read KRAKEN_* directly (the Docker runtime's data,
 	// backup, and isolation settings) must see the same values resolved here.
 	if err := cfg.Export(); err != nil {
@@ -203,6 +224,9 @@ func run(logger *slog.Logger, cfg *config.Config) error {
 	case sig := <-stop:
 		logger.Info("shutting down", "signal", sig.String())
 		grpcServer.GracefulStop()
+	case <-ctx.Done():
+		logger.Info("shutting down", "reason", "service stop requested")
+		grpcServer.GracefulStop()
 	}
 	return nil
 }
@@ -290,4 +314,38 @@ func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
 		logger.Info("using Docker runtime", "mode", drt.OSType())
 	}
 	return drt
+}
+
+// stripServiceFlag returns args minus any --service/-service flag (both
+// "--service install" and "--service=install" spellings). Used at service
+// install time: the registered command line is the install invocation with
+// the control flag removed, so configuration flags carry over verbatim.
+func stripServiceFlag(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		name := strings.TrimLeft(a, "-")
+		if name == "service" && strings.HasPrefix(a, "-") {
+			i++ // skip the value too
+			continue
+		}
+		if strings.HasPrefix(a, "-") && strings.HasPrefix(name, "service=") {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// joinArgs renders an arg list for display, quoting anything with spaces.
+func joinArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		if strings.ContainsAny(a, " \t") {
+			quoted[i] = strconv.Quote(a)
+		} else {
+			quoted[i] = a
+		}
+	}
+	return strings.Join(quoted, " ")
 }

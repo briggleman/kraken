@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 // TestIsLoopbackAddr locks down the classifier the plaintext-gRPC guard
 // depends on. If this ever loosens, an operator could accidentally expose
@@ -30,5 +33,35 @@ func TestIsLoopbackAddr(t *testing.T) {
 		if got := isLoopbackAddr(c.addr); got != c.want {
 			t.Errorf("isLoopbackAddr(%q) = %v, want %v", c.addr, got, c.want)
 		}
+	}
+}
+
+// TestStripServiceFlag — the registered service command line must be the
+// install invocation minus the --service control flag (both spellings), with
+// every configuration flag preserved verbatim.
+func TestStripServiceFlag(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want string
+	}{
+		{[]string{"--service", "install", "--root", `C:\kraken`}, `--root C:\kraken`},
+		{[]string{"--root", `C:\kraken`, "-service", "install"}, `--root C:\kraken`},
+		{[]string{"--service=install", "--addr", ":9091"}, "--addr :9091"},
+		{[]string{"--root", `C:\kraken`}, `--root C:\kraken`},
+		{[]string{}, ""},
+	}
+	for _, c := range cases {
+		got := joinArgs(stripServiceFlag(c.in))
+		if got != c.want {
+			t.Errorf("stripServiceFlag(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestJoinArgsQuotesSpaces(t *testing.T) {
+	got := joinArgs([]string{"--root", `C:\Program Files\kraken`})
+	want := "--root " + strconv.Quote(`C:\Program Files\kraken`)
+	if got != want {
+		t.Errorf("joinArgs = %q, want %q", got, want)
 	}
 }

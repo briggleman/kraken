@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/briggleman/kraken/compare/v0.16.0...v0.17.0) (2026-08-18)
+
+
+### Features
+
+* **agent:** run as a native Windows service ([#76](https://github.com/briggleman/kraken/issues/76)) ([a15127f](https://github.com/briggleman/kraken/commit/a15127fb75526ccdf15b9e7a075cea368dd5491b))
+
 ## [0.16.0](https://github.com/briggleman/kraken/compare/v0.15.2...v0.16.0) (2026-08-18)
 
 

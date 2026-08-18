@@ -3,7 +3,7 @@
 For hosts running **Windows-native game servers** (V Rising, Palworld
 Xbox variant, other Windows-only titles). The Panel and its Postgres
 stay on your Linux / Docker host; the Windows machine runs the Agent
-bare-metal and reports back over mTLS gRPC.
+bare-metal as a Windows service and reports back over mTLS gRPC.
 
 For **Linux** Agents, use [`deploy/install.sh`](../install.sh) instead.
 For running the Panel itself, see [`deploy/docker-compose.example.yml`](../docker-compose.example.yml).
@@ -21,204 +21,123 @@ For running the Panel itself, see [`deploy/docker-compose.example.yml`](../docke
 - The Panel is up somewhere reachable (e.g.
   `http://media-server:9095`) and you're signed in as an admin.
 
-All commands below assume an **elevated PowerShell** on the Windows host.
+## One-command install
 
-## 1. Download the release binaries
-
-```powershell
-$ver  = "v0.4.0"   # or the latest tag from https://github.com/briggleman/kraken/releases
-$dest = "C:\kraken"
-New-Item -ItemType Directory -Force -Path `
-  "$dest\bin","$dest\state","$dest\certs","$dest\server-data","$dest\backups" | Out-Null
-
-$base = "https://github.com/briggleman/kraken/releases/download/$ver"
-foreach ($f in @(
-    "kraken-agent-windows-amd64.exe",
-    "kraken-krakenctl-windows-amd64.exe",
-    "SHA256SUMS")) {
-  Invoke-WebRequest -Uri "$base/$f" -OutFile "$dest\bin\$f"
-}
-
-# Verify — the two hashes below must match the corresponding lines in SHA256SUMS.
-cd "$dest\bin"
-Get-Content SHA256SUMS | Select-String 'windows-amd64.exe'
-Get-FileHash kraken-agent-windows-amd64.exe    -Algorithm SHA256
-Get-FileHash kraken-krakenctl-windows-amd64.exe -Algorithm SHA256
-```
-
-If any hash disagrees, stop.
-
-## 2. Mint a one-time bootstrap token on the Panel
-
-Pick one.
-
-**A. Panel UI** (easier):
-
-1. Sign into the Panel.
-2. **Settings → Nodes → Add node**.
-3. Give it a name (e.g. `windows-01`) and copy the bootstrap token —
-   it's shown once.
-
-**B. Panel API** (scriptable — swap in your Panel URL + password):
+In the Panel, open **Settings → Nodes → Connect a remote node**, generate
+an enrollment token, and pick the **Windows** tab — it renders this
+command with the real values filled in. In an **elevated PowerShell**:
 
 ```powershell
-$panel = "http://<panel-host>:<port>"
-$token = curl.exe -sS -X POST "$panel/api/v1/auth/login" `
-  -H 'Content-Type: application/json' `
-  -d '{"username":"<your-admin>","password":"<your-password>"}' `
-  | ConvertFrom-Json | Select-Object -ExpandProperty token
-
-curl.exe -sS -X POST "$panel/api/v1/agents/bootstrap-tokens" `
-  -H "Authorization: Bearer $token" `
-  -H 'Content-Type: application/json' `
-  -d '{"node_name":"windows-01","ttl_seconds":900}'
-# → { "token": "<BOOTSTRAP_TOKEN>", "expires_at": "..." }
+iwr -useb https://raw.githubusercontent.com/briggleman/kraken/main/deploy/windows/install.ps1 -OutFile $env:TEMP\kraken-install.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1 `
+  -PanelUrl http://<panel-host>:<port> `
+  -Token <BOOTSTRAP_TOKEN> `
+  -CaFingerprint <SHA256_FROM_THE_DIALOG>
 ```
 
-Tokens are **single-use** and expire in 15 minutes by default. Mint a
-fresh one if the enroll step below drags out.
+That single run:
 
-## 3. Enroll — swap the token for mTLS certs
+1. downloads the latest release binaries and **verifies their SHA-256
+   checksums** (hard fail on mismatch),
+2. installs them as `C:\kraken\bin\kraken-agent.exe` +
+   `kraken-krakenctl.exe`,
+3. writes `C:\kraken\agent.yaml` (`node_id` = this computer's name,
+   lowercased; `node_os: windows`),
+4. opens inbound **TCP 9090 (gRPC) + 2022 (SFTP)** with a **port-based**
+   firewall rule (port rules survive binary upgrades; program rules
+   silently stop matching),
+5. registers `kraken-agent` as a **native Windows service** (delayed
+   auto-start, restart-on-failure) and starts it,
+6. waits for the log to report `agent serving with mutual TLS`.
 
-Adjust `-hosts` so the Panel can reach this box (LAN hostname + IP work
-well; both go into the cert SAN):
+On first start the agent **enrolls itself**: it generates a key, exchanges
+the one-time token for a signed certificate — refusing any CA that doesn't
+match the pinned fingerprint — persists the bundle under
+`C:\kraken\state`, and reports this host's IPs so the Panel's registration
+form prefills itself. Back in the Panel dialog, confirm the address and
+register the node.
+
+Useful switches: `-Version v0.17.0` pins a release, `-Root D:\kraken`
+relocates everything, `-NoFirewall` / `-NoService` skip those steps.
+
+### Token expired?
+
+Tokens are single-use and expire in 15 minutes (a Panel restart also
+invalidates them). Mint a fresh one in the Panel and re-run the same
+command — the installer updates the enrollment settings in place and the
+agent retries on its next start.
+
+## Day-2 operations
 
 ```powershell
-cd C:\kraken\bin
-.\kraken-krakenctl-windows-amd64.exe enroll `
-  -panel http://<panel-host>:<port> `
-  -token <BOOTSTRAP_TOKEN_FROM_STEP_2> `
-  -hosts $env:COMPUTERNAME,192.168.1.42 `
-  -out C:\kraken\certs
+# Upgrade to the latest release (stops, swaps binaries, restarts):
+powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1
+
+# Service control (or use services.msc / Get-Service):
+C:\kraken\bin\kraken-agent.exe --service stop
+C:\kraken\bin\kraken-agent.exe --service start
+
+# Logs (JSON, rotated at 10 MiB):
+Get-Content C:\kraken\state\agent.log -Tail 30 -Wait
+
+# Inspect the resolved configuration:
+C:\kraken\bin\kraken-agent.exe --root C:\kraken --print-config
+
+# Uninstall the service (binaries + data stay):
+C:\kraken\bin\kraken-agent.exe --service uninstall
 ```
 
-You want `Enrolled. Wrote agent.pem, agent-key.pem, ca.pem to C:\kraken\certs`.
-
-## 4. Open the firewall
-
-Run once, still admin PowerShell:
-
-```powershell
-New-NetFirewallRule -DisplayName "Kraken Agent gRPC" `
-  -Direction Inbound -Protocol TCP -LocalPort 9090 -Action Allow
-New-NetFirewallRule -DisplayName "Kraken SFTP" `
-  -Direction Inbound -Protocol TCP -LocalPort 2022 -Action Allow
-```
-
-Per-game UDP/TCP ports are opened separately when you deploy each
-server (by Kraken's UniFi / Cloudflare integration if you use it, or by
-hand).
-
-## 5. Write the config file
-
-`--root` gives the Agent one directory and derives the rest, so the only
-things left to state are this node's name and OS. The bundle from step 3
-is picked up from `C:\kraken\certs` automatically — no TLS paths to
-configure.
-
-```powershell
-@'
-root: C:\kraken
-node_id: windows-01
-node_os: windows
-windows_isolation: hyperv   # or "process" on a build-matched host
-'@ | Set-Content -Encoding utf8 C:\kraken\agent.yaml
-```
-
-Confirm what the Agent resolved before starting it — this prints the full
-layout and exits:
-
-```powershell
-C:\kraken\bin\kraken-agent-windows-amd64.exe --root C:\kraken --print-config
-```
-
-`state_dir`, `data_dir`, `backup_dir` and `sftp_host_key` should all sit
-under `C:\kraken`, and `tls_cert` / `tls_key` / `tls_ca` should point into
-`C:\kraken\certs`. If the TLS lines are missing, step 3 didn't land the
-bundle where the Agent looks — all three files must be present before it
-is adopted.
-
-Every key also has a flag (`--node-id`) and an environment variable
-(`KRAKEN_NODE_ID`); flags beat environment, environment beats the file. See
+Configuration changes: edit `C:\kraken\agent.yaml`, then
+`Restart-Service kraken-agent`. Every key has a `--flag` and a `KRAKEN_*`
+environment variable too (flags beat env, env beats the file) — see
 [`deploy/agent.example.yaml`](../agent.example.yaml) for the annotated
-full set.
+full set. `windows_isolation: hyperv` (default) or `process` on a
+build-matched host.
 
-## 6. Run the Agent
+## Verify from the Panel
 
-### Foreground — smoke test
-
-```powershell
-C:\kraken\bin\kraken-agent-windows-amd64.exe --root C:\kraken
-```
-
-Expected: a log line `agent serving with mutual TLS  addr=:9090`. On
-the Panel side, **Settings → Nodes** should flip `windows-01` to
-**online** within a few seconds.
-
-If it shows **partial** instead, the Agent is connected but can't reach
-Docker (the log says so, with the daemon's own error). Start Docker
-Desktop — the Agent re-probes on each Panel poll and promotes itself to
-online without a restart. A partial node is deliberately not schedulable:
-nothing placed there could start.
-
-Ctrl-C to stop when you're done smoke-testing.
-
-### Persistent — install as a Windows Service with `nssm`
-
-`nssm` (Non-Sucking Service Manager) wraps a plain exe into a proper
-Windows Service with log rotation and restart-on-failure. With the config
-in a file there is no environment block to maintain — the service command
-is the same one you just smoke-tested.
-
-```powershell
-# One-time install of nssm:
-winget install nssm.nssm
-
-# Service:
-nssm install kraken-agent C:\kraken\bin\kraken-agent-windows-amd64.exe --root C:\kraken
-nssm set kraken-agent AppDirectory   C:\kraken\bin
-nssm set kraken-agent AppStdout      C:\kraken\state\agent.out.log
-nssm set kraken-agent AppStderr      C:\kraken\state\agent.err.log
-nssm set kraken-agent AppRotateFiles 1
-nssm set kraken-agent AppRotateBytes 10485760
-nssm set kraken-agent Start          SERVICE_AUTO_START
-
-Start-Service kraken-agent
-Get-Service   kraken-agent
-Get-Content   C:\kraken\state\agent.out.log -Tail 20
-```
-
-To change a setting later, edit `C:\kraken\agent.yaml` and
-`Restart-Service kraken-agent` — no `nssm set` calls.
-
-## 7. Verify from the Panel
-
-- **Settings → Nodes** shows `windows-01` **online**, `os: windows`.
-- The deploy wizard offers this node as a placement target for
-  Windows-native specs.
+- **Settings → Nodes** shows the node **online**, `os: windows`.
+- **Partial** instead of online means the Agent is connected but can't
+  reach Docker (the log says so, with the daemon's own error). Start
+  Docker Desktop — the Agent re-probes on each Panel poll and promotes
+  itself without a restart. A partial node is deliberately not
+  schedulable: nothing placed there could start.
 - Try deploying `windemo` (bundled catalog) as a smoke test — should
   install and reach `offline`, then `running` on start.
 
-## 8. Rotate certs later
+## Rotating certificates
 
-Mint a fresh bootstrap token, re-run `krakenctl enroll` with the same
-`-out C:\kraken\certs` (overwrites the old bundle), and restart the
-service:
+The Panel rotates agent certs automatically as they approach expiry (no
+action needed). To force a re-enroll — say, after replacing the Panel's
+CA — stop the service, delete `C:\kraken\state\agent.pem`,
+`agent-key.pem` and `ca.pem`, mint a fresh token, re-run the installer
+with `-PanelUrl/-Token/-CaFingerprint`, and the agent enrolls anew on
+start.
 
-```powershell
-Restart-Service kraken-agent
-```
+## Manual install (appendix)
 
-Existing installed servers keep running the whole time; the Agent
-process just reconnects to the Panel with the new cert.
+Prefer the one-command path above. If you need to assemble things by
+hand — air-gapped host, custom layout — the moving parts are:
 
-## Common gotchas
+1. **Binaries**: download `kraken-agent-windows-amd64.exe`,
+   `kraken-krakenctl-windows-amd64.exe`, and `SHA256SUMS` from a
+   [release](https://github.com/briggleman/kraken/releases), verify with
+   `Get-FileHash`, and place them under `C:\kraken\bin`.
+2. **Enroll**: mint a bootstrap token in the Panel, then either set
+   `panel_url` + `enroll_token` (+ `ca_fingerprint`) in `agent.yaml` and
+   let the agent enroll itself on start, or run
+   `kraken-krakenctl.exe enroll -panel <url> -token <token> -hosts <ip> -out C:\kraken\certs`
+   (a complete bundle under `<root>\certs` is adopted automatically).
+3. **Config**: `C:\kraken\agent.yaml` with at least `node_id` and
+   `node_os: windows`; run with `--root C:\kraken`.
+4. **Firewall**: allow inbound TCP 9090 + 2022 (port-based rule).
+   Per-game UDP/TCP ports are opened separately when you deploy each
+   server (by Kraken's UniFi / Cloudflare integration if you use it, or
+   by hand).
+5. **Service**: `kraken-agent.exe --service install --root C:\kraken`,
+   then `--service start`. (nssm still works if you prefer it, but is no
+   longer required.)
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| Panel logs `connect: connection refused` dialing the Agent | Windows Firewall closed, or `-hosts` in the enroll step doesn't match what the Panel resolves | Reopen `9090/tcp`; re-enroll with the actual LAN hostname/IP |
-| `krakenctl enroll` returns `invalid bootstrap token` | Token already used or expired | Mint a fresh one; enrol within 15 minutes |
-| Agent starts, Panel reports `cert verify failed` | Wrong CA, or clock skew > a few minutes between hosts | Re-enroll to refresh the bundle; check the Windows Time service is running |
-| Panel shows the node **partial**, Agent logs `Docker daemon unreachable — serving in a degraded state` | Docker Desktop is off or misconfigured | Start Docker Desktop. The Agent re-probes on every Panel poll and flips itself back to online — no restart, no re-enroll |
-| Node still reads **online** minutes after the Agent died | Panel predates the node-health poller | Upgrade the Panel; it now polls every node every 20s instead of only when you press Ping |
-| Windows containers won't launch, Hyper-V error | Docker Desktop is in Linux-containers mode | Right-click tray → *Switch to Windows containers* |
+A foreground smoke test is just
+`C:\kraken\bin\kraken-agent.exe --root C:\kraken` — expect
+`agent serving with mutual TLS  addr=:9090`, Ctrl-C to stop.

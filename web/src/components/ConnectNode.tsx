@@ -21,9 +21,9 @@ const SECTION_LABEL: React.CSSProperties = {
 // matching the host they're about to run against. Both flows lean on the
 // agent's token-based auto-enroll (--enroll-token / KRAKEN_ENROLL_TOKEN):
 // the Linux flow is a single install.sh one-liner that installs, enrolls,
-// and starts the systemd service; the Windows flow downloads the release
-// binaries and runs the agent with the enroll settings in its environment
-// (nssm service install is documented in deploy/windows/README.md). The CA
+// and starts the systemd service; the Windows flow is a single install.ps1
+// run that does the same as a native Windows service (checksums, firewall,
+// and service registration included — see deploy/windows/README.md). The CA
 // fingerprint pins the enrollment: the agent refuses a CA that doesn't
 // match, so a plain-HTTP token exchange can't be MITM'd. Registration
 // happens inline once the agent enrolls, so these steps end at "agent
@@ -49,32 +49,16 @@ function AgentInstallInstructions({ panelOrigin, token, caFingerprint }: { panel
 
   const winCmds = [
     {
-      title: "1 · DOWNLOAD BINARIES (POWERSHELL, ADMIN)",
-      body: `$ver = "latest"
-$dest = "C:\\kraken"
-New-Item -ItemType Directory -Force -Path "$dest\\bin","$dest\\state","$dest\\certs" | Out-Null
-$base = if ($ver -eq "latest") { "https://github.com/briggleman/kraken/releases/latest/download" } else { "https://github.com/briggleman/kraken/releases/download/$ver" }
-foreach ($f in @("kraken-agent-windows-amd64.exe","kraken-krakenctl-windows-amd64.exe")) {
-  Invoke-WebRequest -Uri "$base/$f" -OutFile "$dest\\bin\\$f"
-}`,
-    },
-    {
-      title: "2 · ALLOW INBOUND PORTS (PORT RULE — SURVIVES BINARY RENAMES)",
-      body: `New-NetFirewallRule -DisplayName "kraken-agent ports (TCP 9090 + 2022)" \`
-  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9090,2022`,
-    },
-    {
-      title: "3 · RUN THE AGENT (ENROLLS ITSELF ON FIRST START)",
-      // The agent exchanges the one-time token for a signed cert (pinned to
-      // the CA fingerprint), persists the bundle under C:\kraken\state, and
-      // reports this host's IPs so the address below prefills itself.
-      body: `$env:KRAKEN_NODE_ID="$env:COMPUTERNAME".ToLower()
-$env:KRAKEN_NODE_OS="windows"
-$env:KRAKEN_ROOT="C:\\kraken"
-$env:KRAKEN_PANEL_URL="${panelOrigin}"
-$env:KRAKEN_ENROLL_TOKEN="${token}"
-$env:KRAKEN_CA_FINGERPRINT="${caFingerprint}"
-C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
+      title: "1 · INSTALL + ENROLL + START (ELEVATED POWERSHELL, ONE COMMAND)",
+      // install.ps1 downloads + checksum-verifies the release binaries,
+      // writes agent.yaml, opens the firewall (port-based rule), registers
+      // the native Windows service, starts it, and the agent enrolls itself
+      // (pinned to the CA fingerprint) on first start.
+      body: `iwr -useb https://raw.githubusercontent.com/briggleman/kraken/main/deploy/windows/install.ps1 -OutFile $env:TEMP\\kraken-install.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\\kraken-install.ps1 \`
+  -PanelUrl ${panelOrigin} \`
+  -Token ${token} \`
+  -CaFingerprint ${caFingerprint}`,
     },
   ];
 
@@ -95,7 +79,7 @@ C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
         once it connects.
         {target === "windows" && (
           <>
-            {" "}To keep the Agent running as a Windows Service (with log rotation + auto-start), see the{" "}
+            {" "}Upgrades, service control, and troubleshooting live in the{" "}
             <a href="https://github.com/briggleman/kraken/blob/main/deploy/windows/README.md" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
               Windows install walkthrough
             </a>

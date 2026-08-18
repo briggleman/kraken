@@ -75,3 +75,10 @@ agent-specs/
 !.impeccable/live/config.json
 # build artifacts — populated by `make embed-agents` / release CI
 internal/panel/agentbin/dist/kraken-agent-*
+# stray cross-build outputs from `GOOS=... go build ./cmd/...` at the repo root
+/agent
+/panel
+/krakenctl
+/agent.exe
+/panel.exe
+/krakenctl.exe

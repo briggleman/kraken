@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/briggleman/kraken/compare/v0.17.0...v0.18.0) (2026-08-18)
+
+
+### Features
+
+* one-command Windows agent install ([#77](https://github.com/briggleman/kraken/issues/77)) ([acfa86d](https://github.com/briggleman/kraken/commit/acfa86d613da367cdff8113c94ea683be38e0d42))
+
 ## [0.17.0](https://github.com/briggleman/kraken/compare/v0.16.0...v0.17.0) (2026-08-18)
 
 

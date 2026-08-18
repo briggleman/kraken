@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/briggleman/kraken/compare/v0.18.0...v0.19.0) (2026-08-18)
+
+
+### Features
+
+* panel-pushed agent self-update with automatic rollback ([#80](https://github.com/briggleman/kraken/issues/80)) ([aa0bb2e](https://github.com/briggleman/kraken/commit/aa0bb2ee032a30a99ad46af4c13a13eb6f2129c7))
+
 ## [0.18.0](https://github.com/briggleman/kraken/compare/v0.17.0...v0.18.0) (2026-08-18)
 
 

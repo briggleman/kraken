@@ -601,6 +601,34 @@ paths:
             application/json: { schema: { $ref: '#/components/schemas/Node' } }
         '400': { description: Invalid capacity values }
     delete: { tags: [Nodes], summary: Deregister a node, responses: { '204': { description: Deleted } } }
+  /nodes/{id}/agent-update:
+    post:
+      tags: [Nodes]
+      summary: Push this Panel's embedded agent binary to the node (admin)
+      description: >
+        Streams the agent build embedded in this Panel (always the Panel's own
+        version) to the node over the mTLS gRPC channel. The agent verifies the
+        checksum, swaps its binary transactionally (keeping the previous build
+        for automatic rollback), and restarts. Dev Panel builds embed no agent
+        binaries and return 503. Containerized agents refuse the push — pull
+        the new image instead.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Binary pushed; the agent is restarting into it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  from_version: { type: string }
+                  to_version: { type: string }
+                  bytes: { type: integer }
+                  restarting: { type: boolean }
+        '409': { description: Agent already at the Panel's version }
+        '502': { description: Agent unreachable, or it rejected the push (reason verbatim) }
+        '503': { description: No embedded agent binary in this Panel build }
   /nodes/{id}/info:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
     get:

@@ -262,6 +262,7 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}", s.handleGetNode)
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}/info", s.handleNodeInfo)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Patch("/nodes/{id}", s.handleUpdateNode)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/agent-update", s.handleNodeAgentUpdate)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Delete("/nodes/{id}", s.handleDeleteNode)
 			// Per-node System settings (backup target + replication). Uses the
 			// Panel-global settings perms since it manages node-wide credentials.

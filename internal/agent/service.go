@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"io"
+	"runtime"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -15,8 +17,9 @@ import (
 // the runtime's emit-callback form.
 type Service struct {
 	agentpb.UnimplementedNodeServiceServer
-	rt    Runtime
-	certs *CertManager // nil when the agent serves without TLS
+	rt      Runtime
+	certs   *CertManager // nil when the agent serves without TLS
+	updater *SelfUpdater // nil when self-update is unavailable (e.g. fake runtime tests)
 }
 
 // ServiceOption customizes a Service at construction time.
@@ -26,6 +29,12 @@ type ServiceOption func(*Service)
 // expiry in NodeInfo and serve the Panel-driven rotation RPCs.
 func WithCertManager(cm *CertManager) ServiceOption {
 	return func(s *Service) { s.certs = cm }
+}
+
+// WithSelfUpdater wires the self-updater so the service can serve the
+// Panel-pushed UpdateAgent RPC and report update state in NodeInfo.
+func WithSelfUpdater(u *SelfUpdater) ServiceOption {
+	return func(s *Service) { s.updater = u }
 }
 
 // NewService wraps a Runtime as a gRPC NodeService implementation.
@@ -45,7 +54,84 @@ func (s *Service) GetNodeInfo(ctx context.Context, _ *agentpb.GetNodeInfoRequest
 	if s.certs != nil {
 		info.CertNotAfterUnix = s.certs.NotAfter().Unix()
 	}
+	info.Arch = runtime.GOARCH
+	if s.updater != nil {
+		info.LastUpdateError = s.updater.LastFailure()
+		// A completed Panel poll is the update health milestone: this binary
+		// starts, serves gRPC, and the Panel can reach it — the update it came
+		// from is confirmed good.
+		s.updater.MarkHealthy()
+	}
 	return info, nil
+}
+
+// UpdateAgent receives a Panel-pushed agent binary (metadata first, then
+// chunks), verifies it, swaps it in transactionally, responds, and restarts
+// into the new build. See selfupdate.go for the rollback machinery.
+func (s *Service) UpdateAgent(stream agentpb.NodeService_UpdateAgentServer) error {
+	if s.updater == nil {
+		return status.Error(codes.FailedPrecondition, "self-update is not available on this agent")
+	}
+
+	first, err := stream.Recv()
+	if err != nil {
+		return status.Error(codes.InvalidArgument, "empty update stream")
+	}
+	meta := first.GetMeta()
+	if meta == nil {
+		return status.Error(codes.InvalidArgument, "first update message must carry the metadata")
+	}
+
+	tmpPath, err := s.updater.Begin(meta.Version, meta.Os, meta.Arch)
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	w, err := newBinaryWriter(tmpPath)
+	if err != nil {
+		s.updater.Abort(tmpPath)
+		return status.Errorf(codes.Internal, "open %s: %v", tmpPath, err)
+	}
+
+	for {
+		msg, rerr := stream.Recv()
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			_ = w.Close()
+			s.updater.Abort(tmpPath)
+			return rerr
+		}
+		if _, werr := w.Write(msg.GetData()); werr != nil {
+			_ = w.Close()
+			s.updater.Abort(tmpPath)
+			return status.Error(codes.InvalidArgument, werr.Error())
+		}
+	}
+	// Close before Commit: the swap renames this file, which Windows refuses
+	// while a handle is open.
+	if err := w.Close(); err != nil {
+		s.updater.Abort(tmpPath)
+		return status.Errorf(codes.Internal, "flush binary: %v", err)
+	}
+
+	fromVersion, err := s.updater.Commit(tmpPath, meta.Version, meta.Sha256, w.SumHex(), w.size)
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if err := stream.SendAndClose(&agentpb.UpdateAgentResponse{
+		FromVersion: fromVersion,
+		ToVersion:   meta.Version,
+	}); err != nil {
+		return err
+	}
+	// Response is on the wire; hand control to the new binary. The delay lets
+	// gRPC flush the response before the process replaces itself.
+	go func() {
+		time.Sleep(time.Second)
+		s.updater.Restart()
+	}()
+	return nil
 }
 
 // BeginCertRotation mints a fresh key + CSR for the serving cert (Panel-driven

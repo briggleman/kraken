@@ -25,6 +25,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	NodeService_GetNodeInfo_FullMethodName          = "/kraken.agent.v1.NodeService/GetNodeInfo"
+	NodeService_UpdateAgent_FullMethodName          = "/kraken.agent.v1.NodeService/UpdateAgent"
 	NodeService_CreateServer_FullMethodName         = "/kraken.agent.v1.NodeService/CreateServer"
 	NodeService_RemoveServer_FullMethodName         = "/kraken.agent.v1.NodeService/RemoveServer"
 	NodeService_ApplyConfig_FullMethodName          = "/kraken.agent.v1.NodeService/ApplyConfig"
@@ -62,6 +63,14 @@ type NodeServiceClient interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(ctx context.Context, in *GetNodeInfoRequest, opts ...grpc.CallOption) (*NodeInfo, error)
+	// UpdateAgent replaces the Agent's own binary with one streamed by the Panel
+	// (the Panel embeds the agent builds matching its own version, so agents can
+	// only ever be moved to the Panel's version). The first message carries the
+	// metadata (version, sha256, platform); the rest carry the binary. On success
+	// the Agent verifies the checksum, swaps itself on disk (keeping the previous
+	// binary as a rollback), responds, and restarts. Containerized agents refuse:
+	// their binary is immutable — pull the new image instead.
+	UpdateAgent(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateAgentChunk, UpdateAgentResponse], error)
 	// CreateServer records a server's runtime spec on the node and provisions its
 	// data volume, without starting it. Must precede InstallServer/PowerAction.
 	CreateServer(ctx context.Context, in *CreateServerRequest, opts ...grpc.CallOption) (*CreateServerResponse, error)
@@ -149,6 +158,19 @@ func (c *nodeServiceClient) GetNodeInfo(ctx context.Context, in *GetNodeInfoRequ
 	return out, nil
 }
 
+func (c *nodeServiceClient) UpdateAgent(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UpdateAgentChunk, UpdateAgentResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[0], NodeService_UpdateAgent_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[UpdateAgentChunk, UpdateAgentResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeService_UpdateAgentClient = grpc.ClientStreamingClient[UpdateAgentChunk, UpdateAgentResponse]
+
 func (c *nodeServiceClient) CreateServer(ctx context.Context, in *CreateServerRequest, opts ...grpc.CallOption) (*CreateServerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateServerResponse)
@@ -191,7 +213,7 @@ func (c *nodeServiceClient) ListFiles(ctx context.Context, in *ListFilesRequest,
 
 func (c *nodeServiceClient) DownloadFiles(ctx context.Context, in *DownloadFilesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[0], NodeService_DownloadFiles_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[1], NodeService_DownloadFiles_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +242,7 @@ func (c *nodeServiceClient) ReadFile(ctx context.Context, in *ReadFileRequest, o
 
 func (c *nodeServiceClient) DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[1], NodeService_DownloadFile_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[2], NodeService_DownloadFile_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +351,7 @@ func (c *nodeServiceClient) DeleteBackup(ctx context.Context, in *DeleteBackupRe
 
 func (c *nodeServiceClient) InstallServer(ctx context.Context, in *InstallServerRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[InstallEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[2], NodeService_InstallServer_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[3], NodeService_InstallServer_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +390,7 @@ func (c *nodeServiceClient) GetServerStatus(ctx context.Context, in *GetServerSt
 
 func (c *nodeServiceClient) StreamConsole(ctx context.Context, in *StreamConsoleRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConsoleLine], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[3], NodeService_StreamConsole_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[4], NodeService_StreamConsole_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +419,7 @@ func (c *nodeServiceClient) SendCommand(ctx context.Context, in *SendCommandRequ
 
 func (c *nodeServiceClient) StreamStats(ctx context.Context, in *StreamStatsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResourceStats], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[4], NodeService_StreamStats_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[5], NodeService_StreamStats_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -463,6 +485,14 @@ type NodeServiceServer interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*NodeInfo, error)
+	// UpdateAgent replaces the Agent's own binary with one streamed by the Panel
+	// (the Panel embeds the agent builds matching its own version, so agents can
+	// only ever be moved to the Panel's version). The first message carries the
+	// metadata (version, sha256, platform); the rest carry the binary. On success
+	// the Agent verifies the checksum, swaps itself on disk (keeping the previous
+	// binary as a rollback), responds, and restarts. Containerized agents refuse:
+	// their binary is immutable — pull the new image instead.
+	UpdateAgent(grpc.ClientStreamingServer[UpdateAgentChunk, UpdateAgentResponse]) error
 	// CreateServer records a server's runtime spec on the node and provisions its
 	// data volume, without starting it. Must precede InstallServer/PowerAction.
 	CreateServer(context.Context, *CreateServerRequest) (*CreateServerResponse, error)
@@ -542,6 +572,9 @@ type UnimplementedNodeServiceServer struct{}
 
 func (UnimplementedNodeServiceServer) GetNodeInfo(context.Context, *GetNodeInfoRequest) (*NodeInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNodeInfo not implemented")
+}
+func (UnimplementedNodeServiceServer) UpdateAgent(grpc.ClientStreamingServer[UpdateAgentChunk, UpdateAgentResponse]) error {
+	return status.Error(codes.Unimplemented, "method UpdateAgent not implemented")
 }
 func (UnimplementedNodeServiceServer) CreateServer(context.Context, *CreateServerRequest) (*CreateServerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateServer not implemented")
@@ -659,6 +692,13 @@ func _NodeService_GetNodeInfo_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _NodeService_UpdateAgent_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NodeServiceServer).UpdateAgent(&grpc.GenericServerStream[UpdateAgentChunk, UpdateAgentResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeService_UpdateAgentServer = grpc.ClientStreamingServer[UpdateAgentChunk, UpdateAgentResponse]
 
 func _NodeService_CreateServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateServerRequest)
@@ -1190,6 +1230,11 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "UpdateAgent",
+			Handler:       _NodeService_UpdateAgent_Handler,
+			ClientStreams: true,
+		},
 		{
 			StreamName:    "DownloadFiles",
 			Handler:       _NodeService_DownloadFiles_Handler,

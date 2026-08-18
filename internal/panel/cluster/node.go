@@ -78,6 +78,15 @@ type Node struct {
 	// contact.
 	AgentVersion string `json:"agent_version,omitempty"`
 
+	// Arch is the Agent build's GOARCH ("amd64" | "arm64"), observed on last
+	// contact. Selects which embedded agent binary an update pushes.
+	Arch string `json:"arch,omitempty"`
+
+	// LastUpdateError is the Agent's most recent self-update failure, verbatim
+	// (e.g. "update to 0.19.0 failed …: reverted to 0.18.0"). Empty when the
+	// last update succeeded or none was attempted.
+	LastUpdateError string `json:"last_update_error,omitempty"`
+
 	Ports *PortPool `json:"ports"`
 }
 

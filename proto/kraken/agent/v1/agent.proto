@@ -45,6 +45,15 @@ service NodeService {
   // and to reconcile the Panel's view of the node.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (NodeInfo);
 
+  // UpdateAgent replaces the Agent's own binary with one streamed by the Panel
+  // (the Panel embeds the agent builds matching its own version, so agents can
+  // only ever be moved to the Panel's version). The first message carries the
+  // metadata (version, sha256, platform); the rest carry the binary. On success
+  // the Agent verifies the checksum, swaps itself on disk (keeping the previous
+  // binary as a rollback), responds, and restarts. Containerized agents refuse:
+  // their binary is immutable — pull the new image instead.
+  rpc UpdateAgent(stream UpdateAgentChunk) returns (UpdateAgentResponse);
+
   // CreateServer records a server's runtime spec on the node and provisions its
   // data volume, without starting it. Must precede InstallServer/PowerAction.
   rpc CreateServer(CreateServerRequest) returns (CreateServerResponse);
@@ -375,6 +384,29 @@ message NodeInfo {
   int64 cert_not_after_unix = 10; // mTLS serving cert expiry (unix seconds; 0 → no TLS)
   RuntimeStatus runtime_status = 11; // can the Agent reach its Docker daemon?
   string runtime_error = 12;         // why not, when runtime_status is UNAVAILABLE
+  string arch = 13;                  // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
+  string last_update_error = 14;     // most recent self-update failure ("" = none); cleared by the next successful update
+}
+
+// UpdateAgentChunk is one message of the Panel->Agent binary push. The first
+// message must set meta; every subsequent message carries data.
+message UpdateAgentChunk {
+  message Meta {
+    string version = 1;    // version being pushed (the Panel's own build)
+    string sha256 = 2;     // hex SHA-256 of the complete binary
+    int64 total_size = 3;  // size in bytes, for progress/sanity (0 = unknown)
+    string os = 4;         // target GOOS the Panel selected ("linux" | "windows")
+    string arch = 5;       // target GOARCH the Panel selected
+  }
+  oneof payload {
+    Meta meta = 1;
+    bytes data = 2;
+  }
+}
+
+message UpdateAgentResponse {
+  string from_version = 1; // what the agent was running
+  string to_version = 2;   // what it swapped to (restart follows this response)
 }
 
 message InstallServerRequest {

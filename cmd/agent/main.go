@@ -150,6 +150,17 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
+	// Self-update wiring. The boot check runs before anything serves: if a
+	// freshly-updated binary has burned through its start attempts without
+	// reaching the health milestone, the updater swaps the previous binary
+	// back and we restart straight into it.
+	updater, uerr := agent.NewSelfUpdater(version.Version, cfg.StateDir, restartAgent, logger)
+	if uerr != nil {
+		logger.Warn("self-update unavailable", "err", uerr)
+	} else if updater.CheckBoot() {
+		updater.Restart() // does not return
+	}
+
 	// Select the container backend: Docker by default, the in-memory fake when
 	// the runtime is set to "fake" or the Docker daemon is unreachable.
 	rt := selectRuntime(logger, cfg)
@@ -191,6 +202,9 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	} else {
 		grpcServer = grpc.NewServer()
 	}
+	if updater != nil {
+		svcOpts = append(svcOpts, agent.WithSelfUpdater(updater))
+	}
 	agentpb.RegisterNodeServiceServer(grpcServer, agent.NewService(rt, svcOpts...))
 
 	// SFTP server for power-user file access — a separate SSH listener that
@@ -202,6 +216,12 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	} else if sftpSrv != nil {
 		logger.Info("SFTP server listening", "addr", sftpAddr)
 		defer func() { _ = sftpSrv.Close() }()
+	}
+
+	// Uptime-based fallback for the update health milestone (the primary
+	// milestone is the Panel's first NodeInfo poll).
+	if updater != nil {
+		updater.StartHealthTimer()
 	}
 
 	errCh := make(chan error, 1)

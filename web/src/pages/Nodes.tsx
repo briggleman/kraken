@@ -62,6 +62,19 @@ export function Nodes() {
     }
   };
 
+  const pushAgentUpdate = async (id: string) => {
+    setBusy(id);
+    try {
+      const r = await api.updateNodeAgent(id);
+      Toaster.success(`Agent updating ${r.from_version} → ${r.to_version} — restarting`);
+    } catch (e) {
+      Toaster.error(msg(e));
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  };
+
   const remove = async (id: string) => {
     if (!(await confirm({ title: "Remove node", message: "Remove this node? Servers on it will be orphaned.", confirmLabel: "Remove", danger: true }))) return;
     try {
@@ -100,14 +113,43 @@ export function Nodes() {
                       <span>{n.address}</span>
                       {n.agent_version && <span>agent {n.agent_version}</span>}
                       {panelVersion && n.agent_version && n.agent_version !== panelVersion && (
-                        <span
-                          style={{ color: "var(--status-stopping)" }}
-                          title={`agent ${n.agent_version} · panel ${panelVersion} — agents should match the Panel's version`}
-                        >
-                          ≠ panel {panelVersion}
-                        </span>
+                        <>
+                          <span
+                            style={{ color: "var(--status-stopping)" }}
+                            title={`agent ${n.agent_version} · panel ${panelVersion} — agents should match the Panel's version`}
+                          >
+                            ≠ panel {panelVersion}
+                          </span>
+                          {/* The push moves the node to the Panel's own embedded
+                              agent build; the agent verifies, swaps, restarts, and
+                              auto-reverts if the new build fails to stabilize. */}
+                          <button
+                            onClick={() => void pushAgentUpdate(n.id)}
+                            disabled={busy === n.id || n.status === "offline"}
+                            title={n.status === "offline" ? "agent unreachable" : `push agent ${panelVersion} to this node`}
+                            style={{
+                              background: "none",
+                              border: "1px solid var(--border-subtle)",
+                              borderRadius: "var(--radius-sm)",
+                              color: "var(--accent)",
+                              cursor: busy === n.id || n.status === "offline" ? "default" : "pointer",
+                              opacity: n.status === "offline" ? 0.5 : 1,
+                              fontFamily: mono,
+                              fontSize: 10.5,
+                              letterSpacing: "0.5px",
+                              padding: "1px 8px",
+                            }}
+                          >
+                            {busy === n.id ? "UPDATING…" : "UPDATE"}
+                          </button>
+                        </>
                       )}
                     </div>
+                    {n.last_update_error && (
+                      <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--status-crashed)", marginTop: 6, wordBreak: "break-word" }}>
+                        {n.last_update_error} — the agent reverted itself and keeps running the previous build
+                      </div>
+                    )}
                     {n.status === "partial" && (
                       <div style={{ fontFamily: mono, fontSize: 11.5, color: "var(--status-stopping)", marginTop: 6, wordBreak: "break-word" }}>
                         agent up, container runtime unreachable — start Docker on this host; the agent reconnects on its own

@@ -311,6 +311,10 @@ export interface Node {
   runtime_error?: string;
   /** Agent build seen on last contact — compare with the list's panel_version. */
   agent_version?: string;
+  /** Agent build architecture ("amd64" | "arm64") seen on last contact. */
+  arch?: string;
+  /** Most recent self-update failure, verbatim from the agent ("" / absent = none). */
+  last_update_error?: string;
   address: string;
   public_host: string;
   external_ip?: string;

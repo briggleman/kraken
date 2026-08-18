@@ -42,6 +42,9 @@ LABEL org.opencontainers.image.title="kraken-agent" \
       org.opencontainers.image.source="https://github.com/briggleman/kraken" \
       org.opencontainers.image.licenses="GPL-3.0"
 COPY --from=gobuild /out/agent /agent
+# Self-update guard: a containerized agent's binary is immutable — the agent
+# refuses Panel-pushed updates and operators pull a new image instead.
+ENV KRAKEN_IN_CONTAINER=1
 # Bind-mounted game data + backups + SFTP host key (generated on first run).
 VOLUME ["/data", "/agent-backups", "/var/lib/kraken"]
 EXPOSE 9090 2022

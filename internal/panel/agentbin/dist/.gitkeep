@@ -1,0 +1,2 @@
+# Embedded agent binaries land here (make embed-agents). Kept so //go:embed
+# has a directory to point at in dev builds, which embed nothing.

@@ -63,6 +63,9 @@ export interface BootstrapToken {
   token: string;
   node_name: string;
   expires_at: string;
+  /** Full SHA-256 fingerprint of the Panel CA — embedded in the generated
+   *  install command so the agent can pin the CA it enrolls under. */
+  ca_fingerprint: string;
 }
 
 /** Lifecycle of a bootstrap token, polled by the setup wizard. */

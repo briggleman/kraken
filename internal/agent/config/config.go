@@ -60,6 +60,8 @@ type Config struct {
 	TLSCA   string `json:"tls_ca,omitempty"`
 
 	PanelURL          string `json:"panel_url,omitempty"`
+	EnrollToken       string `json:"enroll_token,omitempty"`
+	CAFingerprint     string `json:"ca_fingerprint,omitempty"`
 	Runtime           string `json:"runtime,omitempty"`
 	WindowsIsolation  string `json:"windows_isolation,omitempty"`
 	AllowInsecureGRPC *bool  `json:"allow_insecure_grpc,omitempty"`
@@ -108,6 +110,8 @@ func Load(args []string) (*Config, Flags, error) {
 	fs.StringVar(&fromFlags.TLSKey, "tls-key", "", "Agent private key (PEM)")
 	fs.StringVar(&fromFlags.TLSCA, "tls-ca", "", "CA bundle Panel client certs must chain to (PEM)")
 	fs.StringVar(&fromFlags.PanelURL, "panel-url", "", "Panel base URL for auto-enrollment when no TLS bundle exists")
+	fs.StringVar(&fromFlags.EnrollToken, "enroll-token", "", "one-time bootstrap token for remote auto-enrollment (minted in the Panel's Add Node dialog)")
+	fs.StringVar(&fromFlags.CAFingerprint, "ca-fingerprint", "", "pinned SHA-256 fingerprint of the Panel CA, verified during enrollment")
 	fs.StringVar(&fromFlags.Runtime, "runtime", "", `container backend: "docker" or "fake"`)
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
@@ -226,6 +230,8 @@ func (c *Config) overlayEnv() {
 	str("KRAKEN_TLS_KEY", &c.TLSKey)
 	str("KRAKEN_TLS_CA", &c.TLSCA)
 	str("KRAKEN_PANEL_URL", &c.PanelURL)
+	str("KRAKEN_ENROLL_TOKEN", &c.EnrollToken)
+	str("KRAKEN_CA_FINGERPRINT", &c.CAFingerprint)
 	str("KRAKEN_RUNTIME", &c.Runtime)
 	str("KRAKEN_WINDOWS_ISOLATION", &c.WindowsIsolation)
 
@@ -263,6 +269,8 @@ func (c *Config) overlay(f *Config) {
 	str(f.TLSKey, &c.TLSKey)
 	str(f.TLSCA, &c.TLSCA)
 	str(f.PanelURL, &c.PanelURL)
+	str(f.EnrollToken, &c.EnrollToken)
+	str(f.CAFingerprint, &c.CAFingerprint)
 	str(f.Runtime, &c.Runtime)
 	str(f.WindowsIsolation, &c.WindowsIsolation)
 	if f.HostDataDir != "" {
@@ -380,6 +388,9 @@ func (c *Config) validate() error {
 	if n != 0 && n != 3 {
 		return fmt.Errorf("config: tls_cert, tls_key and tls_ca must be set together (got %d of 3)", n)
 	}
+	if c.EnrollToken != "" && c.PanelURL == "" {
+		return fmt.Errorf("config: enroll_token is set but panel_url is not — the token can only be redeemed against a Panel")
+	}
 	return nil
 }
 
@@ -428,7 +439,13 @@ func (c *Config) Export() error {
 
 // YAML renders the resolved configuration, for --print-config.
 func (c *Config) YAML() string {
-	b, err := yaml.Marshal(c)
+	// The enroll token is a (short-lived) credential; keep it out of
+	// --print-config output, which operators paste into issues and chats.
+	render := *c
+	if render.EnrollToken != "" {
+		render.EnrollToken = "<redacted>"
+	}
+	b, err := yaml.Marshal(&render)
 	if err != nil {
 		return fmt.Sprintf("# could not render config: %v\n", err)
 	}

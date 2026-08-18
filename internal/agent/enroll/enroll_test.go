@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/briggleman/kraken/internal/shared/mtls"
 )
 
 func testLogger() *slog.Logger {
@@ -136,7 +138,7 @@ func (fp *fakePanel) signCSR(t *testing.T, csrPEM string) []byte {
 func TestEnsureCerts_HappyPath(t *testing.T) {
 	fp := newFakePanel(t, 0, "bootstrap-tok")
 	dir := t.TempDir()
-	paths, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 5*time.Second, testLogger())
+	paths, err := EnsureCerts(context.Background(), fp.server.URL, dir, Options{AgentPort: 9090, Deadline: 5 * time.Second}, testLogger())
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
@@ -172,7 +174,7 @@ func TestEnsureCerts_Idempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 5*time.Second, testLogger()); err != nil {
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, Options{AgentPort: 9090, Deadline: 5 * time.Second}, testLogger()); err != nil {
 		t.Fatalf("enroll (idempotent): %v", err)
 	}
 	if got := fp.tokenIssued.Load() + fp.enrollRequests.Load() + fp.healthProbes.Load(); got != 0 {
@@ -185,7 +187,7 @@ func TestEnsureCerts_Idempotent(t *testing.T) {
 func TestEnsureCerts_WaitsForPanel(t *testing.T) {
 	fp := newFakePanel(t, 2, "bootstrap-tok") // first 2 probes fail
 	dir := t.TempDir()
-	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, nil, 9090, 10*time.Second, testLogger()); err != nil {
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, Options{AgentPort: 9090, Deadline: 10 * time.Second}, testLogger()); err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
 	if fp.healthProbes.Load() < 3 {
@@ -202,7 +204,7 @@ func TestEnsureCerts_UnreachablePanel(t *testing.T) {
 	dir := t.TempDir()
 	// Point at a port that is (almost certainly) closed. The 127.0.0.1
 	// address makes the failure prompt.
-	_, err := EnsureCerts(context.Background(), "http://127.0.0.1:1", dir, nil, 9090, 2*time.Second, testLogger())
+	_, err := EnsureCerts(context.Background(), "http://127.0.0.1:1", dir, Options{AgentPort: 9090, Deadline: 2 * time.Second}, testLogger())
 	if err == nil {
 		t.Fatal("expected error from unreachable Panel")
 	}
@@ -212,3 +214,61 @@ func TestEnsureCerts_UnreachablePanel(t *testing.T) {
 }
 
 func isWindows() bool { return os.PathSeparator == '\\' }
+
+// TestEnsureCerts_TokenSkipsLocalEnroll — a pre-issued token (remote enroll)
+// must go straight to the CSR exchange without touching the loopback-gated
+// local-enroll endpoint.
+func TestEnsureCerts_TokenSkipsLocalEnroll(t *testing.T) {
+	fp := newFakePanel(t, 0, "remote-tok")
+	dir := t.TempDir()
+	opts := Options{Token: "remote-tok", AgentPort: 9091, Deadline: 5 * time.Second}
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, dir, opts, testLogger()); err != nil {
+		t.Fatalf("enroll: %v", err)
+	}
+	if fp.tokenIssued.Load() != 0 {
+		t.Errorf("expected no local-enroll calls, got %d", fp.tokenIssued.Load())
+	}
+	if fp.enrollRequests.Load() != 1 {
+		t.Errorf("expected 1 enroll call, got %d", fp.enrollRequests.Load())
+	}
+}
+
+// TestEnsureCerts_CAFingerprint — a matching pin succeeds; a mismatched pin
+// aborts before anything is persisted.
+func TestEnsureCerts_CAFingerprint(t *testing.T) {
+	fp := newFakePanel(t, 0, "remote-tok")
+	pin, err := mtls.CAFingerprintPEM(fp.caCert)
+	if err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+
+	good := t.TempDir()
+	opts := Options{Token: "remote-tok", CAFingerprint: "sha256:" + pin, AgentPort: 9090, Deadline: 5 * time.Second}
+	if _, err := EnsureCerts(context.Background(), fp.server.URL, good, opts, testLogger()); err != nil {
+		t.Fatalf("enroll with matching pin: %v", err)
+	}
+
+	fp2 := newFakePanel(t, 0, "remote-tok") // different throw-away CA
+	bad := t.TempDir()
+	opts.CAFingerprint = pin // pin from fp's CA, exchanged against fp2
+	_, err = EnsureCerts(context.Background(), fp2.server.URL, bad, opts, testLogger())
+	if err == nil {
+		t.Fatal("expected fingerprint mismatch error")
+	}
+	if !strings.Contains(err.Error(), "fingerprint mismatch") {
+		t.Errorf("expected fingerprint mismatch in error, got: %v", err)
+	}
+	entries, _ := os.ReadDir(bad)
+	if len(entries) != 0 {
+		t.Errorf("expected nothing persisted after mismatch, found %d files", len(entries))
+	}
+}
+
+// TestLocalIPs — must not error and must never include loopback.
+func TestLocalIPs(t *testing.T) {
+	for _, ip := range LocalIPs() {
+		if ip == "127.0.0.1" || ip == "::1" {
+			t.Errorf("LocalIPs included loopback %s", ip)
+		}
+	}
+}

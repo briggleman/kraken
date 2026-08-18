@@ -18,41 +18,32 @@ const SECTION_LABEL: React.CSSProperties = {
 
 // AgentInstallInstructions surfaces per-OS install commands for a remote
 // Agent, gated behind Linux / Windows tabs so the operator sees a shell
-// matching the host they're about to run against. The Linux flow uses the
-// bare-metal install.sh wrapper (installs the systemd unit); the Windows
-// flow downloads the release binaries and enrolls directly (matches
-// deploy/windows/README.md — nssm service install is documented there).
-// Registration happens inline once the agent enrolls, so these steps end
-// at "agent running".
+// matching the host they're about to run against. Both flows lean on the
+// agent's token-based auto-enroll (--enroll-token / KRAKEN_ENROLL_TOKEN):
+// the Linux flow is a single install.sh one-liner that installs, enrolls,
+// and starts the systemd service; the Windows flow downloads the release
+// binaries and runs the agent with the enroll settings in its environment
+// (nssm service install is documented in deploy/windows/README.md). The CA
+// fingerprint pins the enrollment: the agent refuses a CA that doesn't
+// match, so a plain-HTTP token exchange can't be MITM'd. Registration
+// happens inline once the agent enrolls, so these steps end at "agent
+// running".
 type AgentTarget = "linux" | "windows";
-function AgentInstallInstructions({ panelOrigin, token }: { panelOrigin: string; token: string }) {
+function AgentInstallInstructions({ panelOrigin, token, caFingerprint }: { panelOrigin: string; token: string; caFingerprint: string }) {
   const [target, setTarget] = useState<AgentTarget>("linux");
 
   const linuxCmds = [
     {
-      title: "1 · INSTALL AGENT + SYSTEMD UNIT",
-      body: "curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | sudo bash -s -- --role agent",
+      title: "1 · INSTALL + ENROLL + START (ONE COMMAND)",
+      body: `curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | \\
+  sudo bash -s -- --role agent --panel-url ${panelOrigin} \\
+    --enroll-token ${token} \\
+    --ca-fingerprint ${caFingerprint}`,
     },
     {
       title: "2 · OPEN FIREWALL PORTS (IF A FIREWALL IS ENABLED)",
       body: `sudo ufw allow 9090/tcp && sudo ufw allow 2022/tcp
 # firewalld: sudo firewall-cmd --permanent --add-port={9090,2022}/tcp && sudo firewall-cmd --reload`,
-    },
-    {
-      title: "3 · ENROLL + CONFIGURE (WRITES /etc/kraken)",
-      // -hosts must be addresses the Panel can DIAL (IPs / real DNS names —
-      // never a bare machine name); -port must match KRAKEN_AGENT_ADDR.
-      body: `sudo krakenctl enroll -panel ${panelOrigin} -token ${token} -hosts <this-host-ip> -port 9090 -out /etc/kraken/certs
-sudo tee -a /etc/kraken/agent.env >/dev/null <<'EOF'
-KRAKEN_NODE_ID=$(hostname)
-KRAKEN_TLS_CERT=/etc/kraken/certs/agent.pem
-KRAKEN_TLS_KEY=/etc/kraken/certs/agent-key.pem
-KRAKEN_TLS_CA=/etc/kraken/certs/ca.pem
-EOF`,
-    },
-    {
-      title: "4 · START THE AGENT",
-      body: "sudo systemctl enable --now kraken-agent",
     },
   ];
 
@@ -73,23 +64,16 @@ foreach ($f in @("kraken-agent-windows-amd64.exe","kraken-krakenctl-windows-amd6
   -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9090,2022`,
     },
     {
-      title: "3 · ENROLL (WRITES C:\\kraken\\certs)",
-      // -hosts must be addresses the Panel can DIAL (IPs / real DNS names —
-      // never $env:COMPUTERNAME); -port must match the agent's gRPC port.
-      body: `cd C:\\kraken\\bin
-.\\kraken-krakenctl-windows-amd64.exe enroll \`
-  -panel ${panelOrigin} -token ${token} \`
-  -hosts <this-host-ip> -port 9090 \`
-  -out C:\\kraken\\certs`,
-    },
-    {
-      title: "4 · RUN THE AGENT",
+      title: "3 · RUN THE AGENT (ENROLLS ITSELF ON FIRST START)",
+      // The agent exchanges the one-time token for a signed cert (pinned to
+      // the CA fingerprint), persists the bundle under C:\kraken\state, and
+      // reports this host's IPs so the address below prefills itself.
       body: `$env:KRAKEN_NODE_ID="$env:COMPUTERNAME".ToLower()
-$env:KRAKEN_TLS_CERT="C:\\kraken\\certs\\agent.pem"
-$env:KRAKEN_TLS_KEY="C:\\kraken\\certs\\agent-key.pem"
-$env:KRAKEN_TLS_CA="C:\\kraken\\certs\\ca.pem"
 $env:KRAKEN_NODE_OS="windows"
-$env:KRAKEN_STATE_DIR="C:\\kraken\\state"
+$env:KRAKEN_ROOT="C:\\kraken"
+$env:KRAKEN_PANEL_URL="${panelOrigin}"
+$env:KRAKEN_ENROLL_TOKEN="${token}"
+$env:KRAKEN_CA_FINGERPRINT="${caFingerprint}"
 C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
     },
   ];
@@ -107,9 +91,8 @@ C:\\kraken\\bin\\kraken-agent-windows-amd64.exe`,
       ))}
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
         The node takes its name from <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>KRAKEN_NODE_ID</span>.
-        {" "}<span style={{ fontFamily: mono, color: "var(--text-primary)" }}>-hosts</span> must be IPs or real DNS names the panel
-        can dial — never a bare computer name — and <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>-port</span> must
-        match the agent&apos;s gRPC port.
+        {" "}The agent reports its dialable IPs and gRPC port at enrollment, so the address below prefills itself
+        once it connects.
         {target === "windows" && (
           <>
             {" "}To keep the Agent running as a Windows Service (with log rotation + auto-start), see the{" "}
@@ -311,6 +294,7 @@ export function ConnectNode({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [token, setToken] = useState<string | null>(null);
+  const [caFingerprint, setCaFingerprint] = useState<string>("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
   const [enroll, setEnroll] = useState<EnrollStatus | null>(null);
   const [regAddress, setRegAddress] = useState("");
@@ -331,6 +315,7 @@ export function ConnectNode({
     try {
       const t = await api.createBootstrapToken();
       setToken(t.token);
+      setCaFingerprint(t.ca_fingerprint ?? "");
       setTokenExpiresAt(t.expires_at);
       setEnroll({ status: "pending", expires_at: t.expires_at });
       setRegisteredNodeId(null);
@@ -513,7 +498,7 @@ export function ConnectNode({
                   <code style={{ fontFamily: mono, fontSize: 12, color: "var(--accent)", wordBreak: "break-all", lineHeight: 1.5 }}>{token}</code>
                   <CopyButton text={token} />
                 </div>
-                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} />
+                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} caFingerprint={caFingerprint} />
               </>
             )}
           </div>

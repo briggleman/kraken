@@ -151,10 +151,20 @@ func (s *Server) handleCreateBootstrapToken(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", clientIP(r))
+	// The CA fingerprint rides along so the Add Node dialog can embed a pin in
+	// the generated install command: the agent verifies the CA it receives
+	// against this value, which protects a plain-HTTP token exchange from a
+	// man-in-the-middle answering with its own CA.
+	fp, err := mtls.CAFingerprintPEM(s.caCert)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not fingerprint CA")
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"token":      token,
-		"node_name":  req.NodeName,
-		"expires_at": exp,
+		"token":          token,
+		"node_name":      req.NodeName,
+		"expires_at":     exp,
+		"ca_fingerprint": fp,
 	})
 }
 

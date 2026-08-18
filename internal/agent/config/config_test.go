@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +16,7 @@ func clearEnv(t *testing.T) {
 		"KRAKEN_AGENT_ADDR", "KRAKEN_SFTP_ADDR", "KRAKEN_STATE_DIR", "KRAKEN_DATA_DIR",
 		"KRAKEN_HOST_DATA_DIR", "KRAKEN_BACKUP_DIR", "KRAKEN_SFTP_HOST_KEY",
 		"KRAKEN_TLS_CERT", "KRAKEN_TLS_KEY", "KRAKEN_TLS_CA", "KRAKEN_PANEL_URL",
+		"KRAKEN_ENROLL_TOKEN", "KRAKEN_CA_FINGERPRINT",
 		"KRAKEN_RUNTIME", "KRAKEN_WINDOWS_ISOLATION", "KRAKEN_ALLOW_INSECURE_GRPC",
 	} {
 		t.Setenv(k, "")
@@ -296,4 +298,45 @@ func TestExport(t *testing.T) {
 	if got := os.Getenv("KRAKEN_HOST_DATA_DIR"); got != host {
 		t.Errorf("KRAKEN_HOST_DATA_DIR = %q, want %q", got, host)
 	}
+}
+
+func TestEnrollTokenWiring(t *testing.T) {
+	clearEnv(t)
+
+	// Env spelling.
+	t.Setenv("KRAKEN_PANEL_URL", "http://panel:8080")
+	t.Setenv("KRAKEN_ENROLL_TOKEN", "tok-env")
+	t.Setenv("KRAKEN_CA_FINGERPRINT", "sha256:abc")
+	cfg, _, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.EnrollToken != "tok-env" || cfg.CAFingerprint != "sha256:abc" {
+		t.Errorf("env wiring: token=%q fp=%q", cfg.EnrollToken, cfg.CAFingerprint)
+	}
+
+	// Flags outrank env.
+	cfg, _, err = Load([]string{"--enroll-token", "tok-flag", "--ca-fingerprint", "def"})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.EnrollToken != "tok-flag" || cfg.CAFingerprint != "def" {
+		t.Errorf("flag wiring: token=%q fp=%q", cfg.EnrollToken, cfg.CAFingerprint)
+	}
+
+	// The token must be redacted from the printable config.
+	if y := cfg.YAML(); !contains(y, "<redacted>") || contains(y, "tok-flag") {
+		t.Errorf("YAML() leaked the enroll token: %s", y)
+	}
+}
+
+func TestEnrollTokenRequiresPanelURL(t *testing.T) {
+	clearEnv(t)
+	if _, _, err := Load([]string{"--enroll-token", "tok"}); err == nil {
+		t.Fatal("expected error for enroll token without panel_url")
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && strings.Contains(s, sub)
 }

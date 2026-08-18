@@ -634,6 +634,7 @@ paths:
                   token: { type: string }
                   node_name: { type: string }
                   expires_at: { type: string, format: date-time }
+                  ca_fingerprint: { type: string, description: full SHA-256 fingerprint of the Panel CA — embed in the agent's install command as --ca-fingerprint to pin the enrollment }
         '503': { description: CA signing not configured }
   /agents/enroll-status:
     get:

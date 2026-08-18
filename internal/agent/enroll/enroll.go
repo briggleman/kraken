@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,15 +65,46 @@ func (p CertPaths) missing() []string {
 	return out
 }
 
+// Options tunes an enrollment beyond the panel URL and state dir.
+type Options struct {
+	// Token is a pre-issued one-time bootstrap token (minted in the Panel's
+	// Add Node dialog). When set, enrollment goes straight to the CSR
+	// exchange — this is the remote-enroll path, and panelURL may be any
+	// address the Agent can reach. When empty, a token is fetched from the
+	// Panel's loopback-gated /setup/local-enroll endpoint, which only works
+	// for an Agent co-located with the Panel.
+	Token string
+
+	// CAFingerprint, when set, pins the CA the Panel must return: the full
+	// SHA-256 fingerprint from the Panel's token response (an optional
+	// "sha256:" prefix is accepted). A mismatch aborts enrollment before
+	// anything is persisted — this is what protects a plain-HTTP token
+	// exchange from a man-in-the-middle substituting its own CA.
+	CAFingerprint string
+
+	// ExtraHosts are additional SANs (IPs / DNS names) baked into the cert.
+	// The Panel reads them back at redemption to prefill the node's
+	// registration address, so they should be addresses the Panel can dial.
+	ExtraHosts []string
+
+	// AgentPort is the gRPC port this Agent will serve on, reported so the
+	// registration prefill is host:port-accurate.
+	AgentPort int
+
+	// Deadline bounds how long the Panel is polled for readiness.
+	Deadline time.Duration
+}
+
 // EnsureCerts guarantees a valid Agent mTLS bundle at ${stateDir}. If files
 // already exist it returns their paths; otherwise it enrolls with panelURL
-// and persists the returned bundle. The Panel is polled for up to `deadline`
-// so a slightly-slow Panel process doesn't fail startup.
+// and persists the returned bundle. The Panel is polled for up to
+// opts.Deadline so a slightly-slow Panel process doesn't fail startup.
 //
-// panelURL is expected to be reachable on loopback (that's how the
-// server-side loopback gate authenticates the enrollment). Setting it to
-// anything else is a supported operator override but the request will fail.
-func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []string, agentPort int, deadline time.Duration, logger *slog.Logger) (CertPaths, error) {
+// Without a token, panelURL is expected to be reachable on loopback (that's
+// how the server-side loopback gate authenticates the enrollment). With a
+// token (remote enroll), any reachable Panel address works.
+func EnsureCerts(ctx context.Context, panelURL, stateDir string, opts Options, logger *slog.Logger) (CertPaths, error) {
+	extraHosts, agentPort, deadline := opts.ExtraHosts, opts.AgentPort, opts.Deadline
 	paths := pathsIn(stateDir)
 	if paths.exists() {
 		logger.Info("auto-enroll: reusing existing cert bundle", "dir", stateDir)
@@ -90,15 +122,21 @@ func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []st
 	// The Panel process may still be coming up (docker-compose starts both
 	// containers at roughly the same time). Poll /healthz until it answers
 	// or the overall deadline expires.
-	if err := waitForPanel(ctx, client, base, deadline, logger); err != nil {
+	var err error
+	if err = waitForPanel(ctx, client, base, deadline, logger); err != nil {
 		return CertPaths{}, err
 	}
 
-	token, err := fetchLocalToken(ctx, client, base)
-	if err != nil {
-		return CertPaths{}, fmt.Errorf("auto-enroll: fetch local token: %w", err)
+	token := opts.Token
+	if token == "" {
+		token, err = fetchLocalToken(ctx, client, base)
+		if err != nil {
+			return CertPaths{}, fmt.Errorf("auto-enroll: fetch local token: %w", err)
+		}
+		logger.Info("auto-enroll: obtained bootstrap token from Panel")
+	} else {
+		logger.Info("auto-enroll: using operator-supplied bootstrap token")
 	}
-	logger.Info("auto-enroll: obtained bootstrap token from Panel")
 
 	keyPEM, csrPEM, err := mtls.NewAgentKeyAndCSR(extraHosts)
 	if err != nil {
@@ -107,6 +145,14 @@ func EnsureCerts(ctx context.Context, panelURL, stateDir string, extraHosts []st
 	certPEM, caPEM, err := exchangeCSR(ctx, client, base, token, csrPEM, agentPort)
 	if err != nil {
 		return CertPaths{}, fmt.Errorf("auto-enroll: CSR exchange: %w", err)
+	}
+	// Pin check before anything touches disk: a bundle from the wrong CA is
+	// worse than no bundle (it would silently fail every Panel handshake).
+	if opts.CAFingerprint != "" {
+		if err := mtls.VerifyCAFingerprint(caPEM, opts.CAFingerprint); err != nil {
+			return CertPaths{}, fmt.Errorf("auto-enroll: %w", err)
+		}
+		logger.Info("auto-enroll: Panel CA matches the pinned fingerprint")
 	}
 	logger.Info("auto-enroll: Panel issued agent certificate", "cert", mtls.SummarizePEM(certPEM))
 	logger.Info("auto-enroll: Panel returned CA", "ca", mtls.SummarizePEM(caPEM))
@@ -215,4 +261,41 @@ func writeSecret(path string, data []byte) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// LocalIPs enumerates the host's non-loopback unicast IPs — IPv4 first, then
+// global IPv6 — for use as ExtraHosts on a remote enrollment. These seed the
+// Panel's registration prefill, which wants dialable addresses (never machine
+// names). Link-local addresses are skipped: the Panel can't route to them.
+func LocalIPs() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var v4, v6 []string
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP
+			if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || !ip.IsGlobalUnicast() {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil {
+				v4 = append(v4, ip4.String())
+			} else {
+				v6 = append(v6, ip.String())
+			}
+		}
+	}
+	return append(v4, v6...)
 }

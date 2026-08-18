@@ -77,21 +77,39 @@ func run(logger *slog.Logger, cfg *config.Config) error {
 	cert, key, ca := cfg.TLSCert, cfg.TLSKey, cfg.TLSCA
 	secure := cfg.Secure()
 
-	// Auto-enroll: if TLS isn't configured but a Panel URL is, enroll over the
-	// Panel's loopback-gated /setup/local-enroll → /agents/enroll flow. The
-	// persisted cert bundle survives across restarts (subsequent boots reuse it
-	// without contacting the Panel). An operator who enrolled by hand (via
-	// `krakenctl enroll`, or by dropping the bundle under <root>/certs) has TLS
-	// configured already and skips this branch entirely.
+	// Auto-enroll: if TLS isn't configured but a Panel URL is, enroll with the
+	// Panel and persist the bundle (subsequent boots reuse it without contacting
+	// the Panel). With an enroll token (minted in the Panel's Add Node dialog)
+	// this works from any host that can reach the Panel; without one it falls
+	// back to the loopback-gated /setup/local-enroll flow for a co-located
+	// Agent. An operator who enrolled by hand (via `krakenctl enroll`, or by
+	// dropping the bundle under <root>/certs) has TLS configured already and
+	// skips this branch entirely.
 	if !secure && cfg.PanelURL != "" {
+		opts := enroll.Options{
+			Token:         cfg.EnrollToken,
+			CAFingerprint: cfg.CAFingerprint,
+			AgentPort:     listenPort(addr),
+			Deadline:      90 * time.Second,
+		}
+		if cfg.EnrollToken != "" {
+			// Remote enroll: bake this host's dialable IPs into the cert so
+			// the Panel can prefill the node's registration address.
+			opts.ExtraHosts = enroll.LocalIPs()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		paths, aerr := enroll.EnsureCerts(ctx, cfg.PanelURL, cfg.StateDir, nil, listenPort(addr), 90*time.Second, logger)
+		paths, aerr := enroll.EnsureCerts(ctx, cfg.PanelURL, cfg.StateDir, opts, logger)
 		cancel()
 		if aerr != nil {
+			if cfg.EnrollToken != "" {
+				return fmt.Errorf("auto-enroll with Panel at %s: %w — bootstrap tokens are one-time and short-lived (and a Panel restart invalidates them); mint a fresh one in the Panel's Add Node dialog and retry", cfg.PanelURL, aerr)
+			}
 			return fmt.Errorf("auto-enroll with Panel at %s: %w", cfg.PanelURL, aerr)
 		}
 		cert, key, ca = paths.Cert, paths.Key, paths.CA
 		secure = true
+	} else if secure && cfg.EnrollToken != "" {
+		logger.Info("enroll token ignored: an mTLS bundle is already configured (delete it to re-enroll)")
 	}
 
 	if secure {

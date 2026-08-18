@@ -94,3 +94,35 @@ func VerifyPEM(certPEM, caPEM []byte) error {
 	})
 	return err
 }
+
+// CAFingerprintPEM returns the full SHA-256 fingerprint (64 hex chars) of the
+// first certificate in pemBytes. This is the pinning identity embedded in
+// Panel-generated deploy commands and checked by the Agent's remote-enroll
+// path, so unlike FingerprintPEM it must carry the whole digest.
+func CAFingerprintPEM(pemBytes []byte) (string, error) {
+	cert, err := parseFirstCert(pemBytes)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// VerifyCAFingerprint checks pemBytes against a pinned fingerprint as produced
+// by CAFingerprintPEM. The comparison is case-insensitive and tolerates a
+// "sha256:" prefix so operators can paste either spelling.
+func VerifyCAFingerprint(pemBytes []byte, pinned string) error {
+	want := strings.ToLower(strings.TrimSpace(pinned))
+	want = strings.TrimPrefix(want, "sha256:")
+	got, err := CAFingerprintPEM(pemBytes)
+	if err != nil {
+		return err
+	}
+	if want == "" {
+		return fmt.Errorf("mtls: empty CA fingerprint")
+	}
+	if got != want {
+		return fmt.Errorf("mtls: CA fingerprint mismatch: pinned %s, got %s — the Panel that answered is not the one that issued this token", want, got)
+	}
+	return nil
+}

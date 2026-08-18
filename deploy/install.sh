@@ -12,6 +12,9 @@
 #   # agent-only on a second host:
 #   curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | sudo bash -s -- --role agent
 #
+#   # remote agent, single command (token from the Panel's Add Node dialog):
+#   curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | #     sudo bash -s -- --role agent --panel-url http://panel:8080 #       --enroll-token <TOKEN> --ca-fingerprint <SHA256>
+#
 #   # pin a version, or skip systemd:
 #   sudo bash deploy/install.sh --version v0.5.0 --no-systemd
 
@@ -26,6 +29,9 @@ REPO="briggleman/kraken"
 KRAKEN_USER="kraken"
 STATE_DIR="/var/lib/kraken"
 CONFIG_DIR="/etc/kraken"
+PANEL_URL=""          # remote-agent auto-enroll: Panel base URL
+ENROLL_TOKEN=""       # remote-agent auto-enroll: one-time bootstrap token
+CA_FINGERPRINT=""     # remote-agent auto-enroll: pinned Panel CA fingerprint
 
 log()   { printf '\033[36m→\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!\033[0m %s\n' "$*" >&2; }
@@ -39,6 +45,9 @@ while [ $# -gt 0 ]; do
     --prefix) PREFIX="${2:-}"; shift 2 ;;
     --no-systemd) INSTALL_SYSTEMD=0; shift ;;
     --systemd) INSTALL_SYSTEMD=1; shift ;;
+    --panel-url) PANEL_URL="${2:-}"; shift 2 ;;
+    --enroll-token) ENROLL_TOKEN="${2:-}"; shift 2 ;;
+    --ca-fingerprint) CA_FINGERPRINT="${2:-}"; shift 2 ;;
     -h|--help)
       sed -n '3,20p' "$0"
       exit 0
@@ -51,6 +60,13 @@ case "$ROLE" in
   panel|agent|both) ;;
   *) die "--role must be panel, agent, or both (got '$ROLE')" ;;
 esac
+
+if [ -n "$ENROLL_TOKEN" ] && [ -z "$PANEL_URL" ]; then
+  die "--enroll-token requires --panel-url (the Panel the token was minted on)"
+fi
+if [ -n "$ENROLL_TOKEN" ] && [ "$ROLE" = "panel" ]; then
+  die "--enroll-token only makes sense for an agent install (--role agent or both)"
+fi
 
 # ---- preconditions -----------------------------------------------------
 [ "$(id -u)" -eq 0 ] || die "must run as root (use sudo)"
@@ -157,6 +173,20 @@ write_if_missing() {
   log "  wrote $path"
 }
 
+# set_env_var KEY VALUE FILE — replace an existing KEY= line (commented or
+# not) or append one. Used for the enroll settings, which must land even when
+# agent.env already exists (re-running with a fresh token is the recovery path
+# for an expired one).
+set_env_var() {
+  local key="$1" value="$2" file="$3"
+  if grep -qE "^#? ?${key}=" "$file" 2>/dev/null; then
+    sed -i -E "s|^#? ?${key}=.*|${key}=${value}|" "$file"
+  else
+    printf '%s=%s
+' "$key" "$value" >> "$file"
+  fi
+}
+
 if [ "$ROLE" = "panel" ] || [ "$ROLE" = "both" ]; then
   # Only auto-generate a KRAKEN_SECRETS_KEY when the file doesn't already
   # exist; otherwise operator edits are preserved across re-runs.
@@ -216,10 +246,31 @@ EOF
   install -d -m 0750 -o "$KRAKEN_USER" -g "$KRAKEN_USER" \
     "$STATE_DIR/server-data" "$STATE_DIR/agent-backups"
 
-  if [ "$ROLE" = "agent" ]; then
+  # Remote auto-enroll: wire the Panel URL + one-time token + CA pin into
+  # agent.env so the Agent enrolls itself on first start. These are written
+  # even when agent.env already exists — re-running with a fresh token is the
+  # recovery path for an expired or Panel-restart-invalidated one. The token
+  # is one-time and the persisted cert bundle survives restarts, so the stale
+  # KRAKEN_ENROLL_TOKEN left behind is inert.
+  if [ -n "$PANEL_URL" ]; then
+    set_env_var KRAKEN_PANEL_URL "$PANEL_URL" "$CONFIG_DIR/agent.env"
+    log "  set KRAKEN_PANEL_URL=$PANEL_URL"
+  fi
+  if [ -n "$ENROLL_TOKEN" ]; then
+    set_env_var KRAKEN_ENROLL_TOKEN "$ENROLL_TOKEN" "$CONFIG_DIR/agent.env"
+    log "  set KRAKEN_ENROLL_TOKEN=<one-time token>"
+    if [ -n "$CA_FINGERPRINT" ]; then
+      set_env_var KRAKEN_CA_FINGERPRINT "$CA_FINGERPRINT" "$CONFIG_DIR/agent.env"
+      log "  set KRAKEN_CA_FINGERPRINT=$CA_FINGERPRINT"
+    else
+      warn "no --ca-fingerprint given — enrollment will trust whatever CA the Panel returns"
+    fi
+  fi
+
+  if [ "$ROLE" = "agent" ] && [ -z "$ENROLL_TOKEN" ]; then
     warn "remote-Agent install: this host now expects mTLS on :9090."
-    warn "Before starting kraken-agent, mint a bootstrap token from the"
-    warn "Panel host (Settings → Nodes → Add node, or via the API) and run:"
+    warn "Either re-run with --panel-url/--enroll-token (from the Panel's"
+    warn "Add node dialog), or mint a token and run:"
     warn "  sudo krakenctl enroll -panel http://<panel-host>:8080 -token <TOKEN>"
     warn "The Agent refuses plaintext gRPC on non-loopback addresses without"
     warn "TLS. Set KRAKEN_ALLOW_INSECURE_GRPC=1 in agent.env to override."
@@ -249,12 +300,20 @@ if [ "$INSTALL_SYSTEMD" -eq 1 ] && [ -d /etc/systemd/system ]; then
   fi
 
   systemctl daemon-reload
-  log "systemd units installed. Enable + start with:"
-  case "$ROLE" in
-    panel) echo "    sudo systemctl enable --now kraken-panel" ;;
-    agent) echo "    sudo systemctl enable --now kraken-agent" ;;
-    both)  echo "    sudo systemctl enable --now kraken-panel kraken-agent" ;;
-  esac
+  if [ "$ROLE" = "agent" ] && [ -n "$ENROLL_TOKEN" ]; then
+    # One-command install: the enroll settings are in place, so bring the
+    # agent up now — it enrolls with the Panel on first start.
+    log "starting kraken-agent (enrolls with $PANEL_URL on first start)"
+    systemctl enable --now kraken-agent
+    log "watch enrollment with: journalctl -u kraken-agent -f"
+  else
+    log "systemd units installed. Enable + start with:"
+    case "$ROLE" in
+      panel) echo "    sudo systemctl enable --now kraken-panel" ;;
+      agent) echo "    sudo systemctl enable --now kraken-agent" ;;
+      both)  echo "    sudo systemctl enable --now kraken-panel kraken-agent" ;;
+    esac
+  fi
 elif [ "$INSTALL_SYSTEMD" -eq 1 ]; then
   warn "no systemd on this host — skipped unit install"
 fi

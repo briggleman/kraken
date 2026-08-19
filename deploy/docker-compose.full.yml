@@ -3,9 +3,10 @@
 #   docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
 #
 # Runs Postgres + Panel + Agent on a single host. Panel and Agent join the
-# host network so the Panel binds :8080 directly, the Agent binds :9090 +
-# :2022 directly, and game containers spawned by the Agent expose their
-# UDP/TCP ports on the host without an extra NAT hop.
+# host network so the Panel binds :8080 directly (plus :9443, the mTLS
+# reverse-tunnel listener that tunnel-mode remote nodes dial into), the
+# Agent binds :9090 + :2022 directly, and game containers spawned by the
+# Agent expose their UDP/TCP ports on the host without an extra NAT hop.
 #
 # Compare with docker-compose.yml (Postgres-only): that file targets the
 # bare-metal path where Panel + Agent run as host processes. Use this file

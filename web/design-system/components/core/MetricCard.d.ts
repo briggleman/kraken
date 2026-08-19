@@ -16,6 +16,9 @@ export interface MetricCardProps extends React.HTMLAttributes<HTMLDivElement> {
 export interface MetricBarProps {
   /** Fill percentage, 0–100. */
   pct?: number;
+  /** Recolor the fill + glow (any CSS color, e.g. a status token) for
+   *  load-banded meters. Default is the teal accent gradient. */
+  color?: string;
   style?: React.CSSProperties;
 }
 

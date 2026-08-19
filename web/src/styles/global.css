@@ -52,6 +52,84 @@ button {
   font-family: inherit;
 }
 
+/* ── top nav (Shell) ── */
+
+.top-nav-links {
+  display: flex;
+  align-items: stretch;
+  height: var(--nav-height);
+  margin-left: 26px;
+}
+
+.top-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.top-nav-link:hover {
+  color: var(--text-secondary);
+}
+
+.top-nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -6px;
+  border-radius: 8px;
+}
+
+.top-nav-link.active {
+  color: var(--text-primary);
+}
+
+.top-nav-link.active::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--gradient-accent-bar);
+  box-shadow: 0 0 10px rgba(61, 245, 207, 0.55);
+}
+
+/* Collapse order: the live cluster gives way first, then the nav links (the
+   user-menu still lists every destination, so nothing becomes unreachable). */
+.nav-cluster {
+  display: flex;
+  align-items: center;
+}
+@media (max-width: 1080px) {
+  .nav-cluster {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  .top-nav-links {
+    display: none;
+  }
+}
+
+/* ── fleet table rows ── */
+
+.fleet-row {
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.fleet-row:hover {
+  background: rgba(61, 245, 207, 0.045);
+}
+.fleet-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
 /* ── ambient backdrop drift (see AmbientBackground); reduced-motion is handled
    globally in the design system's effects.css ── */
 

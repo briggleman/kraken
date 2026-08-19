@@ -176,11 +176,23 @@ type updateNodeRequest struct {
 	TotalMemMB *int `json:"total_memory_mb,omitempty"`
 	PortStart  *int `json:"port_start,omitempty"`
 	PortEnd    *int `json:"port_end,omitempty"`
+
+	// ConnectionMode flips an existing node between "direct" and "tunnel"
+	// without re-registering (the design's promised non-destructive flip).
+	// Tunnel needs the node's TunnelID binding, which the reconciler captures
+	// from the agent's serving cert on contact — so the natural sequence is:
+	// re-enroll the agent for an identity-bearing cert (if it predates them),
+	// let one reconcile pass land, then flip.
+	ConnectionMode *string `json:"connection_mode,omitempty"`
+	// Address optionally accompanies a flip to direct for nodes registered in
+	// tunnel mode, which have no stored address to dial.
+	Address *string `json:"address,omitempty"`
 }
 
-// handleUpdateNode edits a node's schedulable capacity: total memory and the
-// game-port range. Port-range changes preserve existing allocations, so running
-// servers keep their ports; only future placements draw from the new range.
+// handleUpdateNode edits a node's schedulable capacity — total memory and the
+// game-port range — and flips its connection mode. Port-range changes preserve
+// existing allocations, so running servers keep their ports; only future
+// placements draw from the new range.
 func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	var req updateNodeRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -226,12 +238,43 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		n.Ports.SetRanges(cluster.PortRange{Start: start, End: end})
 	}
 
+	if req.Address != nil && *req.Address != "" {
+		n.Address = *req.Address
+	}
+	if req.ConnectionMode != nil {
+		switch cluster.ConnectionMode(*req.ConnectionMode) {
+		case cluster.ConnTunnel:
+			if s.tunnel == nil {
+				writeError(w, http.StatusBadRequest, "the reverse-tunnel listener is disabled on this Panel (set KRAKEN_TUNNEL_ADDR)")
+				return
+			}
+			// The binding must already exist: either set at registration, or
+			// captured by the reconciler from the agent's identity-bearing
+			// cert. Without it any enrolled agent could claim this node.
+			if n.TunnelID == "" {
+				writeError(w, http.StatusBadRequest,
+					"node has no tunnel identity yet — re-enroll the agent (its cert predates per-node identities), let it reconnect once, then flip")
+				return
+			}
+			n.ConnectionMode = cluster.ConnTunnel
+		case cluster.ConnDirect:
+			if n.Address == "" {
+				writeError(w, http.StatusBadRequest, "flipping to direct needs an address (host:port) — include it in this request")
+				return
+			}
+			n.ConnectionMode = cluster.ConnDirect
+		default:
+			writeError(w, http.StatusBadRequest, "connection_mode must be 'direct' or 'tunnel'")
+			return
+		}
+	}
+
 	if err := s.store.UpdateNode(r.Context(), n); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update node")
 		return
 	}
-	s.logger.Info("node capacity updated", "id", n.ID, "name", n.Name,
-		"total_memory_mb", n.TotalMemoryMB, "ports", n.Ports.Ranges)
+	s.logger.Info("node updated", "id", n.ID, "name", n.Name,
+		"total_memory_mb", n.TotalMemoryMB, "ports", n.Ports.Ranges, "mode", n.ConnectionMode)
 	writeJSON(w, http.StatusOK, n)
 }
 

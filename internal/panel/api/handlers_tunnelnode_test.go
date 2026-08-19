@@ -170,3 +170,98 @@ func TestEnrollSurfacesTunnelID(t *testing.T) {
 		t.Fatalf("enroll status: %+v — a redeemed enrollment must carry its tunnel_id", st)
 	}
 }
+
+// TestFlipNodeConnectionMode — the non-destructive flip: tunnel-registered
+// nodes flip to direct (given an address) and back; a direct node whose agent
+// cert predates identities can't flip until one is captured; a Panel without
+// the listener refuses.
+func TestFlipNodeConnectionMode(t *testing.T) {
+	h := newTunnelTestServer(t, "127.0.0.1:0")
+	tok := login(t, h)
+
+	// A tunnel-registered node (carries its identity binding from birth).
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes", tok, map[string]any{
+		"connection_mode": "tunnel", "tunnel_id": "ident-flip", "name": "flippy",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	var node struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &node); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tunnel → direct without an address: refused (nothing to dial).
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+node.ID, tok, map[string]any{"connection_mode": "direct"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("flip to direct w/o address: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Tunnel → direct with an address: allowed.
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+node.ID, tok, map[string]any{
+		"connection_mode": "direct", "address": "192.0.2.9:9091",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("flip to direct: %d %s", rec.Code, rec.Body.String())
+	}
+	var flipped struct {
+		ConnectionMode string `json:"connection_mode"`
+		Address        string `json:"address"`
+		TunnelID       string `json:"tunnel_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &flipped); err != nil {
+		t.Fatal(err)
+	}
+	if flipped.ConnectionMode != "direct" || flipped.Address != "192.0.2.9:9091" || flipped.TunnelID != "ident-flip" {
+		t.Fatalf("after flip to direct: %+v (tunnel identity must survive the round trip)", flipped)
+	}
+
+	// Direct → tunnel again: allowed, because the binding was kept.
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+node.ID, tok, map[string]any{"connection_mode": "tunnel"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("flip back to tunnel: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// A direct node with no captured identity can't flip.
+	rec = do(t, h, http.MethodPost, "/api/v1/nodes", tok, map[string]any{
+		"name": "legacy", "os": "linux", "address": "192.0.2.10:9090",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register legacy: %d %s", rec.Code, rec.Body.String())
+	}
+	var legacy struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+legacy.ID, tok, map[string]any{"connection_mode": "tunnel"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("flip without identity: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestFlipNodeListenerDisabled — a Panel with the tunnel listener off refuses
+// flips to tunnel regardless of binding.
+func TestFlipNodeListenerDisabled(t *testing.T) {
+	h := newTunnelTestServer(t, "off")
+	tok := login(t, h)
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes", tok, map[string]any{
+		"name": "n1", "os": "linux", "address": "192.0.2.11:9090",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	var node struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &node); err != nil {
+		t.Fatal(err)
+	}
+	rec = do(t, h, http.MethodPatch, "/api/v1/nodes/"+node.ID, tok, map[string]any{"connection_mode": "tunnel"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("flip with listener off: %d %s", rec.Code, rec.Body.String())
+	}
+}

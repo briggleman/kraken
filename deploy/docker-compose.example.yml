@@ -57,6 +57,16 @@
 #   host networking, the port you pick binds directly on the host — no
 #   `ports:` mapping needed.
 #
+# Reverse-tunnel listener (tunnel-mode nodes dial IN to the Panel):
+#   The Panel also listens on KRAKEN_TUNNEL_ADDR (default :9443, mTLS only;
+#   set to `off` to disable). Under host networking it binds directly, like
+#   the HTTP port. On a deployment that publishes ports instead (e.g. Docker
+#   Desktop on macOS/Windows, where network_mode: host is a no-op), add a
+#   `ports:` mapping for it — otherwise tunnel-mode agents can't reach the
+#   Panel:
+#     ports:
+#       - "9443:9443"
+#
 # Postgres credentials:
 #   The defaults work but are known. If Postgres is ever reachable
 #   beyond loopback, or the host is shared, change POSTGRES_PASSWORD

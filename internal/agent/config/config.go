@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -66,6 +67,14 @@ type Config struct {
 	WindowsIsolation  string `json:"windows_isolation,omitempty"`
 	AllowInsecureGRPC *bool  `json:"allow_insecure_grpc,omitempty"`
 
+	// Tunnel enables reverse-connection mode: the Agent dials the Panel and
+	// keeps a multiplexed session open, so the node needs no inbound gRPC
+	// port. Requires an mTLS bundle (or a panel_url to enroll for one).
+	Tunnel *bool `json:"tunnel,omitempty"`
+	// TunnelAddr is the Panel's reverse-tunnel endpoint (host:port). Defaults
+	// to the panel_url host on port 9443.
+	TunnelAddr string `json:"tunnel_addr,omitempty"`
+
 	// hostDataDirSet records whether HostDataDir was configured explicitly.
 	// It defaults to DataDir, but the runtime warns when a containerized Agent
 	// leaves it unset, so Export must not paper over that by exporting the
@@ -89,11 +98,12 @@ type Flags struct {
 // environment and, if one is found, a config file.
 func Load(args []string) (*Config, Flags, error) {
 	var (
-		fromFlags Config
-		modes     Flags
-		cfgPath   string
-		wine      bool
-		insecure  bool
+		fromFlags  Config
+		modes      Flags
+		cfgPath    string
+		wine       bool
+		insecure   bool
+		tunnelFlag bool
 	)
 
 	fs := flag.NewFlagSet("kraken-agent", flag.ContinueOnError)
@@ -115,6 +125,8 @@ func Load(args []string) (*Config, Flags, error) {
 	fs.StringVar(&fromFlags.PanelURL, "panel-url", "", "Panel base URL for auto-enrollment when no TLS bundle exists")
 	fs.StringVar(&fromFlags.EnrollToken, "enroll-token", "", "one-time bootstrap token for remote auto-enrollment (minted in the Panel's Add Node dialog)")
 	fs.StringVar(&fromFlags.CAFingerprint, "ca-fingerprint", "", "pinned SHA-256 fingerprint of the Panel CA, verified during enrollment")
+	fs.BoolVar(&tunnelFlag, "tunnel", false, "dial out to the Panel and serve over a reverse tunnel (no inbound gRPC port needed)")
+	fs.StringVar(&fromFlags.TunnelAddr, "tunnel-addr", "", "Panel reverse-tunnel endpoint (host:port; default: panel-url host on port 9443)")
 	fs.StringVar(&fromFlags.Runtime, "runtime", "", `container backend: "docker" or "fake"`)
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
@@ -141,6 +153,9 @@ func Load(args []string) (*Config, Flags, error) {
 	}
 	if set["allow-insecure-grpc"] {
 		fromFlags.AllowInsecureGRPC = &insecure
+	}
+	if set["tunnel"] {
+		fromFlags.Tunnel = &tunnelFlag
 	}
 
 	// The root has to settle before the file is looked for, since <root>/agent.yaml
@@ -243,6 +258,11 @@ func (c *Config) overlayEnv() {
 	str("KRAKEN_CA_FINGERPRINT", &c.CAFingerprint)
 	str("KRAKEN_RUNTIME", &c.Runtime)
 	str("KRAKEN_WINDOWS_ISOLATION", &c.WindowsIsolation)
+	str("KRAKEN_TUNNEL_ADDR", &c.TunnelAddr)
+	if v, ok := os.LookupEnv("KRAKEN_TUNNEL"); ok && v != "" {
+		b := v == "1" || strings.EqualFold(v, "true")
+		c.Tunnel = &b
+	}
 
 	if v, ok := os.LookupEnv("KRAKEN_HOST_DATA_DIR"); ok && strings.TrimSpace(v) != "" {
 		c.HostDataDir = v
@@ -282,6 +302,10 @@ func (c *Config) overlay(f *Config) {
 	str(f.CAFingerprint, &c.CAFingerprint)
 	str(f.Runtime, &c.Runtime)
 	str(f.WindowsIsolation, &c.WindowsIsolation)
+	str(f.TunnelAddr, &c.TunnelAddr)
+	if f.Tunnel != nil {
+		c.Tunnel = f.Tunnel
+	}
 	if f.HostDataDir != "" {
 		c.HostDataDir = f.HostDataDir
 		c.hostDataDirSet = true
@@ -400,7 +424,31 @@ func (c *Config) validate() error {
 	if c.EnrollToken != "" && c.PanelURL == "" {
 		return fmt.Errorf("config: enroll_token is set but panel_url is not — the token can only be redeemed against a Panel")
 	}
+	if c.TunnelAddr != "" {
+		if _, _, err := net.SplitHostPort(c.TunnelAddr); err != nil {
+			return fmt.Errorf("config: tunnel_addr %q is not host:port: %w", c.TunnelAddr, err)
+		}
+	}
+	if c.TunnelEnabled() && c.TunnelAddr == "" && c.PanelURL == "" {
+		return fmt.Errorf("config: tunnel mode needs tunnel_addr or panel_url to know where the Panel is")
+	}
 	return nil
+}
+
+// TunnelEnabled reports whether the Agent should serve over a reverse tunnel.
+func (c *Config) TunnelEnabled() bool { return c.Tunnel != nil && *c.Tunnel }
+
+// ResolveTunnelAddr returns the Panel's reverse-tunnel endpoint: tunnel_addr
+// when set, else the panel_url host on the default tunnel port.
+func (c *Config) ResolveTunnelAddr() (string, error) {
+	if c.TunnelAddr != "" {
+		return c.TunnelAddr, nil
+	}
+	u, err := url.Parse(c.PanelURL)
+	if err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("config: cannot derive the tunnel address from panel_url %q — set tunnel_addr explicitly", c.PanelURL)
+	}
+	return net.JoinHostPort(u.Hostname(), "9443"), nil
 }
 
 // Secure reports whether a complete mTLS bundle is configured.

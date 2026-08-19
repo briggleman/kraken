@@ -36,6 +36,22 @@ export function SftpCard({ id }: { id: string }) {
 
   if (!st) return null;
 
+  // A tunnel-mode node accepts nothing inbound — its SFTP listener is only
+  // reachable on the node's own network. Say so honestly instead of rendering
+  // an enable button for an endpoint the operator probably can't dial.
+  if (st.tunneled && !st.enabled) {
+    return (
+      <Card dashed padding={18} style={{ marginBottom: 16 }}>
+        <div style={label}>SFTP ACCESS</div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "10px 0 0", lineHeight: 1.6 }}>
+          This node connects through a reverse tunnel and accepts no inbound connections, so its SFTP
+          endpoint is only reachable from the node's own network. Use the file manager above — it works
+          over the tunnel.
+        </p>
+      </Card>
+    );
+  }
+
   const connectCmd = st.host && st.port ? `sftp -P ${st.port} ${st.username}@${st.host}` : "connect once the node reports its SFTP port";
   const copy = (text: string) => navigator.clipboard?.writeText(text);
 

@@ -193,6 +193,10 @@ func run(logger *slog.Logger) error {
 	// Background scheduler: runs due cron tasks (restart / backup / command).
 	srv.StartScheduler(reconcileCtx, 30*time.Second)
 
+	// Reverse-tunnel listener: tunnel-mode Agents dial in here and the node
+	// pool routes their gRPC through the session. No-op when disabled.
+	srv.StartTunnel(reconcileCtx)
+
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           srv.Handler(),

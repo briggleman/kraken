@@ -19,11 +19,15 @@ Deferred features and enhancements, roughly in priority order.
 - _Node 20 → 24: done 2026-07-31 (see below)._
 
 ## Platform
-- **Reverse connections (agent dials out) — designed, awaiting go/no-go.**
-  Eliminate the inbound 9090/2022 requirement on nodes: the Agent keeps an
-  outbound mTLS tunnel to the Panel and the existing gRPC channel rides it
-  unchanged. Full design, options, security analysis, phasing, and the three
-  decisions needed: [docs/design/reverse-connections.md](docs/design/reverse-connections.md).
+- **Reverse connections (agent dials out) — phase 1 shipped 2026-08-19.**
+  Tunnel-mode nodes dial the Panel (`KRAKEN_TUNNEL=1`, listener on `:9443`)
+  and need zero inbound ports; identity is a Panel-minted URI SAN in the
+  agent cert, bound at registration. Direct stays the default for new nodes
+  until the tunnel survives a release cycle on Behemoth. Remaining: the live
+  Behemoth drill, then **phase 2 — Panel-side SFTP proxy** (route
+  `panel:2022` over the tunnel by username=server-id), deferred until
+  tunnel operators actually miss SFTP. Design + decisions:
+  [docs/design/reverse-connections.md](docs/design/reverse-connections.md).
 
 - **Agent self-update, Panel-brokered.** ← _next up; prerequisite + phases 1–2 shipped 2026-07-31_
   Let agents move to a new version without an operator hand-editing binaries on

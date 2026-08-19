@@ -57,7 +57,10 @@ func (s *Server) maybeRotateAgentCert(ctx context.Context, n *cluster.Node, clie
 		s.logger.Warn("cert rotation: begin failed", "node", n.Name, "err", err)
 		return
 	}
-	certPEM, err := mtls.SignAgentCSR(s.caCert, s.caKey, []byte(begin.Csr), mtls.DefaultAgentCertTTL)
+	// Preserve the node's tunnel identity across rotation — a rotated cert
+	// that dropped the URI SAN would sever a tunnel-mode node's binding the
+	// moment the agent reconnected with it.
+	certPEM, err := mtls.SignAgentCSRWithIdentity(s.caCert, s.caKey, []byte(begin.Csr), mtls.DefaultAgentCertTTL, n.TunnelID)
 	if err != nil {
 		s.logger.Warn("cert rotation: CSR signing failed", "node", n.Name, "err", err)
 		return

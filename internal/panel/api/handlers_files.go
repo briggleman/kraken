@@ -54,7 +54,7 @@ func (s *Server) agentForServer(w http.ResponseWriter, r *http.Request, id strin
 		writeError(w, http.StatusInternalServerError, "could not load node")
 		return nil, nil, false
 	}
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent")
 		return nil, nil, false

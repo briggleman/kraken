@@ -41,7 +41,10 @@ param(
   # Skip the firewall rule (e.g. when a domain GPO manages the firewall).
   [switch]$NoFirewall,
   # Install binaries + config only; skip service registration and start.
-  [switch]$NoService
+  [switch]$NoService,
+  # Reverse-connection mode: the agent dials the Panel and serves over a
+  # tunnel, so this host needs no inbound gRPC firewall rule at all.
+  [switch]$Tunnel
 )
 
 $ErrorActionPreference = "Stop"
@@ -172,11 +175,16 @@ if ($Token) {
     Warn "no -CaFingerprint given - enrollment will trust whatever CA the Panel returns"
   }
 }
+if ($Tunnel) {
+  Set-YamlKey $configPath "tunnel" "true"
+  Log "set tunnel: true (reverse connection - no inbound ports needed)"
+}
 
 # ---- firewall ------------------------------------------------------------
 # Port-based on purpose: program-based rules silently stop matching when a
 # binary is renamed or replaced; port rules survive every upgrade.
-if (-not $NoFirewall) {
+# Tunnel mode skips it: the agent dials out, nothing dials in.
+if (-not $NoFirewall -and -not $Tunnel) {
   $ruleName = "Kraken Agent (TCP 9090 gRPC + 2022 SFTP)"
   if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
     New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow `

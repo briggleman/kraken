@@ -390,11 +390,15 @@ export const api = {
     wine_enabled?: boolean;
     // Memory is backfilled from the agent on first contact; ports default to
     // the standard pool when omitted.
-    address: string;
+    address?: string; // required for direct mode; unused for tunnel mode
     public_host?: string;
     total_memory_mb?: number;
     port_start?: number;
     port_end?: number;
+    // "tunnel" registers a reverse-connection node: no address, and tunnel_id
+    // (from the enroll status) binds the node to the agent's cert identity.
+    connection_mode?: "direct" | "tunnel";
+    tunnel_id?: string;
   }): Promise<Node> {
     return request("POST", "/nodes", input);
   },

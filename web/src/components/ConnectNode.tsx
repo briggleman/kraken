@@ -29,7 +29,7 @@ const SECTION_LABEL: React.CSSProperties = {
 // happens inline once the agent enrolls, so these steps end at "agent
 // running".
 type AgentTarget = "linux" | "windows";
-function AgentInstallInstructions({ panelOrigin, token, caFingerprint }: { panelOrigin: string; token: string; caFingerprint: string }) {
+function AgentInstallInstructions({ panelOrigin, token, caFingerprint, tunnel }: { panelOrigin: string; token: string; caFingerprint: string; tunnel: boolean }) {
   const [target, setTarget] = useState<AgentTarget>("linux");
 
   const linuxCmds = [
@@ -38,13 +38,19 @@ function AgentInstallInstructions({ panelOrigin, token, caFingerprint }: { panel
       body: `curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh | \\
   sudo bash -s -- --role agent --panel-url ${panelOrigin} \\
     --enroll-token ${token} \\
-    --ca-fingerprint ${caFingerprint}`,
+    --ca-fingerprint ${caFingerprint}${tunnel ? " \\\n    --tunnel" : ""}`,
     },
-    {
-      title: "2 · OPEN FIREWALL PORTS (IF A FIREWALL IS ENABLED)",
-      body: `sudo ufw allow 9090/tcp && sudo ufw allow 2022/tcp
+    // Tunnel mode is the whole reason this step disappears: the node accepts
+    // nothing inbound, so there is no firewall rule to open.
+    ...(tunnel
+      ? []
+      : [
+          {
+            title: "2 · OPEN FIREWALL PORTS (IF A FIREWALL IS ENABLED)",
+            body: `sudo ufw allow 9090/tcp && sudo ufw allow 2022/tcp
 # firewalld: sudo firewall-cmd --permanent --add-port={9090,2022}/tcp && sudo firewall-cmd --reload`,
-    },
+          },
+        ]),
   ];
 
   const winCmds = [
@@ -58,7 +64,7 @@ function AgentInstallInstructions({ panelOrigin, token, caFingerprint }: { panel
 powershell -ExecutionPolicy Bypass -File $env:TEMP\\kraken-install.ps1 \`
   -PanelUrl ${panelOrigin} \`
   -Token ${token} \`
-  -CaFingerprint ${caFingerprint}`,
+  -CaFingerprint ${caFingerprint}${tunnel ? " `\n  -Tunnel" : ""}`,
     },
   ];
 
@@ -277,6 +283,9 @@ export function ConnectNode({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // Connection direction. Direct = the Panel dials the node (needs the
+  // firewall rule); tunnel = the node dials the Panel (needs nothing inbound).
+  const [mode, setMode] = useState<"direct" | "tunnel">("direct");
   const [token, setToken] = useState<string | null>(null);
   const [caFingerprint, setCaFingerprint] = useState<string>("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
@@ -323,11 +332,12 @@ export function ConnectNode({
   // into its certificate (IPs first — always dialable) and the gRPC port the
   // agent reported at enrollment. Never assume :9090: hosts can run several
   // agents on one IP (e.g. a Windows agent + a WSL agent side by side).
+  // Tunnel-mode nodes have no address to confirm — the agent dials us.
   useEffect(() => {
-    if (enroll?.status !== "redeemed" || regAddress !== "") return;
+    if (mode === "tunnel" || enroll?.status !== "redeemed" || regAddress !== "") return;
     const host = enroll.hosts?.[0];
     if (host) setRegAddress(`${host}:${enroll.agent_port || 9090}`);
-  }, [enroll, regAddress]);
+  }, [enroll, regAddress, mode]);
 
   // After registration, keep pinging the new node until it reports online.
   useEffect(() => {
@@ -342,15 +352,23 @@ export function ConnectNode({
 
   const register = async () => {
     const address = regAddress.trim();
-    if (!address) return;
+    if (mode === "direct" && !address) return;
+    if (mode === "tunnel" && !enroll?.tunnel_id) {
+      setError("the enrollment did not report a tunnel identity — update the Panel and re-enroll");
+      return;
+    }
     setRegistering(true);
     setError(null);
     try {
       // Name/OS/Wine come from the agent itself (KRAKEN_NODE_ID + its runtime)
-      // unless the advanced fields override them.
+      // unless the advanced fields override them. A tunnel-mode agent can't be
+      // dialed for auto-detection, so its name falls back to the enrollment's
+      // label and its OS is corrected on first contact.
       const n = await api.registerNode({
-        address,
-        name: advName.trim() || undefined,
+        address: mode === "direct" ? address : undefined,
+        connection_mode: mode,
+        tunnel_id: mode === "tunnel" ? enroll?.tunnel_id : undefined,
+        name: advName.trim() || (mode === "tunnel" ? enroll?.node_name || undefined : undefined),
         total_memory_mb: advMem ? +advMem : undefined,
         port_start: advPortStart ? +advPortStart : undefined,
         port_end: advPortEnd ? +advPortEnd : undefined,
@@ -383,11 +401,17 @@ export function ConnectNode({
       if (registeredNode?.status === "online") {
         lines.push({ state: "done", text: `node "${registeredNode.name}" (${registeredNode.os}) is online — connection verified` });
       } else if (registeredNodeId) {
-        lines.push({ state: "active", text: "node registered — waiting for it to come online…" });
+        lines.push({
+          state: "active",
+          text: mode === "tunnel" ? "node registered — waiting for its tunnel to connect…" : "node registered — waiting for it to come online…",
+        });
       } else if (registering) {
-        lines.push({ state: "active", text: "contacting the agent to register the node…" });
+        lines.push({ state: "active", text: "registering the node…" });
       } else {
-        lines.push({ state: "active", text: "confirm the agent address below and register the node" });
+        lines.push({
+          state: "active",
+          text: mode === "tunnel" ? "register the node — its tunnel is accepted the moment the record exists" : "confirm the agent address below and register the node",
+        });
       }
     }
     if (error) lines.push({ state: "error", text: error });
@@ -408,10 +432,23 @@ export function ConnectNode({
       {showRegisterForm && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-            <div style={{ flex: 1 }}>
-              <Input label="AGENT ADDRESS" value={regAddress} onChange={(e) => setRegAddress(e.target.value)} placeholder="host:9090" mono />
-            </div>
-            <Button variant="primary" icon="check" disabled={registering || !regAddress.trim()} onClick={() => void register()}>
+            {mode === "direct" ? (
+              <div style={{ flex: 1 }}>
+                <Input label="AGENT ADDRESS" value={regAddress} onChange={(e) => setRegAddress(e.target.value)} placeholder="host:9090" mono />
+              </div>
+            ) : (
+              <div style={{ flex: 1, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                No address needed — the node dials the Panel. Its tunnel identity{" "}
+                <span style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-secondary)" }}>{enroll?.tunnel_id ?? "…"}</span>{" "}
+                is bound at registration.
+              </div>
+            )}
+            <Button
+              variant="primary"
+              icon="check"
+              disabled={registering || (mode === "direct" ? !regAddress.trim() : !enroll?.tunnel_id)}
+              onClick={() => void register()}
+            >
               {registering ? "Registering…" : "Register node"}
             </Button>
           </div>
@@ -457,6 +494,37 @@ export function ConnectNode({
               Generate a one-time enrollment token, pick the target OS, and run the commands on the remote host.
               The node names itself from its <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>KRAKEN_NODE_ID</span>.
             </p>
+            <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", marginBottom: 6 }}>CONNECTION</div>
+            <div role="radiogroup" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              {(
+                [
+                  { key: "direct", label: "Panel dials the node", hint: "needs inbound 9090 open on the node" },
+                  { key: "tunnel", label: "Node dials the Panel", hint: "no inbound ports — works behind NAT" },
+                ] as const
+              ).map((m) => {
+                const active = mode === m.key;
+                return (
+                  <button
+                    key={m.key}
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setMode(m.key)}
+                    style={{
+                      flex: 1,
+                      textAlign: "left",
+                      padding: "10px 14px",
+                      borderRadius: "var(--radius-sm)",
+                      border: `1px solid ${active ? "var(--accent)" : "var(--border-subtle)"}`,
+                      background: active ? "var(--accent-wash-12)" : "transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>{m.label}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>{m.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
             {!token ? (
               <Button variant="secondary" icon="lock" onClick={() => void generateToken()}>
                 Generate enrollment token
@@ -482,7 +550,7 @@ export function ConnectNode({
                   <code style={{ fontFamily: mono, fontSize: 12, color: "var(--accent)", wordBreak: "break-all", lineHeight: 1.5 }}>{token}</code>
                   <CopyButton text={token} />
                 </div>
-                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} caFingerprint={caFingerprint} />
+                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} caFingerprint={caFingerprint} tunnel={mode === "tunnel"} />
               </>
             )}
           </div>

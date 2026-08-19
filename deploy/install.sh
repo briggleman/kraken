@@ -32,6 +32,7 @@ CONFIG_DIR="/etc/kraken"
 PANEL_URL=""          # remote-agent auto-enroll: Panel base URL
 ENROLL_TOKEN=""       # remote-agent auto-enroll: one-time bootstrap token
 CA_FINGERPRINT=""     # remote-agent auto-enroll: pinned Panel CA fingerprint
+TUNNEL=0              # reverse-connection mode: agent dials the Panel, no inbound ports
 
 log()   { printf '\033[36m→\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!\033[0m %s\n' "$*" >&2; }
@@ -48,6 +49,7 @@ while [ $# -gt 0 ]; do
     --panel-url) PANEL_URL="${2:-}"; shift 2 ;;
     --enroll-token) ENROLL_TOKEN="${2:-}"; shift 2 ;;
     --ca-fingerprint) CA_FINGERPRINT="${2:-}"; shift 2 ;;
+    --tunnel) TUNNEL=1; shift ;;
     -h|--help)
       sed -n '3,20p' "$0"
       exit 0
@@ -265,6 +267,12 @@ EOF
     else
       warn "no --ca-fingerprint given — enrollment will trust whatever CA the Panel returns"
     fi
+  fi
+  if [ "$TUNNEL" -eq 1 ]; then
+    # Reverse-connection mode: the agent dials the Panel and serves over the
+    # tunnel, so this host needs no inbound gRPC firewall rule at all.
+    set_env_var KRAKEN_TUNNEL 1 "$CONFIG_DIR/agent.env"
+    log "  set KRAKEN_TUNNEL=1 (reverse connection — no inbound ports needed)"
   fi
 
   if [ "$ROLE" = "agent" ] && [ -z "$ENROLL_TOKEN" ]; then

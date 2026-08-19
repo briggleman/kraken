@@ -101,7 +101,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load node")
 		return
 	}
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent")
 		return

@@ -189,7 +189,7 @@ func (s *Server) applyConfig(ctx context.Context, sv *store.Server, sp *spec.Spe
 	if err != nil {
 		return false, err
 	}
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		return false, err
 	}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -101,6 +102,15 @@ func NewAgentKeyAndCSR(hosts []string) (keyPEM, csrPEM []byte, err error) {
 // AgentServerName SAN (the Panel pins it when dialing) and server+client-auth
 // EKUs. This is the core of the bootstrap/enrollment + rotation flow.
 func SignAgentCSR(caCertPEM, caKeyPEM, csrPEM []byte, ttl time.Duration) ([]byte, error) {
+	return SignAgentCSRWithIdentity(caCertPEM, caKeyPEM, csrPEM, ttl, "")
+}
+
+// SignAgentCSRWithIdentity is SignAgentCSR plus a Panel-minted per-agent
+// identity, embedded as a URI SAN (see AgentIdentityURI). The identity is
+// authoritative on the Panel side — it is never taken from the CSR — and is
+// what a reverse-tunnel handshake later maps back to a node record. An empty
+// identity issues a legacy cert with no URI SAN.
+func SignAgentCSRWithIdentity(caCertPEM, caKeyPEM, csrPEM []byte, ttl time.Duration, identity string) ([]byte, error) {
 	caCert, caKey, err := loadCAKeyPair(caCertPEM, caKeyPEM)
 	if err != nil {
 		return nil, err
@@ -133,11 +143,82 @@ func SignAgentCSR(caCertPEM, caKeyPEM, csrPEM []byte, ttl time.Duration) ([]byte
 		DNSNames:     dns,
 		IPAddresses:  csr.IPAddresses,
 	}
+	if identity != "" {
+		u, uerr := url.Parse(AgentIdentityURI(identity))
+		if uerr != nil {
+			return nil, fmt.Errorf("mtls: agent identity: %w", uerr)
+		}
+		tmpl.URIs = []*url.URL{u}
+	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, csr.PublicKey, caKey)
 	if err != nil {
 		return nil, fmt.Errorf("mtls: sign cert: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
+}
+
+// agentIdentityScheme + agentIdentityHost form the URI SAN namespace for
+// Panel-minted agent identities: kraken://agent/<id>.
+const (
+	agentIdentityScheme = "kraken"
+	agentIdentityHost   = "agent"
+)
+
+// AgentIdentityURI renders a Panel-minted agent identity as the URI SAN string
+// embedded in issued agent certs.
+func AgentIdentityURI(id string) string {
+	return agentIdentityScheme + "://" + agentIdentityHost + "/" + id
+}
+
+// AgentIdentityFromCert extracts the Panel-minted identity from an agent cert's
+// URI SANs. Empty when the cert predates per-agent identities.
+func AgentIdentityFromCert(cert *x509.Certificate) string {
+	for _, u := range cert.URIs {
+		if u.Scheme == agentIdentityScheme && u.Host == agentIdentityHost {
+			return strings.TrimPrefix(u.Path, "/")
+		}
+	}
+	return ""
+}
+
+// IssuePanelServerCert generates a keypair for the Panel's reverse-tunnel
+// listener and returns a server certificate signed by the CA. Agents dialing
+// the tunnel verify it against the same CA with ServerName=PanelServerName,
+// so trust stays decoupled from the Panel's network address — the mirror image
+// of how the Panel pins AgentServerName when dialing out.
+func IssuePanelServerCert(caCertPEM, caKeyPEM []byte, ttl time.Duration) (certPEM, keyPEM []byte, err error) {
+	caCert, caKey, err := loadCAKeyPair(caCertPEM, caKeyPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ttl <= 0 {
+		ttl = DefaultPanelClientCertTTL
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: newSerial(),
+		Subject:      pkix.Name{CommonName: PanelServerName},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(ttl),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{PanelServerName, "localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, caCert, &key.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mtls: sign panel server cert: %w", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	return certPEM, keyPEM, nil
 }
 
 // IssuePanelClientCert generates a fresh ECDSA keypair for the Panel and

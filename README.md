@@ -267,6 +267,13 @@ docker compose -f deploy/docker-compose.yml up -d   # Postgres only
 
   Scope the rules to your LAN/VPN subnet where possible; the ports still must never
   be internet-exposed (gRPC is mTLS-only, but SFTP is password/key auth).
+- **Or skip inbound ports entirely with tunnel mode.** A node enrolled with
+  `--tunnel` (Add Node dialog → *Node dials the Panel*) keeps an outbound mTLS
+  connection open to the Panel's tunnel listener (`KRAKEN_TUNNEL_ADDR`, default
+  `:9443`) and is fully manageable with **zero inbound firewall rules** — it works
+  behind NAT you don't control. Trade-off: per-server SFTP is only reachable on the
+  node's own network (the in-browser file manager works fully). See
+  [docs/design/reverse-connections.md](docs/design/reverse-connections.md).
 - Set `KRAKEN_ALLOWED_ORIGINS` to your Panel's real origin if you serve it off-localhost.
 
 ## Repository layout

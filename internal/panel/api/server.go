@@ -4,6 +4,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,10 +17,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/config"
 	"github.com/briggleman/kraken/internal/panel/nodeclient"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/panel/tunnel"
 	"github.com/briggleman/kraken/internal/panel/webui"
 	"github.com/briggleman/kraken/internal/shared/mtls"
 	"github.com/briggleman/kraken/internal/shared/version"
@@ -44,6 +48,11 @@ type Server struct {
 	clientTLSCert []byte
 	clientTLSKey  []byte
 	clientTLSCA   []byte
+
+	// tunnel accepts reverse connections from tunnel-mode Agents and routes
+	// the pool's tunnel:<node-id> targets through them. Nil when disabled
+	// (KRAKEN_TUNNEL_ADDR=off, or no CA to authenticate agents against).
+	tunnel *tunnel.Server
 
 	// Per-node throttle for agent cert rotation attempts (see rotate.go).
 	rotateMu   sync.Mutex
@@ -118,12 +127,118 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		cidrs = config.DefaultSetupAllowedCIDRs()
 	}
 	s.setupNets = s.parseSetupCIDRs(cidrs)
+	// Reverse-tunnel listener, if enabled and there is a CA to authenticate
+	// agents against. Built before the pool so the pool can route tunnel
+	// targets through it.
+	s.buildTunnel()
 	// Build the Agent pool now that all options have been applied. In-memory
 	// bytes (from Panel auto-issue) beat file paths (operator override); no
 	// TLS at all → plaintext with a warning.
 	s.nodes = s.buildNodePool()
 	s.router = s.routes()
 	return s
+}
+
+// buildTunnel constructs the reverse-tunnel server: an in-memory server cert
+// issued against the enrollment CA, a client-cert-required TLS config, and the
+// identity→node resolver. Leaves s.tunnel nil (feature off) when disabled or
+// when no CA exists.
+func (s *Server) buildTunnel() {
+	if !s.cfg.TunnelEnabled() {
+		s.logger.Info("reverse-tunnel listener disabled (KRAKEN_TUNNEL_ADDR=off)")
+		return
+	}
+	if s.caCert == nil || s.caKey == nil {
+		s.logger.Info("reverse-tunnel listener off — no CA signing material to authenticate agents against")
+		return
+	}
+	certPEM, keyPEM, err := mtls.IssuePanelServerCert(s.caCert, s.caKey, mtls.DefaultPanelClientCertTTL)
+	if err != nil {
+		s.logger.Error("reverse-tunnel listener off — could not issue Panel server cert", "err", err)
+		return
+	}
+	tlsCfg, err := mtls.ServerTLSFromBytes(certPEM, keyPEM, s.caCert)
+	if err != nil {
+		s.logger.Error("reverse-tunnel listener off — TLS config failed", "err", err)
+		return
+	}
+	s.tunnel = tunnel.New(tlsCfg, s.resolveTunnelIdentity, s.logger,
+		tunnel.WithSessionHook(s.onTunnelSession))
+}
+
+// resolveTunnelIdentity maps a Panel-minted agent identity (the client cert's
+// URI SAN) to the tunnel-mode node bound to it at registration.
+func (s *Server) resolveTunnelIdentity(ctx context.Context, identity string) (string, error) {
+	nodes, err := s.store.ListNodes(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, n := range nodes {
+		if n.Tunneled() && n.TunnelID == identity {
+			return n.ID, nil
+		}
+	}
+	return "", errors.New("no tunnel-mode node is bound to this identity")
+}
+
+// onTunnelSession reacts to a tunnel connect/disconnect: it records the peer
+// cert fingerprint for the audit trail, and on connect immediately reconciles
+// the node so it reads online without waiting for the next poll pass. On
+// disconnect the node is marked offline right away — the session *was* the
+// liveness signal, so waiting for a poll to fail would just be a slower way of
+// learning the same fact.
+func (s *Server) onTunnelSession(nodeID, fingerprint string, connected bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	n, err := s.store.GetNode(ctx, nodeID)
+	if err != nil {
+		s.logger.Warn("tunnel session hook: node lookup failed", "node", nodeID, "err", err)
+		return
+	}
+	if connected {
+		if n.TunnelFingerprint != "" && n.TunnelFingerprint != fingerprint {
+			s.logger.Info("tunnel: node connected with a NEW certificate (re-enrolled or rotated)",
+				"node", n.Name, "old_fingerprint", n.TunnelFingerprint, "new_fingerprint", fingerprint)
+		}
+		n.TunnelFingerprint = fingerprint
+		if err := s.store.UpdateNode(ctx, n); err != nil {
+			s.logger.Warn("tunnel session hook: could not record fingerprint", "node", n.Name, "err", err)
+		}
+		if _, err := s.reconcileNode(ctx, n); err != nil {
+			s.logger.Info("tunnel: node connected but first reconcile failed (will retry on next pass)",
+				"node", n.Name, "err", err)
+		}
+		return
+	}
+	if n.Status != cluster.NodeOffline {
+		n.Status = cluster.NodeOffline
+		if err := s.store.UpdateNode(ctx, n); err != nil {
+			s.logger.Warn("tunnel session hook: could not mark node offline", "node", n.Name, "err", err)
+		}
+	}
+}
+
+// StartTunnel runs the reverse-tunnel listener until ctx is canceled. No-op
+// when the listener is disabled.
+func (s *Server) StartTunnel(ctx context.Context) {
+	if s.tunnel == nil {
+		return
+	}
+	go func() {
+		if err := s.tunnel.Serve(ctx, s.cfg.TunnelAddr); err != nil {
+			s.logger.Error("reverse-tunnel listener exited", "err", err)
+		}
+	}()
+}
+
+// poolOpts are the nodeclient options every pool flavor shares: failure
+// logging, plus tunnel routing when the reverse-tunnel listener is up.
+func (s *Server) poolOpts() []nodeclient.Option {
+	opts := []nodeclient.Option{nodeclient.WithLogger(s.logger)}
+	if s.tunnel != nil {
+		opts = append(opts, nodeclient.WithTunnelDialer(s.tunnel.DialContext))
+	}
+	return opts
 }
 
 // buildNodePool returns an mTLS Agent pool built from whichever TLS source
@@ -135,22 +250,22 @@ func (s *Server) buildNodePool() *nodeclient.Pool {
 		tlsCfg, err := mtls.ClientTLSFromBytes(s.clientTLSCert, s.clientTLSKey, s.clientTLSCA, mtls.AgentServerName)
 		if err != nil {
 			s.logger.Error("in-memory mTLS config failed — falling back to insecure Agent pool", "err", err)
-			return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
+			return nodeclient.NewInsecurePool(s.poolOpts()...)
 		}
 		s.logger.Info("Panel→Agent gRPC secured with mutual TLS (auto-issued client cert)",
 			"client_cert", mtls.SummarizePEM(s.clientTLSCert),
 			"trusted_ca", mtls.SummarizePEM(s.clientTLSCA),
 			"pinned_server_name", mtls.AgentServerName)
-		return nodeclient.NewTLSPool(tlsCfg, nodeclient.WithLogger(s.logger))
+		return nodeclient.NewTLSPool(tlsCfg, s.poolOpts()...)
 	}
 	if !s.cfg.MutualTLS() {
 		s.logger.Warn("Panel→Agent gRPC is INSECURE (no mTLS) — set KRAKEN_TLS_CERT/KEY/CA to enable")
-		return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
+		return nodeclient.NewInsecurePool(s.poolOpts()...)
 	}
 	tlsCfg, err := mtls.ClientTLS(s.cfg.TLSCert, s.cfg.TLSKey, s.cfg.TLSCA, mtls.AgentServerName)
 	if err != nil {
 		s.logger.Error("mTLS config failed — falling back to insecure Agent pool", "err", err)
-		return nodeclient.NewInsecurePool(nodeclient.WithLogger(s.logger))
+		return nodeclient.NewInsecurePool(s.poolOpts()...)
 	}
 	s.logger.Info("Panel→Agent gRPC secured with mutual TLS (operator-provided files)",
 		"client_cert", summarizeCertFile(s.cfg.TLSCert),
@@ -172,7 +287,12 @@ func summarizeCertFile(path string) string {
 func (s *Server) Handler() http.Handler { return s.router }
 
 // Close releases resources held by the server (Agent gRPC connections).
-func (s *Server) Close() error { return s.nodes.Close() }
+func (s *Server) Close() error {
+	if s.tunnel != nil {
+		_ = s.tunnel.Close()
+	}
+	return s.nodes.Close()
+}
 
 func (s *Server) routes() chi.Router {
 	r := chi.NewRouter()

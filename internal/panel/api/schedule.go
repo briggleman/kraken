@@ -90,7 +90,7 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	if err != nil {
 		return fmt.Errorf("load node: %w", err)
 	}
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		return fmt.Errorf("connect agent: %w", err)
 	}

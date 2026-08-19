@@ -35,6 +35,12 @@ func FingerprintPEM(pemBytes []byte) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// FingerprintCert is FingerprintPEM for an already-parsed certificate.
+func FingerprintCert(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:8])
+}
+
 // SummarizeCert renders the identity of a certificate on one log-friendly
 // line: CN, issuer, serial, fingerprint, validity window, and SANs.
 func SummarizeCert(cert *x509.Certificate) string {

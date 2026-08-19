@@ -77,6 +77,8 @@ export interface EnrollStatus {
   hosts?: string[];
   /** The gRPC port the agent reports it serves on (prefill; 9090 default). */
   agent_port?: number;
+  /** Panel-minted identity in the issued cert — binds a tunnel-mode registration. */
+  tunnel_id?: string;
   expires_at?: string;
   redeemed_at?: string;
 }
@@ -245,6 +247,8 @@ export interface SftpStatus {
   port?: number;
   has_password: boolean;
   keys: string[];
+  /** The hosting node is tunnel-mode — its SFTP listener is LAN-local only. */
+  tunneled?: boolean;
 }
 
 export interface SpecPlatform {
@@ -318,6 +322,14 @@ export interface Node {
   address: string;
   public_host: string;
   external_ip?: string;
+  /**
+   * How the Panel reaches this node's agent: "direct" (Panel dials address;
+   * the default — absent means direct) or "tunnel" (the agent dials out and
+   * keeps a reverse tunnel open; no inbound port on the node).
+   */
+  connection_mode?: "direct" | "tunnel";
+  /** Panel-minted agent identity a tunnel-mode node is bound to. */
+  tunnel_id?: string;
   total_memory_mb: number;
   allocated_memory_mb: number;
   /** Game-port pool: configured ranges (null when none) + allocated ports. */

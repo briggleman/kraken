@@ -90,7 +90,7 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		client, err := s.nodes.Client(node.Address)
+		client, err := s.nodes.Client(node.DialTarget())
 		if err != nil {
 			continue
 		}

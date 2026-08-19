@@ -205,7 +205,29 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	if updater != nil {
 		svcOpts = append(svcOpts, agent.WithSelfUpdater(updater))
 	}
-	agentpb.RegisterNodeServiceServer(grpcServer, agent.NewService(rt, svcOpts...))
+	svc := agent.NewService(rt, svcOpts...)
+	agentpb.RegisterNodeServiceServer(grpcServer, svc)
+
+	// Reverse-tunnel mode: dial out to the Panel and serve the same NodeService
+	// over the tunnel, so this node needs no inbound gRPC port. The local TCP
+	// listener stays up alongside it — direct and tunnel are not exclusive, and
+	// keeping it means an operator can flip a node between modes without
+	// touching the agent.
+	if cfg.TunnelEnabled() {
+		if !secure {
+			return fmt.Errorf("agent: tunnel mode requires an mTLS bundle — enroll with the Panel first (--panel-url, or --enroll-token from the Add Node dialog)")
+		}
+		tunnelAddr, terr := cfg.ResolveTunnelAddr()
+		if terr != nil {
+			return terr
+		}
+		tc, terr := agent.NewTunnelClient(tunnelAddr, cert, key, ca, svc, logger)
+		if terr != nil {
+			return fmt.Errorf("agent: tunnel client: %w", terr)
+		}
+		logger.Info("tunnel mode: dialing out to the Panel (no inbound gRPC port needed)", "panel", tunnelAddr)
+		go tc.Run(ctx)
+	}
 
 	// SFTP server for power-user file access — a separate SSH listener that
 	// chroots each per-server login to that server's data dir. No-op on the

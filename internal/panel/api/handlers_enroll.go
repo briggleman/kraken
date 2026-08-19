@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/briggleman/kraken/internal/shared/mtls"
 )
 
@@ -37,6 +39,7 @@ type redeemedToken struct {
 	ip         string
 	hosts      []string // extra SANs the agent requested (its reachable IPs/DNS names)
 	agentPort  int      // the gRPC port the agent reports it will serve on (0 = unknown)
+	tunnelID   string   // Panel-minted identity baked into the issued cert (URI SAN)
 	redeemedAt time.Time
 }
 
@@ -88,9 +91,9 @@ func (b *bootstrapRegistry) redeem(token string) (string, error) {
 }
 
 // recordRedeemed remembers a successful enrollment so status() can report it.
-func (b *bootstrapRegistry) recordRedeemed(token, nodeName, ip string, hosts []string, agentPort int) {
+func (b *bootstrapRegistry) recordRedeemed(token, nodeName, ip string, hosts []string, agentPort int, tunnelID string) {
 	b.mu.Lock()
-	b.redeemed[token] = redeemedToken{nodeName: nodeName, ip: ip, hosts: hosts, agentPort: agentPort, redeemedAt: time.Now()}
+	b.redeemed[token] = redeemedToken{nodeName: nodeName, ip: ip, hosts: hosts, agentPort: agentPort, tunnelID: tunnelID, redeemedAt: time.Now()}
 	b.mu.Unlock()
 }
 
@@ -101,6 +104,7 @@ type enrollState struct {
 	IP         string    `json:"ip,omitempty"`
 	Hosts      []string  `json:"hosts,omitempty"`
 	AgentPort  int       `json:"agent_port,omitempty"` // agent-reported gRPC port for the registration prefill
+	TunnelID   string    `json:"tunnel_id,omitempty"`  // identity in the issued cert; binds a tunnel-mode registration
 	ExpiresAt  time.Time `json:"expires_at,omitempty"`
 	RedeemedAt time.Time `json:"redeemed_at,omitempty"`
 }
@@ -109,7 +113,7 @@ func (b *bootstrapRegistry) status(token string) enrollState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if rt, ok := b.redeemed[token]; ok {
-		return enrollState{Status: "redeemed", NodeName: rt.nodeName, IP: rt.ip, Hosts: rt.hosts, AgentPort: rt.agentPort, RedeemedAt: rt.redeemedAt}
+		return enrollState{Status: "redeemed", NodeName: rt.nodeName, IP: rt.ip, Hosts: rt.hosts, AgentPort: rt.agentPort, TunnelID: rt.tunnelID, RedeemedAt: rt.redeemedAt}
 	}
 	if bt, ok := b.tokens[token]; ok {
 		if time.Now().After(bt.expiresAt) {
@@ -210,7 +214,13 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid bootstrap token: "+err.Error())
 		return
 	}
-	certPEM, err := mtls.SignAgentCSR(s.caCert, s.caKey, []byte(req.CSR), mtls.DefaultAgentCertTTL)
+	// Every enrollment mints a fresh per-agent identity, baked into the cert
+	// as a URI SAN. Direct-mode nodes never use it; tunnel-mode registration
+	// binds it, and the tunnel listener maps it back to the node. Minting it
+	// unconditionally means "switch this node to tunnel mode later" never
+	// requires a re-enroll.
+	tunnelID := uuid.NewString()
+	certPEM, err := mtls.SignAgentCSRWithIdentity(s.caCert, s.caKey, []byte(req.CSR), mtls.DefaultAgentCertTTL, tunnelID)
 	if err != nil {
 		s.logger.Warn("agent enrollment: CSR rejected", "node", nodeName, "ip", clientIP(r), "err", err)
 		writeError(w, http.StatusBadRequest, "could not sign CSR: "+err.Error())
@@ -220,8 +230,8 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if port <= 0 || port > 65535 {
 		port = 9090
 	}
-	s.bootstrap.recordRedeemed(req.Token, nodeName, clientIP(r), enrollHosts(certPEM), port)
-	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r),
+	s.bootstrap.recordRedeemed(req.Token, nodeName, clientIP(r), enrollHosts(certPEM), port, tunnelID)
+	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r), "tunnel_id", tunnelID,
 		"issued_cert", mtls.SummarizePEM(certPEM), "ca_sha256", mtls.FingerprintPEM(s.caCert))
 	s.recordAudit(r, http.StatusOK, "enroll:"+nodeName)
 	writeJSON(w, http.StatusOK, map[string]string{

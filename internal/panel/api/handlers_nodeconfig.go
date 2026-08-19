@@ -245,7 +245,7 @@ func (s *Server) pushNodeConfig(ctx context.Context, n *cluster.Node) (ok bool, 
 	if gerr != nil {
 		return false, "", gerr
 	}
-	client, cerr := s.nodes.Client(n.Address)
+	client, cerr := s.nodes.Client(n.DialTarget())
 	if cerr != nil {
 		return false, "", cerr
 	}

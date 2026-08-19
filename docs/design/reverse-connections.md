@@ -1,6 +1,8 @@
 # Reverse connections: eliminating the inbound-agent-port requirement
 
-**Status:** proposed · decision doc (no implementation)
+**Status:** accepted 2026-08-19 — phase 1 implemented (Option A, per-node certs
+included; direct remains the default for new nodes until the tunnel survives a
+release cycle on Behemoth). Phase 2 (SFTP proxy) deferred pending demand.
 **Scope:** Panel ⇄ Agent transport direction. Game traffic is explicitly out of
 scope — players always connect directly to node ports, tunnel or not.
 

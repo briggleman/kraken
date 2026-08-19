@@ -104,6 +104,19 @@ type Config struct {
 	// Panel client cert). Defaults to "data" (cwd-relative) so existing dev
 	// workflows keep working; production deploys set this to /var/lib/kraken.
 	StateDir string
+
+	// TunnelAddr is the listen address for the reverse-tunnel listener that
+	// tunnel-mode Agents dial into (mTLS only; see
+	// docs/design/reverse-connections.md). Default ":9443"; set
+	// KRAKEN_TUNNEL_ADDR=off to disable the listener entirely. The listener
+	// also requires CA signing material — with no CA there is nothing to
+	// authenticate agents against, so it stays off.
+	TunnelAddr string
+}
+
+// TunnelEnabled reports whether the reverse-tunnel listener should run.
+func (c *Config) TunnelEnabled() bool {
+	return c.TunnelAddr != "" && !strings.EqualFold(c.TunnelAddr, "off")
 }
 
 // MutualTLS reports whether Panel→Agent mTLS is fully configured.
@@ -153,6 +166,7 @@ func Load() (*Config, error) {
 		LocalAgentAddr:         env("KRAKEN_LOCAL_AGENT_ADDR", "127.0.0.1:9090"),
 		AllowedOrigins:         envList("KRAKEN_ALLOWED_ORIGINS"),
 		SetupAllowedCIDRs:      envList("KRAKEN_SETUP_ALLOWED_CIDRS"),
+		TunnelAddr:             env("KRAKEN_TUNNEL_ADDR", ":9443"),
 		CSPMode:                strings.ToLower(strings.TrimSpace(env("KRAKEN_CSP", CSPEnforce))),
 		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
 		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),

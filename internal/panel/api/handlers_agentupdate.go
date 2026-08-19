@@ -65,7 +65,7 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := s.nodes.Client(n.Address)
+	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "agent connection: "+err.Error())
 		return

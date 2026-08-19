@@ -51,6 +51,26 @@ func ServerTLS(certFile, keyFile, caFile string) (*tls.Config, error) {
 	}, nil
 }
 
+// ServerTLSFromBytes is the byte-slice counterpart to ServerTLS — used for the
+// Panel's reverse-tunnel listener, whose server cert is auto-issued in memory
+// at startup (same rationale as ClientTLSFromBytes).
+func ServerTLSFromBytes(certPEM, keyPEM, caPEM []byte) (*tls.Config, error) {
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("mtls: parse server keypair PEM: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("mtls: no CA certificates found in provided PEM")
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
 // ClientTLS builds the Panel's client-side config: it presents certFile/keyFile
 // and verifies the server's cert against caFile using serverName (typically
 // AgentServerName).

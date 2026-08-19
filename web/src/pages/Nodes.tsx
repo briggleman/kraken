@@ -110,7 +110,13 @@ export function Nodes() {
                         node rather than as an alert. A build that doesn't match the
                         Panel's still gets flagged — but only the flag is tinted. */}
                     <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>
-                      <span>{n.address}</span>
+                      {n.connection_mode === "tunnel" ? (
+                        <span title="Reverse connection: this node dials the Panel — it accepts nothing inbound.">
+                          ⇉ tunnel{n.address ? ` · ${n.address}` : ""}
+                        </span>
+                      ) : (
+                        <span>{n.address}</span>
+                      )}
                       {n.agent_version && <span>agent {n.agent_version}</span>}
                       {panelVersion && n.agent_version && n.agent_version !== panelVersion && (
                         <>

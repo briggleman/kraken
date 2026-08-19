@@ -9,13 +9,31 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 
 	"github.com/briggleman/kraken/internal/panel/cloudflare"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/mtls"
 	"github.com/briggleman/kraken/internal/shared/version"
 )
+
+// agentIdentityFromPeer extracts the Panel-minted agent identity from the TLS
+// serving cert observed on a gRPC call. Empty for plaintext (dev) and
+// tunnel-routed connections (whose identity lives on the tunnel session).
+func agentIdentityFromPeer(p *peer.Peer) string {
+	if p == nil || p.AuthInfo == nil {
+		return ""
+	}
+	ti, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(ti.State.PeerCertificates) == 0 {
+		return ""
+	}
+	return mtls.AgentIdentityFromCert(ti.State.PeerCertificates[0])
+}
 
 // defaultPortRange is the game-port pool a node gets when registration doesn't
 // specify one. A node must never be created with an empty pool — the scheduler
@@ -28,11 +46,20 @@ type registerNodeRequest struct {
 	Name        string `json:"name"` // optional; taken from the agent (KRAKEN_NODE_ID) when blank
 	OS          string `json:"os"`   // "linux" | "windows"; optional, agent-reported when blank
 	WineEnabled bool   `json:"wine_enabled"`
-	Address     string `json:"address"`     // Agent gRPC host:port
+	Address     string `json:"address"`     // Agent gRPC host:port (direct mode)
 	PublicHost  string `json:"public_host"` // optional; players' connect host (else auto-detected)
 	TotalMemMB  int    `json:"total_memory_mb"`
 	PortStart   int    `json:"port_start"`
 	PortEnd     int    `json:"port_end"`
+
+	// ConnectionMode selects the transport: "direct" (default; the Panel dials
+	// Address) or "tunnel" (the Agent dials out; no Address needed).
+	ConnectionMode string `json:"connection_mode,omitempty"`
+	// TunnelID binds a tunnel-mode node to the agent identity minted at
+	// enrollment (surfaced by the enroll-status endpoint). Required for tunnel
+	// mode; the tunnel listener only accepts a session whose client cert
+	// carries this identity.
+	TunnelID string `json:"tunnel_id,omitempty"`
 }
 
 func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
@@ -41,14 +68,46 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid node body")
 		return
 	}
-	if req.Address == "" {
-		writeError(w, http.StatusBadRequest, "address is required")
+	mode := cluster.ConnectionMode(req.ConnectionMode)
+	if mode == "" {
+		mode = cluster.ConnDirect
+	}
+	switch mode {
+	case cluster.ConnDirect:
+		if req.Address == "" {
+			writeError(w, http.StatusBadRequest, "address is required")
+			return
+		}
+	case cluster.ConnTunnel:
+		if req.TunnelID == "" {
+			writeError(w, http.StatusBadRequest, "tunnel_id is required for a tunnel-mode node (it comes from the agent's enrollment)")
+			return
+		}
+		if s.tunnel == nil {
+			writeError(w, http.StatusBadRequest, "the reverse-tunnel listener is disabled on this Panel (set KRAKEN_TUNNEL_ADDR)")
+			return
+		}
+		// One node per identity: the binding is the whole security story.
+		if nodes, err := s.store.ListNodes(r.Context()); err == nil {
+			for _, ex := range nodes {
+				if ex.TunnelID == req.TunnelID {
+					writeError(w, http.StatusConflict, "another node ("+ex.Name+") is already bound to this tunnel identity")
+					return
+				}
+			}
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "connection_mode must be 'direct' or 'tunnel'")
 		return
 	}
 	// Identity comes from the agent itself when omitted: dial it and adopt its
 	// self-reported node id / OS. Keeps registration to a single field
-	// (address) and makes the agent's KRAKEN_NODE_ID authoritative.
-	if req.Name == "" || req.OS == "" {
+	// (address) and makes the agent's KRAKEN_NODE_ID authoritative. A
+	// tunnel-mode agent can't be dialed yet — its connection is only accepted
+	// once this record exists — so identity is taken from the request (the
+	// enroll flow prefills it) and the OS is corrected on first contact, the
+	// same way quickstart's local node is.
+	if mode == cluster.ConnDirect && (req.Name == "" || req.OS == "") {
 		client, err := s.nodes.Client(req.Address)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
@@ -71,6 +130,9 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 			req.OS = info.Os
 		}
 	}
+	if mode == cluster.ConnTunnel && req.OS == "" {
+		req.OS = string(cluster.OSLinux) // corrected from the Agent's report on first contact
+	}
 	os := cluster.NodeOS(req.OS)
 	if os != cluster.OSLinux && os != cluster.OSWindows {
 		writeError(w, http.StatusBadRequest, "os must be 'linux' or 'windows'")
@@ -84,14 +146,16 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := &cluster.Node{
-		ID:            uuid.NewString(),
-		Name:          req.Name,
-		OS:            os,
-		WineEnabled:   req.WineEnabled,
-		Status:        cluster.NodeOffline, // until first successful contact
-		Address:       req.Address,
-		PublicHost:    req.PublicHost,
-		TotalMemoryMB: req.TotalMemMB,
+		ID:             uuid.NewString(),
+		Name:           req.Name,
+		OS:             os,
+		WineEnabled:    req.WineEnabled,
+		Status:         cluster.NodeOffline, // until first successful contact
+		Address:        req.Address,
+		PublicHost:     req.PublicHost,
+		TotalMemoryMB:  req.TotalMemMB,
+		ConnectionMode: mode,
+		TunnelID:       req.TunnelID,
 	}
 	if req.PortStart > 0 && req.PortEnd >= req.PortStart {
 		n.Ports = cluster.NewPortPool(cluster.PortRange{Start: req.PortStart, End: req.PortEnd})
@@ -102,7 +166,7 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not register node")
 		return
 	}
-	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address)
+	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address, "mode", mode)
 	writeJSON(w, http.StatusCreated, n)
 }
 
@@ -216,7 +280,7 @@ func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 // offline (persisted) and returns the error. The live NodeInfo is returned on
 // success. Shared by the node-info handler and the quickstart auto-register path.
 func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.NodeInfo, error) {
-	client, err := s.nodes.Client(n.Address)
+	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +289,8 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	oldDNSHost := serverExternalHost(n)
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	info, err := client.GetNodeInfo(cctx, &agentpb.GetNodeInfoRequest{})
+	var peerInfo peer.Peer
+	info, err := client.GetNodeInfo(cctx, &agentpb.GetNodeInfoRequest{}, grpc.Peer(&peerInfo))
 	if err != nil {
 		// The Agent itself is unreachable, so whatever it last said about its
 		// container runtime is no longer knowable — drop it rather than leave a
@@ -270,6 +335,16 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	if n.LastUpdateError != info.LastUpdateError {
 		n.LastUpdateError = info.LastUpdateError
 		changed = true
+	}
+	// Capture the agent's Panel-minted identity from its serving cert (the
+	// URI SAN). This is what lets a direct-mode node flip to tunnel mode later
+	// without re-enrolling: the binding already exists. Only ever filled in,
+	// never overwritten — the identity in an existing binding is load-bearing.
+	if n.TunnelID == "" {
+		if id := agentIdentityFromPeer(&peerInfo); id != "" {
+			n.TunnelID = id
+			changed = true
+		}
 	}
 	if n.PublicHost == "" && info.Host != "" {
 		n.PublicHost = info.Host
@@ -432,7 +507,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return
 	}
-	client, err := s.nodes.Client(n.Address)
+	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
 		return

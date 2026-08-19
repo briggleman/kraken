@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/briggleman/kraken/internal/shared/spec"
+	"github.com/briggleman/kraken/internal/shared/tunnel"
 )
 
 // NodeOS is the operating system of a node, which determines what platform kinds
@@ -87,7 +88,47 @@ type Node struct {
 	// last update succeeded or none was attempted.
 	LastUpdateError string `json:"last_update_error,omitempty"`
 
+	// ConnectionMode is how the Panel reaches this node's Agent: "direct"
+	// (default; the Panel dials Address) or "tunnel" (the Agent dials out and
+	// keeps a reverse tunnel open — no inbound port on the node). Empty means
+	// direct, so records that predate tunnel support need no migration.
+	ConnectionMode ConnectionMode `json:"connection_mode,omitempty"`
+
+	// TunnelID is the Panel-minted agent identity (the cert's URI SAN) this
+	// node accepts reverse-tunnel connections from. Set at registration for
+	// tunnel-mode nodes; the binding is what stops one enrolled agent from
+	// claiming another's node.
+	TunnelID string `json:"tunnel_id,omitempty"`
+
+	// TunnelFingerprint is the SHA-256 (short) fingerprint of the client cert
+	// seen on the node's most recent tunnel connection. Audit trail only.
+	TunnelFingerprint string `json:"tunnel_fingerprint,omitempty"`
+
 	Ports *PortPool `json:"ports"`
+}
+
+// ConnectionMode is the transport direction between Panel and a node's Agent.
+type ConnectionMode string
+
+const (
+	// ConnDirect: the Panel dials the Agent's Address (the default).
+	ConnDirect ConnectionMode = "direct"
+	// ConnTunnel: the Agent dials the Panel and the gRPC channel rides the
+	// reverse tunnel; the node needs no inbound ports.
+	ConnTunnel ConnectionMode = "tunnel"
+)
+
+// Tunneled reports whether this node is reached over a reverse tunnel.
+func (n *Node) Tunneled() bool { return n.ConnectionMode == ConnTunnel }
+
+// DialTarget is the nodeclient target for this node: its Address for direct
+// nodes, or a tunnel:<id> pseudo-target the pool routes through the live
+// reverse-tunnel session.
+func (n *Node) DialTarget() string {
+	if n.Tunneled() {
+		return tunnel.Target(n.ID)
+	}
+	return n.Address
 }
 
 // SupportedKinds returns the platform kinds this node can run, derived from its

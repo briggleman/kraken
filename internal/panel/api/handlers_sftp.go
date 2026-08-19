@@ -26,6 +26,10 @@ type sftpStatusView struct {
 	Port        int      `json:"port,omitempty"`
 	HasPassword bool     `json:"has_password"`
 	Keys        []string `json:"keys"`
+	// Tunneled: the hosting node is reached over a reverse tunnel, so its SFTP
+	// listener is only reachable on the node's own network — the UI says so
+	// instead of advertising an endpoint the operator probably can't dial.
+	Tunneled bool `json:"tunneled,omitempty"`
 }
 
 func sftpStatus(sv *store.Server, node *cluster.Node) sftpStatusView {
@@ -40,6 +44,7 @@ func sftpStatus(sv *store.Server, node *cluster.Node) sftpStatusView {
 	if node != nil {
 		v.Host = node.PublicHost
 		v.Port = node.SFTPPort
+		v.Tunneled = node.Tunneled()
 	}
 	return v
 }
@@ -83,7 +88,7 @@ func (s *Server) pushSFTP(ctx context.Context, sv *store.Server, sp *spec.Spec, 
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		return err
 	}
-	if client, err := s.nodes.Client(node.Address); err == nil {
+	if client, err := s.nodes.Client(node.DialTarget()); err == nil {
 		s.rePushServerSpec(ctx, client, sv, sp)
 	}
 	return nil

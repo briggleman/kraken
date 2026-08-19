@@ -128,7 +128,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		s.failServer(server, "connect agent: "+err.Error())
 		return
@@ -315,7 +315,7 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "could not load hosting node")
 		return
 	}
-	client, err := s.nodes.Client(node.Address)
+	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
 		return
@@ -428,7 +428,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if node, err := s.store.GetNode(ctx, sv.NodeID); err == nil {
-		if client, cerr := s.nodes.Client(node.Address); cerr == nil {
+		if client, cerr := s.nodes.Client(node.DialTarget()); cerr == nil {
 			dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			_, _ = client.RemoveServer(dctx, &agentpb.RemoveServerRequest{ServerId: sv.ID, DeleteData: true})
 			cancel()

@@ -6,7 +6,10 @@ package nodeclient
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log/slog"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/tunnel"
 )
 
 // Pool is a concurrency-safe cache of Agent gRPC connections keyed by address.
@@ -24,6 +28,10 @@ type Pool struct {
 	mu       sync.Mutex
 	conns    map[string]*grpc.ClientConn
 	dialOpts []grpc.DialOption
+
+	// tunnelDial opens a raw connection to a tunnel-mode node's live session.
+	// nil when no reverse-tunnel listener is running.
+	tunnelDial func(ctx context.Context, nodeID string) (net.Conn, error)
 
 	logger  *slog.Logger
 	lastLog map[string]time.Time // per-address throttle for transport-failure logs
@@ -38,6 +46,12 @@ type Option func(*Pool)
 // reconciler's 4s polling doesn't flood the log.
 func WithLogger(l *slog.Logger) Option {
 	return func(p *Pool) { p.logger = l }
+}
+
+// WithTunnelDialer routes "tunnel:<node-id>" targets through fn — the
+// reverse-tunnel registry's per-node stream opener.
+func WithTunnelDialer(fn func(ctx context.Context, nodeID string) (net.Conn, error)) Option {
+	return func(p *Pool) { p.tunnelDial = fn }
 }
 
 func newPool(creds grpc.DialOption, opts ...Option) *Pool {
@@ -109,13 +123,35 @@ func (p *Pool) streamFailureLogger() grpc.StreamClientInterceptor {
 
 // Client returns a NodeService client for the Agent at addr, creating and
 // caching the connection on first use.
+//
+// A target of the form "tunnel:<node-id>" (see shared/tunnel.Target) is routed
+// through the reverse-tunnel dialer instead of TCP. Those connections carry
+// plaintext gRPC on purpose: the tunnel session is already mutually
+// authenticated TLS, so the tunnel — not this dial — is the security boundary.
 func (p *Pool) Client(addr string) (agentpb.NodeServiceClient, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if conn, ok := p.conns[addr]; ok {
 		return agentpb.NewNodeServiceClient(conn), nil
 	}
-	conn, err := grpc.NewClient(addr, p.dialOpts...)
+	var conn *grpc.ClientConn
+	var err error
+	if nodeID, ok := strings.CutPrefix(addr, tunnel.Scheme); ok {
+		if p.tunnelDial == nil {
+			return nil, fmt.Errorf("nodeclient: node %s is tunnel-mode but no tunnel transport is configured", nodeID)
+		}
+		opts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+				return p.tunnelDial(ctx, nodeID)
+			}),
+			grpc.WithChainUnaryInterceptor(p.unaryFailureLogger()),
+			grpc.WithChainStreamInterceptor(p.streamFailureLogger()),
+		}
+		conn, err = grpc.NewClient("passthrough:///"+addr, opts...)
+	} else {
+		conn, err = grpc.NewClient(addr, p.dialOpts...)
+	}
 	if err != nil {
 		return nil, err
 	}

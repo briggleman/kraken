@@ -81,8 +81,22 @@ powershell -ExecutionPolicy Bypass -File $env:TEMP\\kraken-install.ps1 \`
       ))}
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
         The node takes its name from <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>KRAKEN_NODE_ID</span>.
-        {" "}The agent reports its dialable IPs and gRPC port at enrollment, so the address below prefills itself
-        once it connects.
+        {tunnel ? (
+          <>
+            {" "}The agent dials the Panel's tunnel listener at the panel-url host on port{" "}
+            <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>9443</span>. If the URL above is a
+            proxied domain (Cloudflare, nginx), pass{" "}
+            <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>
+              {target === "windows" ? "-TunnelAddr <panel-lan-ip>:9443" : "--tunnel-addr <panel-lan-ip>:9443"}
+            </span>{" "}
+            instead — proxies can't carry the raw mTLS tunnel.
+          </>
+        ) : (
+          <>
+            {" "}The agent reports its dialable IPs and gRPC port at enrollment, so the address below prefills itself
+            once it connects.
+          </>
+        )}
         {target === "windows" && (
           <>
             {" "}Upgrades, service control, and troubleshooting live in the{" "}

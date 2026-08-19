@@ -44,7 +44,11 @@ param(
   [switch]$NoService,
   # Reverse-connection mode: the agent dials the Panel and serves over a
   # tunnel, so this host needs no inbound gRPC firewall rule at all.
-  [switch]$Tunnel
+  [switch]$Tunnel,
+  # Panel tunnel endpoint override (host:port). The default derives from
+  # -PanelUrl's host on :9443, which is wrong when that URL is a proxied
+  # domain - proxies can't carry the raw mTLS tunnel.
+  [string]$TunnelAddr = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -176,8 +180,21 @@ if ($Token) {
   }
 }
 if ($Tunnel) {
-  Set-YamlKey $configPath "tunnel" "true"
+  # Written unquoted on purpose: the agent's strict YAML parser wants a real
+  # bool - `tunnel: "true"` (a string) is rejected, not coerced.
+  $lines = @(Get-Content $configPath)
+  $tunnelLine = "tunnel: true"
+  if ($lines -match "^#?\s*tunnel:") {
+    $lines = $lines | ForEach-Object { if ($_ -match "^#?\s*tunnel:") { $tunnelLine } else { $_ } }
+  } else {
+    $lines += $tunnelLine
+  }
+  Set-Content -Path $configPath -Value $lines -Encoding utf8
   Log "set tunnel: true (reverse connection - no inbound ports needed)"
+}
+if ($TunnelAddr) {
+  Set-YamlKey $configPath "tunnel_addr" $TunnelAddr
+  Log "set tunnel_addr: $TunnelAddr"
 }
 
 # ---- firewall ------------------------------------------------------------

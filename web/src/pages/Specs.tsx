@@ -360,9 +360,9 @@ export function Specs() {
               nodes={nodes}
               initialSpecId={deploySpec.id}
               onCancel={() => setDeploySpec(null)}
-              onDeploy={async ({ spec_id, name, variables, steam_guard_code, install_bepinex }) => {
+              onDeploy={async ({ spec_id, name, variables, steam_guard_code, install_bepinex, node_id }) => {
                 try {
-                  const sv = await api.createServer({ spec_id, name, variables, steam_guard_code, install_bepinex });
+                  const sv = await api.createServer({ spec_id, name, variables, steam_guard_code, install_bepinex, node_id });
                   setDeploySpec(null);
                   Toaster.success(`Deploying ${name}…`);
                   navigate(`/servers/${sv.id}`);

@@ -9,6 +9,7 @@ import { StatusPill } from "@ds/components/core/StatusPill";
 import { Icon } from "@ds/components/core/Icon";
 import { OsIcon } from "@/components/OsIcon";
 import { Toaster } from "@ds/components/core/Toast";
+import { memColor } from "@/lib/memory";
 import { CreateWizard } from "./CreateServer";
 
 const mono = "var(--font-mono)";
@@ -225,8 +226,8 @@ export function Fleet() {
             </div>
           )}
         </MetricCard>
-        <MetricCard label="FLEET MEMORY" value={stat(fleetMem)} suffix={loaded ? "%" : undefined}>
-          <MetricBar pct={loaded ? fleetMem : 0} />
+        <MetricCard label="FLEET MEMORY" value={stat(fleetMem)} suffix={loaded ? "%" : undefined} accent={loaded ? memColor(fleetMem) : undefined}>
+          <MetricBar pct={loaded ? fleetMem : 0} color={loaded ? memColor(fleetMem) : undefined} />
         </MetricCard>
       </div>
 
@@ -262,7 +263,15 @@ export function Fleet() {
       ) : servers.length === 0 ? (
         <EmptyState onDeploy={() => setDeploying(true)} hasSpecs={specs.length > 0} />
       ) : (
-        <Card padding={0} style={{ overflow: "hidden", background: "rgba(5,19,24,.55)" }}>
+        <Card
+          padding={0}
+          style={{
+            overflow: "hidden",
+            background: "linear-gradient(180deg, rgba(10,30,37,.94), rgba(6,20,26,.97))",
+            border: "1px solid rgba(61,245,207,.18)",
+            boxShadow: "inset 0 1px 0 rgba(234,255,247,.05), 0 16px 36px rgba(1,6,9,.5)",
+          }}
+        >
           {/* table header / selection bar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
             {selCount > 0 ? (
@@ -309,7 +318,16 @@ export function Fleet() {
             return (
               <div
                 key={r.id}
+                className="fleet-row"
+                role="link"
+                tabIndex={0}
                 onClick={() => navigate(`/servers/${r.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/servers/${r.id}`);
+                  }
+                }}
                 style={{ display: "grid", gridTemplateColumns: GRID, gap: 10, padding: "13px 18px", alignItems: "center", borderBottom: "1px solid var(--border-soft)", fontSize: 13, color: "#cfe7e2", cursor: "pointer" }}
               >
                 <span

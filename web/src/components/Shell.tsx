@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { Boxes, HardDrive, Layers, Users, ShieldCheck, ScrollText, BookOpen, LogOut, ChevronDown, Rocket, Settings as SettingsIcon } from "lucide-react";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth";
+import { memColor } from "@/lib/memory";
 import { AmbientBackground } from "./AmbientBackground";
 
 const mono = "var(--font-mono)";
@@ -14,6 +15,145 @@ const NAV = [
   { to: "/specs", label: "Game Specs", icon: Layers, end: false },
   { to: "/docs", label: "API Docs", icon: BookOpen, end: false },
 ];
+
+// The three destinations that earn a spot in the bar itself. Docs and the admin
+// pages stay under the user menu, which also keeps the full NAV for phones.
+const BAR_NAV = NAV.slice(0, 3);
+
+// How often the header's live cluster re-reads fleet state. Coarser than the
+// fleet page's own poll — the cluster is a glance, not the dashboard.
+const PULSE_MS = 15_000;
+
+type Pulse = {
+  running: number;
+  crashed: number;
+  nodesOnline: number;
+  nodesTotal: number;
+  memPct: number;
+};
+
+/** The live instrument cluster: running count, node health, fleet memory.
+ *  Visible from every page so "is everything OK" never needs a navigation.
+ *  Renders nothing until a fetch lands; dims (rather than lies) when polls
+ *  start failing. */
+function FleetPulse() {
+  const [pulse, setPulse] = useState<Pulse | null>(null);
+  const [stale, setStale] = useState(false);
+
+  const read = useCallback(async () => {
+    try {
+      const [s, n] = await Promise.all([api.listServers(), api.listNodes()]);
+      const servers = s.servers ?? [];
+      const nodes = n.nodes ?? [];
+      const totalMem = nodes.reduce((a, x) => a + x.total_memory_mb, 0);
+      const usedMem = nodes.reduce((a, x) => a + x.allocated_memory_mb, 0);
+      setPulse({
+        running: servers.filter((x) => x.state === "running").length,
+        crashed: servers.filter((x) => x.state === "crashed").length,
+        nodesOnline: nodes.filter((x) => x.status === "online").length,
+        nodesTotal: nodes.length,
+        memPct: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
+      });
+      setStale(false);
+    } catch {
+      setStale(true); // keep the last known numbers, but say they're old
+    }
+  }, []);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    const start = () => {
+      stop();
+      timer = window.setInterval(() => void read(), PULSE_MS);
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void read();
+        start();
+      }
+    };
+    void read();
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [read]);
+
+  if (!pulse) return null;
+
+  const cell = {
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "7px 13px",
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: "var(--text-secondary)",
+  } as const;
+  const divider = { borderLeft: "1px solid var(--border-soft)" } as const;
+  const unit = { color: "var(--text-faint)" } as const;
+
+  const healthy = pulse.crashed === 0;
+  const nodesDegraded = pulse.nodesOnline < pulse.nodesTotal;
+
+  return (
+    <div
+      className="nav-cluster"
+      title={stale ? "Last known values — the Panel isn't answering right now." : undefined}
+      style={{
+        marginRight: 14,
+        border: "1px solid var(--border-soft)",
+        borderRadius: 10,
+        background: "rgba(3,13,18,.55)",
+        overflow: "hidden",
+        opacity: stale ? 0.55 : 1,
+        transition: "opacity var(--duration-base) var(--ease-out)",
+      }}
+    >
+      <span style={cell} title={healthy ? `${pulse.running} running, none crashed` : `${pulse.crashed} crashed — open the fleet`}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: healthy ? "var(--status-running)" : "var(--status-crashed)",
+            boxShadow: healthy ? "0 0 8px rgba(54,229,166,.8)" : "0 0 8px rgba(255,92,87,.8)",
+            animation: stale ? "none" : "abyssalPulseDot 2.4s infinite",
+          }}
+        />
+        <span style={{ color: healthy ? "var(--text-primary)" : "var(--status-crashed)", fontWeight: 600 }}>
+          {healthy ? pulse.running : pulse.crashed}
+        </span>
+        <span style={healthy ? unit : { color: "var(--status-crashed)" }}>{healthy ? "RUNNING" : "CRASHED"}</span>
+      </span>
+      <span style={{ ...cell, ...divider }} title={nodesDegraded ? "A node is unreachable or degraded — open Nodes" : "All nodes online"}>
+        <span style={{ color: nodesDegraded ? "var(--status-stopping)" : "var(--text-primary)", fontWeight: 600 }}>
+          {pulse.nodesOnline}
+          <span style={unit}>/{pulse.nodesTotal}</span>
+        </span>
+        <span style={unit}>NODES</span>
+      </span>
+      <span style={{ ...cell, ...divider }} title="Fleet memory allocated across all nodes">
+        <span style={{ color: memColor(pulse.memPct), fontWeight: 600 }}>
+          {pulse.memPct}
+          <span style={unit}>%</span>
+        </span>
+        <span style={unit}>MEM</span>
+      </span>
+    </div>
+  );
+}
 
 const ADMIN_NAV = [
   { to: "/admin/users", label: "Users", icon: Users, end: false },
@@ -228,41 +368,38 @@ export function Shell() {
             zIndex: 40,
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
             height: "var(--nav-height)",
-            padding: "0 28px",
+            padding: "0 24px 0 28px",
             backdropFilter: "blur(var(--blur-nav))",
             WebkitBackdropFilter: "blur(var(--blur-nav))",
             background: "rgba(2,9,14,.66)",
             borderBottom: "1px solid var(--border-subtle)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }} onClick={() => navigate("/")}>
-            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-              <img
-                src="/kraken-glyph-teal.png"
-                alt="Kraken"
-                style={{ width: 30, height: 30, objectFit: "contain", filter: "drop-shadow(0 0 7px rgba(61,245,207,.55))" }}
-              />
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, letterSpacing: 4, fontSize: 15, color: "var(--text-primary)" }}>
-                KRAKEN
-              </span>
-            </div>
-            <span
-              style={{
-                fontFamily: mono,
-                fontSize: 10.5,
-                letterSpacing: 1,
-                color: "var(--text-faint)",
-                padding: "3px 8px",
-                border: "1px solid var(--border-subtle)",
-                borderRadius: 6,
-              }}
-            >
-              control panel
+          <div style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }} onClick={() => navigate("/")}>
+            <img
+              src="/kraken-glyph-teal.png"
+              alt="Kraken"
+              style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 7px rgba(61,245,207,.55))" }}
+            />
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, letterSpacing: 4, fontSize: 15, color: "var(--text-primary)" }}>
+              KRAKEN
             </span>
           </div>
-          <UserMenu />
+
+          <div className="top-nav-links">
+            {BAR_NAV.map(({ to, label, icon: NavIcon, end }) => (
+              <NavLink key={to} to={to} end={end} className={({ isActive }) => `top-nav-link${isActive ? " active" : ""}`}>
+                <NavIcon size={15} strokeWidth={2} style={{ opacity: 0.85 }} />
+                {label}
+              </NavLink>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", marginLeft: "auto" }}>
+            <FleetPulse />
+            <UserMenu />
+          </div>
         </nav>
 
         <Outlet />

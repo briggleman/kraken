@@ -143,7 +143,19 @@ radial top-glow, drifting god-rays, a rising-particle canvas, inset fog/vignette
 **Surfaces & glass:** nearly every surface is a semi-transparent fill (~`rgba(7,23,29,.5)`) over the
 depth gradient + a 1px teal border (12–14%), radius 13–15px. Focus/selected: teal border 30% + a 3px
 teal ring. **Dashed teal borders** mark empty/placeholder/permission-disabled zones. Top nav is glass:
-`backdrop-filter: blur(var(--blur-nav))` over `rgba(2,9,14,.66)` + teal bottom hairline.
+`backdrop-filter: blur(var(--blur-nav))` over `rgba(2,9,14,.66)` + teal bottom hairline; it carries
+the three primary destinations (Fleet · Nodes · Game Specs, active = `--gradient-accent-bar`
+underline) and a live fleet cluster (running/nodes/mem) that dims — never lies — when polls fail.
+
+**Instrument panels (dense-data surfaces):** stat tiles and data tables sit on a **near-opaque**
+instrument surface instead of plain glass — `linear-gradient(180deg, rgba(12,35,43,.94),
+rgba(8,25,31,.97))`, teal border at 18%, a 1px top highlight (`inset 0 1px 0 rgba(234,255,247,.06)`)
+and a real offset shadow (`0 16px 36px rgba(1,6,9,.5)`). Readouts never fight the god-rays; the
+atmosphere lives in the gutters between panels. Empty/loading states stay dashed translucent glass.
+
+**Memory-load bands (shared):** ≤50% `--status-running` · ≤75% `--status-starting` · >75%
+`--status-crashed` — implemented once in `web/src/lib/memory.ts` (`memColor`) and used by both the
+nav cluster and the fleet-memory tile so the readouts always agree.
 
 ---
 
@@ -182,8 +194,9 @@ React primitives, imported via `@ds/components/core/<Name>`:
   `placeholder`, `error`+`helper`, `mono` (IDs/nodes/ports), `size` `sm`|`md`. Full keyboard nav +
   type-ahead, auto-flips up near the viewport bottom. Matches `Input`'s recessed trigger.
 - **Toggle** — `checked`, `onChange(next)`, `disabled`. Teal gradient + glow on; recessed track off.
-- **MetricCard** — `label` (mono UPPERCASE), `value`, `suffix?`, `accent?`. **MetricBar** — `pct`
-  0–100, thin teal meter, intended as a MetricCard child.
+- **MetricCard** — `label` (mono UPPERCASE), `value`, `suffix?`, `accent?`. Renders on the
+  near-opaque **instrument panel** surface (see §5). **MetricBar** — `pct` 0–100, thin teal meter,
+  intended as a MetricCard child; `color?` recolors fill + glow for load-banded meters (memory).
 - **Toaster** — transient operator notifications. Mount **one** `<Toaster position="bottom-right" />`
   at the app root, then fire from anywhere via the singleton API (no provider/context):
   `Toaster.success(title, { message })`, `.error`, `.info`, `.warning`, `.loading`. Five tones (hue +

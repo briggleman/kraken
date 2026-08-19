@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/briggleman/kraken/compare/v0.21.0...v0.22.0) (2026-08-19)
+
+
+### Features
+
+* flip an existing node between direct and tunnel modes ([#101](https://github.com/briggleman/kraken/issues/101)) ([46c7ccf](https://github.com/briggleman/kraken/commit/46c7ccf4f881a149c0fdf7f79cf6befdc4117810))
+
 ## [0.21.0](https://github.com/briggleman/kraken/compare/v0.20.0...v0.21.0) (2026-08-19)
 
 

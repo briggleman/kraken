@@ -23,7 +23,11 @@ Kraken is a personal project with the goal of being something I've built to use 
 - **BepInEx mod support** for Unity games (Valheim / V Rising) — a per-spec capability
   flag plus an opt-in "Install BepInEx" toggle at deploy time.
 - **Live console & stats.** Stream a server's console and CPU/memory/player counts in
-  the browser over a WebSocket authorized by a short-lived Panel-issued token.
+  the browser over a WebSocket that terminates at the Panel, which bridges the Agent's
+  gRPC streams — the browser never talks to a node directly.
+- **Tunnel mode — zero inbound ports.** A node can dial *out* to the Panel and be
+  fully managed over a single reverse mTLS tunnel: no inbound firewall rules, works
+  behind NAT you don't control. Direct mode (Panel dials the node) remains the default.
 - **File manager + SFTP.** Browse, edit, upload, and download a server's data dir in
   the UI, or connect over **SFTP** with per-server credentials chrooted to that server.
 - **Backups & replication.** On-demand and scheduled `tar.gz` backups with dynamic,
@@ -51,14 +55,19 @@ Kraken is a personal project with the goal of being something I've built to use 
 | **Web UI**       | React + TS + Vite            | Manage games, servers, nodes, users                         |
 | **Postgres**     | —                            | Source-of-truth state                                       |
 
-- **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket
-- **Panel ⇄ Agent:** gRPC over mutual TLS
-- **Browser ⇄ Agent:** direct WebSocket for console/stats, authorized by a short-lived Panel-issued JWT
+- **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket. Console and stats streams
+  terminate at the Panel, which bridges them to the Agent's gRPC streams — the
+  browser never connects to an Agent directly.
+- **Panel ⇄ Agent:** gRPC over mutual TLS. Two transports: **direct** (the Panel
+  dials the Agent's `:9090`) or **tunnel** (the Agent dials out to the Panel's
+  `:9443` reverse-tunnel listener and serves over it — zero inbound ports on the
+  node; see [docs/design/reverse-connections.md](docs/design/reverse-connections.md)).
 
 Server data lives in a host directory **bind-mounted** into each container, so the
 Agent has native filesystem access for the file browser and backups (no Docker archive
-API). The Panel and Agent run as **host processes** (they need the Docker socket);
-only Postgres and the game servers themselves are containers.
+API). The Panel and Agent run as host processes or as host-networked containers
+(the compose path) — either way the Agent needs the Docker socket; the game servers
+themselves are always containers.
 
 ## Configuration (environment variables)
 
@@ -83,9 +92,10 @@ database URL, secrets key, and a bootstrap admin.
 | `KRAKEN_CSP` | `enforce` | Content-Security-Policy mode: `enforce`, `report-only` (log violations without blocking — use this for a day after a topology change), or `off` (only when a reverse proxy already sets its own policy; two CSP headers intersect, which is stricter than either author intended). An unrecognized value falls back to `enforce`. |
 | `KRAKEN_CSP_SCRIPT_SRC` | _(unset)_ | Comma-separated extra `script-src` sources. The shipped policy is same-origin only; a Panel fronted by a CDN that injects a script needs its host here — e.g. `https://static.cloudflareinsights.com` for Cloudflare Web Analytics. |
 | `KRAKEN_CSP_CONNECT_SRC` | _(unset)_ | Comma-separated extra `connect-src` sources, for a telemetry or monitoring endpoint on another origin. |
-| `KRAKEN_QUICKSTART` | `true` in dev | Auto-register the co-located Agent as the `local` node. |
-| `KRAKEN_ENV` | _(empty)_ | `dev` enables quickstart and dev conveniences. |
+| `KRAKEN_QUICKSTART` | `true` when `KRAKEN_ENV=dev` | Auto-register the co-located Agent as the `local` node. |
+| `KRAKEN_ENV` | `dev` | Deployment environment; `dev` enables quickstart and dev conveniences. |
 | `KRAKEN_LOCAL_AGENT_ADDR` | `127.0.0.1:9090` | Address the Panel dials for the co-located Agent (quickstart). |
+| `KRAKEN_TUNNEL_ADDR` | `:9443` | Listen address for the reverse-tunnel listener that tunnel-mode Agents dial into (mTLS only). Set to `off` to disable. Requires CA signing material — with no CA the listener stays off. |
 | `KRAKEN_CA_CERT` / `KRAKEN_CA_KEY` | _(self-signed)_ | Agent-enrollment CA. If unset, a self-signed CA is generated (a warning is logged). |
 | `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | _(unset)_ | mTLS material for the Panel↔Agent channel. |
 
@@ -128,6 +138,12 @@ variable names below, lowercased and de-prefixed (`KRAKEN_NODE_ID` → `--node-i
 | `KRAKEN_WINDOWS_ISOLATION` | `--windows-isolation` | `hyperv` | Windows container isolation: `hyperv` (default), `process`, or `default` (defer to the daemon). |
 | `KRAKEN_NODE_WINE` | `--wine` | `true` | Advertise Wine so Windows-only games can be placed on this Linux node. |
 | `KRAKEN_TLS_CERT` / `KRAKEN_TLS_KEY` / `KRAKEN_TLS_CA` | `--tls-cert` / `--tls-key` / `--tls-ca` | _(unset; `<root>/certs` when complete)_ | mTLS material presented/verified by the Agent. All three or none. |
+| `KRAKEN_PANEL_URL` | `--panel-url` | _(unset)_ | Panel base URL for auto-enrollment when no TLS bundle exists. |
+| `KRAKEN_ENROLL_TOKEN` | `--enroll-token` | _(unset)_ | One-time bootstrap token for remote auto-enrollment (minted in the Panel's Add Node dialog). Requires `KRAKEN_PANEL_URL`. |
+| `KRAKEN_CA_FINGERPRINT` | `--ca-fingerprint` | _(unset)_ | Pinned SHA-256 fingerprint of the Panel CA, verified during enrollment. |
+| `KRAKEN_TUNNEL` | `--tunnel` | `false` | Reverse-connection mode: dial out to the Panel and serve over an mTLS tunnel — the node needs **no inbound gRPC port**. Requires an mTLS bundle (or a `panel_url` to enroll for one). |
+| `KRAKEN_TUNNEL_ADDR` | `--tunnel-addr` | _(panel-url host on port `9443`)_ | The Panel's reverse-tunnel endpoint (`host:port`). |
+| `KRAKEN_ALLOW_INSECURE_GRPC` | `--allow-insecure-grpc` | `false` | Explicit opt-in (`1`) to serve plaintext gRPC on a non-loopback address. Unsafe — it exposes the Docker socket; enroll instead. |
 
 ## Deploy
 
@@ -160,10 +176,11 @@ echo "KRAKEN_SECRETS_KEY=$(openssl rand -base64 32)" >> deploy/.env
 docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
 ```
 
-Either way, open `http://<host>:8080`, sign in with the bootstrap admin
+Either way, open `http://<host>:8080` and sign in with the bootstrap admin
 (default `admin` + the generated password printed in `docker compose logs
-panel`), rotate the password, and deploy a server. Images are published to
-`ghcr.io/briggleman/kraken-panel` and `-agent` on every release.
+panel`) — the UI forces a password change on first login — then deploy a
+server. Images are published to `ghcr.io/briggleman/kraken-panel` and
+`-agent` on every release.
 
 **Mixed mode — containerized Panel + bare-metal Agent.** Skip the compose
 `agent` service and run the Agent as a systemd unit instead — handy when you
@@ -181,8 +198,18 @@ curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/insta
 sudo systemctl enable --now kraken-agent
 ```
 
-For a remote Agent, additionally enroll it with the Panel using a bootstrap
-token minted from **Settings → Nodes → Add node** in the UI:
+For a remote Agent, enroll it with a one-time bootstrap token minted from
+**Settings → Nodes → Add node** in the UI. The installer can do the whole
+thing in one command (add `--tunnel` for a node that should dial the Panel
+instead of opening inbound ports):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role agent --panel-url http://<panel-host>:8080 \
+      --enroll-token <one-time-token> --ca-fingerprint <sha256-from-the-dialog>
+```
+
+Or enroll manually after an install without the token:
 
 ```sh
 sudo krakenctl enroll -panel http://<panel-host>:8080 -token <one-time-token>
@@ -190,8 +217,11 @@ sudo krakenctl enroll -panel http://<panel-host>:8080 -token <one-time-token>
 
 **Windows Agent (for Windows-native game servers).** Docker Compose is
 Linux-only, so a Windows host runs the Agent bare-metal alongside a
-Linux/containerized Panel elsewhere. Full step-by-step walkthrough — download,
-enroll, run as an nssm-managed Windows Service — lives in
+Linux/containerized Panel elsewhere. One elevated-PowerShell command —
+[`deploy/windows/install.ps1`](deploy/windows/install.ps1) with `-PanelUrl`,
+`-Token`, and `-CaFingerprint` from the Add Node dialog (add `-Tunnel` for
+reverse-connection mode) — downloads, verifies, enrolls, and registers a
+**native Windows service**. Full walkthrough:
 **[`deploy/windows/README.md`](deploy/windows/README.md)**.
 
 ### Path 2 — Bare metal + systemd
@@ -209,16 +239,21 @@ docker compose -f deploy/docker-compose.yml up -d       # or your own Postgres
 sudo systemctl enable --now kraken-panel kraken-agent
 ```
 
-Second host? Same command with `--role agent`:
+Second host? Same command with `--role agent`, plus the enroll values from
+the Panel's Add Node dialog (the installer starts the service and the Agent
+enrolls itself on first start):
 
 ```sh
-curl -fsSL .../deploy/install.sh | sudo bash -s -- --role agent
-sudo systemctl enable --now kraken-agent
-# then enroll it: krakenctl enroll -panel https://panel:8080 -token <one-time>
+curl -fsSL .../deploy/install.sh | sudo bash -s -- --role agent \
+  --panel-url http://<panel-host>:8080 --enroll-token <one-time> \
+  --ca-fingerprint <sha256>
+# add --tunnel for a node that dials the Panel — no inbound ports needed
 ```
 
-The installer is idempotent — re-running upgrades to the latest release
-without clobbering `/etc/kraken/*.env`.
+Other flags: `--version vX.Y.Z` pins a release, `--no-systemd` skips the
+units. The installer is idempotent — re-running upgrades to the latest
+release without clobbering `/etc/kraken/*.env` (re-running with a fresh
+token is the recovery path for an expired one).
 
 ### Path 3 — Build from source
 
@@ -235,7 +270,9 @@ docker compose -f deploy/docker-compose.yml up -d   # Postgres only
 
 ### Firewall notes
 
-- Forward each game's **UDP/TCP ports** (shown per server) from your router to the host.
+- Forward each game's **UDP/TCP ports** (shown per server) from your router to the
+  host. Ports are allocated from the node's port pool — default `28000–28999` —
+  and game traffic always goes directly to the node, tunnel or not.
 - Keep the **Panel** (`:8080`) and **SFTP** (`:2022`) on your LAN / behind a VPN — do
   not expose them to the public internet without a reverse proxy + TLS.
 - **Agent gRPC (`:9090`) must not be reachable off-host without mTLS.** The default
@@ -244,7 +281,7 @@ docker compose -f deploy/docker-compose.yml up -d   # Postgres only
   either `KRAKEN_TLS_CERT`/`KRAKEN_TLS_KEY`/`KRAKEN_TLS_CA` are configured (via
   `krakenctl enroll`) or `KRAKEN_ALLOW_INSECURE_GRPC=1` is set as an explicit
   opt-in. If you run the Agent on a separate host from the Panel, enroll it first.
-- **Remote agents: open the host firewall for inbound `9090` (gRPC) + `2022` (SFTP).**
+- **Remote agents in direct mode: open the host firewall for inbound `9090` (gRPC) + `2022` (SFTP).**
   The Panel dials *in* to the agent, so enrollment succeeding (an outbound call) proves
   nothing about reachability — a blocked inbound port is the most common reason a
   freshly enrolled node sits **Offline** (often surfacing as `connection refused` in
@@ -290,7 +327,9 @@ proto/            .proto definitions (Panel <-> Agent)
 internal/panel/store/migrate/sql/   goose SQL migrations
 web/              React + TS + Vite UI (design-system/ + src/)
 images/           Dockerfiles: steam-base, steam-win
-deploy/           docker-compose (Postgres)
+specs/            bundled Game Specs (the "egg" equivalent)
+deploy/           compose files, Panel/Agent Dockerfiles, install.sh,
+                  windows/install.ps1, systemd/ units
 ```
 
 ## Development
@@ -304,7 +343,7 @@ make dev-panel        # Panel on :8080 (in a second terminal)
 make dev-agent        # Agent on :9090
 make dev-web          # Vite dev server on :5173 (HMR + /api proxy)
 make seed             # seed a node + Palworld spec + demo server
-make check            # everything CI runs: fmt · vet · staticcheck · test -race
+make check            # everything CI runs: fmt · vet · staticcheck · web build · test -race
 make build            # web bundle + all Go binaries into bin/
 make images           # build Panel + Agent Docker images locally
 ```

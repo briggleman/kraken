@@ -2,6 +2,8 @@ import * as React from 'react';
 
 export type ServerStatus =
   | 'running' | 'starting' | 'stopping' | 'offline' | 'installing' | 'crashed'
+  /** Provisioning never completed — red octagon, recover via reinstall. */
+  | 'install_failed'
   /** Reachable but degraded — used for nodes whose container runtime is down. */
   | 'partial';
 

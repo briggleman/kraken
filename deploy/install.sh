@@ -33,6 +33,7 @@ PANEL_URL=""          # remote-agent auto-enroll: Panel base URL
 ENROLL_TOKEN=""       # remote-agent auto-enroll: one-time bootstrap token
 CA_FINGERPRINT=""     # remote-agent auto-enroll: pinned Panel CA fingerprint
 TUNNEL=0              # reverse-connection mode: agent dials the Panel, no inbound ports
+TUNNEL_ADDR=""        # Panel tunnel endpoint override (host:port); default derives from --panel-url
 
 log()   { printf '\033[36m→\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!\033[0m %s\n' "$*" >&2; }
@@ -50,6 +51,7 @@ while [ $# -gt 0 ]; do
     --enroll-token) ENROLL_TOKEN="${2:-}"; shift 2 ;;
     --ca-fingerprint) CA_FINGERPRINT="${2:-}"; shift 2 ;;
     --tunnel) TUNNEL=1; shift ;;
+    --tunnel-addr) TUNNEL_ADDR="${2:-}"; shift 2 ;;
     -h|--help)
       sed -n '3,20p' "$0"
       exit 0
@@ -273,6 +275,13 @@ EOF
     # tunnel, so this host needs no inbound gRPC firewall rule at all.
     set_env_var KRAKEN_TUNNEL 1 "$CONFIG_DIR/agent.env"
     log "  set KRAKEN_TUNNEL=1 (reverse connection — no inbound ports needed)"
+  fi
+  if [ -n "$TUNNEL_ADDR" ]; then
+    # The tunnel endpoint defaults to the --panel-url host on :9443, which is
+    # wrong when that URL is a proxied domain (Cloudflare/nginx can't carry the
+    # raw mTLS tunnel) — this override points the agent at the real listener.
+    set_env_var KRAKEN_TUNNEL_ADDR "$TUNNEL_ADDR" "$CONFIG_DIR/agent.env"
+    log "  set KRAKEN_TUNNEL_ADDR=$TUNNEL_ADDR"
   fi
 
   if [ "$ROLE" = "agent" ] && [ -z "$ENROLL_TOKEN" ]; then

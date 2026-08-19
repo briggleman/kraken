@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,6 +25,11 @@ type createServerRequest struct {
 	Name      string            `json:"name"`
 	Variables map[string]string `json:"variables"`
 	MemoryMB  int               `json:"memory_mb"`
+	// NodeID pins placement to one node. The scheduler still runs — it checks
+	// eligibility (OS/kind, memory, ports) and reserves resources — but only
+	// this node is a candidate, and an ineligible pin is a 409 naming the
+	// reason rather than a silent placement elsewhere.
+	NodeID string `json:"node_id,omitempty"`
 	// SteamGuardCode is an optional one-time 2FA code for specs whose install
 	// requires an authenticated Steam login. It is used only for this install and
 	// never persisted.
@@ -72,9 +78,28 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A pinned placement narrows the candidate list to that one node — the
+	// scheduler still owns eligibility and reservation, so a pin that can't
+	// host the spec is refused with the scheduler's own reason instead of
+	// quietly landing somewhere else (the pre-pin wizard behavior).
+	pinnedName := ""
+	if req.NodeID != "" {
+		pinned := findNode(nodes, req.NodeID)
+		if pinned == nil {
+			writeError(w, http.StatusNotFound, "pinned node not found")
+			return
+		}
+		pinnedName = pinned.Name
+		nodes = []*cluster.Node{pinned}
+	}
+
 	// Scheduler reserves memory + ports on the chosen node (in the loaded copy).
 	placement, err := scheduler.Place(sp, nodes)
 	if err != nil {
+		if pinnedName != "" {
+			writeError(w, http.StatusConflict, "node "+pinnedName+" can't host this spec: "+err.Error())
+			return
+		}
 		writeError(w, http.StatusConflict, "no node can host this spec: "+err.Error())
 		return
 	}
@@ -177,8 +202,15 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 	for {
 		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break // clean end of the install stream = success
+		}
 		if err != nil {
-			break // EOF or error ends the install stream
+			// The stream died mid-install (agent restart, tunnel drop, network).
+			// The outcome is unknown — which must read as failed, never as
+			// installed; a reinstall re-runs the (idempotent) install script.
+			s.failServer(server, "install stream interrupted: "+err.Error())
+			return
 		}
 		if f, ok := ev.Event.(*agentpb.InstallEvent_Failed); ok {
 			s.failServer(server, "install failed: "+f.Failed)
@@ -186,7 +218,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 		}
 	}
 
-	s.setServerState(server.ID, store.StateOffline)
+	s.setServerState(server.ID, store.StateOffline, "")
 	s.logger.Info("server installed", "id", server.ID)
 }
 
@@ -194,20 +226,28 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 // crashed so the power handler can reject start/restart until a reinstall
 // clears the failure. Runtime crashes (watchdog surface) still land in
 // StateCrashed and remain retriable via the normal power flow.
+//
+// The reason is persisted on the record (Server.LastError), not just logged:
+// an operator whose install failed must be able to read why from the UI/API
+// without shell access to the Panel host.
 func (s *Server) failServer(server *store.Server, reason string) {
 	s.logger.Error("server provisioning failed", "id", server.ID, "reason", reason)
-	s.setServerState(server.ID, store.StateInstallFailed)
+	s.setServerState(server.ID, store.StateInstallFailed, reason)
 }
 
-// setServerState reloads the server and updates only its state, so a concurrent
-// settings edit during async install isn't clobbered by a stale write.
-func (s *Server) setServerState(id string, st store.ServerState) {
+// setServerState reloads the server and updates only its state (plus the
+// provisioning error that travels with it), so a concurrent settings edit
+// during async install isn't clobbered by a stale write. lastError replaces
+// the stored value: pass "" to clear it (any non-failed state), the failure
+// reason otherwise.
+func (s *Server) setServerState(id string, st store.ServerState, lastError string) {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
 		s.logger.Error("could not load server for state update", "id", id, "err", err)
 		return
 	}
 	sv.State = st
+	sv.LastError = lastError
 	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
 		s.logger.Error("could not update server state", "id", id, "err", err)
 	}
@@ -402,6 +442,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	_ = decodeJSON(r, &req) // empty body is fine
 
 	sv.State = store.StateInstalling
+	sv.LastError = "" // a fresh attempt starts with a clean slate
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update server state")
 		return

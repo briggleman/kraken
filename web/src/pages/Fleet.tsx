@@ -120,7 +120,9 @@ export function Fleet() {
   };
 
   const running = servers.filter((s) => s.state === "running").length;
-  const attention = servers.filter((s) => s.state === "crashed").length;
+  // Attention = anything a human must act on: crashes AND failed installs — a
+  // server that never provisioned is at least as broken as one that fell over.
+  const attention = servers.filter((s) => s.state === "crashed" || s.state === "install_failed").length;
   const onlineNodes = nodes.filter((n) => n.status === "online").length;
   const partialNodes = nodes.filter((n) => n.status === "partial").length;
   const fleetMem = useMemo(() => {
@@ -148,7 +150,13 @@ export function Fleet() {
     refresh();
   };
 
-  const crashedName = servers.find((s) => s.state === "crashed")?.name;
+  const crashed = servers.find((s) => s.state === "crashed");
+  const failedInstall = servers.find((s) => s.state === "install_failed");
+  const attentionDetail = crashed
+    ? `${crashed.name} crashed`
+    : failedInstall
+      ? `${failedInstall.name} install failed`
+      : "a server needs attention";
 
   // Every tile reads "—" until a fetch has actually landed, so a pending or
   // failed load can never be mistaken for a quiet, healthy fleet.
@@ -191,7 +199,7 @@ export function Fleet() {
         <MetricCard label="RUNNING SERVERS" value={stat(running)} />
         <MetricCard label="NEEDS ATTENTION" value={stat(attention)} accent={loaded && attention ? "var(--status-crashed)" : undefined}>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 14 }}>
-            {!loaded ? "awaiting fleet state" : attention ? `${crashedName ?? "a server"} crashed` : "all healthy"}
+            {!loaded ? "awaiting fleet state" : attention ? attentionDetail : "all healthy"}
           </div>
         </MetricCard>
         <MetricCard label="NODES ONLINE" value={stat(onlineNodes)} suffix={loaded ? `/${nodes.length || 0}` : undefined}>
@@ -379,9 +387,9 @@ export function Fleet() {
               specs={specs}
               nodes={nodes}
               onCancel={() => setDeploying(false)}
-              onDeploy={async ({ spec_id, name, variables, steam_guard_code, install_bepinex }) => {
+              onDeploy={async ({ spec_id, name, variables, steam_guard_code, install_bepinex, node_id }) => {
                 try {
-                  const sv = await api.createServer({ spec_id, name, variables, steam_guard_code, install_bepinex });
+                  const sv = await api.createServer({ spec_id, name, variables, steam_guard_code, install_bepinex, node_id });
                   setDeploying(false);
                   Toaster.success(`Deploying ${name}…`);
                   navigate(`/servers/${sv.id}`);

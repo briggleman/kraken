@@ -93,7 +93,7 @@ export function CreateWizard({
   /** Preselect a game and open on Placement — used by the Deploy button on a spec row. */
   initialSpecId?: string;
   onCancel: () => void;
-  onDeploy: (input: { spec_id: string; name: string; variables: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean }) => Promise<void>;
+  onDeploy: (input: { spec_id: string; name: string; variables: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean; node_id?: string }) => Promise<void>;
 }) {
   const [step, setStep] = useState(initialSpecId ? 1 : 0);
   const [specId, setSpecId] = useState<string | null>(initialSpecId ?? null);
@@ -144,7 +144,10 @@ export function CreateWizard({
     try {
       // No per-game variable overrides here: the wizard is identical for every
       // game, and launch variables are edited on the server's Settings tab.
-      await onDeploy({ spec_id: specId, name: name.trim(), variables: {}, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined });
+      // The placement step's selection is a real pin: the scheduler verifies
+      // eligibility and reserves resources on exactly this node, or the deploy
+      // fails with the reason — it never lands somewhere else silently.
+      await onDeploy({ spec_id: specId, name: name.trim(), variables: {}, steam_guard_code: steamGuard.trim() || undefined, install_bepinex: spec?.install?.bepinex_compatible ? installBepInEx : undefined, node_id: placedNode?.id });
     } finally {
       setBusy(false);
     }
@@ -282,7 +285,7 @@ export function CreateWizard({
               );
             })}
             <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 4 }}>
-              The scheduler makes the final placement (it prefers a native Linux node when one is eligible).
+              The server deploys to the selected node — the scheduler verifies it can host this game and reserves its memory and ports.
             </div>
           </div>
         )}

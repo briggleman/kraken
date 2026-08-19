@@ -180,7 +180,12 @@ type Server struct {
 	MaxPlayers   int32       `json:"max_players,omitempty"`
 	PlayersKnown bool        `json:"players_known,omitempty"`
 	SFTP         *ServerSFTP `json:"sftp,omitempty"` // per-server SFTP creds (stripped from API responses)
-	CreatedAt    time.Time   `json:"created_at"`
+	// LastError is why the most recent provisioning attempt failed, verbatim —
+	// set alongside StateInstallFailed and cleared when an install succeeds or a
+	// reinstall begins. It is the operator's whole diagnosis, so it must live on
+	// the record, not only in the Panel's process log.
+	LastError string    `json:"last_error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ScheduleAction is the operation a scheduled task performs on its server.

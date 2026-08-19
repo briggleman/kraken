@@ -290,6 +290,38 @@ export function ServerDetail() {
         </div>
       )}
 
+      {/* A failed install is a dead end without the reason and the retry —
+          both live here, not in the Panel's process log. */}
+      {server.state === "install_failed" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 20, padding: "13px 16px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-danger)", background: "var(--danger-wash)" }}>
+          <Icon name="octagon" size={16} style={{ color: "var(--status-crashed)", flex: "none" }} />
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Install failed — the server never provisioned.</div>
+            {server.last_error && (
+              <div style={{ fontFamily: mono, fontSize: 12, color: "var(--coral-soft)", marginTop: 5, wordBreak: "break-word" }}>{server.last_error}</div>
+            )}
+          </div>
+          <Button
+            variant="secondary"
+            icon="refresh"
+            disabled={busy !== null}
+            onClick={() => {
+              void (async () => {
+                try {
+                  await api.reinstallServer(server.id);
+                  Toaster.info("Reinstalling…", { message: "the installer streams to the console below" });
+                  refresh();
+                } catch (e) {
+                  Toaster.error(e instanceof Error ? e.message : "reinstall failed");
+                }
+              })();
+            }}
+          >
+            Reinstall
+          </Button>
+        </div>
+      )}
+
       {/* metric tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 22 }}>
         {stats?.players_known && (

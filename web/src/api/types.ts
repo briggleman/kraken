@@ -3,6 +3,8 @@
 
 export type ServerState =
   | "installing"
+  /** Provisioning failed — see Server.last_error; recover via reinstall. */
+  | "install_failed"
   | "offline"
   | "starting"
   | "running"
@@ -237,6 +239,9 @@ export interface Server {
   players?: number;
   max_players?: number;
   players_known?: boolean;
+  /** Why the most recent provisioning attempt failed, verbatim — set with
+   *  state install_failed, cleared when a (re)install succeeds or begins. */
+  last_error?: string;
   created_at: string;
 }
 

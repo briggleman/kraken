@@ -179,11 +179,14 @@ export const api = {
   getServer(id: string): Promise<Server> {
     return request("GET", `/servers/${id}`);
   },
-  createServer(input: { spec_id: string; name: string; variables?: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean }): Promise<Server> {
+  createServer(input: { spec_id: string; name: string; variables?: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean; node_id?: string }): Promise<Server> {
     return request("POST", "/servers", input);
   },
   powerServer(id: string, action: PowerActionName): Promise<{ state: string }> {
     return request("POST", `/servers/${id}/power`, { action });
+  },
+  reinstallServer(id: string, steamGuardCode?: string): Promise<{ state: string }> {
+    return request("POST", `/servers/${id}/reinstall`, steamGuardCode ? { steam_guard_code: steamGuardCode } : {});
   },
   deleteServer(id: string): Promise<void> {
     return request("DELETE", `/servers/${id}`);

@@ -9,9 +9,11 @@ Deep docs live in the files linked below.
 game servers across many hosts via Docker. Go control-plane (Panel) + Go node daemon
 (Agent) + React/TS web UI. Postgres = source of truth (sessions/state live here too).
 
-- **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket
-- **Panel ⇄ Agent:** gRPC over mutual TLS
-- **Browser ⇄ Agent:** direct WebSocket for console/stats, authorized by a short-lived Panel-issued JWT
+- **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket (console/stats terminate at the
+  Panel, which bridges them to the Agent's gRPC streams — the browser never
+  talks to an Agent directly)
+- **Panel ⇄ Agent:** gRPC over mutual TLS (Panel dials in; reverse-tunnel design
+  is [docs/design/reverse-connections.md](docs/design/reverse-connections.md))
 
 ## Layout (verified)
 

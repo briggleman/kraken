@@ -19,6 +19,12 @@ Deferred features and enhancements, roughly in priority order.
 - _Node 20 → 24: done 2026-07-31 (see below)._
 
 ## Platform
+- **Reverse connections (agent dials out) — designed, awaiting go/no-go.**
+  Eliminate the inbound 9090/2022 requirement on nodes: the Agent keeps an
+  outbound mTLS tunnel to the Panel and the existing gRPC channel rides it
+  unchanged. Full design, options, security analysis, phasing, and the three
+  decisions needed: [docs/design/reverse-connections.md](docs/design/reverse-connections.md).
+
 - **Agent self-update, Panel-brokered.** ← _next up; prerequisite + phases 1–2 shipped 2026-07-31_
   Let agents move to a new version without an operator hand-editing binaries on
   every host. Pieces that already exist: `NodeInfo.agent_version`

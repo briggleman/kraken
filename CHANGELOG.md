@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/briggleman/kraken/compare/v0.19.0...v0.20.0) (2026-08-19)
+
+
+### Features
+
+* **web:** fleet header nav with live status cluster and instrument surfaces ([#82](https://github.com/briggleman/kraken/issues/82)) ([0261329](https://github.com/briggleman/kraken/commit/026132901f42d9154baa509ba36dad9b9d438b21))
+
 ## [0.19.0](https://github.com/briggleman/kraken/compare/v0.18.0...v0.19.0) (2026-08-18)
 
 

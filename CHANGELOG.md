@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/briggleman/kraken/compare/v0.20.0...v0.21.0) (2026-08-19)
+
+
+### Features
+
+* reverse-connection tunnel mode - nodes need zero inbound ports ([#85](https://github.com/briggleman/kraken/issues/85)) ([4d43629](https://github.com/briggleman/kraken/commit/4d436299065d7257461ae2f309a60743d202d69b))
+
 ## [0.20.0](https://github.com/briggleman/kraken/compare/v0.19.0...v0.20.0) (2026-08-19)
 
 

@@ -1,206 +1,30 @@
 # Kraken — Backlog
 
-Deferred features and enhancements, roughly in priority order.
+**Active backlog items live as GitHub issues** (converted 2026-08-19):
+<https://github.com/briggleman/kraken/issues?q=is%3Aissue+is%3Aopen+label%3Abacklog>
 
-## UI
-- _All previously-listed UI items are done (2026-06-25): file-editor syntax
-  highlighting, rename/copy + Trash (soft-delete/restore), single-file raw
-  download, and the read-only settings-field flag._
+The rule going forward: **backlogging an item = opening a GitHub issue**, labeled
+`backlog`. When the execution plan is decided, the issue carries it in full
+(checklist form). When it is not, the issue also gets the `decision-needed`
+label and an **"Open items to resolve before starting"** checklist — run
+through those first when picking the work back up, so the issue can be
+addressed completely instead of re-derived.
 
-## Project & community
-- **Contribution support: PR template + `CONTRIBUTING.md`.** Deferred pending a decision on
-  how open to contributions the project should be. Think through: whether to accept outside
-  PRs at all (and under what bar), the contribution workflow (branch/fork, DCO or CLA, commit
-  style, the CI gate that already runs on PRs), how new **Game Specs** get proposed/reviewed
-  (likely the highest-volume contribution), a Code of Conduct, and issue templates (bug /
-  feature / spec request). GPL-3.0 is the license context. Revisit once the direction is set.
+Converted from this file: [#88](https://github.com/briggleman/kraken/issues/88)
+contribution support · [#89](https://github.com/briggleman/kraken/issues/89)
+tunnel Behemoth drill · [#90](https://github.com/briggleman/kraken/issues/90)
+SFTP proxy (tunnel phase 2) · [#91](https://github.com/briggleman/kraken/issues/91)
+self-update live drill · [#92](https://github.com/briggleman/kraken/issues/92)
+fleet update policy · [#93](https://github.com/briggleman/kraken/issues/93)
+honest skew trigger · [#94](https://github.com/briggleman/kraken/issues/94)
+artifact signing · [#95](https://github.com/briggleman/kraken/issues/95)
+RCON hot reload · [#96](https://github.com/briggleman/kraken/issues/96)
+external spec repo · [#97](https://github.com/briggleman/kraken/issues/97)
+winget package · [#98](https://github.com/briggleman/kraken/issues/98)
+steam-win DLL side-load · [#99](https://github.com/briggleman/kraken/issues/99)
+wine validation.
 
-## Tooling & CI
-- _Node 20 → 24: done 2026-07-31 (see below)._
-
-## Platform
-- **Reverse connections (agent dials out) — phase 1 shipped 2026-08-19.**
-  Tunnel-mode nodes dial the Panel (`KRAKEN_TUNNEL=1`, listener on `:9443`)
-  and need zero inbound ports; identity is a Panel-minted URI SAN in the
-  agent cert, bound at registration. Direct stays the default for new nodes
-  until the tunnel survives a release cycle on Behemoth. Remaining: the live
-  Behemoth drill, then **phase 2 — Panel-side SFTP proxy** (route
-  `panel:2022` over the tunnel by username=server-id), deferred until
-  tunnel operators actually miss SFTP. Design + decisions:
-  [docs/design/reverse-connections.md](docs/design/reverse-connections.md).
-
-- **Agent self-update, Panel-brokered.** ← _next up; prerequisite + phases 1–2 shipped 2026-07-31_
-  Let agents move to a new version without an operator hand-editing binaries on
-  every host. Pieces that already exist: `NodeInfo.agent_version`
-  (`proto/kraken/agent/v1/agent.proto`), the two-phase
-  `BeginCertRotation`/`CompleteCertRotation` pattern to copy, per-release
-  `SHA256SUMS` (`.github/workflows/release-binaries.yml`), `inContainer()`
-  (`internal/agent/docker.go`), and `rePushServerSpec`
-  (`internal/panel/api/handlers_server.go`) so a restarted Agent recovers its
-  specs on the next power action.
-
-  ~~**Prerequisite — monitor re-adoption on Agent startup.**~~ **Done 2026-07-31.**
-  Watchdogs were only ever attached by `Power(START|RESTART)`, so every Agent
-  restart silently dropped `restart_on_crash` and ready-regex detection for
-  servers already up — invisible, because `GetServerStatus` reads Docker directly
-  and kept reporting correct state. The Agent now persists each runtime spec under
-  `<state>/agent-specs`, reloads it at boot, and `adoptRunning`
-  (`internal/agent/monitor.go`) re-arms watchdogs for every `kraken.managed=true`
-  container — at startup *and* whenever Docker becomes reachable again, which from
-  the Agent's point of view is the same event. Adoption scans for the ready line
-  from the container's actual start time, and skips the probe entirely past
-  `adoptReadyGrace` so a server that has been up for hours can't regress to
-  "starting". Verified live: container left running with no monitor → new runtime
-  adopts it → `SIGKILL` → auto-restarted (`TestAdoptRunningRestoresCrashRestart`).
-
-  **Two decisions that shape everything else.** (1) The Panel brokers updates
-  rather than agents polling GitHub — LAN agents need no outbound internet, one
-  download serves the fleet, and the operator controls *when* (updating the box
-  hosting nothing, not the one mid-session). (2) Agents track **the Panel's
-  version, not `latest`** — Panel↔Agent is a versioned gRPC contract, and since
-  both are built from the same tag the Panel is a compatible target by
-  construction. "Up to date" then means "matches the Panel", and updating the
-  Panel is the single trigger for the fleet.
-
-  Flow: Panel fetches its own tag's artifacts + `SHA256SUMS`, verifies, caches,
-  and serves the bytes itself (so air-gapped installs work by side-loading).
-  `BeginAgentUpdate{version, sha256}` → Agent streams from the Panel, verifies
-  the hash, execs `--version` to prove the binary runs on this host, stages it,
-  ACKs. `CompleteAgentUpdate` → swap + exit. Panel polls `GetNodeInfo` until
-  `agent_version` matches, or alarms. Staging stays reversible; the
-  irreversible step is a separate call. The Agent accepts a *version*, never an
-  arbitrary URL.
-
-  The swap, per OS: on **Linux**, `rename(2)` the new binary over the old path
-  (works while running — the process holds the old inode; `open(O_TRUNC)` would
-  fail `ETXTBSY`, a rename won't), and restart needs `Restart=always` or a
-  dedicated exit code matched by `RestartForceExitStatus`, since
-  `deploy/systemd/kraken-agent.service`'s `Restart=on-failure` won't restart a
-  clean exit. On **Windows**, a running `.exe` can't be overwritten but *can* be
-  renamed: `agent.exe` → `agent.exe.old`, write the new one, delete `.old` next
-  boot; nssm already restarts on exit, so this works with no extra machinery
-  (a native `service install` would need SCM recovery config instead). The
-  `--root`/`<root>/bin` layout gives the updater a known writable staging spot,
-  and `--print-config` shows which binary is live.
-
-  Rollback: keep the previous binary plus a "first boot after update" marker.
-  Clear it once the Agent reaches serving; on the next start, a marker with a
-  failure count reverts to the previous binary — otherwise `Restart=always`
-  cheerfully crashloops a bad build forever. The pre-swap `--version` exec
-  catches truncated downloads, wrong arch, and missing DLLs before anything is
-  swapped.
-
-  Must not self-update: **containerized** agents (the image is the unit — refuse
-  via `inContainer()` and show "managed by image tag"), and **package-managed**
-  installs once the winget item below lands (`winget upgrade` owns the binary).
-  Record the install method (`self` / `image` / `package`) and only self-update
-  when it's `self`; two updaters fighting over one file is worse than none.
-
-  Phasing: ~~(1) monitor re-adoption~~ and ~~(2) visibility~~ shipped 2026-07-31 —
-  the node list carries `panel_version`, each node carries the `agent_version` seen
-  on last contact, and `/nodes` flags any node whose build differs (2026-07-31: the
-  flag moved onto the address line, next to the agent version itself). It reports
-  *mismatch*, not "update available": without a semver comparison the Panel can't
-  honestly claim the agent is the older one, and both versions are in the tooltip.
-  Remaining: (3) manual per-node update with the two-phase RPC, staging, and
-  rollback; (4) policy (fleet-wide, or "only nodes with zero running servers", or a
-  maintenance window) once (3) has been boring for a while. Step 3 holds the real
-  cost and wants testing on a real Windows host.
-
-  **The mismatch flag needs a better trigger — fold this into (3).** A
-  string comparison against `panel_version` fires on *every* release, because
-  release-please bumps the version whether or not anything agent-side changed.
-  Observed immediately: 0.14.0 was panel-only (`internal/panel/api/` + `web/`), the
-  agent artifacts are byte-for-byte the size of 0.13.0's and differ only by the
-  stamped string — yet both live nodes flagged `≠ panel 0.14.0` and had to be
-  updated purely to clear an amber marker. An indicator that is amber most of the
-  time is one operators learn to ignore, which costs more than having no indicator.
-  The honest trigger isn't "the versions differ", it's "**the Panel is holding a
-  different agent binary than this node is running**" — which is exactly what (3)
-  already knows, since the Panel fetches and caches its tag's agent artifacts and
-  verifies their `SHA256SUMS`. Compare the artifact (hash, or a version the Panel
-  only advances when the agent artifact actually changes) rather than the release
-  tag. Cheap interim if (3) slips: a `minAgentVersion` constant in the Panel, bumped
-  by hand only when agent-affecting changes ship, and flag `agent < minAgentVersion`.
-
-  Open questions: is `install_method` explicit config or inferred (container
-  detection plus a marker the winget package drops)? And is fleet-wide update
-  wanted at all, or is per-node-with-confirmation the honest ceiling for a home
-  platform where one node going down ends a game session? Worth signing
-  `SHA256SUMS` (cosign or GitHub build attestation) independently of this — the
-  Panel→GitHub link currently trusts TLS plus the workflow.
-- **Active hot reload via RCON.** The spec-level `settings.hot_reload` flag
-  (added 2026-07-10) only changes the post-save message — it assumes the game
-  re-reads its config files on its own. Some games instead need an explicit
-  reload command sent over RCON (or a REST/console equivalent) to pick up
-  pushed config. Extend the spec schema with a reload trigger (e.g.
-  `settings.reload: { type: rcon, command: "reloadcfg" }`), have the Agent
-  execute it after `ApplyConfig` on a running server, and report success back
-  so the Settings tab can say "applied live" with confidence. The per-spec
-  `query` block (player count) already established the per-game RCON/REST
-  plumbing patterns to build on.
-- **Pull game specs from an external GitHub repo.** Today the catalog is
-  `go:embed`ded in the panel binary (`internal/panel/catalog/bundled/*.yaml`),
-  so adding or updating a spec requires a Kraken release. Move to a
-  pull-at-runtime model: point the panel at a spec-only repo (e.g.
-  `briggleman/kraken-specs`) and have it fetch + validate on startup + on a
-  schedule (weekly, or via a webhook / manual refresh action). Each entry
-  becomes a versioned catalog item — an operator can update Palworld's spec
-  without a Kraken redeploy. Design notes: (1) keep the current bundled/
-  fallback for offline installs; (2) sign or hash-pin the manifest so a repo
-  compromise can't inject a malicious startup command; (3) surface "N updates
-  available" on the Catalog page so operators know when to re-import;
-  (4) `GET /catalog?source=repo` filter so operators can distinguish bundled
-  vs external. This is what the [[SPECS.md]] convention is for — spec authors
-  contribute to that repo instead of the main Kraken repo. Highest-volume
-  contribution surface in the project once opened up.
-- **winget package for kraken-agent + krakenctl.** Goal: `winget install kraken`
-  puts both commands on PATH; `winget upgrade kraken` tracks releases. Plan
-  (drafted 2026-07-09):
-  1. *Release prep:* `release-binaries.yml` additionally zips the two Windows
-     exes — renamed to stable `kraken-agent.exe` / `krakenctl.exe` — into
-     `kraken-cli-windows-amd64.zip` (+ SHA256SUMS entry). Existing raw-exe
-     assets stay (the setup wizard's instructions download them directly).
-  2. *First submission:* one package `BenRiggleman.Kraken` in
-     microsoft/winget-pkgs — `InstallerType: zip`, `NestedInstallerType:
-     portable`, two `NestedInstallerFiles` with `PortableCommandAlias`
-     `kraken-agent`/`krakenctl`; GPL-3.0; validate with `winget validate` +
-     SandboxTest.ps1. One package (not two) so agent+ctl can't version-skew.
-     New-package PRs are human-moderated (days–weeks).
-  3. *Automation:* on `release: published`, winget-releaser action (or
-     `wingetcreate update --submit`) opens the version PR automatically; needs
-     a `public_repo` PAT secret + a fork of winget-pkgs.
-  4. *Follow-up:* native `kraken-agent service install|uninstall` subcommands
-     (`golang.org/x/sys/windows/svc`) so the winget flow replaces nssm
-     entirely: install → enroll → service install; upgrades via
-     `winget upgrade` + service restart. Agents already report their version
-     in NodeInfo → future "agent update available" indicator in the panel.
-  Notes: portable installs don't register services (hence step 4); binaries
-  are unsigned (fine for winget's hash pinning; SmartScreen may prompt —
-  optional Azure Trusted Signing later); panel deliberately excluded (ships
-  as a container); Windows arm64 only if that build target ever exists.
-- **`steam-win` — swap the VC++ redist installer for a direct DLL side-load.**
-  The runtime stage still invokes `vc_redist.x64.exe /quiet /norestart` to install
-  `vcruntime140.dll` / `vcruntime140_1.dll` / `msvcp140.dll` / `concrt140.dll`
-  plus SxS registration hooks. Extracting just those four DLLs into
-  `C:\Windows\System32` is estimated to save **300–800 MB** on top of the
-  safe-cleanup pass shipped earlier — but some games may need the SxS
-  registration the installer performs, so the swap requires live A/B against
-  V Rising (the known-working reference) on a Windows Docker daemon before it
-  can ship. Approach: `vc_redist.x64.exe /extract:C:\vc` → `expand` the emitted
-  CABs → copy the four DLLs → skip the MSI install. Track boot success + no
-  `0xC0000135` under both process and Hyper-V isolation.
-- **Wine: validate the remaining Windows-only games per-spec.** The
-  `steam-wine` image + per-platform spec overrides shipped 2026-07-09
-  (Abiotic Factor live-validated — joinable session under Wine 10). Each
-  remaining Windows-only spec gets `linux-wine` only after it live-boots:
-  Enshrouded (no confirmed reports, UE5 shader-compile risk), V Rising
-  (IL2CPP + BepInEx-under-Wine historically flaky), Windrose (UE5 + P2P
-  NAT-punch, unknown). Per game: add the platform entry with
-  `install_script`/`startup_command` overrides (copy the abiotic-factor
-  pattern: Linux SteamCMD + `+@sSteamCmdForcePlatformType windows`,
-  launch via `wine-headless`), deploy, verify ready + a real client join.
-
+The rest of this file is the **historical record** of shipped backlog work.
 
 ### Done (2026-07-31)
 - ~~**Bump Node 20 → 24.**~~ Shipped. Four pins, not three: `.github/workflows/ci.yml`

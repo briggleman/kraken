@@ -126,10 +126,26 @@ See [`release-please-config.json`](release-please-config.json) for the config.
 **Do NOT add a `Co-Authored-By: Claude …` trailer** to commit messages here —
 the git log and release-please changelog stay clean without it.
 
+## Backlog = GitHub issues
+
+Deferred work is tracked as **GitHub issues labeled `backlog`**, not in
+BACKLOG.md (which is now the historical record of shipped items).
+**Whenever an item gets backlogged, open an issue for it** — never just a
+file note:
+
+- **Plan decided?** The issue carries the execution plan in detail, as a
+  checklist.
+- **Plan not decided?** Add the `decision-needed` label and an
+  **"Open items to resolve before starting"** checklist of the questions to
+  answer. When the work is picked back up, run through those items *first*
+  so the issue gets addressed completely instead of re-derived.
+- Cross-link related issues and design docs; when an issue ships, its PR
+  should reference it (`Closes #N`).
+
 ## Pointers
 
 - Product context (users, positioning, constraints) → **[PRODUCT.md](PRODUCT.md)**
 - Design language → **[DESIGN.md](DESIGN.md)**
-- Roadmap / deferred work → **[BACKLOG.md](BACKLOG.md)**
+- Shipped-work history (active items → GitHub issues) → **[BACKLOG.md](BACKLOG.md)**
 - Security posture & audit history → **[SECURITY.md](SECURITY.md)**
 - Project overview → **[README.md](README.md)**

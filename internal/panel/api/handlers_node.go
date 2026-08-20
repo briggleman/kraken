@@ -131,7 +131,10 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if mode == cluster.ConnTunnel && req.OS == "" {
-		req.OS = string(cluster.OSLinux) // corrected from the Agent's report on first contact
+		// Raw-API fallback only: the Add Node dialog sends the install tab's OS
+		// (#112). Whatever lands here is corrected from the Agent's report on
+		// first contact.
+		req.OS = string(cluster.OSLinux)
 	}
 	os := cluster.NodeOS(req.OS)
 	if os != cluster.OSLinux && os != cluster.OSWindows {

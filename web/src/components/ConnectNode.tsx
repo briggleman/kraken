@@ -29,8 +29,17 @@ const SECTION_LABEL: React.CSSProperties = {
 // happens inline once the agent enrolls, so these steps end at "agent
 // running".
 type AgentTarget = "linux" | "windows";
-function AgentInstallInstructions({ panelOrigin, token, caFingerprint, tunnel }: { panelOrigin: string; token: string; caFingerprint: string; tunnel: boolean }) {
-  const [target, setTarget] = useState<AgentTarget>("linux");
+// The OS tab is owned by ConnectNode (not local state): the choice doubles as
+// the registered node's initial OS in tunnel mode, where the Panel has no
+// address to probe and would otherwise guess (issue #112).
+function AgentInstallInstructions({ panelOrigin, token, caFingerprint, tunnel, target, onTargetChange }: {
+  panelOrigin: string;
+  token: string;
+  caFingerprint: string;
+  tunnel: boolean;
+  target: AgentTarget;
+  onTargetChange: (t: AgentTarget) => void;
+}) {
 
   const linuxCmds = [
     {
@@ -72,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File $env:TEMP\\kraken-install.ps1 \`
 
   return (
     <div>
-      <OsTabs value={target} onChange={setTarget} />
+      <OsTabs value={target} onChange={onTargetChange} />
       {cmds.map((c) => (
         <div key={c.title}>
           <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", margin: "10px 0 6px" }}>{c.title}</div>
@@ -308,6 +317,11 @@ export function ConnectNode({
   // inbound) — the default for new nodes since the Behemoth drill (issue #89);
   // direct = the Panel dials the node (needs the firewall rule).
   const [mode, setMode] = useState<"direct" | "tunnel">("tunnel");
+  // Which OS's install commands are showing. In tunnel mode this is also the
+  // registered node's initial OS — there is no address to probe, and the
+  // operator just picked the tab matching the host they're installing on. The
+  // agent stays authoritative: its report corrects the value on first contact.
+  const [target, setTarget] = useState<AgentTarget>("linux");
   const [token, setToken] = useState<string | null>(null);
   const [caFingerprint, setCaFingerprint] = useState<string>("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
@@ -390,6 +404,10 @@ export function ConnectNode({
         address: mode === "direct" ? address : undefined,
         connection_mode: mode,
         tunnel_id: mode === "tunnel" ? enroll?.tunnel_id : undefined,
+        // Tunnel mode can't be probed for its OS, so pass the install tab's —
+        // the Panel would otherwise guess linux until first contact (#112).
+        // Direct mode keeps the agent-probed value.
+        os: mode === "tunnel" ? target : undefined,
         name: advName.trim() || (mode === "tunnel" ? enroll?.node_name || undefined : undefined),
         total_memory_mb: advMem ? +advMem : undefined,
         port_start: advPortStart ? +advPortStart : undefined,
@@ -468,6 +486,7 @@ export function ConnectNode({
     setAdvMem("");
     setAdvPortStart("");
     setAdvPortEnd("");
+    setTarget("linux");
     setOpen(defaultOpen);
   };
 
@@ -648,7 +667,7 @@ export function ConnectNode({
                   <code style={{ fontFamily: mono, fontSize: 12, color: "var(--accent)", wordBreak: "break-all", lineHeight: 1.5 }}>{token}</code>
                   <CopyButton text={token} />
                 </div>
-                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} caFingerprint={caFingerprint} tunnel={mode === "tunnel"} />
+                <AgentInstallInstructions panelOrigin={panelOrigin} token={token} caFingerprint={caFingerprint} tunnel={mode === "tunnel"} target={target} onTargetChange={setTarget} />
               </>
             )}
           </div>

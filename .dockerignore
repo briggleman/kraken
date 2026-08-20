@@ -13,6 +13,13 @@ bin/
 *.exe
 *.exe~
 
+# locally built embedded agent binaries (make embed-agents) — panel.Dockerfile
+# cross-builds all platforms itself, so stale local ones must never leak into
+# the image (the blanket *.exe above already drops the Windows one, which is
+# exactly the asymmetry that made local images embed Linux agents but not
+# Windows ones).
+internal/panel/agentbin/dist/kraken-agent-*
+
 # committed embed dir is fine, but real Vite output (only produced locally)
 # should be regenerated inside the builder stage
 internal/panel/webui/dist/assets/

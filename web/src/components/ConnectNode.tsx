@@ -297,9 +297,10 @@ export function ConnectNode({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  // Connection direction. Direct = the Panel dials the node (needs the
-  // firewall rule); tunnel = the node dials the Panel (needs nothing inbound).
-  const [mode, setMode] = useState<"direct" | "tunnel">("direct");
+  // Connection direction. Tunnel = the node dials the Panel (needs nothing
+  // inbound) — the default for new nodes since the Behemoth drill (issue #89);
+  // direct = the Panel dials the node (needs the firewall rule).
+  const [mode, setMode] = useState<"direct" | "tunnel">("tunnel");
   const [token, setToken] = useState<string | null>(null);
   const [caFingerprint, setCaFingerprint] = useState<string>("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
@@ -512,8 +513,8 @@ export function ConnectNode({
             <div role="radiogroup" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               {(
                 [
-                  { key: "direct", label: "Panel dials the node", hint: "needs inbound 9090 open on the node" },
                   { key: "tunnel", label: "Node dials the Panel", hint: "no inbound ports — works behind NAT" },
+                  { key: "direct", label: "Panel dials the node", hint: "needs inbound 9090 open on the node" },
                 ] as const
               ).map((m) => {
                 const active = mode === m.key;

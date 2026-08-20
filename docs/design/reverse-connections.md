@@ -1,8 +1,11 @@
 # Reverse connections: eliminating the inbound-agent-port requirement
 
 **Status:** accepted 2026-08-19 — phase 1 implemented (Option A, per-node certs
-included; direct remains the default for new nodes until the tunnel survives a
-release cycle on Behemoth). Phase 2 (SFTP proxy) deferred pending demand.
+included). **Tunnel is the default for new nodes since 2026-08-20**, after the
+live Behemoth drill (issue #89) proved the full surface — enrollment, deploys,
+console/stats, backups, self-update, and the failure drills — over a tunnel
+with zero inbound firewall rules, across the 0.22.x release cycle. Phase 2
+(SFTP proxy) deferred pending demand.
 **Scope:** Panel ⇄ Agent transport direction. Game traffic is explicitly out of
 scope — players always connect directly to node ports, tunnel or not.
 
@@ -161,9 +164,9 @@ Phased, because the tunnel is useful without it:
 ## Operator-facing changes
 
 - **Enrollment:** unchanged token flow; the Add Node dialog gains a
-  "connection" choice — *Panel dials the node* (default, needs the firewall
-  rule) vs *node dials the Panel* (needs nothing inbound). Tunnel-mode
-  install drops the firewall instructions entirely.
+  "connection" choice — *node dials the Panel* (default since 2026-08-20,
+  needs nothing inbound) vs *Panel dials the node* (needs the firewall
+  rule). Tunnel-mode install drops the firewall instructions entirely.
 - **Node records:** `address` becomes optional for tunnel nodes (the
   IP/DNS-only address rule keeps applying whenever an address *is* present).
 - **Nodes page:** the node card shows link direction (⇄ direct / ⇉ tunnel)
@@ -207,11 +210,14 @@ channel), dual-mode by construction, and it deletes the project's worst
 first-run failure mode. Phase 2 (SFTP proxy) should wait for evidence that
 tunnel-mode operators actually miss SFTP.
 
-**Decision needed from the operator/maintainer:**
+**Decisions (recorded):**
 
-1. Go/no-go on phase 1 as scoped above.
+1. Go/no-go on phase 1 as scoped above. — **Go**; shipped 2026-08-19 (PR #85).
 2. Default for *new* nodes: keep direct as default, or make tunnel the
-   default and demote direct to the "advanced" path? (This doc recommends
-   tunnel-as-default for new enrolls once it has survived one release cycle
-   on Behemoth.)
-3. Whether per-node certificates ride along in phase 1 or land separately.
+   default? — **Tunnel-as-default**, decided 2026-08-20 after the tunnel
+   survived the live Behemoth drill and the 0.22.x release cycle (issue #89).
+   Direct stays a first-class choice in the Add Node dialog, just no longer
+   the preselected one.
+3. Whether per-node certificates ride along in phase 1 or land separately. —
+   **Rode along**: per-node identity (`kraken://agent/<uuid>` URI SAN) is
+   minted at every enrollment since #85; the yamux hello was never needed.

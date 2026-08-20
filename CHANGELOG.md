@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/briggleman/kraken/compare/v0.23.1...v0.24.0) (2026-08-20)
+
+
+### Features
+
+* cordon nodes, fleet agent updates, tunnel SFTP proxy, and skew/registration/stream fixes ([#118](https://github.com/briggleman/kraken/issues/118)) ([d5c9243](https://github.com/briggleman/kraken/commit/d5c9243b09873882fb37d1ecbc4b87d5338c161e))
+
 ## [0.23.1](https://github.com/briggleman/kraken/compare/v0.23.0...v0.23.1) (2026-08-20)
 
 

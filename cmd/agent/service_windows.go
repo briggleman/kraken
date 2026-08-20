@@ -210,6 +210,17 @@ func installService(m *mgr.Mgr) error {
 	}, 86400); err != nil {
 		return fmt.Errorf("set recovery actions: %w", err)
 	}
+	// By default Windows runs recovery actions only when the process CRASHES
+	// (dies without reporting SERVICE_STOPPED). An agent that exits with an
+	// error through the service handler — bad config, listen failure, an
+	// updated binary that can't stabilize — reports STOPPED with an exit code,
+	// which is a "non-crash failure" that recovery ignores unless this flag is
+	// set. Without it the self-update revert path never runs: the boot-attempt
+	// budget needs SCM to keep restarting the failing build (found by the
+	// live Behemoth drill, issue #91).
+	if err := s.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
+		return fmt.Errorf("set recovery-on-noncrash-failures flag: %w", err)
+	}
 
 	fmt.Printf("service %s installed (%s %s)\n", serviceName, exe, joinArgs(args))
 	fmt.Printf("start it with: %s --service start\n", filepath.Base(exe))

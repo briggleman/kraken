@@ -288,6 +288,7 @@ export function ConnectNode({
   nodes,
   refresh,
   defaultOpen = false,
+  onDone,
 }: {
   /** Current node list — used to detect the registered node coming online. */
   nodes: Node[];
@@ -295,6 +296,12 @@ export function ConnectNode({
   refresh: () => void | Promise<void>;
   /** Skip the "Connect a remote node" reveal button (e.g. inside a modal). */
   defaultOpen?: boolean;
+  /**
+   * Called when the operator dismisses the success state. Modal hosts close
+   * themselves here; inline hosts (setup wizard) omit it and the flow
+   * collapses back to its reveal button, ready for the next node.
+   */
+  onDone?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   // Connection direction. Tunnel = the node dials the Panel (needs nothing
@@ -414,7 +421,7 @@ export function ConnectNode({
         text: `agent enrolled${enroll.ip ? ` from ${enroll.ip}` : ""}${enroll.hosts?.length ? ` — advertised hosts: ${enroll.hosts.join(", ")}` : ""}`,
       });
       if (registeredNode?.status === "online") {
-        lines.push({ state: "done", text: `node "${registeredNode.name}" (${registeredNode.os}) is online — connection verified` });
+        lines.push({ state: "done", text: `node "${registeredNode.name}" (${registeredNode.os}) reported online` });
       } else if (registeredNodeId) {
         lines.push({
           state: "active",
@@ -432,11 +439,66 @@ export function ConnectNode({
     if (error) lines.push({ state: "error", text: error });
   }
 
-  const showRegisterForm = enroll?.status === "redeemed" && !(registeredNode && registeredNode.status === "online") && !registeredNodeId;
+  const succeeded = registeredNode?.status === "online";
+  const showRegisterForm = enroll?.status === "redeemed" && !succeeded && !registeredNodeId;
+
+  // Dismiss the finished flow. Modal hosts close themselves via onDone; the
+  // inline host resets to the reveal button so a second node can follow.
+  const finish = () => {
+    if (onDone) {
+      onDone();
+      return;
+    }
+    setToken(null);
+    setCaFingerprint("");
+    setTokenExpiresAt(null);
+    setEnroll(null);
+    setRegAddress("");
+    setRegisteredNodeId(null);
+    setError(null);
+    setAdvancedOpen(false);
+    setAdvName("");
+    setAdvMem("");
+    setAdvPortStart("");
+    setAdvPortEnd("");
+    setOpen(defaultOpen);
+  };
 
   return (
     <div>
       <EnrollConsole lines={lines} />
+      {succeeded && registeredNode && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 14,
+            padding: "14px 16px",
+            marginBottom: 16,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid color-mix(in srgb, var(--status-running) 40%, transparent)",
+            background: "color-mix(in srgb, var(--status-running) 8%, transparent)",
+          }}
+        >
+          <Icon name="check" size={20} style={{ color: "var(--status-running)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)" }}>Node online — connection verified</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)", marginTop: 3, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>{registeredNode.name}</span>
+              <OsIcon os={registeredNode.os} size={13} style={{ flexShrink: 0 }} />
+              <span>
+                {registeredNode.connection_mode === "tunnel"
+                  ? "is connected through its tunnel and ready for deployments."
+                  : "is answering and ready for deployments."}
+              </span>
+            </div>
+          </div>
+          <Button variant="primary" icon="check" onClick={finish}>
+            Done
+          </Button>
+        </div>
+      )}
       {enroll?.status === "expired" && (
         <div style={{ marginBottom: 14 }}>
           <Button variant="secondary" icon="refresh" onClick={() => void generateToken()}>
@@ -497,6 +559,10 @@ export function ConnectNode({
         </div>
       )}
 
+      {/* The token + install instructions are working material; once the node
+          is verified online they'd only bury the success state, so they fold
+          away and the panel above owns the ending. */}
+      {!succeeded && (
       <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 16 }}>
         {!open ? (
           <Button variant="ghost" icon="plus" onClick={() => setOpen(true)}>
@@ -571,6 +637,7 @@ export function ConnectNode({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

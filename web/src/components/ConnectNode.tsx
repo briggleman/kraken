@@ -422,6 +422,8 @@ export function ConnectNode({
       });
       if (registeredNode?.status === "online") {
         lines.push({ state: "done", text: `node "${registeredNode.name}" (${registeredNode.os}) reported online` });
+      } else if (registeredNode?.status === "partial") {
+        lines.push({ state: "done", text: `node "${registeredNode.name}" (${registeredNode.os}) reported in — container runtime unreachable` });
       } else if (registeredNodeId) {
         lines.push({
           state: "active",
@@ -439,8 +441,13 @@ export function ConnectNode({
     if (error) lines.push({ state: "error", text: error });
   }
 
-  const succeeded = registeredNode?.status === "online";
-  const showRegisterForm = enroll?.status === "redeemed" && !succeeded && !registeredNodeId;
+  // The flow verifies the CONNECTION, and partial proves contact just as
+  // hard as online does (the runtime error arrived from the agent itself) —
+  // so both resolve the flow. The poll above keeps running until the node is
+  // fully online, so a partial panel upgrades itself the moment Docker is up.
+  const online = registeredNode?.status === "online";
+  const contacted = online || registeredNode?.status === "partial";
+  const showRegisterForm = enroll?.status === "redeemed" && !contacted && !registeredNodeId;
 
   // Dismiss the finished flow. Modal hosts close themselves via onDone; the
   // inline host resets to the reveal button so a second node can follow.
@@ -467,7 +474,7 @@ export function ConnectNode({
   return (
     <div>
       <EnrollConsole lines={lines} />
-      {succeeded && registeredNode && (
+      {contacted && registeredNode && (
         <div
           style={{
             display: "flex",
@@ -477,20 +484,30 @@ export function ConnectNode({
             padding: "14px 16px",
             marginBottom: 16,
             borderRadius: "var(--radius-md)",
-            border: "1px solid color-mix(in srgb, var(--status-running) 40%, transparent)",
-            background: "color-mix(in srgb, var(--status-running) 8%, transparent)",
+            // Partial keeps StatusPill's convention: amber + warning triangle,
+            // never hue alone — the connection is proven, the runtime isn't.
+            border: `1px solid color-mix(in srgb, ${online ? "var(--status-running)" : "var(--status-stopping)"} 40%, transparent)`,
+            background: `color-mix(in srgb, ${online ? "var(--status-running)" : "var(--status-stopping)"} 8%, transparent)`,
           }}
         >
-          <Icon name="check" size={20} style={{ color: "var(--status-running)", flexShrink: 0 }} />
+          <Icon
+            name={online ? "check" : "crashed"}
+            size={20}
+            style={{ color: online ? "var(--status-running)" : "var(--status-stopping)", flexShrink: 0 }}
+          />
           <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)" }}>Node online — connection verified</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)" }}>
+              {online ? "Node online — connection verified" : "Node connected — container runtime unreachable"}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)", marginTop: 3, flexWrap: "wrap" }}>
               <span style={{ fontFamily: mono, color: "var(--text-primary)" }}>{registeredNode.name}</span>
               <OsIcon os={registeredNode.os} size={13} style={{ flexShrink: 0 }} />
               <span>
-                {registeredNode.connection_mode === "tunnel"
-                  ? "is connected through its tunnel and ready for deployments."
-                  : "is answering and ready for deployments."}
+                {online
+                  ? registeredNode.connection_mode === "tunnel"
+                    ? "is connected through its tunnel and ready for deployments."
+                    : "is answering and ready for deployments."
+                  : "is enrolled and connected — start Docker on that host and this flips to online on its own."}
               </span>
             </div>
           </div>
@@ -560,9 +577,9 @@ export function ConnectNode({
       )}
 
       {/* The token + install instructions are working material; once the node
-          is verified online they'd only bury the success state, so they fold
+          has reported in they'd only bury the resolution panel, so they fold
           away and the panel above owns the ending. */}
-      {!succeeded && (
+      {!contacted && (
       <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 16 }}>
         {!open ? (
           <Button variant="ghost" icon="plus" onClick={() => setOpen(true)}>

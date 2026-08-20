@@ -205,7 +205,7 @@ export function Nodes() {
                   live status console → inline register. A remote agent needs an
                   enrollment token before it can be registered, so the shortcut
                   form this modal used to show skipped the step that matters. */}
-              <ConnectNode nodes={nodes} refresh={refresh} defaultOpen />
+              <ConnectNode nodes={nodes} refresh={refresh} defaultOpen onDone={() => { setAdding(false); refresh(); }} />
             </Card>
           </div>
         </div>

@@ -4,21 +4,18 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/briggleman/kraken/internal/agent/config"
 )
 
-// isWindowsService is always false off Windows.
-func isWindowsService() bool { return false }
-
-// runService only exists to satisfy main's service branch; unreachable when
-// isWindowsService is constant-false, but kept honest anyway.
-func runService(*config.Config) error {
-	return fmt.Errorf("agent: service mode is only supported on Windows")
-}
-
-// serviceControl rejects --service on non-Windows hosts, where systemd (or
-// compose) owns the agent's lifecycle instead.
-func serviceControl(string, *config.Config) error {
-	return fmt.Errorf("agent: --service is only supported on Windows; on Linux use the systemd unit installed by deploy/install.sh")
+// serviceMain rejects --service off Windows, where systemd (or compose) owns
+// the agent's lifecycle instead; there is no SCM that could have launched us,
+// so a plain start always falls through to the console path.
+func serviceMain(_ *config.Config, action string) bool {
+	if action != "" {
+		fmt.Fprintln(os.Stderr, "agent: --service is only supported on Windows; on Linux use the systemd unit installed by deploy/install.sh")
+		os.Exit(1)
+	}
+	return false
 }

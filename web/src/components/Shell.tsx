@@ -17,8 +17,10 @@ const NAV = [
 ];
 
 // The three destinations that earn a spot in the bar itself. Docs and the admin
-// pages stay under the user menu, which also keeps the full NAV for phones.
+// pages stay under the user menu; the bar's own destinations reappear there
+// only once the bar has collapsed (phones), so they're never listed twice.
 const BAR_NAV = NAV.slice(0, 3);
+const MENU_NAV = NAV.slice(BAR_NAV.length);
 
 // How often the header's live cluster re-reads fleet state. Coarser than the
 // fleet page's own poll — the cluster is a glance, not the dashboard.
@@ -263,7 +265,12 @@ function UserMenu() {
 
             <div style={{ padding: "6px 0" }}>
               {!setupComplete && <MenuLink to="/setup" label="Setup" icon={Rocket} end={false} onClick={close} />}
-              {NAV.map((n) => (
+              <div className="menu-collapsed-nav">
+                {BAR_NAV.map((n) => (
+                  <MenuLink key={n.to} {...n} onClick={close} />
+                ))}
+              </div>
+              {MENU_NAV.map((n) => (
                 <MenuLink key={n.to} {...n} onClick={close} />
               ))}
             </div>

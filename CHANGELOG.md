@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.0](https://github.com/briggleman/kraken/compare/v0.22.2...v0.23.0) (2026-08-20)
+
+
+### Features
+
+* **web:** confirm node onboarding success with a clear done state ([#113](https://github.com/briggleman/kraken/issues/113)) ([04057e0](https://github.com/briggleman/kraken/commit/04057e0e5e220e934d102e23ab43e8b66856bcc1))
+* **web:** default new node enrollment to tunnel mode ([#110](https://github.com/briggleman/kraken/issues/110)) ([0ca2e71](https://github.com/briggleman/kraken/commit/0ca2e71d49fa5c6baa950b8b5383fa9dc774d6b9))
+
 ## [0.22.2](https://github.com/briggleman/kraken/compare/v0.22.1...v0.22.2) (2026-08-20)
 
 

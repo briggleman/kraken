@@ -1,16 +1,28 @@
 name: Enshrouded
 slug: enshrouded
 description: >-
-  Enshrouded dedicated server (SteamCMD app 2278520). Windows-only server, so
-  this targets a Windows node (steam-win image). All configuration lives in
-  enshrouded_server.json, generated from the Settings tab. Enshrouded is
-  memory-hungry — 16 GB is recommended for a full 16-slot group.
+  Enshrouded dedicated server (SteamCMD app 2278520). The server ships as a
+  Windows build; it runs on a Windows node (steam-win image) or on a Linux node
+  via Wine (steam-wine image, live-validated to Host_Online under Wine 10). All
+  configuration lives in enshrouded_server.json, generated from the Settings
+  tab. Enshrouded is memory-hungry — 16 GB is recommended for a full 16-slot group.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1203620/18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero_2x.jpg?t=1782800102
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1203620/b51ff4aa19722a1f3587b35f37f590a998f36a9a.jpg
 steam_app_ids:
   windows: 2278520
 platforms:
   - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
+  # linux-wine: same Windows depot, pulled by the LINUX SteamCMD with the forced
+  # platform type, launched through Wine under headless X. Live-validated to the
+  # Host_Online ready line under Wine 10 (issue #99). The server reads
+  # enshrouded_server.json from its working directory (/data), which the config
+  # file below writes via the logical /data root.
+  - kind: linux-wine
+    image: ghcr.io/briggleman/kraken-steam-wine:latest
+    install_script: |-
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    startup_command: wine-headless /data/enshrouded_server.exe
 install:
   # Run app_update twice: SteamCMD can report "Missing configuration" on the
   # first pass against a fresh appinfo cache; the second pass downloads.
@@ -114,8 +126,11 @@ settings:
 # leaving it out lets operators manage per-role passwords via the Files tab or
 # SFTP. Note: settings saves overwrite this file, so hand-edits to other keys
 # will not persist.
+  # Logical /data root (not C:\data): safePath maps it to C:\data on a Windows
+  # node and leaves it at /data on a Linux/Wine node, so one path is correct on
+  # both — a literal C:\… path would land under /data/C:/… on Linux.
 config_files:
-  - path: C:\data\enshrouded_server.json
+  - path: /data/enshrouded_server.json
     format: template
     template: |
       {

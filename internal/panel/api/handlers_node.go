@@ -151,28 +151,15 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address, "mode", mode, "identity_pending", identityPending)
-	// Kick a first reconcile in the background so the node comes online (and
-	// adopts its real identity) promptly, without blocking this response on a
-	// possibly-slow agent. A direct node with nothing listening just stays
-	// offline until the periodic reconciler retries.
-	//
-	// Re-load the node inside the goroutine rather than closing over this
-	// request's pointer: an operator action landing in the gap (e.g. a cordon)
-	// persists new state, and reconciling a stale pointer would clobber it.
-	if mode == cluster.ConnDirect {
-		nodeID := n.ID
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			fresh, err := s.store.GetNode(ctx, nodeID)
-			if err != nil {
-				return
-			}
-			if _, err := s.reconcileNode(ctx, fresh); err != nil {
-				s.logger.Info("node first-contact reconcile deferred", "node", nodeID, "err", err)
-			}
-		}()
-	}
+	// No first-contact reconcile is kicked here: it would be a fire-and-forget
+	// writer racing every operator action that can land in the seconds after
+	// registration (cordon, mode flip, delete) — it reads the node, dials the
+	// agent (slow), then persists a status that clobbers whatever was set in
+	// between. The periodic node reconciler brings a fresh node online on its
+	// next pass (and the connect-node UI polls node-info right after
+	// registering, which reconciles on demand), so prompt online doesn't need a
+	// racing writer here. #106 only requires that registration not block or
+	// 5xx on a slow agent, which it no longer does.
 	writeJSON(w, http.StatusCreated, n)
 }
 

@@ -396,6 +396,11 @@ export function ServerDetail() {
                 ○ disconnected — reconnecting…
                 <Button size="sm" variant="ghost" icon="refresh" onClick={reconnect}>Retry</Button>
               </>
+            ) : live && status === "connecting" ? (
+              <>
+                ○ connecting…
+                <Button size="sm" variant="ghost" icon="refresh" onClick={reconnect}>Retry</Button>
+              </>
             ) : live ? (
               "○ connecting…"
             ) : replay ? (
@@ -412,6 +417,8 @@ export function ServerDetail() {
                 ? "waiting for output…"
                 : replay
                 ? "No retained output. A server's logs are kept until it is next started, then replaced."
+                : server.state === "install_failed"
+                ? "Installation failed — see the banner above. Reinstall to try again."
                 : "Installing — console output begins when the server starts."}
             </div>
           ) : (

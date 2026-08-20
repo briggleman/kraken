@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -100,40 +102,22 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "connection_mode must be 'direct' or 'tunnel'")
 		return
 	}
-	// Identity comes from the agent itself when omitted: dial it and adopt its
-	// self-reported node id / OS. Keeps registration to a single field
-	// (address) and makes the agent's KRAKEN_NODE_ID authoritative. A
-	// tunnel-mode agent can't be dialed yet — its connection is only accepted
-	// once this record exists — so identity is taken from the request (the
-	// enroll flow prefills it) and the OS is corrected on first contact, the
-	// same way quickstart's local node is.
-	if mode == cluster.ConnDirect && (req.Name == "" || req.OS == "") {
-		client, err := s.nodes.Client(req.Address)
-		if err != nil {
-			writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		info, err := client.GetNodeInfo(ctx, &agentpb.GetNodeInfoRequest{})
-		cancel()
-		if err != nil {
-			writeError(w, http.StatusBadGateway,
-				"agent unreachable at "+req.Address+" — it must be running and reachable to auto-detect the node identity "+
-					"(check the agent is started and the host firewall allows inbound TCP on the agent port), "+
-					"or supply name and os explicitly: "+err.Error())
-			return
-		}
-		if req.Name == "" {
-			req.Name = info.NodeId
-		}
-		if req.OS == "" {
-			req.OS = info.Os
-		}
+	// Identity comes from the agent itself when omitted, adopted on first
+	// reconcile rather than by dialing inside this request (#106). Registration
+	// must never 5xx because an agent was slow to answer — the record is the
+	// durable thing, contact is eventually consistent (the same philosophy
+	// tunnel registration always had). A blank name registers as a placeholder
+	// derived from the address and identityPending=true; the first successful
+	// reconcile adopts the agent's KRAKEN_NODE_ID and OS.
+	identityPending := false
+	if req.Name == "" {
+		req.Name = placeholderNodeName(req.Address, mode)
+		identityPending = true
 	}
-	if mode == cluster.ConnTunnel && req.OS == "" {
-		// Raw-API fallback only: the Add Node dialog sends the install tab's OS
-		// (#112). Whatever lands here is corrected from the Agent's report on
-		// first contact.
+	if req.OS == "" {
+		// Corrected from the agent's report on first contact. Tunnel nodes have
+		// no address to probe; the Add Node dialog sends the install tab's OS
+		// (#112), so a blank here is a raw-API caller either way.
 		req.OS = string(cluster.OSLinux)
 	}
 	os := cluster.NodeOS(req.OS)
@@ -144,21 +128,18 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 	// Wine is a property of the game image (the wine runtime ships in the
 	// container), not the host — every Linux node can run linux-wine specs.
 	req.WineEnabled = os == cluster.OSLinux
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required (agent did not report one)")
-		return
-	}
 	n := &cluster.Node{
-		ID:             uuid.NewString(),
-		Name:           req.Name,
-		OS:             os,
-		WineEnabled:    req.WineEnabled,
-		Status:         cluster.NodeOffline, // until first successful contact
-		Address:        req.Address,
-		PublicHost:     req.PublicHost,
-		TotalMemoryMB:  req.TotalMemMB,
-		ConnectionMode: mode,
-		TunnelID:       req.TunnelID,
+		ID:              uuid.NewString(),
+		Name:            req.Name,
+		OS:              os,
+		WineEnabled:     req.WineEnabled,
+		Status:          cluster.NodeOffline, // until first successful contact
+		Address:         req.Address,
+		PublicHost:      req.PublicHost,
+		TotalMemoryMB:   req.TotalMemMB,
+		ConnectionMode:  mode,
+		TunnelID:        req.TunnelID,
+		IdentityPending: identityPending,
 	}
 	if req.PortStart > 0 && req.PortEnd >= req.PortStart {
 		n.Ports = cluster.NewPortPool(cluster.PortRange{Start: req.PortStart, End: req.PortEnd})
@@ -169,8 +150,44 @@ func (s *Server) handleRegisterNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not register node")
 		return
 	}
-	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address, "mode", mode)
+	s.logger.Info("node registered", "id", n.ID, "name", n.Name, "addr", n.Address, "mode", mode, "identity_pending", identityPending)
+	// Kick a first reconcile in the background so the node comes online (and
+	// adopts its real identity) promptly, without blocking this response on a
+	// possibly-slow agent. A direct node with nothing listening just stays
+	// offline until the periodic reconciler retries.
+	//
+	// Re-load the node inside the goroutine rather than closing over this
+	// request's pointer: an operator action landing in the gap (e.g. a cordon)
+	// persists new state, and reconciling a stale pointer would clobber it.
+	if mode == cluster.ConnDirect {
+		nodeID := n.ID
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			fresh, err := s.store.GetNode(ctx, nodeID)
+			if err != nil {
+				return
+			}
+			if _, err := s.reconcileNode(ctx, fresh); err != nil {
+				s.logger.Info("node first-contact reconcile deferred", "node", nodeID, "err", err)
+			}
+		}()
+	}
 	writeJSON(w, http.StatusCreated, n)
+}
+
+// placeholderNodeName derives a temporary node name for a record registered
+// before its agent could report KRAKEN_NODE_ID (#106). The first reconcile
+// replaces it. Kept human-readable so a never-connecting node is identifiable.
+func placeholderNodeName(address string, mode cluster.ConnectionMode) string {
+	if mode == cluster.ConnTunnel || address == "" {
+		return "pending-node"
+	}
+	host := address
+	if h, _, err := net.SplitHostPort(address); err == nil && h != "" {
+		host = h
+	}
+	return "node-" + host
 }
 
 // updateNodeRequest carries the operator-editable capacity fields. Pointer
@@ -290,8 +307,18 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 	// panel_version rides along so the UI can flag agents whose build doesn't match
 	// the Panel's. Agents track the Panel (Panel↔Agent is a versioned gRPC
 	// contract, and both are built from the same tag), so "matches the Panel" is
-	// the definition of up to date.
-	writeJSON(w, http.StatusOK, map[string]any{"nodes": nodes, "panel_version": version.Version})
+	// the definition of up to date. panel_agent_sha carries the embedded agent
+	// build's hash per platform so the UI can flag on artifact identity (#93) —
+	// a panel-only release leaves it unchanged and the fleet stays unflagged.
+	resp := map[string]any{"nodes": nodes, "panel_version": version.Version}
+	if sha := s.embeddedAgentSHA(cluster.OSLinux, "amd64"); sha != "" {
+		resp["panel_agent_sha"] = map[string]string{
+			"linux/amd64":   sha,
+			"linux/arm64":   s.embeddedAgentSHA(cluster.OSLinux, "arm64"),
+			"windows/amd64": s.embeddedAgentSHA(cluster.OSWindows, "amd64"),
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleGetNode(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +345,132 @@ func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// handleCordonNode holds a node back from new placements without touching what
+// already runs on it. Cordon is durable operator intent (persisted, honored by
+// reconcile), distinct from the health states.
+func (s *Server) handleCordonNode(w http.ResponseWriter, r *http.Request) {
+	s.setNodeCordon(w, r, true)
+}
+
+// handleUncordonNode releases the hold; the node's status reverts to whatever
+// the next reconcile observes (online/partial/offline).
+func (s *Server) handleUncordonNode(w http.ResponseWriter, r *http.Request) {
+	s.setNodeCordon(w, r, false)
+}
+
+func (s *Server) setNodeCordon(w http.ResponseWriter, r *http.Request, cordon bool) {
+	n, err := s.store.GetNode(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "node not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get node")
+		return
+	}
+	n.Cordoned = cordon
+	// Reflect the intent immediately so the UI doesn't wait for the next
+	// reconcile: a healthy node flips online<->cordoned now; a partial or
+	// offline node keeps its real (worse) health, which cordon never masks.
+	if cordon {
+		if n.Status == cluster.NodeOnline {
+			n.Status = cluster.NodeCordoned
+		}
+	} else if n.Status == cluster.NodeCordoned {
+		n.Status = cluster.NodeOnline
+	}
+	if err := s.store.UpdateNode(r.Context(), n); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update node")
+		return
+	}
+	s.logger.Info("node cordon changed", "node", n.ID, "name", n.Name, "cordoned", cordon)
+	s.recordAudit(r, http.StatusOK, "node-cordon:"+n.ID)
+	writeJSON(w, http.StatusOK, n)
+}
+
+// handleUpdateAllAgents pushes the Panel's embedded agent build to every
+// outdated, reachable node — the fleet-wide counterpart to the per-node
+// update, staged one node at a time and health-gated so a bad build stops the
+// wave. Nodes with running servers are skipped (an update restarts the agent,
+// which is disruptive) and reported, honoring PRODUCT.md principle 5: the
+// operator triggers this explicitly, and it never touches a busy node.
+func (s *Server) handleUpdateAllAgents(w http.ResponseWriter, r *http.Request) {
+	nodes, err := s.store.ListNodes(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list nodes")
+		return
+	}
+	servers, err := s.store.ListServers(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list servers")
+		return
+	}
+	hasServers := map[string]bool{}
+	for _, sv := range servers {
+		hasServers[sv.NodeID] = true
+	}
+
+	type nodeResult struct {
+		NodeID  string `json:"node_id"`
+		Name    string `json:"name"`
+		Outcome string `json:"outcome"` // updated | skipped | failed
+		Detail  string `json:"detail,omitempty"`
+	}
+	var results []nodeResult
+	updated, skipped, failed := 0, 0, 0
+
+	for _, n := range nodes {
+		// Only outdated agents need a push. "Outdated" is artifact identity when
+		// both sides report a hash (#93), else the version string.
+		if !s.agentNeedsUpdate(n) {
+			continue
+		}
+		if n.Status == cluster.NodeOffline {
+			results = append(results, nodeResult{n.ID, n.Name, "skipped", "node offline"})
+			skipped++
+			continue
+		}
+		if hasServers[n.ID] {
+			results = append(results, nodeResult{n.ID, n.Name, "skipped", "has servers — update it manually when they can restart"})
+			skipped++
+			continue
+		}
+		from, to, err := s.pushAgentUpdateTo(r.Context(), n)
+		if err != nil {
+			results = append(results, nodeResult{n.ID, n.Name, "failed", err.Error()})
+			failed++
+			// Health-gate: a failed push stops the wave so a bad build doesn't
+			// roll across the whole fleet.
+			s.logger.Warn("update-all: aborting wave after a failed push", "node", n.ID, "err", err)
+			break
+		}
+		results = append(results, nodeResult{n.ID, n.Name, "updated", from + " → " + to})
+		updated++
+	}
+
+	s.recordAudit(r, http.StatusOK, "node-agent-update-all")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"updated": updated, "skipped": skipped, "failed": failed, "nodes": results,
+	})
+}
+
+// agentNeedsUpdate reports whether a node's agent differs from the Panel's own
+// build. Prefers artifact-identity comparison (#93): when both the Panel's
+// embedded binary and the agent report a SHA-256, only a hash mismatch counts,
+// so a panel-only release (agent bytes unchanged) doesn't flag the fleet. Falls
+// back to the version string when either hash is absent (older agents).
+func (s *Server) agentNeedsUpdate(n *cluster.Node) bool {
+	if n.AgentVersion == "" {
+		return false // never contacted; nothing to compare
+	}
+	if n.AgentSHA != "" {
+		if want := s.embeddedAgentSHA(n.OS, n.Arch); want != "" {
+			return !strings.EqualFold(n.AgentSHA, want)
+		}
+	}
+	return n.AgentVersion != version.Version
 }
 
 // reconcileNode dials the node's Agent over gRPC, marks it online, and adopts
@@ -361,6 +514,13 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		status = cluster.NodePartial
 		runtimeErr = info.GetRuntimeError()
 	}
+	// A cordon is operator intent that outlives a reconcile: a reachable,
+	// runtime-healthy cordoned node stays cordoned (not flipped back to online),
+	// but a partial or offline one still reports its real health so the operator
+	// isn't misled. Uncordon restores normal reconcile-driven status.
+	if n.Cordoned && status == cluster.NodeOnline {
+		status = cluster.NodeCordoned
+	}
 	if n.Status != status {
 		s.logger.Info("node status changed", "node", n.ID, "name", n.Name, "from", n.Status, "to", status, "runtime_err", runtimeErr)
 		n.Status = status
@@ -372,6 +532,10 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	}
 	if info.AgentVersion != "" && n.AgentVersion != info.AgentVersion {
 		n.AgentVersion = info.AgentVersion
+		changed = true
+	}
+	if info.BinarySha256 != "" && n.AgentSHA != info.BinarySha256 {
+		n.AgentSHA = info.BinarySha256
 		changed = true
 	}
 	if info.Arch != "" && n.Arch != info.Arch {
@@ -391,6 +555,17 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 			n.TunnelID = id
 			changed = true
 		}
+	}
+	// Adopt the agent's self-reported node id for a record registered before
+	// the agent could be probed (#106): registration used a placeholder name so
+	// it never had to block on a slow agent, and first contact is where the
+	// real KRAKEN_NODE_ID lands. Only while pending, and only once.
+	if n.IdentityPending {
+		if info.NodeId != "" {
+			n.Name = info.NodeId
+		}
+		n.IdentityPending = false
+		changed = true
 	}
 	if n.PublicHost == "" && info.Host != "" {
 		n.PublicHost = info.Host

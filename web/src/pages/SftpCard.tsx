@@ -36,10 +36,11 @@ export function SftpCard({ id }: { id: string }) {
 
   if (!st) return null;
 
-  // A tunnel-mode node accepts nothing inbound — its SFTP listener is only
-  // reachable on the node's own network. Say so honestly instead of rendering
-  // an enable button for an endpoint the operator probably can't dial.
-  if (st.tunneled && !st.enabled) {
+  // A tunnel-mode node accepts nothing inbound, so its own SFTP listener is
+  // LAN-local. When the Panel-side SFTP proxy is fronting it (st.proxied), the
+  // endpoint below already points at the reachable proxy — only fall back to
+  // the honest "LAN-local" notice when there's no proxy and nothing to enable.
+  if (st.tunneled && !st.proxied && !st.enabled) {
     return (
       <Card dashed padding={18} style={{ marginBottom: 16 }}>
         <div style={label}>SFTP ACCESS</div>
@@ -86,6 +87,12 @@ export function SftpCard({ id }: { id: string }) {
             )}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Username <code>{st.username}</code> — chrooted to <code>/data</code>.</div>
+          {st.proxied && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.6 }}>
+              This node is behind a reverse tunnel — the address above is the Panel's SFTP proxy, which
+              forwards the raw SSH stream to the node. Credentials and host keys stay on the node.
+            </div>
+          )}
 
           {revealed && (
             <div style={{ marginTop: 14, padding: "11px 14px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", background: "var(--accent-wash-12)" }}>

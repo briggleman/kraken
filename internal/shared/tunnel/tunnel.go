@@ -34,6 +34,20 @@ const Scheme = "tunnel:"
 // Target renders the nodeclient dial target for a tunnel-mode node.
 func Target(nodeID string) string { return Scheme + nodeID }
 
+// Stream discriminator. gRPC streams carry none — they begin with the HTTP/2
+// client preface, whose first byte is 'P' (0x50) — so the Agent peeks one byte
+// on each accepted stream and routes on it. Every non-gRPC stream the Panel
+// opens writes its discriminator byte first. Agents that predate the demux
+// feed the byte into gRPC, which kills that one stream cleanly and nothing
+// else — a skewed fleet degrades per-feature, not per-session.
+const (
+	// StreamGRPCPreface is the first byte of the HTTP/2 client preface ("PRI…").
+	StreamGRPCPreface byte = 'P'
+	// StreamSFTP heads a raw SSH byte stream the Agent bridges to its local
+	// SFTP server (the Panel-side SFTP proxy, phase 2 of the design doc).
+	StreamSFTP byte = 0x02
+)
+
 // keepalive tuning: a dropped tunnel should read as offline in seconds, not
 // TCP-timeout minutes. yamux pings both directions; 3 missed intervals kills
 // the session on either end.

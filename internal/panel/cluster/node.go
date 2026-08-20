@@ -79,6 +79,33 @@ type Node struct {
 	// contact.
 	AgentVersion string `json:"agent_version,omitempty"`
 
+	// AgentSHA is the hex SHA-256 of the Agent's running binary, self-reported
+	// on last contact. Preferred over AgentVersion for skew detection: a
+	// panel-only release leaves the agent artifact byte-identical, and flagging
+	// the fleet for it trains operators to ignore the flag. Empty from agents
+	// that predate the field.
+	AgentSHA string `json:"agent_sha,omitempty"`
+
+	// Cordoned is the operator's hold on new placements: the node keeps running
+	// what it has but the scheduler skips it. Durable intent, separate from
+	// health — reconcile keeps probing and renders a healthy cordoned node with
+	// status "cordoned", while an unreachable one still reads offline.
+	Cordoned bool `json:"cordoned,omitempty"`
+
+	// IdentityPending marks a node registered before its Agent answered a
+	// probe: the name is a placeholder derived from the address, and the first
+	// successful reconcile adopts the Agent's self-reported node id then clears
+	// this flag. Registration never fails on an unreachable agent (the record
+	// is the durable thing; contact is eventually consistent).
+	IdentityPending bool `json:"identity_pending,omitempty"`
+
+	// SFTPProxyPort is the Panel-side port the SFTP proxy listens on for this
+	// node (tunnel-mode nodes only; 0 = none allocated). Persisted so the
+	// operator's saved SFTP config survives Panel restarts. Raw SSH carries no
+	// routing header a pass-through proxy could read, so each tunneled node
+	// gets its own Panel port instead of one shared endpoint.
+	SFTPProxyPort int `json:"sftp_proxy_port,omitempty"`
+
 	// Arch is the Agent build's GOARCH ("amd64" | "arm64"), observed on last
 	// contact. Selects which embedded agent binary an update pushes.
 	Arch string `json:"arch,omitempty"`

@@ -209,6 +209,28 @@ func (s *Server) DialContext(_ context.Context, nodeID string) (net.Conn, error)
 	return stream, nil
 }
 
+// DialSFTP opens one raw SFTP-typed stream on the node's live tunnel session:
+// the stream carries the SFTP discriminator byte, then nothing but the SSH
+// byte stream the caller pipes through it (the Agent bridges it to its local
+// SFTP server; the Panel never terminates SSH).
+func (s *Server) DialSFTP(nodeID string) (net.Conn, error) {
+	s.mu.Lock()
+	sess := s.sessions[nodeID]
+	s.mu.Unlock()
+	if sess == nil {
+		return nil, fmt.Errorf("%w %s", ErrNoSession, nodeID)
+	}
+	stream, err := sess.mux.Open()
+	if err != nil {
+		return nil, fmt.Errorf("tunnel: open SFTP stream to node %s: %w", nodeID, err)
+	}
+	if _, err := stream.Write([]byte{sharedtunnel.StreamSFTP}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("tunnel: write SFTP discriminator to node %s: %w", nodeID, err)
+	}
+	return stream, nil
+}
+
 // Addr returns the listener's bound address (nil before Serve). Tests use it
 // to discover the ephemeral port of a 127.0.0.1:0 listener.
 func (s *Server) Addr() net.Addr {

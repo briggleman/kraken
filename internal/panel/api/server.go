@@ -54,6 +54,10 @@ type Server struct {
 	// (KRAKEN_TUNNEL_ADDR=off, or no CA to authenticate agents against).
 	tunnel *tunnel.Server
 
+	// sftpProxy fronts tunnel-mode nodes' per-server SFTP over Panel-side ports
+	// (one per node). Nil when the tunnel is off or KRAKEN_SFTP_PROXY=off.
+	sftpProxy *sftpProxy
+
 	// Per-node throttle for agent cert rotation attempts (see rotate.go).
 	rotateMu   sync.Mutex
 	lastRotate map[string]time.Time
@@ -164,6 +168,15 @@ func (s *Server) buildTunnel() {
 	}
 	s.tunnel = tunnel.New(tlsCfg, s.resolveTunnelIdentity, s.logger,
 		tunnel.WithSessionHook(s.onTunnelSession))
+
+	// The SFTP proxy rides the tunnel, so it only exists when the tunnel does.
+	if s.cfg.SFTPProxyEnabled() {
+		host := s.cfg.SFTPProxy
+		if host == "" || strings.EqualFold(host, "on") {
+			host = "" // advertised host resolved per-request from the panel URL
+		}
+		s.sftpProxy = newSFTPProxy(s.tunnel.DialSFTP, host, s.cfg.SFTPProxyBasePort, s.logger)
+	}
 }
 
 // resolveTunnelIdentity maps a Panel-minted agent identity (the client cert's
@@ -229,6 +242,8 @@ func (s *Server) StartTunnel(ctx context.Context) {
 			s.logger.Error("reverse-tunnel listener exited", "err", err)
 		}
 	}()
+	// The SFTP proxy's listeners follow the live tunnel sessions.
+	s.startSFTPProxyReconciler(ctx)
 }
 
 // poolOpts are the nodeclient options every pool flavor shares: failure
@@ -288,6 +303,9 @@ func (s *Server) Handler() http.Handler { return s.router }
 
 // Close releases resources held by the server (Agent gRPC connections).
 func (s *Server) Close() error {
+	if s.sftpProxy != nil {
+		s.sftpProxy.close()
+	}
 	if s.tunnel != nil {
 		_ = s.tunnel.Close()
 	}
@@ -383,6 +401,9 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}/info", s.handleNodeInfo)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Patch("/nodes/{id}", s.handleUpdateNode)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/agent-update", s.handleNodeAgentUpdate)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/agent-update-all", s.handleUpdateAllAgents)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/cordon", s.handleCordonNode)
+			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/uncordon", s.handleUncordonNode)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Delete("/nodes/{id}", s.handleDeleteNode)
 			// Per-node System settings (backup target + replication). Uses the
 			// Panel-global settings perms since it manages node-wide credentials.

@@ -43,6 +43,17 @@ const MAX_LINES = 500;
 const MAX_SAMPLES = 40;
 // Reconnect backoff for a live stream, in ms. The last value repeats.
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+// A handshake that neither opens nor errors within this window is abandoned and
+// retried on the backoff ladder. Without it a socket wedged in CONNECTING (seen
+// through a proxy that swallows a stream to an unreachable node — #104) leaves
+// the hook stuck forever with no reconnect and no way out but a manual retry.
+const CONNECT_TIMEOUT_MS = 10_000;
+// A connection must stay open at least this long to count as "healthy" and
+// reset the backoff. An accept-then-immediately-close (the Panel upgrades the
+// socket, then the agent stream fails) would otherwise reset the counter every
+// cycle and hammer reconnect at the 1s floor forever, flushing the console each
+// pass. Below this, the close is treated as a failed attempt and backoff climbs.
+const STABLE_MS = 3_000;
 
 /**
  * How to treat this server's output.
@@ -84,10 +95,17 @@ export function useServerStream(id: string, mode: StreamMode) {
     }
     let cancelled = false;
 
+    // A handshake watchdog runs alongside the socket; both are cleared here.
+    let connectTimer: number | undefined;
+    let openedAt = 0;
     const clearRetry = () => {
       if (retryRef.current !== undefined) {
         window.clearTimeout(retryRef.current);
         retryRef.current = undefined;
+      }
+      if (connectTimer !== undefined) {
+        window.clearTimeout(connectTimer);
+        connectTimer = undefined;
       }
     };
 
@@ -132,9 +150,22 @@ export function useServerStream(id: string, mode: StreamMode) {
       }
     };
 
+    // scheduleRetry advances the backoff ladder and arms the next connect. A
+    // close that came after STABLE_MS of uptime earns a fresh ladder; a quick
+    // failure keeps climbing so a broken stream backs off instead of spinning.
+    const scheduleRetry = () => {
+      const stable = openedAt > 0 && Date.now() - openedAt >= STABLE_MS;
+      if (stable) attemptRef.current = 0;
+      const delay = BACKOFF_MS[Math.min(attemptRef.current, BACKOFF_MS.length - 1)];
+      attemptRef.current += 1;
+      setStatus("retrying");
+      retryRef.current = window.setTimeout(connect, delay);
+    };
+
     const connect = () => {
       if (cancelled) return;
       setStatus("connecting");
+      openedAt = 0;
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       const token = getToken() ?? "";
       const url = `${proto}://${window.location.host}/api/v1/servers/${id}/stream/ws`;
@@ -143,9 +174,30 @@ export function useServerStream(id: string, mode: StreamMode) {
       const ws = new WebSocket(url, ["kraken.token", token]);
       wsRef.current = ws;
 
+      // Watchdog: if the handshake doesn't complete in time, abandon this
+      // socket and fall into the backoff ladder rather than hang in CONNECTING.
+      connectTimer = window.setTimeout(() => {
+        if (cancelled || wsRef.current !== ws) return;
+        ws.onclose = null; // we own this teardown; don't double-schedule
+        ws.close();
+        wsRef.current = null;
+        if (mode !== "live") {
+          setStatus("ended");
+          return;
+        }
+        scheduleRetry();
+      }, CONNECT_TIMEOUT_MS);
+
       ws.onopen = () => {
         if (cancelled) return;
-        attemptRef.current = 0;
+        if (connectTimer !== undefined) {
+          window.clearTimeout(connectTimer);
+          connectTimer = undefined;
+        }
+        openedAt = Date.now();
+        // The backoff counter is NOT reset here — only after the socket proves
+        // it stayed open (see scheduleRetry). An accept-then-drop must not reset
+        // it, or a failing stream reconnects at the 1s floor forever.
         // Every connection asks the Panel for a tail replay, so whatever arrives
         // next is the authoritative view of the log. Drop what we were holding or
         // a reconnect (or a live→replay flip on crash) duplicates the overlap.
@@ -157,6 +209,10 @@ export function useServerStream(id: string, mode: StreamMode) {
       };
       ws.onclose = () => {
         if (cancelled) return;
+        if (connectTimer !== undefined) {
+          window.clearTimeout(connectTimer);
+          connectTimer = undefined;
+        }
         wsRef.current = null;
         if (mode !== "live") {
           // A replay ends when the log runs out. That is the expected finish, not
@@ -164,10 +220,7 @@ export function useServerStream(id: string, mode: StreamMode) {
           setStatus("ended");
           return;
         }
-        const delay = BACKOFF_MS[Math.min(attemptRef.current, BACKOFF_MS.length - 1)];
-        attemptRef.current += 1;
-        setStatus("retrying");
-        retryRef.current = window.setTimeout(connect, delay);
+        scheduleRetry();
       };
       ws.onmessage = handleFrame;
     };

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 
@@ -26,13 +27,19 @@ type sftpStatusView struct {
 	Port        int      `json:"port,omitempty"`
 	HasPassword bool     `json:"has_password"`
 	Keys        []string `json:"keys"`
-	// Tunneled: the hosting node is reached over a reverse tunnel, so its SFTP
-	// listener is only reachable on the node's own network — the UI says so
-	// instead of advertising an endpoint the operator probably can't dial.
+	// Tunneled: the hosting node is reached over a reverse tunnel. When the
+	// Panel-side SFTP proxy is fronting the node, Host/Port already point at
+	// the proxy endpoint and Proxied is true; otherwise the node's own SFTP
+	// listener is LAN-local and the UI says so.
 	Tunneled bool `json:"tunneled,omitempty"`
+	// Proxied: Host/Port address the Panel-side SFTP proxy, reachable wherever
+	// the Panel is, rather than the node's LAN-local listener.
+	Proxied bool `json:"proxied,omitempty"`
 }
 
-func sftpStatus(sv *store.Server, node *cluster.Node) sftpStatusView {
+// sftpStatusView is assembled by (*Server).sftpStatus so it can consult the
+// live SFTP proxy for a tunnel node's Panel-side port + advertised host.
+func (s *Server) sftpStatus(r *http.Request, sv *store.Server, node *cluster.Node) sftpStatusView {
 	v := sftpStatusView{Username: sv.ID, Keys: []string{}}
 	if sv.SFTP != nil {
 		v.Enabled = sv.SFTP.Enabled
@@ -45,8 +52,30 @@ func sftpStatus(sv *store.Server, node *cluster.Node) sftpStatusView {
 		v.Host = node.PublicHost
 		v.Port = node.SFTPPort
 		v.Tunneled = node.Tunneled()
+		// A tunnel node fronted by the proxy advertises the proxy endpoint,
+		// which is reachable wherever the Panel is — the whole point of #90.
+		if node.Tunneled() && s.sftpProxy != nil {
+			if port := s.sftpProxy.port(node.ID); port != 0 {
+				v.Host = s.sftpProxyHost(r)
+				v.Port = port
+				v.Proxied = true
+			}
+		}
 	}
 	return v
+}
+
+// sftpProxyHost is the hostname operators should point their SFTP client at for
+// proxied nodes: the configured advertised host, else the host from the request
+// (the Panel they're already talking to).
+func (s *Server) sftpProxyHost(r *http.Request) string {
+	if h := s.sftpProxy.host; h != "" {
+		return h
+	}
+	if host, _, err := net.SplitHostPort(r.Host); err == nil && host != "" {
+		return host
+	}
+	return r.Host
 }
 
 func (s *Server) handleGetServerSFTP(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +93,7 @@ func (s *Server) handleGetServerSFTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node, _ := s.store.GetNode(ctx, sv.NodeID)
-	writeJSON(w, http.StatusOK, sftpStatus(sv, node))
+	writeJSON(w, http.StatusOK, s.sftpStatus(r, sv, node))
 }
 
 // sftpTarget loads the server (+ spec, node, agent client) for a mutating SFTP
@@ -120,7 +149,7 @@ func (s *Server) handleResetServerSFTPPassword(w http.ResponseWriter, r *http.Re
 	}
 	s.recordAudit(r, http.StatusOK, "sftp-password:"+sv.ID)
 	// The plaintext password is returned exactly once — it is never stored.
-	writeJSON(w, http.StatusOK, map[string]any{"password": pw, "status": sftpStatus(sv, node)})
+	writeJSON(w, http.StatusOK, map[string]any{"password": pw, "status": s.sftpStatus(r, sv, node)})
 }
 
 type sftpKeysRequest struct {
@@ -163,7 +192,7 @@ func (s *Server) handleSetServerSFTPKeys(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.recordAudit(r, http.StatusOK, "sftp-keys:"+sv.ID)
-	writeJSON(w, http.StatusOK, sftpStatus(sv, node))
+	writeJSON(w, http.StatusOK, s.sftpStatus(r, sv, node))
 }
 
 func (s *Server) handleDisableServerSFTP(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +208,7 @@ func (s *Server) handleDisableServerSFTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.recordAudit(r, http.StatusOK, "sftp-disable:"+sv.ID)
-	writeJSON(w, http.StatusOK, sftpStatus(sv, node))
+	writeJSON(w, http.StatusOK, s.sftpStatus(r, sv, node))
 }
 
 // genSFTPPassword returns a strong URL-safe random password (~24 chars).

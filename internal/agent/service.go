@@ -56,6 +56,7 @@ func (s *Service) GetNodeInfo(ctx context.Context, _ *agentpb.GetNodeInfoRequest
 	}
 	info.Arch = runtime.GOARCH
 	if s.updater != nil {
+		info.BinarySha256 = s.updater.BinarySHA()
 		info.LastUpdateError = s.updater.LastFailure()
 		// A completed Panel poll is the update health milestone: this binary
 		// starts, serves gRPC, and the Panel can reach it — the update it came

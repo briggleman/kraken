@@ -1,8 +1,9 @@
 // Package agentbin embeds the agent binaries the Panel can push to nodes via
 // the UpdateAgent RPC. Release builds populate dist/ with one agent build per
-// supported node platform (make embed-agents / release-binaries.yml) BEFORE
-// compiling the Panel, so the embedded agents carry the exact version the
-// Panel reports — an agent can only ever be moved to the Panel's own version.
+// supported node platform (make embed-agents / release-binaries.yml /
+// deploy/panel.Dockerfile) BEFORE compiling the Panel, so the embedded agents
+// carry the exact version the Panel reports — an agent can only ever be moved
+// to the Panel's own version.
 //
 // Dev builds skip that step: dist/ holds only its .gitkeep marker and Get
 // returns ErrNotEmbedded, which the API surfaces as "this Panel build has no

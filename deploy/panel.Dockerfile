@@ -41,6 +41,20 @@ ARG DATE=unknown
 ARG TARGETOS
 ARG TARGETARCH
 ENV CGO_ENABLED=0
+# Cross-build the agent for every node platform into the Panel's embed dir
+# (internal/panel/agentbin) BEFORE compiling the Panel, so a containerized
+# Panel can push agent updates matching its own version — the same flow as
+# release-binaries.yml. .dockerignore drops any locally built dist/ binaries
+# from the context, so these are always fresh builds of this source tree.
+RUN for t in "linux amd64" "linux arm64" "windows amd64 .exe"; do \
+      set -- $t; \
+      GOOS=$1 GOARCH=$2 go build -trimpath \
+        -ldflags "-s -w \
+          -X github.com/briggleman/kraken/internal/shared/version.Version=${VERSION} \
+          -X github.com/briggleman/kraken/internal/shared/version.Commit=${COMMIT} \
+          -X github.com/briggleman/kraken/internal/shared/version.Date=${DATE}" \
+        -o "internal/panel/agentbin/dist/kraken-agent-$1-$2$3" ./cmd/agent; \
+    done
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w \
       -X github.com/briggleman/kraken/internal/shared/version.Version=${VERSION} \

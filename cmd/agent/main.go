@@ -208,7 +208,7 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 		if terr != nil {
 			return terr
 		}
-		tc, terr := agent.NewTunnelClient(tunnelAddr, cert, key, ca, svc, logger)
+		tc, terr := agent.NewTunnelClient(tunnelAddr, cert, key, ca, cfg.SFTPAddr, svc, logger)
 		if terr != nil {
 			return fmt.Errorf("agent: tunnel client: %w", terr)
 		}

@@ -112,11 +112,26 @@ type Config struct {
 	// also requires CA signing material — with no CA there is nothing to
 	// authenticate agents against, so it stays off.
 	TunnelAddr string
+
+	// SFTPProxyHost is the host part of the Panel-side SFTP proxy endpoints for
+	// tunnel-mode nodes. Each tunneled node gets its own port (raw SSH carries
+	// no routing header a pass-through proxy could read), allocated upward from
+	// SFTPProxyBasePort and persisted on the node record. Default base 2222 —
+	// :2022 collides with a co-located Agent's own SFTP server. Set
+	// KRAKEN_SFTP_PROXY=off to disable the proxy.
+	SFTPProxy         string
+	SFTPProxyBasePort int
 }
 
 // TunnelEnabled reports whether the reverse-tunnel listener should run.
 func (c *Config) TunnelEnabled() bool {
 	return c.TunnelAddr != "" && !strings.EqualFold(c.TunnelAddr, "off")
+}
+
+// SFTPProxyEnabled reports whether the Panel-side SFTP proxy for tunnel-mode
+// nodes should run. It rides the tunnel, so it also requires the tunnel.
+func (c *Config) SFTPProxyEnabled() bool {
+	return c.TunnelEnabled() && !strings.EqualFold(c.SFTPProxy, "off") && c.SFTPProxyBasePort > 0
 }
 
 // MutualTLS reports whether Panel→Agent mTLS is fully configured.
@@ -167,6 +182,8 @@ func Load() (*Config, error) {
 		AllowedOrigins:         envList("KRAKEN_ALLOWED_ORIGINS"),
 		SetupAllowedCIDRs:      envList("KRAKEN_SETUP_ALLOWED_CIDRS"),
 		TunnelAddr:             env("KRAKEN_TUNNEL_ADDR", ":9443"),
+		SFTPProxy:              env("KRAKEN_SFTP_PROXY", "on"),
+		SFTPProxyBasePort:      envInt("KRAKEN_SFTP_PROXY_BASE_PORT", 2222),
 		CSPMode:                strings.ToLower(strings.TrimSpace(env("KRAKEN_CSP", CSPEnforce))),
 		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
 		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),
@@ -299,6 +316,19 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envInt reads an integer env var; unset, empty, or unparsable falls back.
+func envInt(key string, def int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return def
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 // envList reads a comma-separated env var into a trimmed, non-empty slice.

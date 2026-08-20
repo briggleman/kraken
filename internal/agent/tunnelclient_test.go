@@ -75,7 +75,7 @@ func TestTunnelEndToEnd(t *testing.T) {
 
 	// Agent side: TunnelClient serving the fake runtime's NodeService.
 	rt := agent.NewFakeRuntime("abyss-node-01", "linux", true, "test")
-	tc, err := agent.NewTunnelClient(srv.Addr().String(), certFile, keyFile, caFile, agent.NewService(rt), logger)
+	tc, err := agent.NewTunnelClient(srv.Addr().String(), certFile, keyFile, caFile, "", agent.NewService(rt), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

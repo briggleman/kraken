@@ -386,6 +386,7 @@ message NodeInfo {
   string runtime_error = 12;         // why not, when runtime_status is UNAVAILABLE
   string arch = 13;                  // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
   string last_update_error = 14;     // most recent self-update failure ("" = none); cleared by the next successful update
+  string binary_sha256 = 15;         // hex SHA-256 of the agent's own running binary ("" from older agents) — artifact-identity skew detection
 }
 
 // UpdateAgentChunk is one message of the Panel->Agent binary push. The first

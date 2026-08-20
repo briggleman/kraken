@@ -2545,6 +2545,7 @@ type NodeInfo struct {
 	RuntimeError     string                 `protobuf:"bytes,12,opt,name=runtime_error,json=runtimeError,proto3" json:"runtime_error,omitempty"`                                        // why not, when runtime_status is UNAVAILABLE
 	Arch             string                 `protobuf:"bytes,13,opt,name=arch,proto3" json:"arch,omitempty"`                                                                            // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
 	LastUpdateError  string                 `protobuf:"bytes,14,opt,name=last_update_error,json=lastUpdateError,proto3" json:"last_update_error,omitempty"`                             // most recent self-update failure ("" = none); cleared by the next successful update
+	BinarySha256     string                 `protobuf:"bytes,15,opt,name=binary_sha256,json=binarySha256,proto3" json:"binary_sha256,omitempty"`                                        // hex SHA-256 of the agent's own running binary ("" from older agents) — artifact-identity skew detection
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2673,6 +2674,13 @@ func (x *NodeInfo) GetArch() string {
 func (x *NodeInfo) GetLastUpdateError() string {
 	if x != nil {
 		return x.LastUpdateError
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetBinarySha256() string {
+	if x != nil {
+		return x.BinarySha256
 	}
 	return ""
 }
@@ -4141,7 +4149,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\"\x16\n" +
-	"\x14DeleteBackupResponse\"\xf9\x03\n" +
+	"\x14DeleteBackupResponse\"\x9e\x04\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12!\n" +
@@ -4158,7 +4166,8 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eruntime_status\x18\v \x01(\x0e2\x1e.kraken.agent.v1.RuntimeStatusR\rruntimeStatus\x12#\n" +
 	"\rruntime_error\x18\f \x01(\tR\fruntimeError\x12\x12\n" +
 	"\x04arch\x18\r \x01(\tR\x04arch\x12*\n" +
-	"\x11last_update_error\x18\x0e \x01(\tR\x0flastUpdateError\"\xee\x01\n" +
+	"\x11last_update_error\x18\x0e \x01(\tR\x0flastUpdateError\x12#\n" +
+	"\rbinary_sha256\x18\x0f \x01(\tR\fbinarySha256\"\xee\x01\n" +
 	"\x10UpdateAgentChunk\x12<\n" +
 	"\x04meta\x18\x01 \x01(\v2&.kraken.agent.v1.UpdateAgentChunk.MetaH\x00R\x04meta\x12\x14\n" +
 	"\x04data\x18\x02 \x01(\fH\x00R\x04data\x1a{\n" +

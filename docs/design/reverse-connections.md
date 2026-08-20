@@ -4,8 +4,13 @@
 included). **Tunnel is the default for new nodes since 2026-08-20**, after the
 live Behemoth drill (issue #89) proved the full surface — enrollment, deploys,
 console/stats, backups, self-update, and the failure drills — over a tunnel
-with zero inbound firewall rules, across the 0.22.x release cycle. Phase 2
-(SFTP proxy) deferred pending demand.
+with zero inbound firewall rules, across the 0.22.x release cycle. **Phase 2
+(panel-side SFTP proxy) implemented 2026-08-20** (issue #90): the Panel fronts
+each tunnel node's SFTP on a per-node port (base `KRAKEN_SFTP_PROXY_BASE_PORT`,
+default 2222), forwarding the raw SSH byte stream over a discriminated yamux
+stream to the agent's local SFTP server — the Panel never terminates SSH, so
+credentials and host keys stay agent-side. Direct nodes keep their own
+endpoint.
 **Scope:** Panel ⇄ Agent transport direction. Game traffic is explicitly out of
 scope — players always connect directly to node ports, tunnel or not.
 

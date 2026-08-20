@@ -380,8 +380,9 @@ export const api = {
     return request("DELETE", `/servers/${id}/schedules/${scheduleId}`);
   },
 
-  /** panel_version comes back so callers can flag agents whose build differs. */
-  listNodes(): Promise<{ nodes: Node[] | null; panel_version?: string }> {
+  /** panel_version + panel_agent_sha (per "os/arch") come back so callers can
+   *  flag agents whose build differs — by artifact hash when available. */
+  listNodes(): Promise<{ nodes: Node[] | null; panel_version?: string; panel_agent_sha?: Record<string, string> }> {
     return request("GET", "/nodes");
   },
   getNode(id: string): Promise<Node> {
@@ -407,6 +408,15 @@ export const api = {
   },
   updateNodeAgent(id: string): Promise<{ from_version: string; to_version: string; restarting: boolean }> {
     return request("POST", `/nodes/${id}/agent-update`);
+  },
+  updateAllAgents(): Promise<{ updated: number; skipped: number; failed: number; nodes: { node_id: string; name: string; outcome: string; detail?: string }[] }> {
+    return request("POST", "/nodes/agent-update-all");
+  },
+  cordonNode(id: string): Promise<Node> {
+    return request("POST", `/nodes/${id}/cordon`);
+  },
+  uncordonNode(id: string): Promise<Node> {
+    return request("POST", `/nodes/${id}/uncordon`);
   },
   nodeInfo(id: string): Promise<Record<string, unknown>> {
     return request("GET", `/nodes/${id}/info`);

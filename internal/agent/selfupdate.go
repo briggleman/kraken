@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -78,6 +79,9 @@ type SelfUpdater struct {
 
 	mu       sync.Mutex
 	updating bool
+
+	shaOnce sync.Once
+	sha     string // hex SHA-256 of the running binary; "" if unreadable
 }
 
 // NewSelfUpdater wires the updater for the running binary. restart receives
@@ -112,6 +116,30 @@ func newSelfUpdaterAt(version, stateDir, exePath string, restart func(exePath st
 
 func (u *SelfUpdater) sentinelPath() string { return filepath.Join(u.stateDir, updateSentinelName) }
 func (u *SelfUpdater) failurePath() string  { return filepath.Join(u.stateDir, updateFailureName) }
+
+// BinarySHA is the hex SHA-256 of the running binary, reported in NodeInfo so
+// the Panel can compare artifact identity instead of version strings (a
+// panel-only release leaves the agent binary byte-identical apart from the
+// stamped version, and re-flagging the whole fleet for that trains operators
+// to ignore the flag). Hashed once: the file at exePath only changes across a
+// restart. "" when the binary can't be read.
+func (u *SelfUpdater) BinarySHA() string {
+	u.shaOnce.Do(func() {
+		f, err := os.Open(u.exePath)
+		if err != nil {
+			u.logger.Warn("selfupdate: could not hash own binary", "err", err)
+			return
+		}
+		defer func() { _ = f.Close() }()
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			u.logger.Warn("selfupdate: could not hash own binary", "err", err)
+			return
+		}
+		u.sha = hex.EncodeToString(h.Sum(nil))
+	})
+	return u.sha
+}
 
 // LastFailure renders the most recent failed update for NodeInfo ("" = none).
 func (u *SelfUpdater) LastFailure() string {

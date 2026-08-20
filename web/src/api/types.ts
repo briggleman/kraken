@@ -252,8 +252,12 @@ export interface SftpStatus {
   port?: number;
   has_password: boolean;
   keys: string[];
-  /** The hosting node is tunnel-mode — its SFTP listener is LAN-local only. */
+  /** The hosting node is tunnel-mode — its SFTP listener is LAN-local only,
+   *  unless proxied (below). */
   tunneled?: boolean;
+  /** host/port address the Panel-side SFTP proxy, reachable wherever the Panel
+   *  is, instead of the node's LAN-local listener. */
+  proxied?: boolean;
 }
 
 export interface SpecPlatform {
@@ -320,6 +324,13 @@ export interface Node {
   runtime_error?: string;
   /** Agent build seen on last contact — compare with the list's panel_version. */
   agent_version?: string;
+  /** SHA-256 of the agent's running binary; compared with the panel's embedded
+   *  build for artifact-identity skew (empty from agents predating the field). */
+  agent_sha?: string;
+  /** Operator hold: excluded from new placements while its servers keep running. */
+  cordoned?: boolean;
+  /** Registered before its agent answered; name is a placeholder until first contact. */
+  identity_pending?: boolean;
   /** Agent build architecture ("amd64" | "arm64") seen on last contact. */
   arch?: string;
   /** Most recent self-update failure, verbatim from the agent ("" / absent = none). */

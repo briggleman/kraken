@@ -30,14 +30,17 @@ export function Nodes() {
   const { confirm } = useDialog();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [panelVersion, setPanelVersion] = useState("");
+  const [panelAgentSha, setPanelAgentSha] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [updatingAll, setUpdatingAll] = useState(false);
   const [configuring, setConfiguring] = useState<Node | null>(null);
 
   const refresh = () => {
     api.listNodes().then((n) => {
       setNodes(n.nodes ?? []);
       setPanelVersion(n.panel_version ?? "");
+      setPanelAgentSha(n.panel_agent_sha ?? {});
     }).catch((e) => Toaster.error(msg(e)));
   };
   useEffect(refresh, []);
@@ -48,6 +51,18 @@ export function Nodes() {
     const t = setInterval(refresh, 15000);
     return () => clearInterval(t);
   }, []);
+
+  // A node's agent is out of date when it differs from the Panel's build. Prefer
+  // artifact identity (the embedded agent's hash for the node's platform) so a
+  // panel-only release — agent bytes unchanged — doesn't flag the whole fleet
+  // (#93); fall back to the version string when either hash is missing.
+  const isOutdated = (n: Node): boolean => {
+    if (!n.agent_version) return false;
+    const want = panelAgentSha[`${n.os}/${n.arch || "amd64"}`];
+    if (want && n.agent_sha) return n.agent_sha !== want;
+    return !!panelVersion && n.agent_version !== panelVersion;
+  };
+  const outdatedCount = nodes.filter((n) => isOutdated(n) && n.status !== "offline").length;
 
   const ping = async (id: string) => {
     setBusy(id);
@@ -75,6 +90,43 @@ export function Nodes() {
     }
   };
 
+  const updateAll = async () => {
+    if (!(await confirm({
+      title: "Update all outdated agents",
+      message: `Push the Panel's agent build (${panelVersion}) to ${outdatedCount} node${outdatedCount === 1 ? "" : "s"}, one at a time. Each agent restarts as it updates. Nodes with running servers are skipped — update those manually when their servers can restart.`,
+      confirmLabel: "Update all",
+    }))) return;
+    setUpdatingAll(true);
+    try {
+      const r = await api.updateAllAgents();
+      const parts = [`${r.updated} updated`];
+      if (r.skipped) parts.push(`${r.skipped} skipped`);
+      if (r.failed) parts.push(`${r.failed} failed`);
+      const summary = parts.join(", ");
+      if (r.failed) Toaster.warning(`Agent update wave: ${summary}`);
+      else Toaster.success(`Agent update wave: ${summary}`);
+    } catch (e) {
+      Toaster.error(msg(e));
+    } finally {
+      setUpdatingAll(false);
+      refresh();
+    }
+  };
+
+  const setCordon = async (id: string, cordon: boolean) => {
+    setBusy(id);
+    try {
+      if (cordon) await api.cordonNode(id);
+      else await api.uncordonNode(id);
+      Toaster.success(cordon ? "Node cordoned — held back from new placements" : "Node uncordoned");
+    } catch (e) {
+      Toaster.error(msg(e));
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  };
+
   const remove = async (id: string) => {
     if (!(await confirm({ title: "Remove node", message: "Remove this node? Servers on it will be orphaned.", confirmLabel: "Remove", danger: true }))) return;
     try {
@@ -88,7 +140,7 @@ export function Nodes() {
 
   return (
     <Page>
-      <Header onAdd={() => setAdding(true)} />
+      <Header onAdd={() => setAdding(true)} outdatedCount={outdatedCount} updatingAll={updatingAll} onUpdateAll={updateAll} />
 
       {nodes.length === 0 ? (
         <Empty onAdd={() => setAdding(true)} />
@@ -118,11 +170,11 @@ export function Nodes() {
                         <span>{n.address}</span>
                       )}
                       {n.agent_version && <span>agent {n.agent_version}</span>}
-                      {panelVersion && n.agent_version && n.agent_version !== panelVersion && (
+                      {isOutdated(n) && (
                         <>
                           <span
                             style={{ color: "var(--status-stopping)" }}
-                            title={`agent ${n.agent_version} · panel ${panelVersion} — agents should match the Panel's version`}
+                            title={`agent ${n.agent_version} · panel ${panelVersion} — the Panel is holding a different agent build than this node runs`}
                           >
                             ≠ panel {panelVersion}
                           </span>
@@ -175,6 +227,29 @@ export function Nodes() {
                   <StatusPill status={s.status} label={s.label} />
 
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* Cordon is a labeled control, not an icon: it's an
+                        infrequent, deliberate action ("stop scheduling here")
+                        that no glyph names unambiguously. Offline nodes can't be
+                        cordoned — there's nothing to hold back. */}
+                    <button
+                      onClick={() => void setCordon(n.id, !n.cordoned)}
+                      disabled={busy === n.id || (n.status === "offline" && !n.cordoned)}
+                      title={n.cordoned ? "Resume scheduling new servers here" : "Hold this node back from new placements (running servers keep running)"}
+                      style={{
+                        background: "none",
+                        border: `1px solid ${n.cordoned ? "var(--status-stopping)" : "var(--border-subtle)"}`,
+                        borderRadius: "var(--radius-sm)",
+                        color: n.cordoned ? "var(--status-stopping)" : "var(--text-secondary)",
+                        cursor: busy === n.id || (n.status === "offline" && !n.cordoned) ? "default" : "pointer",
+                        opacity: n.status === "offline" && !n.cordoned ? 0.5 : 1,
+                        fontFamily: mono,
+                        fontSize: 10.5,
+                        letterSpacing: "0.5px",
+                        padding: "6px 10px",
+                      }}
+                    >
+                      {n.cordoned ? "UNCORDON" : "CORDON"}
+                    </button>
                     <IconButton icon="refresh" variant="secondary" disabled={busy === n.id} onClick={() => ping(n.id)} title={busy === n.id ? "Pinging…" : "Ping"} />
                     <IconButton icon="gear" variant="ghost" onClick={() => setConfiguring(n)} title="Node settings" />
                     <IconButton icon="x" variant="ghost" onClick={() => remove(n.id)} title="Delete" />
@@ -214,14 +289,29 @@ export function Nodes() {
   );
 }
 
-function Header({ onAdd }: { onAdd: () => void }) {
+function Header({ onAdd, outdatedCount, updatingAll, onUpdateAll }: {
+  onAdd: () => void;
+  outdatedCount: number;
+  updatingAll: boolean;
+  onUpdateAll: () => void;
+}) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 26 }}>
       <div>
         <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: "3px", color: "var(--accent)", marginBottom: 10 }}>// NODES</div>
         <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 34, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>Nodes</h1>
       </div>
-      <Button variant="primary" icon="plus" onClick={onAdd}>Add node</Button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Only appears when there's a fleet-wide action to take. The wave is
+            staged and skips busy nodes, so it's safe to offer without ceremony
+            beyond its confirm. */}
+        {outdatedCount > 0 && (
+          <Button variant="secondary" icon="refresh" disabled={updatingAll} onClick={onUpdateAll}>
+            {updatingAll ? "Updating…" : `Update all (${outdatedCount})`}
+          </Button>
+        )}
+        <Button variant="primary" icon="plus" onClick={onAdd}>Add node</Button>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 //go:embed all:dist
@@ -52,4 +53,32 @@ func Has(osName, arch string) bool {
 		return false
 	}
 	return true
+}
+
+// shaCache memoizes per-platform hashes: the embedded binaries never change at
+// runtime, and SHA is called on every node-list poll (skew detection), so
+// re-hashing ~17MB per platform per request would be pure waste.
+var (
+	shaMu    sync.Mutex
+	shaCache = map[string]string{}
+)
+
+// SHA returns the hex SHA-256 of the embedded agent binary for a platform,
+// computed once and cached. Empty string (no error) when none is embedded — the
+// callers that want it (skew detection) treat "no embedded build" and "unknown"
+// the same way.
+func SHA(osName, arch string) string {
+	key := name(osName, arch)
+	shaMu.Lock()
+	defer shaMu.Unlock()
+	if s, ok := shaCache[key]; ok {
+		return s
+	}
+	_, sha, err := Get(osName, arch)
+	if err != nil {
+		shaCache[key] = ""
+		return ""
+	}
+	shaCache[key] = sha
+	return sha
 }

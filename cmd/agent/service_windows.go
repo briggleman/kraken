@@ -32,6 +32,29 @@ func isWindowsService() bool {
 	return err == nil && inService
 }
 
+// serviceMain handles --service control actions and SCM-launched runs.
+// Returns true when it fully handled the invocation (main should return);
+// false means this is an interactive console start.
+func serviceMain(cfg *config.Config, action string) bool {
+	if action != "" {
+		if err := serviceControl(action, cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return true
+	}
+	if isWindowsService() {
+		// Running under the SCM: stdout goes nowhere, so logs are written to
+		// <state-dir>/agent.log, and shutdown is driven by SCM stop requests
+		// instead of console signals.
+		if err := runService(cfg); err != nil {
+			os.Exit(1)
+		}
+		return true
+	}
+	return false
+}
+
 // agentService adapts run() to the SCM handler protocol: report
 // StartPending → Running, run the agent in a goroutine, and translate a Stop
 // or Shutdown control into a context cancellation for a graceful stop.

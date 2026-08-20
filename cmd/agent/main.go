@@ -48,23 +48,10 @@ func main() {
 		return
 	}
 
-	if modes.Service != "" {
-		// Windows service control (install/uninstall/start/stop). Errors on
-		// other platforms, where systemd/compose own the lifecycle.
-		if err := serviceControl(modes.Service, cfg); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	if isWindowsService() {
-		// Running under the Windows Service Control Manager: stdout goes
-		// nowhere, so logs are written to <state-dir>/agent.log, and shutdown
-		// is driven by SCM stop requests instead of console signals.
-		if err := runService(cfg); err != nil {
-			os.Exit(1)
-		}
+	// Windows service control (--service install/uninstall/start/stop) and
+	// SCM-launched runs. Each platform owns its own branch — and exits — so
+	// the non-Windows build carries no always-erroring stubs.
+	if serviceMain(cfg, modes.Service) {
 		return
 	}
 

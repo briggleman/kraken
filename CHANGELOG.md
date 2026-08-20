@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.0](https://github.com/briggleman/kraken/compare/v0.24.0...v0.25.0) (2026-08-20)
+
+
+### Features
+
+* **specs:** enable Enshrouded on Linux nodes via Wine ([#120](https://github.com/briggleman/kraken/issues/120)) ([c73d81c](https://github.com/briggleman/kraken/commit/c73d81c06a9b7d671155ffaa2e32afc5b47af251))
+
+
+### Bug Fixes
+
+* **deploy:** embed all agent platforms in the panel image ([#123](https://github.com/briggleman/kraken/issues/123)) ([5c3a77c](https://github.com/briggleman/kraken/commit/5c3a77cbe8958c4444416ae3ab903a702f26a184))
+* **panel:** drop the racy first-contact reconcile on node registration ([#121](https://github.com/briggleman/kraken/issues/121)) ([eefe53c](https://github.com/briggleman/kraken/commit/eefe53c479be1aa51e365360360f9327e516e4ef))
+
 ## [0.24.0](https://github.com/briggleman/kraken/compare/v0.23.1...v0.24.0) (2026-08-20)
 
 

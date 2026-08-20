@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.23.1](https://github.com/briggleman/kraken/compare/v0.23.0...v0.23.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **agent:** make SCM recovery restart the service on error exits ([#114](https://github.com/briggleman/kraken/issues/114)) ([36c7b5f](https://github.com/briggleman/kraken/commit/36c7b5f5d87db955c269c9a23c01060f6a805f7a))
+* **web:** register tunnel nodes with the OS chosen in the add-node dialog ([#117](https://github.com/briggleman/kraken/issues/117)) ([27975c2](https://github.com/briggleman/kraken/commit/27975c26690321a8b357bd39929c0a566e6e5605))
+* **web:** resolve the add-node flow when the node lands partial ([#116](https://github.com/briggleman/kraken/issues/116)) ([53fa99d](https://github.com/briggleman/kraken/commit/53fa99d96d03647016dbae01d3f3fe4907fb655a))
+
 ## [0.23.0](https://github.com/briggleman/kraken/compare/v0.22.2...v0.23.0) (2026-08-20)
 
 

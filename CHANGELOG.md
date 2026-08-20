@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/briggleman/kraken/compare/v0.22.1...v0.22.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **web:** drop navbar duplicates from the user menu ([#108](https://github.com/briggleman/kraken/issues/108)) ([5b87710](https://github.com/briggleman/kraken/commit/5b8771083212280ef1f72d2be268ad86ca1cbf20))
+
 ## [0.22.1](https://github.com/briggleman/kraken/compare/v0.22.0...v0.22.1) (2026-08-19)
 
 

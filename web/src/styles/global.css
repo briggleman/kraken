@@ -99,11 +99,15 @@ button {
   box-shadow: 0 0 10px rgba(61, 245, 207, 0.55);
 }
 
-/* Collapse order: the live cluster gives way first, then the nav links (the
-   user-menu still lists every destination, so nothing becomes unreachable). */
+/* Collapse order: the live cluster gives way first, then the nav links. When
+   the links collapse, the same destinations reappear inside the user menu
+   (.menu-collapsed-nav), so nothing becomes unreachable. */
 .nav-cluster {
   display: flex;
   align-items: center;
+}
+.menu-collapsed-nav {
+  display: none;
 }
 @media (max-width: 1080px) {
   .nav-cluster {
@@ -113,6 +117,9 @@ button {
 @media (max-width: 800px) {
   .top-nav-links {
     display: none;
+  }
+  .menu-collapsed-nav {
+    display: block;
   }
 }
 

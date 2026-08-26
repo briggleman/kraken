@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Track } from "@/lib/state.svelte";
+  import type { Track } from "@/lib/views.svelte";
 
   // The house chart: one column per sample, newest last (carries .now), zone
   // classes recomputed per sample — Status Gold below 50, Caution Violet

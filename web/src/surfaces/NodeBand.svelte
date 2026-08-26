@@ -3,16 +3,26 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
-  import { memLabel, openSheet, type NodeSim } from "@/lib/state.svelte";
+  import { openSheet } from "@/lib/state.svelte";
+  import { instrumentsFor, nodeMemLabel } from "@/lib/views.svelte";
+  import type { Node } from "@/api/types";
 
-  let { node }: { node: NodeSim } = $props();
+  // Identity, memory, and status are real (from /nodes). The cpu / disk /
+  // network / temp instruments are synthetic texture until the agent reports
+  // node telemetry — see the backlog issue on node & fleet stats.
+  let { node, index }: { node: Node; index: number } = $props();
+
+  const inst = $derived(instrumentsFor(node, index));
+  const mem = $derived(nodeMemLabel(node));
+  const num = $derived("node " + String(index + 1).padStart(2, "0"));
+  const statusWord = $derived(node.cordoned ? "cordoned" : node.status);
 </script>
 
-<section class="node-band" aria-label={node.aria}>
+<section class="node-band" aria-label="Node {node.name} vitals">
   <div class="node-id">
-    <span class="node-name">{node.name}</span>
-    <span class="node-meta">{node.meta1}</span>
-    <span class="node-meta">{node.meta2}</span>
+    <span class="node-name">{node.name.toUpperCase()}</span>
+    <span class="node-meta">{num} · {node.os}{node.wine_enabled ? " · wine" : ""} · {statusWord}</span>
+    <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version ? " · agent " + node.agent_version : ""}</span>
     <span class="node-actions">
       <button
         class="prefs-open"
@@ -31,11 +41,11 @@
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">cpu</span><span class="metric-val"
-        ><span>{Math.round(node.cpu.walk.v)}</span><small>%</small></span
+        ><span>{Math.round(inst.cpu.walk.v)}</span><small>%</small></span
       >
     </div>
     <div class="zone-track">
-      <DotTrack track={node.cpu} />
+      <DotTrack track={inst.cpu} />
       <span class="th t50" aria-hidden="true"></span>
       <span class="th t75" aria-hidden="true"></span>
     </div>
@@ -43,37 +53,35 @@
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">memory</span><span class="metric-val"
-        ><span>{memLabel(node.mem, node.memGb)}</span><small>/{node.memGb}G</small></span
+        ><span>{mem.used}</span><small>/{mem.total}</small></span
       >
     </div>
     <div class="zone-track">
-      <DotTrack track={node.mem} />
+      <DotTrack track={inst.alloc} />
       <span class="th t50" aria-hidden="true"></span>
       <span class="th t75" aria-hidden="true"></span>
     </div>
   </div>
   <div class="metric">
     <div class="metric-head">
-      <span class="metric-label">disk</span><span class="metric-val"
-        >{node.disk}<small>{node.diskUnit}</small></span
-      >
+      <span class="metric-label">disk</span><span class="metric-val">—<small></small></span>
     </div>
-    <Spark seed={node.diskSeed} />
+    <Spark seed={inst.diskSeed} />
   </div>
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">network</span><span class="metric-val"
-        ><span>{node.net.rate.toFixed(1)}</span><small>Mb/s</small></span
+        ><span>{inst.net.rate.toFixed(1)}</span><small>Mb/s</small></span
       >
     </div>
-    <PacketChan rate={node.net.rate / node.net.ref} packets={node.packets} />
+    <PacketChan rate={inst.net.rate / inst.net.ref} packets={inst.packets} />
   </div>
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">temp</span><span class="metric-val"
-        ><span>{node.temp.deg}</span><small>°C</small></span
+        ><span>{inst.temp.deg}</span><small>°C</small></span
       >
     </div>
-    <TempSpec deg={node.temp.deg} />
+    <TempSpec deg={inst.temp.deg} />
   </div>
 </section>

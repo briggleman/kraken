@@ -16,9 +16,37 @@
   import Rotate from "@/surfaces/Rotate.svelte";
   import DbRestart from "@/surfaces/DbRestart.svelte";
   import Setup from "@/surfaces/Setup.svelte";
-  import { startSim, ui, surface, closeSheet, type SheetId } from "@/lib/state.svelte";
+  import { startSim, ui, closeSheet, type SheetId } from "@/lib/state.svelte";
+  import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
+  import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
+  import { depth, surface, syncDepthFromFleet } from "@/lib/depth.svelte";
+  import { api } from "@/api/client";
 
   startSim();
+  void bootAuth();
+
+  const authed = $derived(!auth.loading && !!auth.user);
+
+  // fleet data flows only for a session past the rotation gate
+  $effect(() => {
+    if (authed && !mustChangePassword()) {
+      startFleetPolling();
+      void api
+        .version()
+        .then((v) => {
+          if (!fleet.panelVersion) fleet.panelVersion = v.version;
+        })
+        .catch(() => {});
+    } else {
+      stopFleetPolling();
+    }
+  });
+
+  // the 10s poll keeps the drilled server's chip/controls/stream in sync
+  $effect(() => {
+    fleet.servers;
+    syncDepthFromFleet();
+  });
 
   // Escape routing, top layer first (The Topmost Closes Last Rule):
   // confirm → open sheet → prefs → drill-in. Login/rotate/interstitial are
@@ -39,7 +67,7 @@
       closeSheet("prefs");
       return;
     }
-    if (ui.depthOpen) surface();
+    if (depth.open) surface();
   }
 </script>
 

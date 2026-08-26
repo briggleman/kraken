@@ -1,5 +1,7 @@
 <script lang="ts">
   import { ui, rotateDone } from "@/lib/state.svelte";
+  import { api } from "@/api/client";
+  import { auth, refreshMe, mustChangePassword } from "@/lib/auth.svelte";
 
   // Twelve characters is the only hard floor; the four segments above it are
   // advice, so the gate and the meter are deliberately two different questions.
@@ -15,6 +17,25 @@
     if (/\d/.test(v)) s++;
     if (/[^A-Za-z0-9]/.test(v) || v.length >= 16) s++;
     return s;
+  }
+
+  let submitErr = $state<string | null>(null);
+  let busy = $state(false);
+  const open = $derived(ui.rotateOpen || (!!auth.user && mustChangePassword()));
+
+  async function go() {
+    if (busy) return;
+    busy = true;
+    submitErr = null;
+    try {
+      await api.changePassword(cur, next);
+      await refreshMe(); // must_change_password flips off; the session rotated
+      rotateDone();
+    } catch (e) {
+      submitErr = e instanceof Error ? e.message : "could not set the password";
+    } finally {
+      busy = false;
+    }
   }
 
   const score = $derived(pwScore(next));
@@ -36,7 +57,7 @@
   });
 
   $effect(() => {
-    if (ui.rotateOpen) {
+    if (open) {
       cur = "";
       next = "";
       conf = "";
@@ -47,7 +68,7 @@
 
 <div
   class="login"
-  class:open={ui.rotateOpen}
+  class:open={open}
   id="rotate"
   role="dialog"
   aria-modal="true"
@@ -80,8 +101,8 @@
           <span class="pw-seg{i < score ? ' lit' : ''}"></span>
         {/each}
       </div>
-      <p class="pw-read {reading.cls}" id="rtRead" role="status" aria-live="polite">{reading.text}</p>
-      <button class="cfg-btn solid lg-go" id="rtGo" type="button" disabled={!canGo} onclick={rotateDone}>set password &amp; continue</button>
+      <p class="pw-read {submitErr ? 'no' : reading.cls}" id="rtRead" role="status" aria-live="polite">{submitErr ?? reading.text}</p>
+      <button class="cfg-btn solid lg-go" id="rtGo" type="button" disabled={!canGo || busy} onclick={() => void go()}>set password &amp; continue</button>
     </div>
     <div class="lg-foot">
       <span class="lg-note">twelve characters or more · nothing else is required</span>

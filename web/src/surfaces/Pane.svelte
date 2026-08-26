@@ -1,7 +1,13 @@
 <script lang="ts">
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
-  import { sim, ui, openSheet } from "@/lib/state.svelte";
+  import { ui, openSheet } from "@/lib/state.svelte";
+  import { fleet } from "@/lib/fleet.svelte";
+  import { logout } from "@/lib/auth.svelte";
+  import { fmtHm } from "@/lib/fmt";
+
+  // the events floor shows the audit tail — the four most recent entries
+  const recent = $derived(fleet.audit.slice(0, 4));
 
   function footerOpen(e: MouseEvent | KeyboardEvent) {
     const el = e.currentTarget as HTMLElement;
@@ -12,6 +18,11 @@
       openSheet("auditLog", (e as MouseEvent).clientX, (e as MouseEvent).clientY, el);
     }
   }
+
+  function pingLabel(ms: number): string {
+    if (!ms) return "—";
+    return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(1) + "s";
+  }
 </script>
 
 <div class="pane">
@@ -21,8 +32,8 @@
     >
     <span class="top-sub">single pane · all systems</span>
     <div class="top-right">
-      <span><span class="live-dot">●</span> live · ping <span>{sim.ping}</span></span>
-      <span id="clock">{sim.clock}</span>
+      <span><span class="live-dot">●</span> live · ping <span>{pingLabel(fleet.pingMs)}</span></span>
+      <span id="clock">{ui.clock}</span>
       <button
         class="prefs-open io"
         title="api reference"
@@ -48,20 +59,26 @@
         class="prefs-open io"
         title="sign out"
         aria-label="Sign out"
-        onclick={() => (ui.loginOpen = true)}
+        onclick={() => void logout()}
         ><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 6.2 2.6 H 3.4 A 1 1 0 0 0 2.4 3.6 V 12.4 A 1 1 0 0 0 3.4 13.4 H 6.2"/><path d="M 9.6 5.2 L 12.6 8 L 9.6 10.8"/><path d="M 12.6 8 H 6"/></svg></button
       >
     </div>
   </header>
 
   <main class="deck">
-    {#each sim.nodes as node (node.name)}
-      <NodeBand {node} />
+    {#each fleet.nodes as node, index (node.id)}
+      <NodeBand {node} {index} />
     {/each}
 
     <div class="servers">
-      {#each sim.servers as server (server.name)}
+      {#each fleet.servers as server (server.id)}
         <ServerCard {server} />
+      {:else}
+        {#if fleet.loaded}
+          <p class="roster-empty" style="grid-column: 1 / -1">
+            no servers yet — deploy one from a node band's New Server
+          </p>
+        {/if}
       {/each}
     </div>
   </main>
@@ -83,13 +100,15 @@
   >
     <span class="floor-label">events</span>
     <div class="events">
-      {#each sim.events as ev}
-        <span class="ev{ev.warn ? ' warn' : ''}"
-          ><span class="t">{ev.t}</span>{#if ev.who}<span class="who">{ev.who}</span>{/if}{ev.text}</span
+      {#each recent as ev (ev.id)}
+        <span class="ev{ev.status >= 400 ? ' warn' : ''}"
+          ><span class="t">{fmtHm(ev.time)}</span><span class="who">{ev.actor}</span>
+          — {ev.action} · {ev.status}</span
         >
+      {:else}
+        <span class="ev"><span class="t">—</span>no events yet</span>
       {/each}
     </div>
-    <span class="synthetic">synthetic data — mock feed</span>
     <span class="fl-cue"
       >full audit log <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 4h9M7 1l3 3-3 3"/></svg></span
     >

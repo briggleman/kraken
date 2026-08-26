@@ -26,7 +26,7 @@ internal/agent/                   docker.go (OS-aware runtime), fileops.go (nati
                                   file ops), backupstore.go, sftp.go, monitor.go (watchdog)
 internal/shared/                  domain types, spec schema, gRPC glue (agentpb)
 proto/                            .proto definitions (Panel <-> Agent)
-web/                              React + TS + Vite UI (design-system/ + src/)
+web/                              Svelte 5 + TS + Vite UI (src/, no router; sheets navigate)
 images/                           steam-base, steam-win  (no steam-wine)
 specs/                            Game Specs (the "egg" equivalent)
 deploy/                           docker-compose.yml (Postgres only),
@@ -70,11 +70,13 @@ Dev login on a fresh DB: `admin` / `admin` (override via
 
 - **Go:** 1.26, module `github.com/briggleman/kraken`. Run `gofmt` before done. Static
   analysis stack: `go vet`, `staticcheck`, `deadcode`, `gosec`, `govulncheck` (all clean).
-- **Web:** React + TS + Vite — **no Tailwind**. Never hard-code hex/sizes; use the
-  Abyssal CSS variables (`var(--accent)`, `var(--bg-surface)`, `var(--status-running)`…).
-  Design-system components are imported via the `@ds` alias (`@ds/components/core/<Name>`),
-  each `.jsx` + a sibling `.d.ts`. See **[DESIGN.md](DESIGN.md)** — the single
-  source of truth for the design language.
+- **Web:** Svelte 5 + TS + Vite — **no Tailwind**. Never hard-code hex/sizes; use the
+  house CSS variables (`var(--lumen)`, `var(--ink)`, `var(--edge)`, `var(--ok)`…).
+  `web/src/styles/house.css` is GENERATED from the committed living mock
+  (`design/mockups/spog-abyssal-ops.html`) by `web/scripts/extract-design.mjs` — edit the
+  mock, never the generated file. See **[DESIGN.md](DESIGN.md)** — the single
+  source of truth for the design language — and `.impeccable/design.json` for the
+  component snippets it renders.
 - **Storage:** server data is host-native via **bind mounts** (`KRAKEN_DATA_DIR/<serverID>`,
   default `./server-data`, mounted to `/data` or `C:\data`). All file ops + backups are
   **native Go** (`internal/agent/fileops.go`) — no Docker archive API.

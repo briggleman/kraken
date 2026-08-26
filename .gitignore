@@ -69,3 +69,7 @@ internal/panel/agentbin/dist/kraken-agent-*
 /agent.exe
 /panel.exe
 /krakenctl.exe
+
+# Design mocks are committed (design/mockups is the drift reference the CI
+# gate checks against); bulky generated output is not.
+design/screenshots/

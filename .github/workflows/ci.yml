@@ -114,7 +114,7 @@ jobs:
         run: go test -race ./...
 
   web:
-    name: web (typecheck · build)
+    name: web (design gate · svelte-check · build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,6 +129,10 @@ jobs:
         run: npm ci
         working-directory: web
 
-      - name: build (tsc --noEmit && vite build)
+      - name: design drift gate (house.css matches the committed mock)
+        run: npm run check:design
+        working-directory: web
+
+      - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web

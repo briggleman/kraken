@@ -1,0 +1,73 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kraken-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "web",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "kraken-docs",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8090",
+        "--directory",
+        "docs"
+      ],
+      "port": 8090
+    },
+    {
+      "name": "kraken-agent-fake",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:KRAKEN_RUNTIME='fake'; $env:KRAKEN_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_SFTP_ADDR='127.0.0.1:2099'; $env:KRAKEN_NODE_ID='fake-live'; $env:KRAKEN_STATE_DIR=\"$env:TEMP\\kraken-fake-state\"; $env:KRAKEN_DATA_DIR=\"$env:TEMP\\kraken-fake-data\"; $env:KRAKEN_PANEL_URL='http://127.0.0.1:8080'; go run ./cmd/agent"
+      ],
+      "port": 9099,
+      "url": "http://localhost:9099"
+    },
+    {
+      "name": "kraken-panel-fake",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:KRAKEN_CONFIG_FILE=\"$env:TEMP\\kraken-fakelive-panel.json\"; $env:KRAKEN_ENV='dev'; $env:KRAKEN_QUICKSTART='1'; $env:KRAKEN_LOCAL_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_BOOTSTRAP_ADMIN_PASSWORD='admin'; go run ./cmd/panel"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "kraken-panel",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:KRAKEN_CONFIG_FILE=\"$env:TEMP\\kraken-e2e-panel.json\"; $env:KRAKEN_QUICKSTART='0'; go run ./cmd/panel"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "mockups",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--yes",
+        "http-server",
+        "design/mockups",
+        "-p",
+        "8091",
+        "-c-1",
+        "--silent"
+      ],
+      "port": 8091
+    }
+  ]
+}

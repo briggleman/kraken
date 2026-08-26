@@ -55,11 +55,16 @@ agent-specs/
 *.sqlite
 *.log
 
-# Local agent / editor tooling
-.claude/
+# Local agent / editor tooling stays local, but the project skills
+# (/mocks-revise, /mocks-ship) and launch configs ship with the repo.
+.claude/*
+!.claude/skills/
+!.claude/launch.json
 
-# Impeccable design skill — regenerable runtime state only, nothing tracked.
-.impeccable/
+# Impeccable runtime state (live/, questions/) is regenerable and local;
+# design.json is the committed design-contract sidecar DESIGN.md points to.
+.impeccable/*
+!.impeccable/design.json
 # build artifacts — populated by `make embed-agents` / release CI
 internal/panel/agentbin/dist/kraken-agent-*
 # stray cross-build outputs from `GOOS=... go build ./cmd/...` at the repo root
@@ -73,3 +78,4 @@ internal/panel/agentbin/dist/kraken-agent-*
 # Design mocks are committed (design/mockups is the drift reference the CI
 # gate checks against); bulky generated output is not.
 design/screenshots/
+web/.claude/

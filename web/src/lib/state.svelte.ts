@@ -295,7 +295,49 @@ export const sim = $state({
     { t: "22:58", who: "dragonwilds", text: " — stopped by owner", warn: false },
     { t: "22:14", who: "enshrouded", text: " — backup completed · 1.2G", warn: false },
   ],
+
+  // the drill-in's side blocks (one demo set, as in the mock)
+  backups: [
+    { kind: "scheduled", label: "tonight 03:00" },
+    { kind: "done", label: "aug 21 03:00 · 4.8G", restoring: false, leaving: false },
+    { kind: "done", label: "aug 20 03:00 · 4.7G", restoring: false, leaving: false },
+  ] as BackupRow[],
+  backupLive: null as null | { name: string; prog: number },
+  backupSeq: 1,
+
+  schedules: [
+    { name: "nightly backup", detail: "backup", cron: "0 3 * * *", paused: false, leaving: false },
+    { name: "nightly restart", detail: "restart", cron: "0 4 * * *", paused: false, leaving: false },
+    { name: "autosave sweep", detail: "command: save-all", cron: "0 * * * *", paused: true, leaving: false },
+  ] as ScheduleRow[],
 });
+
+export interface BackupRow {
+  kind: "scheduled" | "done";
+  label: string;
+  restoring?: boolean;
+  leaving?: boolean;
+}
+
+export interface ScheduleRow {
+  name: string;
+  detail: string;
+  cron: string;
+  paused: boolean;
+  leaving: boolean;
+}
+
+export const SCH_NEXT: Record<string, string> = {
+  "0 * * * *": "top of hour",
+  "0 */6 * * *": "18:00",
+  "0 4 * * *": "04:00",
+  "0 4 * * 0": "sun 04:00",
+  "0 3 * * *": "03:00",
+};
+
+export function scheduleNext(row: ScheduleRow): string {
+  return row.paused ? "paused" : (SCH_NEXT[row.cron] ?? "—");
+}
 
 // ---------------------------------------------------------------------------
 // overlay state (drill-in, sheets, confirm) — the mock's class toggles as runes
@@ -378,6 +420,122 @@ export function logDepthLine(html: string) {
     html,
   });
 }
+
+// ---------------------------------------------------------------------------
+// side-block actions (backups, schedules, confirm) — behavior from the mock
+
+export function backupRestore(row: BackupRow) {
+  if (row.restoring) return;
+  row.restoring = true;
+  logDepthLine("[Backup] restore started from " + row.label);
+  setTimeout(() => {
+    row.restoring = false;
+    logDepthLine('<span class="good">[Backup] restore complete — world reloaded</span>');
+  }, 2600);
+}
+
+export function backupDelete(row: BackupRow) {
+  row.leaving = true;
+  setTimeout(() => {
+    sim.backups = sim.backups.filter((r) => r !== row);
+  }, 250);
+  logDepthLine('<span class="warn">[Backup] deleted ' + row.label + "</span>");
+}
+
+export function backupCreate() {
+  if (sim.backupLive) return;
+  const name = "manual-" + sim.backupSeq++;
+  sim.backupLive = { name, prog: 0 };
+  const timer = setInterval(() => {
+    const live = sim.backupLive;
+    if (!live) {
+      clearInterval(timer);
+      return;
+    }
+    live.prog = Math.min(100, live.prog + 4 + Math.random() * 6);
+    if (live.prog >= 100) {
+      clearInterval(timer);
+      setTimeout(() => {
+        sim.backups.unshift({
+          kind: "done",
+          label: "just now · " + name + " · 4.8G",
+          restoring: false,
+          leaving: false,
+        });
+        sim.backupLive = null;
+      }, 400);
+    }
+  }, 220);
+}
+
+export function scheduleToggle(row: ScheduleRow) {
+  row.paused = !row.paused;
+  logDepthLine("[Schedule] " + (row.paused ? "paused " : "resumed ") + row.name);
+}
+
+export function scheduleDelete(row: ScheduleRow) {
+  row.leaving = true;
+  setTimeout(() => {
+    sim.schedules = sim.schedules.filter((r) => r !== row);
+  }, 250);
+  logDepthLine('<span class="warn">[Schedule] deleted ' + row.name + "</span>");
+}
+
+export function scheduleAdd(row: Omit<ScheduleRow, "leaving">) {
+  sim.schedules.push({ ...row, leaving: false });
+  logDepthLine("[Schedule] created " + row.name + " (" + row.cron + ")");
+}
+
+// typed-confirmation dialog: the noun and warning come from whoever opened it
+export const CD_SERVER_BODY =
+  "this removes the world, backups and config for this server. it cannot be undone.";
+
+let confirmReturn: HTMLElement | null = null;
+
+export function openConfirm(
+  name: string,
+  returnTo: HTMLElement | null,
+  opts?: { noun?: string; body?: string },
+) {
+  confirmReturn = returnTo;
+  ui.confirm = {
+    name,
+    noun: opts?.noun || "server",
+    body: opts?.body || CD_SERVER_BODY,
+  };
+}
+
+export function closeConfirm() {
+  ui.confirm = null;
+  if (confirmReturn && document.contains(confirmReturn)) confirmReturn.focus();
+}
+
+export function confirmGo() {
+  const c = ui.confirm;
+  if (!c) return;
+  if (c.noun === "spec") {
+    // a spec is a recipe, not a running thing: it leaves the list and the
+    // editor closes; servers built from it keep running
+    specDelete(c.name);
+    ui.confirm = null;
+    closeSheet("specEdit");
+    return;
+  }
+  logDepthLine(
+    '<span class="warn">[Server] ' + c.name + " deleted — world, backups and config removed</span>",
+  );
+  const srv = sim.servers.find((s) => s.name === c.name);
+  if (srv) {
+    setTimeout(() => {
+      sim.servers = sim.servers.filter((s) => s !== srv);
+    }, 260);
+  }
+  ui.confirm = null;
+  surface();
+}
+
+// placeholder until the specs sheet lands; confirmGo routes spec deletions here
+export function specDelete(_name: string) {}
 
 // ---------------------------------------------------------------------------
 // the tick engine — cadences verbatim from the mock

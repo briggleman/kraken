@@ -1,6 +1,8 @@
 <script lang="ts">
   import Backdrop from "@/components/Backdrop.svelte";
   import Pane from "@/surfaces/Pane.svelte";
+  import Depth from "@/surfaces/Depth.svelte";
+  import ConfirmDelete from "@/surfaces/ConfirmDelete.svelte";
   import { startSim, ui, surface, closeSheet, type SheetId } from "@/lib/state.svelte";
 
   startSim();
@@ -32,3 +34,5 @@
 
 <Backdrop />
 <Pane />
+<Depth />
+<ConfirmDelete />

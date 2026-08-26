@@ -3,6 +3,19 @@
   import Pane from "@/surfaces/Pane.svelte";
   import Depth from "@/surfaces/Depth.svelte";
   import ConfirmDelete from "@/surfaces/ConfirmDelete.svelte";
+  import Prefs from "@/surfaces/Prefs.svelte";
+  import Users from "@/surfaces/Users.svelte";
+  import Specs from "@/surfaces/Specs.svelte";
+  import SpecEdit from "@/surfaces/SpecEdit.svelte";
+  import NodeAdd from "@/surfaces/NodeAdd.svelte";
+  import NodeCfg from "@/surfaces/NodeCfg.svelte";
+  import NsForm from "@/surfaces/NsForm.svelte";
+  import AuditLog from "@/surfaces/AuditLog.svelte";
+  import ApiDocs from "@/surfaces/ApiDocs.svelte";
+  import Login from "@/surfaces/Login.svelte";
+  import Rotate from "@/surfaces/Rotate.svelte";
+  import DbRestart from "@/surfaces/DbRestart.svelte";
+  import Setup from "@/surfaces/Setup.svelte";
   import { startSim, ui, surface, closeSheet, type SheetId } from "@/lib/state.svelte";
 
   startSim();
@@ -35,4 +48,17 @@
 <Backdrop />
 <Pane />
 <Depth />
+<Prefs />
+<Users />
+<Specs />
+<SpecEdit />
+<NodeAdd />
+<NodeCfg />
+<NsForm />
+<AuditLog />
+<ApiDocs />
+<Login />
+<Rotate />
+<DbRestart />
+<Setup />
 <ConfirmDelete />

@@ -310,6 +310,17 @@ export const sim = $state({
     { name: "nightly restart", detail: "restart", cron: "0 4 * * *", paused: false, leaving: false },
     { name: "autosave sweep", detail: "command: save-all", cron: "0 * * * *", paused: true, leaving: false },
   ] as ScheduleRow[],
+
+  specs: [
+    { name: "Abiotic Factor", slug: "abiotic-factor", plats: ["win", "wine"], art: null, ver: "v1", leaving: false },
+    { name: "RuneScape Dragonwilds", slug: "runescape-dragonwilds", plats: ["wine"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/3061810/library_hero.jpg", ver: "v1", leaving: false },
+    { name: "Enshrouded", slug: "enshrouded", plats: ["win"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/library_hero.jpg", ver: "v1", leaving: false },
+    { name: "Factorio", slug: "factorio", plats: ["linux"], art: null, ver: "v1", leaving: false },
+    { name: "Palworld", slug: "palworld", plats: ["linux", "win"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/library_hero.jpg", ver: "v1", leaving: false },
+    { name: "Valheim", slug: "valheim", plats: ["linux"], art: null, ver: "v1", leaving: false },
+    { name: "V Rising", slug: "v-rising", plats: ["win"], art: null, ver: "v1", leaving: false },
+    { name: "Windrose", slug: "windrose", plats: ["win"], art: null, ver: "v1", leaving: false },
+  ] as SpecRow[],
 });
 
 export interface BackupRow {
@@ -534,8 +545,96 @@ export function confirmGo() {
   surface();
 }
 
-// placeholder until the specs sheet lands; confirmGo routes spec deletions here
-export function specDelete(_name: string) {}
+// game specs (the specs sheet's list; the count badge/note derive from it)
+export interface SpecRow {
+  name: string;
+  slug: string;
+  plats: string[]; // 'linux' | 'win' | 'wine'
+  art: string | null;
+  ver: string;
+  leaving: boolean;
+}
+
+export function specDelete(name: string) {
+  const row = sim.specs.find((r) => r.name.toLowerCase() === name.toLowerCase());
+  if (!row) return;
+  row.leaving = true;
+  setTimeout(() => {
+    sim.specs = sim.specs.filter((r) => r !== row);
+  }, 260);
+}
+
+// ---------------------------------------------------------------------------
+// first run: the forced rotation, then the five-step wizard (mock verbatim)
+
+export const LG_SUB = "one console for every server on every node. sign in to reach it.";
+
+export const wz = $state({
+  at: 1,
+  done: [false, false, false, false, false], // steps 1..5
+  dbMode: "in-memory" as "in-memory" | "postgres",
+  dbRes: null as null | { cls: "ok" | "bad"; text: string },
+  resumeSetup: false,
+});
+
+export function wzMarkDone(n: number) {
+  wz.done[n - 1] = true;
+}
+
+// a step you have not reached is not a place you can jump to
+export function wzReachable(n: number): boolean {
+  return wz.done[n - 1] || n <= wz.at + 1;
+}
+
+export function wzGo(n: number) {
+  // moving forward finishes the step you are leaving; moving back does not
+  if (n > wz.at) wzMarkDone(wz.at);
+  wz.at = n;
+  const body = document.querySelector<HTMLElement>("#setup .sheet-body");
+  if (body) body.scrollTop = 0;
+}
+
+export function openSetup() {
+  openSheet("setup", innerWidth / 2, innerHeight / 2, null);
+  wz.at = 1;
+}
+
+// step 1 → the panel restarts onto postgres. ORDER MATTERS: the interstitial
+// sits above the login (z 55 over 50), so it closes LAST and one full wipe
+// later — the login opens underneath it, hidden, and the interstitial then
+// wipes away to reveal a screen that is already there.
+export function dbConnectRestart() {
+  ui.dbRestartOpen = true;
+  setTimeout(() => {
+    delete ui.open.setup;
+    wz.resumeSetup = true;
+    ui.loginSub = "the panel is back on postgres. log in again and setup continues.";
+    ui.loginOpen = true;
+    setTimeout(() => (ui.dbRestartOpen = false), 700);
+  }, TICK_MS);
+}
+
+// the login is the only door into any of this
+export function loginGo() {
+  ui.loginOpen = false;
+  if (wz.resumeSetup) {
+    // back from the restart: step 1 is finished and the store it was about changed
+    wz.resumeSetup = false;
+    ui.loginSub = null;
+    wz.dbMode = "postgres";
+    wz.dbRes = { cls: "ok", text: "on postgres — migrations applied." };
+    wzMarkDone(1);
+    openSetup();
+  }
+}
+
+export function rotateDone() {
+  ui.rotateOpen = false;
+  // step 2 is finished by this screen, not by the wizard — so the wizard
+  // opens on step 1 with Secure already struck through
+  wzMarkDone(2);
+  openSetup();
+}
 
 // ---------------------------------------------------------------------------
 // the tick engine — cadences verbatim from the mock

@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import path from "node:path";
 
 // The UI talks to the Panel REST API under /api. In dev, Vite proxies it to
@@ -7,11 +7,10 @@ import path from "node:path";
 // build (see internal/panel/webui) and serves it same-origin, so /api works
 // without a proxy.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [svelte()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "@ds": path.resolve(__dirname, "design-system"),
     },
   },
   // Build straight into the Go embed target so `go build ./cmd/panel` picks

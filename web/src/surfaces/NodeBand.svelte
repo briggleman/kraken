@@ -72,7 +72,7 @@
     <div class="metric-head">
       <span class="metric-label">disk</span><span class="metric-val">—<small></small></span>
     </div>
-    <Spark seed={inst.diskSeed} />
+    <Spark seed={inst.diskSeed} flat />
   </div>
   <div class="metric">
     <div class="metric-head">

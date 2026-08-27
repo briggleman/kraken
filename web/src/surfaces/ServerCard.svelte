@@ -80,7 +80,7 @@
       <span class="cap"></span>
       <span class="players-label">offline</span>
     </span>
-    <span class="dead-note" use:istyle={"grid-column: span 2"}>{deadNote(server)}</span>
+    <span class="dead-note">{deadNote(server)}</span>
     <span class="descend"
       ><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 4 2 L 11 7 L 4 12 Z"/></svg>{server.state ===
       "offline"

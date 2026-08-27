@@ -73,7 +73,7 @@
     </div>
     <div class="lg-foot">
       <span class="lg-note">sessions last 24 hours · every attempt is logged</span>
-      <span class="lg-note">kraken {fleet.panelVersion || "—"} · self-hosted</span>
+      <span class="lg-note">kraken{fleet.panelVersion ? " " + fleet.panelVersion : ""} · self-hosted</span>
     </div>
   </form>
 </div>

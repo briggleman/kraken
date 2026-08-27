@@ -3,7 +3,9 @@
 
   // Legacy gold area sparkline (the disk chart): faint grid, gradient fill,
   // glowing line, emphasized endpoint. Verbatim drawing code from the mock.
-  let { seed = 30 }: { seed?: number } = $props();
+  // flat: no feed behind this chart — draw a dim, still baseline instead of a
+  // walking line, so the readout's em-dash and the chart say the same thing.
+  let { seed = 30, flat = false }: { seed?: number; flat?: boolean } = $props();
 
   let cv: HTMLCanvasElement;
   const data = Array.from({ length: 60 }, () => seed + (Math.random() * 10 - 5));
@@ -12,6 +14,10 @@
     const w = cv.clientWidth,
       h = cv.clientHeight;
     if (!w) return;
+    if (flat) {
+      drawFlat(w, h);
+      return;
+    }
     cv.width = w * devicePixelRatio;
     cv.height = h * devicePixelRatio;
     const c = cv.getContext("2d")!;
@@ -55,12 +61,33 @@
     c.fill();
   }
 
+  function drawFlat(w: number, h: number) {
+    cv.width = w * devicePixelRatio;
+    cv.height = h * devicePixelRatio;
+    const c = cv.getContext("2d")!;
+    c.scale(devicePixelRatio, devicePixelRatio);
+    c.strokeStyle = "rgba(255, 194, 102, 0.08)";
+    c.lineWidth = 1;
+    for (let gy = 1; gy <= 2; gy++) {
+      c.beginPath();
+      c.moveTo(0, (h * gy) / 3);
+      c.lineTo(w, (h * gy) / 3);
+      c.stroke();
+    }
+    c.strokeStyle = "rgba(125, 113, 96, 0.55)";
+    c.setLineDash([3, 4]);
+    c.beginPath();
+    c.moveTo(0, h - 2);
+    c.lineTo(w, h - 2);
+    c.stroke();
+  }
+
   $effect(() => {
     draw();
     const onResize = () => draw();
     addEventListener("resize", onResize);
     let timer: ReturnType<typeof setInterval> | undefined;
-    if (!reducedMotion) {
+    if (!reducedMotion && !flat) {
       timer = setInterval(() => {
         const last = data[data.length - 1];
         data.push(Math.max(2, Math.min(96, last + (Math.random() * 8 - 4))));

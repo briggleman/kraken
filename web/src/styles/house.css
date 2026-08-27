@@ -971,7 +971,36 @@
   .srv-chart-label b { font-family: var(--mono); color: var(--ink-2); font-weight: 400; letter-spacing: 0; }
   .srv-chart canvas { width: 100%; height: clamp(26px, 4vh, 54px); display: block; }
   .srv-chart .seg-track { height: clamp(26px, 4vh, 54px); padding: 4px 0 2px; }
-  .dead-note { font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.78vw, 15px); color: var(--ink-3); }
+  .dead-note { grid-column: span 2; font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.78vw, 15px); color: var(--ink-3); }
+
+  /* Below the wide desk the band cannot hold six columns and the card cannot hold
+     five: a metric's value is display-scale type, so a track that narrows past it
+     spills into the next label rather than wrapping (memory ran into disk, network
+     into temp). Identity takes a row of its own - it is the heading, and headings
+     do not compete with instruments - and the instruments wrap as a rail with a
+     real floor, so a narrow desk gets fewer per row instead of five broken ones. */
+  @media (max-width: 1100px) {
+    .node-band { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .node-id {
+      grid-column: 1 / -1; padding-right: 0; padding-bottom: clamp(10px, 1.2vh, 16px);
+      border-right: none; border-bottom: 1px solid var(--edge);
+    }
+    .srv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .srv-id, .srv .descend { grid-column: 1 / -1; }
+    .srv .descend { justify-self: start; }
+  }
+  @media (max-width: 640px) {
+    .node-band, .srv { grid-template-columns: minmax(0, 1fr); }
+    .dead-note { grid-column: 1 / -1; }
+    /* The deck is a single column here, but the header was still setting the
+       page's width: .top and .top-right are nowrap flex rows, so five controls
+       plus the status readouts held the pane open past the viewport and every
+       instrument value slid out of sight to the right. The bar wraps instead,
+       and the identity keeps the first line to itself. */
+    .top { flex-wrap: wrap; row-gap: 10px; }
+    .top-sub { display: none; }
+    .top-right { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 10px 14px; }
+  }
 
   .descend {
     display: grid; place-items: center; gap: 4px;
@@ -1244,7 +1273,13 @@
      was reworded. min-width: 0 on the children stops any one of them forcing it open again. */
   .lg-card {
     position: relative; z-index: 1;
-    width: 408px; max-width: 100%; display: grid; gap: clamp(14px, 1.8vh, 22px);
+    /* The screen centres this card with place-items, which sizes its column
+       shrink-to-fit — so `max-width: 100%` resolved against the card's own
+       408px and clipped both edges on a narrow viewport instead of capping.
+       Measure against the viewport, which no parent can redefine. (Same trap
+       DESIGN.md names for sheets: centre with auto margins, never let content
+       decide the measure.) */
+    width: min(408px, calc(100vw - 36px)); display: grid; gap: clamp(14px, 1.8vh, 22px);
   }
   .lg-card > * { min-width: 0; }
   /* the gap went with the eyebrow - there is one child left for it to sit between. The

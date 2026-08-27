@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/briggleman/kraken/compare/v0.25.1...v0.26.0) (2026-08-27)
+
+
+### Features
+
+* **web:** port the panel UI to Svelte 5, generated from the design mock ([#134](https://github.com/briggleman/kraken/issues/134)) ([135e123](https://github.com/briggleman/kraken/commit/135e123c2e4615daeca61bd027bfc24412f0b101))
+
 ## [0.25.1](https://github.com/briggleman/kraken/compare/v0.25.0...v0.25.1) (2026-08-27)
 
 

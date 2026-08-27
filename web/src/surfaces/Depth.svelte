@@ -28,6 +28,25 @@
   const name = $derived(server?.name ?? "");
   const running = $derived(server?.state === "running");
   const stats = $derived(stream.stats);
+  // While a server provisions, and after a failed attempt, the console pane
+  // carries the installer's output rather than a container's stdout.
+  const installing = $derived(
+    server?.state === "installing" || server?.state === "install_failed",
+  );
+  // The stored reason usually already opens with "install failed:", which the
+  // notice's own heading says — strip it so the sentence reads once, and close
+  // it so the pointer to the log that follows is a separate sentence.
+  // Whether pointing the operator at the console pane is honest: the buffer is
+  // in-Panel memory, so a restart between the attempt and the drill-in leaves
+  // nothing to read. Lines already in hand, or a stream still working, count.
+  const haveInstallLog = $derived(
+    stream.lines.length > 0 || (stream.status !== "ended" && stream.status !== "idle"),
+  );
+  const failReason = $derived.by(() => {
+    const raw = (server?.last_error ?? "").replace(/^install failed:\s*/i, "").trim();
+    if (!raw) return "";
+    return /[.!?]$/.test(raw) ? raw : raw + ".";
+  });
 
   function ui_now(): string {
     return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -237,7 +256,7 @@
         <input type="radio" name="stn" id="stnSettings" class="stn-r" />
         <input type="radio" name="stn" id="stnFiles" class="stn-r" />
         <div class="stn-tabs" role="tablist">
-          <label for="stnConsole">live console</label>
+          <label for="stnConsole">{installing ? "install log" : "live console"}</label>
           <label for="stnSettings">settings</label>
           <label for="stnFiles">files</label>
         </div>
@@ -250,7 +269,9 @@
               <div><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}</div>
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
-                <div><span class="t">—</span>no output — server is dark</div>
+                <div><span class="t">—</span>{installing
+                    ? "no install output kept — the panel restarted since this attempt"
+                    : "no output — server is dark"}</div>
               {/if}
             {/each}
           </div>
@@ -258,7 +279,11 @@
             <span>&gt;</span>
             <input
               type="text"
-              placeholder={running ? "broadcast, save, kick <player> …" : "server is not running"}
+              placeholder={running
+              ? "broadcast, save, kick <player> …"
+              : installing
+                ? "an install takes no commands"
+                : "server is not running"}
               aria-label="Console command"
               disabled={!stream.connected || !running}
               bind:value={cmdInput}
@@ -387,12 +412,14 @@
       {#if server?.state === "installing"}
         <p class="depth-notice" role="status">
           <b>installing — the game files are downloading on the node. this can take a while for a
-            large game; the console picks up when the server starts.</b>
+            large game; the install log reads live in the console pane.</b>
         </p>
       {/if}
       {#if server?.state === "install_failed"}
         <p class="depth-notice bad" role="alert">
-          <b>install failed — the server never provisioned.{server.last_error ? " " + server.last_error : ""}</b>
+          <b>install failed — the server never provisioned.{failReason
+              ? " " + failReason
+              : ""}{haveInstallLog ? " the full install log is in the console pane." : ""}</b>
           <button class="mini-act res" disabled={depth.powerBusy} onclick={() => void reinstall()}>reinstall</button>
         </p>
       {/if}

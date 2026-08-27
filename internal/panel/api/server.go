@@ -69,6 +69,11 @@ type Server struct {
 	// onRestart, when set, asks the host process to exit cleanly so a supervisor
 	// restarts it (used after a UI-driven datastore change). Nil = no-op.
 	onRestart func()
+
+	// installs buffers each server's install-phase output so the console
+	// surface can show a running install and diagnose a failed one
+	// (see installlog.go).
+	installs *installLog
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -107,7 +112,12 @@ func WithClientTLSBytes(cert, key, ca []byte) Option {
 // TLS; only an explicitly cert-less (dev) config falls back to insecure,
 // with a warning.
 func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option) *Server {
-	s := &Server{cfg: cfg, store: st, logger: logger, bootstrap: newBootstrapRegistry(), lastRotate: map[string]time.Time{}}
+	s := &Server{
+		cfg: cfg, store: st, logger: logger,
+		bootstrap:  newBootstrapRegistry(),
+		lastRotate: map[string]time.Time{},
+		installs:   newInstallLog(),
+	}
 	for _, o := range opts {
 		o(s)
 	}

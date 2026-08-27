@@ -19,6 +19,10 @@ import (
 // in the handshake instead of the query string, keeping it out of URLs/logs.
 const streamSubprotocol = "kraken.token"
 
+// installStreamName marks a console frame as install-phase output rather than a
+// running container's stdout/stderr.
+const installStreamName = "install"
+
 // streamToken extracts the session token for a stream WS handshake. Browsers
 // can't set Authorization on a WS upgrade, so the client offers the token as a
 // subprotocol (["kraken.token", "<token>"]); we fall back to the ?token= query
@@ -38,6 +42,9 @@ func streamToken(r *http.Request) string {
 // frame is a message pushed to the browser over the stream WebSocket.
 type frame struct {
 	Type string `json:"type"` // "console" | "stats" | "error"
+
+	// A console frame's Stream is the source: "stdout"/"stderr" from a running
+	// container, or "install" for a line of install-phase output (installlog.go).
 
 	// console
 	Ts     int64  `json:"ts,omitempty"`
@@ -96,6 +103,15 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "server not found")
 		return
 	}
+	// An installing or failed-install server has no container to tail and may sit
+	// on a node the Panel cannot reach — which is often why the install failed.
+	// Serve the buffered install output instead, before any agent lookup can
+	// turn the one readable record of the failure into a 502.
+	if server.State == store.StateInstalling || server.State == store.StateInstallFailed {
+		s.serveInstallStream(w, r, server.ID)
+		return
+	}
+
 	node, err := s.store.GetNode(r.Context(), server.NodeID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load node")
@@ -107,18 +123,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Restrict cross-origin WS upgrades to the configured allowlist (same-origin
-	// is always permitted by coder/websocket). Default to localhost dev origins so
-	// the Vite proxy (browser :5173 → panel :8080) works without extra config;
-	// production sets KRAKEN_ALLOWED_ORIGINS to its panel host.
-	origins := s.allowedOrigins(r.Context())
-	if len(origins) == 0 {
-		origins = []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
-	}
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: origins,
-		Subprotocols:   []string{streamSubprotocol},
-	})
+	c, err := s.acceptStream(w, r)
 	if err != nil {
 		return // Accept already wrote the response
 	}
@@ -204,6 +209,86 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 			}
 			if _, err := client.SendCommand(ctx, &agentpb.SendCommandRequest{ServerId: id, Command: msg.Command}); err != nil {
 				push(frame{Type: "error", Message: "command failed: " + err.Error()})
+			}
+		}
+	}
+}
+
+// acceptStream upgrades the request to the stream WebSocket. Cross-origin
+// upgrades are restricted to the configured allowlist (same-origin is always
+// permitted by coder/websocket); the default covers localhost dev origins so the
+// Vite proxy (browser :5173 → panel :8080) works without extra config, while
+// production sets KRAKEN_ALLOWED_ORIGINS to its panel host.
+func (s *Server) acceptStream(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
+	origins := s.allowedOrigins(r.Context())
+	if len(origins) == 0 {
+		origins = []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
+	}
+	return websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: origins,
+		Subprotocols:   []string{streamSubprotocol},
+	})
+}
+
+// serveInstallStream pushes a server's install output over the same socket and
+// the same console frames as a running server's log, so the console surface
+// needs no separate mode: the buffered lines first, then each new one as the
+// installer emits it.
+//
+// The socket closes when the install reaches a verdict. That is a clean end, not
+// a fault — by then the server's state has moved on, and the client's next
+// connection gets whichever stream now fits it.
+func (s *Server) serveInstallStream(w http.ResponseWriter, r *http.Request, id string) {
+	snapshot, lines, done, cancel := s.installs.Tail(id)
+	defer cancel()
+
+	c, err := s.acceptStream(w, r)
+	if err != nil {
+		return // Accept already wrote the response
+	}
+	defer c.CloseNow()
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+
+	// Reading serves only to notice the browser going away; console commands
+	// mean nothing to an install.
+	go func() {
+		for {
+			var msg inbound
+			if err := wsjson.Read(ctx, c, &msg); err != nil {
+				cancelCtx()
+				return
+			}
+		}
+	}()
+
+	write := func(l installLine) bool {
+		return wsjson.Write(ctx, c, frame{
+			Type: "console", Ts: l.Ts, Stream: l.Stream, Text: l.Text,
+		}) == nil
+	}
+	for _, l := range snapshot {
+		if !write(l) {
+			return
+		}
+	}
+	if done {
+		// Nothing more is coming; end the stream rather than hold a socket open.
+		_ = c.Close(websocket.StatusNormalClosure, "install log complete")
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case l, ok := <-lines:
+			if !ok {
+				_ = c.Close(websocket.StatusNormalClosure, "install finished")
+				return
+			}
+			if !write(l) {
+				return
 			}
 		}
 	}

@@ -48,12 +48,13 @@ export function streamModeFor(state: Server["state"] | undefined): StreamMode {
   // offline / crashed: the container is stopped but Docker still holds its
   // logs until the next start, so the stream replays the tail and ends.
   if (state === "offline" || state === "crashed") return "replay";
-  // installing / install_failed: there is no server container to tail. The
-  // installer's own output never reaches this socket either — the Panel
-  // consumes the agent's install stream and keeps only the failure reason
-  // (handlers_server.go), so opening a socket here would just fail and climb
-  // the backoff ladder. See the install-progress backlog issue.
-  return "off";
+  // installing: no container exists yet, but the Panel buffers the installer's
+  // output and serves it over this same socket. Live, because the socket must
+  // survive an agent blip during what can be a 20-minute download.
+  if (state === "installing") return "live";
+  // install_failed: the buffered attempt is replayed and the stream ends —
+  // there is nothing further coming until a reinstall.
+  return "replay";
 }
 
 export function openDepth(id: string, x: number, y: number, returnTo?: HTMLElement | null) {

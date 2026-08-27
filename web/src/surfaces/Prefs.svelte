@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, openSheet, closeSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api } from "@/api/client";
@@ -238,7 +239,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="prefsTitle"
-  style="--ox: {ui.open.prefs?.ox ?? '50%'}; --oy: {ui.open.prefs?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.prefs?.ox ?? '50%'}; --oy: ${ui.open.prefs?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">

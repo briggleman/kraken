@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/clean-dist.mjs",
-    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "build": "node scripts/check-inline-style.mjs && svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "check:design": "node scripts/extract-design.mjs --check"
+    "check:design": "node scripts/extract-design.mjs --check",
+    "check:csp": "node scripts/check-inline-style.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",

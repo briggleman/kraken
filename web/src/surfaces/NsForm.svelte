@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, closeSheet, openSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
@@ -109,7 +110,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nsFormTitle"
-  style="--ox: {ui.open.nsForm?.ox ?? '50%'}; --oy: {ui.open.nsForm?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.nsForm?.ox ?? '50%'}; --oy: ${ui.open.nsForm?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">
@@ -193,7 +194,7 @@
         <div class="ns-cost"><span>recommended</span><b>{spec?.resources.recommended_memory_mb ? fmtGb(spec.resources.recommended_memory_mb) : "—"}<em>G</em></b></div>
         <div class="ns-cost"><span>ports needed</span><b>{spec?.ports?.length ?? 0}<em></em></b></div>
         <div class="ns-acts">
-          {#if err}<span class="cfg-note" style="color: var(--crisis)">{err}</span>{/if}
+          {#if err}<span class="cfg-note" use:istyle={"color: var(--crisis)"}>{err}</span>{/if}
           <button class="cfg-btn ghost" onclick={() => closeSheet("nsForm")}>cancel</button>
           <button class="cfg-btn solid" disabled={busy || !spec} onclick={() => void create()}>create server</button>
         </div>

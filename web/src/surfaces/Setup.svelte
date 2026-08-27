@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, wz, wzGo, wzReachable, closeSheet, openSheet, TICK_MS } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api, clearToken } from "@/api/client";
@@ -190,7 +191,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="wzTitle"
-  style="--ox: {ui.open.setup?.ox ?? '50%'}; --oy: {ui.open.setup?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.setup?.ox ?? '50%'}; --oy: ${ui.open.setup?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">
@@ -285,7 +286,7 @@
               {/each}
             </div>
             {#if enroll.error}
-              <p class="cfg-help" style="color: var(--crisis)">{enroll.error}</p>
+              <p class="cfg-help" use:istyle={"color: var(--crisis)"}>{enroll.error}</p>
             {/if}
           </div>
           <div class="cfg-actions">

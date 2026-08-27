@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
@@ -75,7 +76,7 @@
         <ServerCard {server} />
       {:else}
         {#if fleet.loaded}
-          <p class="roster-empty" style="grid-column: 1 / -1">
+          <p class="roster-empty" use:istyle={"grid-column: 1 / -1"}>
             no servers yet — deploy one from a node band's New Server
           </p>
         {/if}

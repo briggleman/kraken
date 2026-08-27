@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, openSheet, closeSheet } from "@/lib/state.svelte";
   import { fleet } from "@/lib/fleet.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
@@ -31,7 +32,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="specsTitle"
-  style="--ox: {ui.open.specs?.ox ?? '50%'}; --oy: {ui.open.specs?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.specs?.ox ?? '50%'}; --oy: ${ui.open.specs?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">
@@ -55,7 +56,7 @@
 
     <div class="spec-list">
       {#each fleet.specs as row (row.id)}
-        <div class={rowClass(row)}>{#if row.banner_url}<span class="spec-art" style="background-image: url('{row.banner_url}')" aria-hidden="true"></span>{/if}<span class="spec-shade" aria-hidden="true"></span><span class="spec-id"><span class="spec-name">{row.name}</span><span class="spec-slug">{row.slug}</span></span><span class="spec-plat">{#each row.platforms as p (p.kind)}<span class="spec-tag">{PLAT[p.kind]}</span>{/each}</span><span class="spec-ver">v{row.version}</span><span class="spec-act"><button class="cfg-btn ghost" onclick={(e) => manage(row, e)}>manage</button><button class="cfg-btn ghost spec-go" onclick={(e) => openSheet("nsForm", e.clientX, e.clientY, e.currentTarget)}>deploy</button></span></div>
+        <div class={rowClass(row)}>{#if row.banner_url}<span class="spec-art" use:istyle={`background-image: url('${row.banner_url}')`} aria-hidden="true"></span>{/if}<span class="spec-shade" aria-hidden="true"></span><span class="spec-id"><span class="spec-name">{row.name}</span><span class="spec-slug">{row.slug}</span></span><span class="spec-plat">{#each row.platforms as p (p.kind)}<span class="spec-tag">{PLAT[p.kind]}</span>{/each}</span><span class="spec-ver">v{row.version}</span><span class="spec-act"><button class="cfg-btn ghost" onclick={(e) => manage(row, e)}>manage</button><button class="cfg-btn ghost spec-go" onclick={(e) => openSheet("nsForm", e.clientX, e.clientY, e.currentTarget)}>deploy</button></span></div>
       {/each}
     </div>
 

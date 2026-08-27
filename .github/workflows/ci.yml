@@ -133,6 +133,10 @@ jobs:
         run: npm run check:design
         working-directory: web
 
+      - name: csp gate (no inline style attributes)
+        run: npm run check:csp
+        working-directory: web
+
       - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web

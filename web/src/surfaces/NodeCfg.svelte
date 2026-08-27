@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { untrack } from "svelte";
   import { ui, closeSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
@@ -156,7 +157,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nodeCfgTitle"
-  style="--ox: {ui.open.nodeCfg?.ox ?? '50%'}; --oy: {ui.open.nodeCfg?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.nodeCfg?.ox ?? '50%'}; --oy: ${ui.open.nodeCfg?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">

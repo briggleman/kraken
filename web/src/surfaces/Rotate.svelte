@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, rotateDone } from "@/lib/state.svelte";
   import { api } from "@/api/client";
   import { auth, refreshMe, mustChangePassword } from "@/lib/auth.svelte";
@@ -75,9 +76,9 @@
   aria-labelledby="rtTitle"
 >
   <div class="bg-rays lg-rays" aria-hidden="true">
-    <div class="bg-ray" style="left: 22%; width: 130px; height: 96vh; --ray-op: 0.13; --ray-dur: 19s; --ray-delay: 0s"></div>
-    <div class="bg-ray" style="left: 47%; width: 90px; height: 92vh; --ray-op: 0.10; --ray-dur: 14s; --ray-delay: 1.2s"></div>
-    <div class="bg-ray" style="left: 71%; width: 150px; height: 95vh; --ray-op: 0.12; --ray-dur: 23s; --ray-delay: 0.6s"></div>
+    <div class="bg-ray" use:istyle={"left: 22%; width: 130px; height: 96vh; --ray-op: 0.13; --ray-dur: 19s; --ray-delay: 0s"}></div>
+    <div class="bg-ray" use:istyle={"left: 47%; width: 90px; height: 92vh; --ray-op: 0.10; --ray-dur: 14s; --ray-delay: 1.2s"}></div>
+    <div class="bg-ray" use:istyle={"left: 71%; width: 150px; height: 95vh; --ray-op: 0.12; --ray-dur: 23s; --ray-delay: 0.6s"}></div>
   </div>
   <form class="lg-card" autocomplete="on">
     <div class="lg-id">

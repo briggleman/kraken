@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { reducedMotion } from "@/lib/state.svelte";
 
   // Ambient abyssal backdrop: gradient ground, surface light, god rays,
@@ -82,10 +83,10 @@
   <div class="bg-depth"></div>
   <div class="bg-surface-light"></div>
   <div class="bg-rays">
-    <div class="bg-ray" style="left: 14%; width: 120px; height: 95vh; --ray-op: 0.16; --ray-dur: 17s; --ray-delay: 0s"></div>
-    <div class="bg-ray" style="left: 34%; width: 80px; height: 90vh; --ray-op: 0.12; --ray-dur: 13s; --ray-delay: 1.5s"></div>
-    <div class="bg-ray" style="left: 58%; width: 150px; height: 96vh; --ray-op: 0.14; --ray-dur: 21s; --ray-delay: 0.8s"></div>
-    <div class="bg-ray" style="left: 78%; width: 90px; height: 88vh; --ray-op: 0.10; --ray-dur: 15s; --ray-delay: 2.2s"></div>
+    <div class="bg-ray" use:istyle={"left: 14%; width: 120px; height: 95vh; --ray-op: 0.16; --ray-dur: 17s; --ray-delay: 0s"}></div>
+    <div class="bg-ray" use:istyle={"left: 34%; width: 80px; height: 90vh; --ray-op: 0.12; --ray-dur: 13s; --ray-delay: 1.5s"}></div>
+    <div class="bg-ray" use:istyle={"left: 58%; width: 150px; height: 96vh; --ray-op: 0.14; --ray-dur: 21s; --ray-delay: 0.8s"}></div>
+    <div class="bg-ray" use:istyle={"left: 78%; width: 90px; height: 88vh; --ray-op: 0.10; --ray-dur: 15s; --ray-delay: 2.2s"}></div>
   </div>
   <canvas id="bgSnow" bind:this={canvas}></canvas>
   <div class="bg-fog">

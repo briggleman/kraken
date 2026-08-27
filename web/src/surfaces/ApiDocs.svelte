@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, closeSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
 </script>
@@ -10,7 +11,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="apiTitle"
-  style="--ox: {ui.open.apiDocs?.ox ?? '50%'}; --oy: {ui.open.apiDocs?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.apiDocs?.ox ?? '50%'}; --oy: ${ui.open.apiDocs?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">

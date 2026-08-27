@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import type { Track } from "@/lib/views.svelte";
 
   // The house chart: one column per sample, newest last (carries .now), zone
@@ -19,7 +20,7 @@
       class="dotcol{v >= 75 ? ' r' : v >= 50 ? ' w' : ''}{i === track.history.length - 1
         ? ' now'
         : ''}"
-      style="--lvl:{v.toFixed(1)}%"
+      use:istyle={`--lvl:${v.toFixed(1)}%`}
     ></i>
   {/each}
 </svelte:element>

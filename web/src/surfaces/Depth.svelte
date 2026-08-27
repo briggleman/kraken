@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import {
     depth,
     stream,
@@ -206,7 +207,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="depthTitle"
-  style="--ox: {depth.origin.ox}; --oy: {depth.origin.oy}"
+  use:istyle={`--ox: ${depth.origin.ox}; --oy: ${depth.origin.oy}`}
 >
   <div class="depth-head">
     <button class="surface-btn" id="surfaceBtn" bind:this={surfaceBtn} onclick={surface}>
@@ -330,13 +331,13 @@
             /<b
               role="button"
               tabindex="0"
-              style="cursor: pointer"
+              use:istyle={"cursor: pointer"}
               onclick={() => void filesGo(".")}
               onkeydown={(e) => e.key === "Enter" && void filesGo(".")}>{name.toLowerCase().replace(/\s+/g, "-")}</b
             >/{#each crumbs as c, i}<b
                 role="button"
                 tabindex="0"
-                style="cursor: pointer"
+                use:istyle={"cursor: pointer"}
                 onclick={() => void filesGo(crumbPath(i))}
                 onkeydown={(e) => e.key === "Enter" && void filesGo(crumbPath(i))}>{c}</b
               >/{/each}
@@ -408,9 +409,9 @@
       <section class="side-block" aria-label="Server vitals">
         <h3 class="pane-label">vitals</h3>
         <div class="side-body">
-          <div class="kv railed"><span>cpu</span><span class="heat-rail" style="--pct: {cpuPct}%"><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? cpuPct : "—"}</span><small>%</small></b></div>
-          <div class="kv railed"><span>mem</span><span class="heat-rail" style="--pct: {memPct}%"><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? fmtGb(stats.mem_used_mb) + " / " + Math.round(stats.mem_limit_mb / 1024) : "—"}</span><small>G</small></b></div>
-          <div class="kv railed"><span>net</span><span class="tick-lane{stats ? '' : ' dead'}" aria-hidden="true" style="--rate: {Math.max(0.2, Math.min(3, netRate / 4 + 0.4)).toFixed(2)}"><i class="tk" style="--d:1.9s; --dl:-0.2s; opacity:0.9"></i><i class="tk" style="--d:2.6s; --dl:-1.3s; opacity:0.6"></i><i class="tk" style="--d:2.2s; --dl:-1.9s; opacity:0.75"></i><i class="tk" style="--d:3s; --dl:-0.7s; opacity:0.5"></i><i class="tk" style="--d:2.4s; --dl:-2.1s; opacity:0.8"></i><i class="tk" style="--d:2.8s; --dl:-0.4s; opacity:0.55"></i></span><b><span>{stats ? netRate.toFixed(1) : "—"}</span><small>Mb/s</small></b></div>
+          <div class="kv railed"><span>cpu</span><span class="heat-rail" use:istyle={`--pct: ${cpuPct}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? cpuPct : "—"}</span><small>%</small></b></div>
+          <div class="kv railed"><span>mem</span><span class="heat-rail" use:istyle={`--pct: ${memPct}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? fmtGb(stats.mem_used_mb) + " / " + Math.round(stats.mem_limit_mb / 1024) : "—"}</span><small>G</small></b></div>
+          <div class="kv railed"><span>net</span><span class="tick-lane{stats ? '' : ' dead'}" aria-hidden="true" use:istyle={`--rate: ${Math.max(0.2, Math.min(3, netRate / 4 + 0.4)).toFixed(2)}`}><i class="tk" use:istyle={"--d:1.9s; --dl:-0.2s; opacity:0.9"}></i><i class="tk" use:istyle={"--d:2.6s; --dl:-1.3s; opacity:0.6"}></i><i class="tk" use:istyle={"--d:2.2s; --dl:-1.9s; opacity:0.75"}></i><i class="tk" use:istyle={"--d:3s; --dl:-0.7s; opacity:0.5"}></i><i class="tk" use:istyle={"--d:2.4s; --dl:-2.1s; opacity:0.8"}></i><i class="tk" use:istyle={"--d:2.8s; --dl:-0.4s; opacity:0.55"}></i></span><b><span>{stats ? netRate.toFixed(1) : "—"}</span><small>Mb/s</small></b></div>
           <div class="kv"><span>world size</span><b><span>{stats?.disk_used_mb ? fmtGb(stats.disk_used_mb) : "—"}</span><small>G</small></b></div>
         </div>
       </section>
@@ -449,7 +450,7 @@
         <div class="side-body" id="backupBody">
           {#each depth.backups as b (b.id)}
             {#if b.state === "pending"}
-              <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" style="--prog:60"><i></i></span></div>
+              <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:60"}><i></i></span></div>
             {:else}
               <div class="backup-row">
                 <span>{fmtWhen(b.created_ms)} · {b.name} · {fmtSize(b.size)}</span>
@@ -469,7 +470,7 @@
       <section class="side-block" aria-label="Schedules">
         <h3 class="pane-label">schedules</h3>
         <div class="side-body">
-          <div class="side-body" id="schBody" style="padding: 0; gap: 12px">
+          <div class="side-body" id="schBody" use:istyle={"padding: 0; gap: 12px"}>
             {#each depth.schedules as t (t.id)}
               <div class="sch-row{t.enabled ? '' : ' paused'}" data-cron={t.cron}>
                 <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small></span>

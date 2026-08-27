@@ -7,7 +7,7 @@ Deep docs live in the files linked below.
 
 **Kraken** — a self-hosted, Pelican-style platform to deploy and manage dedicated
 game servers across many hosts via Docker. Go control-plane (Panel) + Go node daemon
-(Agent) + React/TS web UI. Postgres = source of truth (sessions/state live here too).
+(Agent) + Svelte 5/TS web UI. Postgres = source of truth (sessions/state live here too).
 
 - **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket (console/stats terminate at the
   Panel, which bridges them to the Agent's gRPC streams — the browser never

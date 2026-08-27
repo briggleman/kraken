@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   // Packet channel: wan/lan ends with packets crossing between them. Packet
   // styles are data ("rev|" prefix marks the return direction), --rate scales
   // the whole channel's tempo against the readout's reference rate.
@@ -16,7 +17,7 @@
   );
 </script>
 
-<div class="chan" {id} aria-hidden="true" style="--rate: {rate.toFixed(2)}">
+<div class="chan" {id} aria-hidden="true" use:istyle={`--rate: ${rate.toFixed(2)}`}>
   <span class="end l">wan</span>
   <span class="end r">lan</span>
   {#each parsed as p}

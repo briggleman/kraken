@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import DotTrack from "@/components/DotTrack.svelte";
   import { openDepth } from "@/lib/depth.svelte";
   import {
@@ -32,7 +33,7 @@
   onclick={(e) => openDepth(server.id, e.clientX, e.clientY, e.currentTarget)}
 >
   {#if art}
-    <span class="srv-art" style="background-image: url('{art}')" aria-hidden="true"></span>
+    <span class="srv-art" use:istyle={`background-image: url('${art}')`} aria-hidden="true"></span>
   {/if}<span class="srv-shade" aria-hidden="true"></span>
 
   <span class="srv-id">
@@ -48,7 +49,7 @@
       <span class="players-num"
         >{players.num}{#if players.max}<small> / {players.max}</small>{/if}</span
       >
-      <span class="cap">{#if players.pct}<i style="width: {players.pct}%"></i>{/if}</span>
+      <span class="cap">{#if players.pct}<i use:istyle={`width: ${players.pct}%`}></i>{/if}</span>
       <span class="players-label">{players.num === "—" ? "players unknown" : "players online"}</span>
     </span>
     <span class="srv-chart"
@@ -79,7 +80,7 @@
       <span class="cap"></span>
       <span class="players-label">offline</span>
     </span>
-    <span class="dead-note" style="grid-column: span 2">{deadNote(server)}</span>
+    <span class="dead-note" use:istyle={"grid-column: span 2"}>{deadNote(server)}</span>
     <span class="descend"
       ><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 4 2 L 11 7 L 4 12 Z"/></svg>{server.state ===
       "offline"

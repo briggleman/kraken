@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, closeSheet, openConfirm } from "@/lib/state.svelte";
   import { refreshFleet } from "@/lib/fleet.svelte";
   import { api } from "@/api/client";
@@ -75,7 +76,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="specEditTitle"
-  style="--ox: {ui.open.specEdit?.ox ?? '50%'}; --oy: {ui.open.specEdit?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.specEdit?.ox ?? '50%'}; --oy: ${ui.open.specEdit?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">

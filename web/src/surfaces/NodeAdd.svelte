@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { istyle } from "@/lib/istyle";
   import { ui, closeSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { Enrollment, type EnrollMode } from "@/lib/enroll.svelte";
@@ -46,7 +47,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nodeAddTitle"
-  style="--ox: {ui.open.nodeAdd?.ox ?? '50%'}; --oy: {ui.open.nodeAdd?.oy ?? '50%'}"
+  use:istyle={`--ox: ${ui.open.nodeAdd?.ox ?? '50%'}; --oy: ${ui.open.nodeAdd?.oy ?? '50%'}`}
   use:sheetFocus
 >
   <div class="depth-head">
@@ -77,7 +78,7 @@
           </div>
         {/if}
         {#if enroll.error}
-          <p class="cfg-help" style="color: var(--crisis)">{enroll.error}</p>
+          <p class="cfg-help" use:istyle={"color: var(--crisis)"}>{enroll.error}</p>
         {/if}
       </div>
       <div class="cfg-actions actions-lead">

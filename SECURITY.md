@@ -1,6 +1,6 @@
 # Security Audit — 2026-06-24
 
-Static review of the Kraken codebase (Go panel + agent, React UI) covering
+Static review of the Kraken codebase (Go panel + agent, Svelte UI) covering
 authentication & credential handling, injection (SQL / command / path), transport
 security, and authorization.
 
@@ -305,11 +305,19 @@ tight as the real bundle allows, and each directive is pinned to evidence:
 - **`script-src 'self'`** — no `'unsafe-inline'`, no `'unsafe-eval'`. `index.html`
   carries no inline script and the built bundle contains no `eval(`.
 - **`style-src 'self'` / `font-src 'self'`** — no third-party origin at all. The
-  `style-src` value is notably **without** `'unsafe-inline'`, even though the
-  entire design system is inline styles: React applies them through the CSSOM,
-  which CSP does not govern, and only literal `style="…"` attributes in markup
-  would need the exception. Verified live under full enforcement across the
-  login, Fleet and admin Settings screens: fully styled, zero console violations.
+  `style-src` value is notably **without** `'unsafe-inline'`, and the UI is built
+  to live inside that: the design system is one served stylesheet
+  (`web/src/styles/house.css`, generated from the living mock), and every
+  per-element value the instruments need — `--lvl`, `--pct`, `--ox/--oy`, ray
+  and packet descriptors — is written through the **CSSOM**, which CSP does not
+  govern (`web/src/lib/istyle.ts`; Svelte's `style:` directive does the same).
+  Literal `style="…"` attributes in markup DO need the exception and are
+  therefore banned: `npm run check:csp` fails the build and CI if one appears.
+  This matters because the block is **silent** — a blocked declaration simply
+  never applies, so a meter renders at its default with only a console line to
+  say why. Verified live under full enforcement (Panel-served bundle, not the
+  dev server) across login, the pane with all instruments, and the server
+  drill-in: fully styled, zero violations.
   The brand faces were on Google's CDN until they were vendored into
   `web/public/fonts` (OFL 1.1, licenses shipped alongside); the test asserts
   neither `fonts.googleapis.com` nor `fonts.gstatic.com` can return.

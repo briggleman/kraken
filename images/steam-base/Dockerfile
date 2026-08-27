@@ -44,6 +44,7 @@ RUN dpkg --add-architecture i386 \
         curl \
         tar \
         unzip \
+        xz-utils \
         xdg-user-dirs \
         lib32gcc-s1 \
         lib32stdc++6 \

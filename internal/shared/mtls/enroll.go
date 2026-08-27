@@ -129,7 +129,11 @@ func SignAgentCSRWithIdentity(caCertPEM, caKeyPEM, csrPEM []byte, ttl time.Durat
 	if ttl <= 0 {
 		ttl = DefaultAgentCertTTL
 	}
-	dns := csr.DNSNames
+	// The CSR's SANs are attacker-chosen (the enrollee builds them). Drop the
+	// reserved logical identities so an Agent cert can never carry the Panel's
+	// or CA's name — belt-and-braces behind the CN-based authorization, which
+	// already ignores CSR SANs, but it keeps issued material honest.
+	dns := dropReservedNames(csr.DNSNames)
 	if !containsString(dns, AgentServerName) {
 		dns = append([]string{AgentServerName}, dns...)
 	}
@@ -281,6 +285,21 @@ func loadCAKeyPair(certPEM, keyPEM []byte) (*x509.Certificate, *ecdsa.PrivateKey
 		return nil, nil, fmt.Errorf("mtls: parse CA key: %w", err)
 	}
 	return caCert, caKey, nil
+}
+
+// dropReservedNames removes the logical identities Kraken pins for its own
+// components (the Panel and the CA) from a set of enrollee-requested SANs, so a
+// crafted CSR can't have them signed into an Agent certificate.
+func dropReservedNames(names []string) []string {
+	reserved := map[string]bool{PanelServerName: true, CAName: true}
+	out := names[:0:0]
+	for _, n := range names {
+		if reserved[n] {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func containsString(ss []string, s string) bool {

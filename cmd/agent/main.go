@@ -179,7 +179,18 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 			logger.Info("mTLS: handshake attempt", "remote", hi.Conn.RemoteAddr().String(), "sni", hi.ServerName)
 			return nil, nil
 		}
+		// Chain the identity enforcement ServerTLS installed (only the Panel may
+		// connect) so the logging hook adds to it rather than replacing it — a
+		// bare `return nil` here would silently re-open the listener to any peer
+		// Agent's cert.
+		enforce := tlsCfg.VerifyConnection
 		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if err := enforce(cs); err != nil {
+				if len(cs.PeerCertificates) > 0 {
+					logger.Warn("mTLS: client REJECTED — not the Panel", "peer", mtls.SummarizeCert(cs.PeerCertificates[0]), "err", err)
+				}
+				return err
+			}
 			if len(cs.PeerCertificates) > 0 {
 				logger.Info("mTLS: client authenticated", "peer", mtls.SummarizeCert(cs.PeerCertificates[0]))
 			}

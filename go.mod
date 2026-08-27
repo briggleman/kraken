@@ -2,6 +2,8 @@ module github.com/briggleman/kraken
 
 go 1.26
 
+toolchain go1.26.6
+
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/docker/docker v28.5.2+incompatible

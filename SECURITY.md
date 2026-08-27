@@ -362,3 +362,73 @@ plaintext HTTP on a LAN by design, so it is the wrong layer to assert HSTS.
   user's server isn't revealed to exist. Servers created before ownership existed
   (empty `OwnerID`) are reachable only by `server.any` holders. Regression test:
   `TestServerOwnershipIsolation` (`internal/panel/api/authz_test.go`).
+
+## Cross-node agent authentication + dependency sweep (2026-08-27)
+
+Full pass on a pulled `main` (0.26.0): dependency scans, static analysis, and a
+focused review of the Panel↔Agent trust boundary and the enrollment/self-update
+paths added since the last audit.
+
+### Fixed this pass
+
+**Cross-node agent impersonation → fleet-wide RCE (CWE-295 / CWE-284) — HIGH/CRITICAL.**
+The Agent's direct gRPC listener (`mtls.ServerTLS`) authenticated any client cert
+that merely chained to the cluster CA. But the CA is a *shared* trust anchor — it
+signs the Panel's client cert **and** every Agent's server cert, and Agent certs
+carry the `ClientAuth` EKU (they need it to dial the reverse tunnel). So any Agent's
+own certificate authenticated as a client to every *other* Agent. An attacker who
+compromised one node (or redeemed a single leaked one-time enrollment token) could
+therefore drive the full `NodeService` on every node in the fleet — including
+`UpdateAgent`, which overwrites the target's own binary and re-execs it: remote code
+execution on the whole fleet from one foothold.
+
+_PoC (before):_ `TestAgentRejectsPeerAgentCertificate` — an attacker-held enrolled
+Agent cert calls `GetNodeInfo` on a peer Agent and succeeds; `TestAgentRejectsPeerAgentReachingUpdateRPC`
+shows the same cert reaching the `UpdateAgent` (RCE) handler
+(`internal/agent/crossagent_authz_test.go`). Reverting just the fix re-opens both.
+
+**Fix:** identity-based authorization on the Agent listener. `mtls.RequirePeerCN`
+(installed as `ServerTLS`'s `VerifyConnection`) enforces that the verified client
+leaf's Subject `CN` equals `PanelServerName` — only the Panel may drive an Agent.
+The CN is authoritative because the signer sets it (`SignAgentCSR*` hardcodes the
+subject and never copies it from the CSR), so an enrollee cannot forge it. The
+Agent's handshake-logging hook in `cmd/agent/main.go` now *chains* that check
+instead of replacing it (a bare `return nil` there would have silently re-opened the
+listener). The reverse-tunnel listener (`ServerTLSFromBytes`) is unchanged and still
+accepts Agent certs — that direction is *supposed* to, and it already authorizes by
+the per-node URI-SAN identity → node binding.
+
+**Hardened (defense-in-depth):** `SignAgentCSRWithIdentity` now strips the reserved
+logical names (`kraken-panel`, `kraken-ca`) from enrollee-supplied CSR SANs
+(`dropReservedNames`), so a crafted CSR can never have the Panel's or CA's identity
+signed into an Agent cert. Regression: `TestEnrollmentCannotMintPanelIdentity`.
+Guardrail that the Panel's own cert still works: `TestAgentAcceptsPanelCertificate`.
+
+This also resolves the standing "Flat Agent certificate identity" recommendation's
+worst consequence: even though all Agent certs still share `CN=kraken-agent`, they
+are no longer accepted as *clients* by peer Agents at all.
+
+### Dependency + static-analysis sweep
+
+- **Go toolchain → 1.26.6** (pinned via a `toolchain` directive in `go.mod`).
+  `govulncheck` had flagged **8 standard-library advisories** reachable from Panel
+  and Agent code paths (`GO-2026-6218/6091/6090/6089/6088/5972/5856/5026`, in
+  `net/url`, `html/template`, `crypto/tls`, `net/http`, `encoding/xml`,
+  `encoding/asn1`, `golang.org/x/net/idna`) — **all fixed in go1.26.6**. After the
+  bump, `govulncheck` reports **only** the 2 unfixable Docker-Engine-SDK advisories
+  (`GO-2026-4887`, `GO-2026-4883`, both `Fixed in: N/A`), which remain **accepted
+  with monitoring**: agent-only, and the vulnerable file-copy/archive functions are
+  not on any Kraken call path (all file ops + backups are native Go over bind mounts).
+- **`npm audit`** (web, prod + dev) — **0 vulnerabilities**.
+- **`go vet` / `staticcheck`** — clean.
+- **`gosec`** — 82 MEDIUM+ findings, all in the previously-triaged baseline
+  categories (G115 bounded integer conversions; G304 file reads guarded by
+  `safePath`/config paths; G703/G704 operator-supplied `krakenctl` CLI args;
+  G122 walks over the Agent's own managed dir; G301/G306 intentional perms with
+  private keys at `0600`; G118 long-lived background goroutines). Spot-checked the
+  newer rules: G705 "XSS" on the file-download handlers is a false positive — they
+  send `Content-Type: application/octet-stream`/`application/zip` +
+  `Content-Disposition: attachment` under the global `X-Content-Type-Options: nosniff`;
+  G120 unbounded-form is bounded by `ParseMultipartForm(maxUploadBytes)` +
+  `io.LimitReader`; G404 is non-crypto reconnect jitter. No exploitable issue.
+- **Full `go test -race ./...`** — green.

@@ -32,8 +32,35 @@ func caPool(caFile string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// ServerTLS builds the Agent's server-side config: it presents certFile/keyFile
-// and requires every client to present a certificate signed by caFile.
+// RequirePeerCN returns a tls.Config.VerifyConnection hook that, on top of the
+// CA-chain verification RequireAndVerifyClientCert already did, insists the
+// verified client leaf's Subject CommonName equals wantCN.
+//
+// This is the load-bearing authorization for the Agent's gRPC listener. The CA
+// is a *shared* trust anchor: it signs the Panel's client cert AND every Agent's
+// server cert, and Agent certs carry ClientAuth EKU (they need it to dial the
+// reverse tunnel). Chain-validation alone therefore accepts any Agent's own cert
+// as a client — so a single stolen/enrolled Agent cert could drive the full
+// NodeService (UpdateAgent → arbitrary binary → RCE) on every other node. The CN
+// is authoritative because the signer sets it (SignAgentCSR* hardcodes it and
+// never copies the CSR subject), so an enrollee cannot forge PanelServerName.
+func RequirePeerCN(wantCN string) func(tls.ConnectionState) error {
+	return func(cs tls.ConnectionState) error {
+		if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
+			return fmt.Errorf("mtls: no verified client certificate")
+		}
+		got := cs.VerifiedChains[0][0].Subject.CommonName
+		if got != wantCN {
+			return fmt.Errorf("mtls: client identity %q is not authorized (want %q)", got, wantCN)
+		}
+		return nil
+	}
+}
+
+// ServerTLS builds the Agent's direct-listener server config: it presents
+// certFile/keyFile, requires a client cert signed by caFile, AND authorizes the
+// client by identity — only the Panel (CN=PanelServerName) may connect. Without
+// that last check any peer Agent's cert would authenticate (see RequirePeerCN).
 func ServerTLS(certFile, keyFile, caFile string) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -44,10 +71,11 @@ func ServerTLS(certFile, keyFile, caFile string) (*tls.Config, error) {
 		return nil, err
 	}
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    pool,
-		MinVersion:   tls.VersionTLS12,
+		Certificates:     []tls.Certificate{cert},
+		ClientAuth:       tls.RequireAndVerifyClientCert,
+		ClientCAs:        pool,
+		MinVersion:       tls.VersionTLS12,
+		VerifyConnection: RequirePeerCN(PanelServerName),
 	}, nil
 }
 

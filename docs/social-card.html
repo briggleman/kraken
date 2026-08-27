@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Kraken — social preview (1280×640)</title>
+<title>Kraken — GitHub social card (1280×640)</title>
 <style>
-/* Panel-served copy of docs/social-card.html — source for social-preview.png — screenshot the .card element at 1280x640.
+/* Source for assets/kraken-social-card.png — screenshot the .card element at 1280x640.
    All content sits inside a 72px margin, clearing GitHub's recommended 40pt safe border.
    Fonts are self-hosted so the render is deterministic and does not depend on a
    third-party fetch completing before the shutter. */
 @font-face{
   font-family:'Archivo';
-  src:url('/fonts/archivo-latin.woff2') format('woff2');
+  src:url(assets/fonts/archivo-latin.woff2) format('woff2');
   font-weight:400 700;font-style:normal;font-display:block;
 }
 @font-face{
   font-family:'Spline Sans Mono';
-  src:url('/fonts/spline-sans-mono-latin.woff2') format('woff2');
+  src:url(assets/fonts/spline-sans-mono-latin.woff2) format('woff2');
   font-weight:300 500;font-style:normal;font-display:block;
 }
 :root{
@@ -62,7 +62,7 @@ body{
 .kr-glyph{
   display:block;flex:0 0 auto;align-self:center;
   width:1.095em;aspect-ratio:398 / 429;
-  background:url(/kraken-glyph-teal.png) center / contain no-repeat;
+  background:url(assets/kraken-glyph-teal.png) center / contain no-repeat;
   filter:brightness(0) invert(84%) sepia(48%) saturate(600%) hue-rotate(338deg) brightness(101%)
          drop-shadow(0 0 26px rgba(var(--lumen-rgb),.45));
 }

@@ -45,8 +45,15 @@ let backupPoll: ReturnType<typeof setInterval> | undefined;
 export function streamModeFor(state: Server["state"] | undefined): StreamMode {
   if (!state) return "off";
   if (state === "starting" || state === "running" || state === "stopping") return "live";
+  // offline / crashed: the container is stopped but Docker still holds its
+  // logs until the next start, so the stream replays the tail and ends.
   if (state === "offline" || state === "crashed") return "replay";
-  return "off"; // installing / install_failed have no container to tail
+  // installing / install_failed: there is no server container to tail. The
+  // installer's own output never reaches this socket either — the Panel
+  // consumes the agent's install stream and keeps only the failure reason
+  // (handlers_server.go), so opening a socket here would just fail and climb
+  // the backoff ladder. See the install-progress backlog issue.
+  return "off";
 }
 
 export function openDepth(id: string, x: number, y: number, returnTo?: HTMLElement | null) {
@@ -122,6 +129,23 @@ export async function power(action: PowerActionName) {
   depth.powerBusy = true;
   try {
     await api.powerServer(depth.serverId, action);
+    await refreshFleet();
+    syncDepthFromFleet();
+  } catch (e) {
+    depth.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    depth.powerBusy = false;
+  }
+}
+
+/** A failed install is a dead end without the retry: provisioning is the one
+ *  state the power controls cannot recover from. */
+export async function reinstall() {
+  if (!depth.serverId || depth.powerBusy) return;
+  depth.powerBusy = true;
+  depth.error = null;
+  try {
+    await api.reinstallServer(depth.serverId);
     await refreshFleet();
     syncDepthFromFleet();
   } catch (e) {

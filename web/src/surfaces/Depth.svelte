@@ -17,6 +17,7 @@
     dnsUnpublish,
     forwardSet,
     settingsApply,
+    reinstall,
   } from "@/lib/depth.svelte";
   import { openConfirm } from "@/lib/state.svelte";
   import { specOf } from "@/lib/fleet.svelte";
@@ -54,9 +55,15 @@
 
   // vitals — real stream stats
   const cpuPct = $derived(stats ? Math.round(stats.cpu_percent) : 0);
+  // Docker reports cpu across all cores, so a busy server legitimately reads
+  // past 100 (Valheim generating a world sat at 104). The number is true and
+  // stays as measured; the rail is a 0-100 track, so only the fill is capped —
+  // a bar cannot be more than full, and clamping the readout would lie.
+  const cpuRail = $derived(Math.max(0, Math.min(100, cpuPct)));
   const memPct = $derived(
     stats && stats.mem_limit_mb > 0 ? Math.round((stats.mem_used_mb / stats.mem_limit_mb) * 100) : 0,
   );
+  const memRail = $derived(Math.max(0, Math.min(100, memPct)));
   // net rate from successive cumulative byte counters. lastNet is a plain
   // variable, NOT $state: the effect both reads and writes it, and a reactive
   // read-write in one effect is an infinite update loop.
@@ -377,6 +384,24 @@
       </section>
     {/key}
     <div class="depth-side">
+      {#if server?.state === "installing"}
+        <p class="depth-notice" role="status">
+          <b>installing — the game files are downloading on the node. this can take a while for a
+            large game; the console picks up when the server starts.</b>
+        </p>
+      {/if}
+      {#if server?.state === "install_failed"}
+        <p class="depth-notice bad" role="alert">
+          <b>install failed — the server never provisioned.{server.last_error ? " " + server.last_error : ""}</b>
+          <button class="mini-act res" disabled={depth.powerBusy} onclick={() => void reinstall()}>reinstall</button>
+        </p>
+      {/if}
+      {#if depth.error}
+        <p class="depth-notice" role="alert">
+          <b>{depth.error}</b>
+          <button class="mini-act" onclick={() => (depth.error = null)}>dismiss</button>
+        </p>
+      {/if}
       <div class="controls-row" id="dControls">
         {#if running || server?.state === "starting" || server?.state === "stopping"}
           <button class="ctl ctl-stop" disabled={depth.powerBusy} onclick={() => void power("stop")}>stop</button>
@@ -409,8 +434,8 @@
       <section class="side-block" aria-label="Server vitals">
         <h3 class="pane-label">vitals</h3>
         <div class="side-body">
-          <div class="kv railed"><span>cpu</span><span class="heat-rail" use:istyle={`--pct: ${cpuPct}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? cpuPct : "—"}</span><small>%</small></b></div>
-          <div class="kv railed"><span>mem</span><span class="heat-rail" use:istyle={`--pct: ${memPct}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? fmtGb(stats.mem_used_mb) + " / " + Math.round(stats.mem_limit_mb / 1024) : "—"}</span><small>G</small></b></div>
+          <div class="kv railed"><span>cpu</span><span class="heat-rail" use:istyle={`--pct: ${cpuRail}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? cpuPct : "—"}</span><small>%</small></b></div>
+          <div class="kv railed"><span>mem</span><span class="heat-rail" use:istyle={`--pct: ${memRail}%`}><span class="heat-ghost"></span><span class="heat-fill"></span></span><b><span>{stats ? fmtGb(stats.mem_used_mb) + " / " + Math.round(stats.mem_limit_mb / 1024) : "—"}</span><small>G</small></b></div>
           <div class="kv railed"><span>net</span><span class="tick-lane{stats ? '' : ' dead'}" aria-hidden="true" use:istyle={`--rate: ${Math.max(0.2, Math.min(3, netRate / 4 + 0.4)).toFixed(2)}`}><i class="tk" use:istyle={"--d:1.9s; --dl:-0.2s; opacity:0.9"}></i><i class="tk" use:istyle={"--d:2.6s; --dl:-1.3s; opacity:0.6"}></i><i class="tk" use:istyle={"--d:2.2s; --dl:-1.9s; opacity:0.75"}></i><i class="tk" use:istyle={"--d:3s; --dl:-0.7s; opacity:0.5"}></i><i class="tk" use:istyle={"--d:2.4s; --dl:-2.1s; opacity:0.8"}></i><i class="tk" use:istyle={"--d:2.8s; --dl:-0.4s; opacity:0.55"}></i></span><b><span>{stats ? netRate.toFixed(1) : "—"}</span><small>Mb/s</small></b></div>
           <div class="kv"><span>world size</span><b><span>{stats?.disk_used_mb ? fmtGb(stats.disk_used_mb) : "—"}</span><small>G</small></b></div>
         </div>

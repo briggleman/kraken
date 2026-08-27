@@ -419,6 +419,29 @@
   .danger-block .pane-label { color: rgba(var(--crisis-rgb), 0.8); border-bottom-color: rgba(var(--crisis-rgb), 0.18); }
   .danger-note { margin: 0; font-size: clamp(11px, 0.74vw, 13px); line-height: 1.55; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
 
+  /* When a control is refused - the agent cannot reach its runtime, an image is
+     missing, the gateway says no - the answer belongs where the eye already is:
+     directly above the controls that were just pressed. Caution Violet, not
+     crisis: the request failed, the server did not. It carries its own dismiss
+     because it is the operator who decides when they have read it. */
+  .depth-notice {
+    display: flex; align-items: flex-start; gap: 10px; margin: 0;
+    padding: 10px 12px; border-radius: 4px;
+    background: rgba(var(--caution-rgb), 0.08);
+    border: 1px solid rgba(var(--caution-rgb), 0.4);
+  }
+  .depth-notice b {
+    flex: 1; min-width: 0; font-family: var(--mono); font-weight: 300;
+    font-size: 12px; line-height: 1.5; color: var(--caution);
+    overflow-wrap: anywhere;
+  }
+  .depth-notice .mini-act { flex: none; }
+  /* A failed install is the harder case: the server does not exist yet, and the
+     power controls cannot reach it. Crisis, and the retry rides in the notice
+     because the reason and the fix belong in one place. */
+  .depth-notice.bad { background: rgba(var(--crisis-rgb), 0.08); border-color: rgba(var(--crisis-rgb), 0.4); }
+  .depth-notice.bad b { color: var(--crisis); }
+
   /* ---------- destructive confirm (typed acknowledgement) ---------- */
   .confirm { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; padding: 24px; }
   .confirm.open { display: grid; }

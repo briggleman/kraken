@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/briggleman/kraken/compare/v0.25.0...v0.25.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **images:** add xz-utils to steam-base so Factorio can install ([30a5928](https://github.com/briggleman/kraken/commit/30a5928ee8c84c522f005e106b997f44b7fd3a92)), closes [#132](https://github.com/briggleman/kraken/issues/132)
+
 ## [0.25.0](https://github.com/briggleman/kraken/compare/v0.24.0...v0.25.0) (2026-08-20)
 
 

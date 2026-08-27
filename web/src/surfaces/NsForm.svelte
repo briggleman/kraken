@@ -50,8 +50,18 @@
       p.kind === "linux-native" ? "linux" : p.kind === "windows-native" ? "windows" : "wine",
     ),
   );
-  const minMb = $derived(spec?.resources.min_memory_mb ?? 0);
-  const memAfter = $derived(node ? node.allocated_memory_mb + minMb : minMb);
+  // What the panel will actually reserve: the recommended figure when the spec
+  // states one, else the minimum (scheduler.Place → Resources.AllocMemoryMB).
+  // The strip reports that number, not the floor — a cost readout that quotes
+  // a smaller figure than the one about to be taken is misinformation.
+  const allocMb = $derived(
+    spec?.resources.recommended_memory_mb || spec?.resources.min_memory_mb || 0,
+  );
+  const memAfter = $derived(node ? node.allocated_memory_mb + allocMb : allocMb);
+  // Recommended figures are larger than the old minimums, so over-commit is a
+  // live case now: the panel will refuse the placement, and the strip should
+  // say so before the button is pressed rather than printing 34/32G mutely.
+  const overCapacity = $derived(!!node && memAfter > node.total_memory_mb);
 
   async function create() {
     if (!spec || busy) return;
@@ -189,12 +199,15 @@
         {/if}
       </div>
       <div class="ns-alloc">
-        <div class="ns-cost"><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
-        <div class="ns-cost"><span>min memory</span><b>{fmtGb(minMb)}<em>G</em></b></div>
-        <div class="ns-cost"><span>recommended</span><b>{spec?.resources.recommended_memory_mb ? fmtGb(spec.resources.recommended_memory_mb) : "—"}<em>G</em></b></div>
+        <div class="ns-cost" class:over={overCapacity}><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
+        <div class="ns-cost"><span>rec memory</span><b>{fmtGb(allocMb)}<em>G</em></b></div>
         <div class="ns-cost"><span>ports needed</span><b>{spec?.ports?.length ?? 0}<em></em></b></div>
         <div class="ns-acts">
-          {#if err}<span class="cfg-note" use:istyle={"color: var(--crisis)"}>{err}</span>{/if}
+          {#if err}<span class="cfg-note" use:istyle={"color: var(--crisis)"}>{err}</span>
+          {:else if overCapacity}<span class="cfg-note" use:istyle={"color: var(--caution)"}
+            >{node?.name} has {fmtGb(node.total_memory_mb - node.allocated_memory_mb)}G free — this
+            needs {fmtGb(allocMb)}G</span
+          >{/if}
           <button class="cfg-btn ghost" onclick={() => closeSheet("nsForm")}>cancel</button>
           <button class="cfg-btn solid" disabled={busy || !spec} onclick={() => void create()}>create server</button>
         </div>

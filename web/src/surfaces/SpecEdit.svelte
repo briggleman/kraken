@@ -167,7 +167,7 @@
           <div class="cfg">
             <label class="cfg-row"><span>min memory (mb)</span><input class="cfg-in" type="text" value={spec.resources.min_memory_mb} /></label>
             <label class="cfg-row"><span>recommended (mb)</span><input class="cfg-in" type="text" value={spec.resources.recommended_memory_mb ?? ""} placeholder="—" /></label>
-            <p class="cfg-help">the minimum is enforced when a server is created; the recommendation is what the new server sheet fills in.</p>
+            <p class="cfg-help">a new server is reserved the recommendation when one is set, and the minimum otherwise — so the recommendation is the figure that actually gets allocated, and the minimum is the fallback for specs that state nothing.</p>
           </div>
         </section>
 

@@ -1139,6 +1139,12 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .ns-cost span { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); }
   .ns-cost b { font-family: var(--mono); font-weight: 500; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
   .ns-cost b em { font-style: normal; font-size: 0.66em; color: var(--ink-3); }
+  /* A cost that does not fit is a condition, not a failure: the node is running
+     and something is prevented, which is the Caution band by definition. The
+     tile marks itself rather than the whole strip, because one figure is wrong
+     and the rest are still true. */
+  .ns-cost.over b { color: var(--caution); }
+  .ns-cost.over span { color: var(--caution); opacity: 0.8; }
   /* ONE auto margin, not one per button. This rule used to match both, so the row's
      free space was split into two equal gaps and "cancel" sat ~235px from the button
      it belongs to. The pair takes the space together now, at .node-actions' 10px. */

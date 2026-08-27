@@ -43,6 +43,7 @@ LDFLAGS := -s -w \
 ## Build the web bundle so //go:embed picks up real assets.
 build-web:
 	npm --prefix web ci
+	npm --prefix web run check:design
 	npm --prefix web run build
 
 ## Build all three Go binaries into bin/.

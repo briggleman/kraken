@@ -1,0 +1,695 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-26T14:51:13-04:00",
+  "title": "Design System: Kraken",
+  "extensions": {
+    "colorMeta": {
+      "abyss-floor": {
+        "role": "neutral",
+        "displayName": "Abyss Floor",
+        "purpose": "The deepest page ground; the bottom of the body gradient.",
+        "canonical": "#050d14",
+        "tonalRamp": [
+          "#0a1b29",
+          "#143552",
+          "#20527e",
+          "#2c72af",
+          "#4b93d2",
+          "#81b3df",
+          "#b6d3ed",
+          "#e2eef8"
+        ]
+      },
+      "abyss-mid": {
+        "role": "neutral",
+        "displayName": "Abyss Mid",
+        "purpose": "Panel gradient base — the middle of the water column.",
+        "canonical": "#071521",
+        "tonalRamp": [
+          "#091b2a",
+          "#123654",
+          "#1c5382",
+          "#2673b5",
+          "#4694d8",
+          "#7db4e3",
+          "#b3d3ef",
+          "#e2eef9"
+        ]
+      },
+      "abyss-panel": {
+        "role": "neutral",
+        "displayName": "Abyss Panel",
+        "purpose": "Panel gradient top; the shallowest surface on screen.",
+        "canonical": "#0a1e2c",
+        "tonalRamp": [
+          "#091c2a",
+          "#133953",
+          "#1d5881",
+          "#297ab3",
+          "#489bd5",
+          "#7eb9e2",
+          "#b4d6ee",
+          "#e2eff8"
+        ]
+      },
+      "abyss-void": {
+        "role": "neutral",
+        "displayName": "Abyss Void",
+        "purpose": "The page's deepest ground, beneath the depth gradient.",
+        "canonical": "#02090E",
+        "tonalRamp": [
+          "#061d2d",
+          "#0d3959",
+          "#14598a",
+          "#1b7bc0",
+          "#3b9de3",
+          "#75baeb",
+          "#afd7f4",
+          "#e0effb"
+        ]
+      },
+      "depth-shallow": {
+        "role": "neutral",
+        "displayName": "Depth Shallow",
+        "purpose": "Top stop of the fixed water-column backdrop.",
+        "canonical": "#0d3340",
+        "tonalRamp": [
+          "#082028",
+          "#165064",
+          "#277a96",
+          "#3b9fc2",
+          "#70b4cb",
+          "#a1c9d7",
+          "#cee0e6",
+          "#f5f8f9"
+        ]
+      },
+      "depth-upper": {
+        "role": "neutral",
+        "displayName": "Depth Upper",
+        "purpose": "Second stop of the water-column backdrop.",
+        "canonical": "#082530",
+        "tonalRamp": [
+          "#05171e",
+          "#12495e",
+          "#217493",
+          "#349bc1",
+          "#68b2ce",
+          "#9cc8d8",
+          "#cbdfe6",
+          "#f5f8f9"
+        ]
+      },
+      "depth-lower": {
+        "role": "neutral",
+        "displayName": "Depth Lower",
+        "purpose": "Third stop of the water-column backdrop.",
+        "canonical": "#04141B",
+        "tonalRamp": [
+          "#07212c",
+          "#0d4259",
+          "#14668a",
+          "#1c8dbf",
+          "#3cafe2",
+          "#75c7eb",
+          "#afdef3",
+          "#e0f2fa"
+        ]
+      },
+      "sodium-lumen": {
+        "role": "primary",
+        "displayName": "Sodium Lumen",
+        "purpose": "The only light. Live lines, running state, glow, focus. Always means alive.",
+        "canonical": "#ffc266",
+        "tonalRamp": [
+          "#331f00",
+          "#663d00",
+          "#9e5f00",
+          "#db8400",
+          "#ffa61f",
+          "#ffc061",
+          "#ffdaa3",
+          "#fff1db"
+        ]
+      },
+      "surface-light": {
+        "role": "neutral",
+        "displayName": "Surface Light",
+        "purpose": "God rays and the breathing surface glow; backdrop only, never UI chrome.",
+        "canonical": "#FFD79A",
+        "tonalRamp": [
+          "#331f00",
+          "#663e00",
+          "#9e5f00",
+          "#db8400",
+          "#ffa61f",
+          "#ffc061",
+          "#ffdba3",
+          "#fff1db"
+        ]
+      },
+      "status-ok-gold": {
+        "role": "semantic",
+        "displayName": "Status Gold",
+        "purpose": "Healthy-zone data and 2xx. Always paired with position or pattern.",
+        "canonical": "#d8b46a",
+        "tonalRamp": [
+          "#281f0b",
+          "#513d15",
+          "#7d5f21",
+          "#ae842d",
+          "#d0a54d",
+          "#dec082",
+          "#ecdab6",
+          "#f8f1e3"
+        ]
+      },
+      "caution-violet": {
+        "role": "semantic",
+        "displayName": "Caution Violet",
+        "purpose": "Warning zone, 4xx, and the no-auth mark.",
+        "canonical": "#9d8cff",
+        "tonalRamp": [
+          "#080033",
+          "#0f0066",
+          "#17009e",
+          "#2000db",
+          "#401fff",
+          "#7861ff",
+          "#b1a3ff",
+          "#e1dbff"
+        ]
+      },
+      "crisis-magenta": {
+        "role": "semantic",
+        "displayName": "Crisis Magenta",
+        "purpose": "Critical zone, 5xx, and DELETE. Never decorative.",
+        "canonical": "#ff4d9d",
+        "tonalRamp": [
+          "#330017",
+          "#66002e",
+          "#9e0047",
+          "#db0063",
+          "#ff1f83",
+          "#ff61a8",
+          "#ffa3cc",
+          "#ffdbeb"
+        ]
+      },
+      "sand-secondary": {
+        "role": "neutral",
+        "displayName": "Sand Secondary",
+        "purpose": "Secondary text — warm-tinted, never gray.",
+        "canonical": "#b6a894",
+        "tonalRamp": [
+          "#1e1a15",
+          "#3d3529",
+          "#5e5240",
+          "#827159",
+          "#a4937a",
+          "#bfb3a1",
+          "#dad3c8",
+          "#f1eeea"
+        ]
+      },
+      "sand-faint": {
+        "role": "neutral",
+        "displayName": "Sand Faint",
+        "purpose": "Labels, tertiary text, stopped-state text.",
+        "canonical": "#7d7160",
+        "tonalRamp": [
+          "#1d1a16",
+          "#3a342c",
+          "#595145",
+          "#7c705f",
+          "#9e9180",
+          "#bab2a6",
+          "#d7d2cb",
+          "#efeeeb"
+        ]
+      },
+      "spectrum-deep-teal": {
+        "role": "semantic",
+        "displayName": "Spectrum Deep Teal",
+        "purpose": "Cool end of the heat-spectrum strip (.heat-ghost / .heat-fill) and the only green on the page. Last survivor of the pre-Kraken teal palette; documented as rendered, not as intended.",
+        "canonical": "#1a7a6d",
+        "tonalRamp": [
+          "#104c44",
+          "#1e8173",
+          "#2fac9b",
+          "#4ec7b7",
+          "#7dcfc4",
+          "#aadad3",
+          "#d2e8e5",
+          "#f5f9f9"
+        ]
+      },
+      "sand-primary": {
+        "role": "neutral",
+        "displayName": "Sand",
+        "purpose": "Primary text and numerals; carries 30% of the accent so no white reads as foreign. Called Ice Text through earlier drafts.",
+        "canonical": "#f5dfc1",
+        "tonalRamp": [
+          "#2c1c07",
+          "#58390e",
+          "#885816",
+          "#bd7a1e",
+          "#e09b3e",
+          "#e9b977",
+          "#f2d6b0",
+          "#faefe0"
+        ]
+      },
+      "ember-gold": {
+        "role": "primary",
+        "displayName": "Ember Gold",
+        "purpose": "The bottom stop of the one gradient fill in the house, under Sodium Lumen on a solid button. Never on text, never alone.",
+        "canonical": "#d99a3c",
+        "tonalRamp": [
+          "#402b0c",
+          "#714c16",
+          "#a26d1f",
+          "#d28e29",
+          "#dea857",
+          "#e8c188",
+          "#f1dbb9",
+          "#fbf4ea"
+        ]
+      },
+      "trench-upper": {
+        "role": "neutral",
+        "displayName": "Trench Upper",
+        "purpose": "Top of the overlay ground - the backdrop a drill-in or a sheet drops in place of the page's water column.",
+        "canonical": "#030d16",
+        "tonalRamp": [
+          "#092843",
+          "#104677",
+          "#1764aa",
+          "#1e83dd",
+          "#4f9fe7",
+          "#82bbee",
+          "#b5d7f5",
+          "#e9f3fc"
+        ]
+      },
+      "trench-mid": {
+        "role": "neutral",
+        "displayName": "Trench Mid",
+        "purpose": "The 55% stop of that same overlay ground; it barely moves, which is the point.",
+        "canonical": "#04121d",
+        "tonalRamp": [
+          "#092a43",
+          "#104a76",
+          "#1769aa",
+          "#1e89dd",
+          "#4fa4e7",
+          "#82beee",
+          "#b5d9f5",
+          "#e9f3fc"
+        ]
+      },
+      "upwelling-violet": {
+        "role": "tertiary",
+        "displayName": "Upwelling Violet",
+        "purpose": "A radial rising from below the fold on the overlay ground. The only light under a sheet, and the reason going deeper reads as lit from underneath.",
+        "canonical": "#2a2033",
+        "tonalRamp": [
+          "#271d2f",
+          "#443453",
+          "#624a77",
+          "#7f619a",
+          "#9c84b2",
+          "#b9a8c8",
+          "#d6ccdf",
+          "#f2eff5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Server names on cards. Tight leading, so a Rack Label can sit directly above."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "The h2 of every sheet and the drill-in - the one place a screen says what it is. Appears once per screen; node names are the Hollow Nameplate, not Title."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Metadata lines and event text."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Every live numeral; mono, tabular, glowing."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Tracked-caps metric and section labels."
+      },
+      "rack": {
+        "displayName": "Rack Label",
+        "purpose": "The owning node above a server name; the only tracked caps that sits above a headline rather than beside a value."
+      },
+      "wire": {
+        "displayName": "Wire Token",
+        "purpose": "An HTTP method on an endpoint row; the only type that keeps its uppercase, because the source does."
+      }
+    },
+    "shadows": [
+      {
+        "name": "depth",
+        "value": "0 18px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255, 194, 102, 0.07)",
+        "purpose": "Resting panels and bands — atmospheric depth plus a 1px inner top light."
+      },
+      {
+        "name": "glow",
+        "value": "0 18px 50px rgba(0,0,0,0.5), 0 0 30px rgba(255, 194, 102, 0.06)",
+        "purpose": "Hovered or active live surfaces. The ambient shadow darkens as the glow arrives."
+      },
+      {
+        "name": "lifted",
+        "value": "0 18px 50px rgba(0,0,0,0.51), inset 0 1px 0 rgba(255, 194, 102, 0.084)",
+        "purpose": "Overlays floating above a panel (the select picker). Depth with both terms scaled ~1.13x."
+      },
+      {
+        "name": "destructive",
+        "value": "0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255, 194, 102, 0.07)",
+        "purpose": "The delete confirmation only: a deeper ground under a crisis-bordered surface."
+      },
+      {
+        "name": "state-bar",
+        "value": "inset 3px 0 0 rgba(157, 140, 255, 0.5)",
+        "purpose": "Row and field state on a table or form. Never transitioned — a transitioned property will not update from an ancestor :has() toggle."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-rise",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Hover rise, overlay plunges, meter transitions."
+      },
+      {
+        "name": "plunge",
+        "value": "clip-path 0.65s cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Every full-screen arrival: sheet, drill-in, prefs, login. Circle grows from the click point."
+      },
+      {
+        "name": "meter-cadence",
+        "value": "2600ms",
+        "purpose": "The dot-matrix meters shift one column per tick."
+      },
+      {
+        "name": "chart-cadence",
+        "value": "2000ms",
+        "purpose": "Canvas area charts append one point per tick; reduced-motion stills them."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "floor",
+        "value": "1920px",
+        "purpose": "1080p — the composed minimum; everything fluid above it via clamp()."
+      },
+      {
+        "name": "deck-reflow",
+        "value": "1100px",
+        "purpose": "max-width. Fleet grid and node band collapse to one column."
+      },
+      {
+        "name": "wide-field",
+        "value": "640px",
+        "purpose": "min-width. Gates the data-directory field's two-track span; ungated, auto-fit manufactures a second track for a spanning item even when one fits."
+      },
+      {
+        "name": "wizard-collapse",
+        "value": "640px",
+        "purpose": "max-width. The wizard's two-column config grid collapses to one. Same number as wide-field in the opposite direction, deliberately a separate query: sharing a number is a coincidence, not a system."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The universal surface: top-lit gradient, gold hairline, deep soft shadow.",
+      "html": "<div class=\"ds-panel\"><span class=\"ds-panel-label\">memory</span><span class=\"ds-panel-value\">21.4<small>/64G</small></span></div>",
+      "css": ".ds-panel { display: grid; gap: 6px; background: linear-gradient(180deg, #0a1e2c, #071521); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 6px; padding: 18px 22px; box-shadow: 0 18px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255, 194, 102, 0.07); } .ds-panel-label { font: 600 12px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3, #7d7160); } .ds-panel-value { font: 500 32px/1.1 var(--mono, 'Spline Sans Mono', Consolas, monospace); font-variant-numeric: tabular-nums; color: var(--ink, #f5dfc1); text-shadow: 0 0 16px rgba(255, 194, 102, 0.25); } .ds-panel-value small { font-size: 0.5em; font-weight: 300; color: var(--ink-2, #b6a894); }"
+    },
+    {
+      "name": "Brand Lockup",
+      "kind": "custom",
+      "description": "Glyph and wordmark on one line, sized in em off the word so one lockup serves the 26px header and the 49px login mark. The hollow variant is the login one.",
+      "html": "<span class=\"ds-lock\"><i class=\"ds-glyph\" aria-hidden=\"true\"></i><b class=\"ds-word\">KRAKEN</b></span>",
+      "css": ".ds-lock { display: inline-flex; align-items: baseline; gap: 0.43em; font: 700 34px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.34em; padding-left: 0.34em; } .ds-glyph { display: block; flex: 0 0 auto; align-self: center; width: 1.095em; aspect-ratio: 398 / 429; border-radius: 2px; background: radial-gradient(60% 55% at 50% 32%, var(--lumen, #ffc266) 0%, rgba(255,194,102,0.35) 62%, transparent 78%); filter: drop-shadow(0 0 14px rgba(255, 194, 102, 0.4)); } .ds-word { color: transparent; -webkit-text-stroke: 1.4px var(--lumen, #ffc266); text-shadow: 0 0 15px rgba(255, 194, 102, 0.45); }"
+    },
+    {
+      "name": "Running Chip",
+      "kind": "chip",
+      "refersTo": "chip-running",
+      "description": "Live-state chip: glowing dot, sodium gold on lumen-soft.",
+      "html": "<span class=\"ds-chip-run\"><i></i>running</span>",
+      "css": ".ds-chip-run { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 3px; font: 600 11px/1.6 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.2em; text-transform: uppercase; color: var(--lumen, #ffc266); background: rgba(255, 194, 102, 0.09); border: 1px solid rgba(255, 194, 102, 0.35); } .ds-chip-run i { width: 7px; height: 7px; border-radius: 50%; background: var(--lumen, #ffc266); box-shadow: 0 0 8px var(--lumen, #ffc266); }"
+    },
+    {
+      "name": "Stopped Chip",
+      "kind": "chip",
+      "refersTo": "chip-stopped",
+      "description": "Dark-state chip: hollow dot, Sand Faint. A stopped thing loses its light; it is never painted crisis for being off.",
+      "html": "<span class=\"ds-chip-stop\"><i></i>stopped</span>",
+      "css": ".ds-chip-stop { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 3px; font: 600 11px/1.6 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3, #7d7160); border: 1px solid rgba(125, 113, 96, 0.4); } .ds-chip-stop i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink-3, #7d7160); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The open/act affordance: quiet until its parent is hovered.",
+      "html": "<button class=\"ds-btn-ghost\"><svg viewBox=\"0 0 14 14\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M 2 5 L 7 10 L 12 5\"/></svg>open</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: none; border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; font: 600 11px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-2, #b6a894); cursor: pointer; transition: color 0.25s, border-color 0.25s, background 0.25s; } .ds-btn-ghost:hover { color: var(--lumen, #ffc266); border-color: rgba(255, 194, 102, 0.45); background: rgba(255, 194, 102, 0.09); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: 3px; }"
+    },
+    {
+      "name": "Form Field",
+      "kind": "input",
+      "description": "Mono on a well darker than the panel, so a field reads as cut into the surface. A dashed border means the value is real but not yours to change here.",
+      "html": "<span class=\"ds-field\"><input class=\"ds-in\" type=\"text\" value=\"86400\" aria-label=\"Session lifetime\"><input class=\"ds-in\" type=\"text\" value=\"https://kraken.zerooneone.io\" aria-label=\"Origins\" disabled></span>",
+      "css": ".ds-field { display: grid; gap: 10px; width: 320px; } .ds-in { width: 100%; font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-size: 13px; color: var(--ink, #f5dfc1); background: rgba(5,13,20,0.6); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; padding: 9px 12px; transition: border-color 0.15s; } .ds-in:focus { outline: none; border-color: rgba(255, 194, 102, 0.45); } .ds-in:disabled { color: var(--ink-3, #7d7160); border-style: dashed; cursor: not-allowed; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "description": "Filters a list in place with no script: a visually-hidden radio inside the label, lit through :has(:checked).",
+      "html": "<span class=\"ds-chips\" role=\"group\" aria-label=\"Filter\"><label class=\"ds-fchip\"><input type=\"radio\" name=\"dsf\" checked>all</label><label class=\"ds-fchip\"><input type=\"radio\" name=\"dsf\">changes</label><label class=\"ds-fchip\"><input type=\"radio\" name=\"dsf\">failures</label></span>",
+      "css": ".ds-chips { display: flex; gap: 8px; } .ds-fchip input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; } .ds-fchip { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; font: 600 10px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); padding: 7px 12px; border: 1px solid rgba(182, 168, 148, 0.3); border-radius: 3px; transition: color 0.2s, border-color 0.2s, background 0.2s; } .ds-fchip:hover { color: var(--ink-2, #b6a894); border-color: var(--ink-3, #7d7160); } .ds-fchip:has(:checked) { color: var(--lumen, #ffc266); border-color: rgba(255, 194, 102, 0.5); background: rgba(255, 194, 102, 0.09); } .ds-fchip:has(:focus-visible) { outline: 2px solid var(--lumen, #ffc266); outline-offset: 2px; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "description": "One grid, not a stack of rows: the container declares the column measures once and every head and row inherits them via subgrid. Row state is a left bar.",
+      "html": "<div class=\"ds-table\"><div class=\"ds-thead\"><span>time</span><span>actor</span><span>action</span><span class=\"ds-end\">status</span></div><div class=\"ds-trow\"><span class=\"ds-t\">23:41:07</span><span class=\"ds-who\">ben</span><span>restart palworld-02</span><span class=\"ds-res ds-s2\">200</span></div><div class=\"ds-trow ds-f5\"><span class=\"ds-t\">23:39:52</span><span class=\"ds-who\">agent</span><span>claim node-02</span><span class=\"ds-res ds-s5\">503</span></div></div>",
+      "css": ".ds-table { display: grid; grid-template-columns: max-content minmax(96px, max-content) minmax(0, 1fr) max-content; column-gap: 26px; border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 6px; overflow: hidden; background: linear-gradient(180deg, rgba(10,30,44,0.6), rgba(7,21,33,0.8)); } .ds-thead, .ds-trow { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; padding: 0 18px; } .ds-thead { border-bottom: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); } .ds-thead > span { font: 600 9px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3, #7d7160); padding: 12px 0 10px; } .ds-thead > span.ds-end { justify-self: end; } .ds-trow { padding: 8px 18px; font: 300 12.5px/1.5 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); font-variant-numeric: tabular-nums; border-top: 1px solid rgba(125, 113, 96, 0.14); transition: background 0.15s; } .ds-trow:hover { background: rgba(255, 194, 102, 0.05); } .ds-trow.ds-f5 { box-shadow: inset 3px 0 0 rgba(255, 77, 157, 0.55); } .ds-t { color: var(--ink-3, #7d7160); white-space: nowrap; } .ds-who { color: var(--ink, #f5dfc1); } .ds-res { justify-self: end; white-space: nowrap; font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-size: 9px; font-weight: 600; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 3px; border: 1px solid; } .ds-s2 { color: var(--ok, #d8b46a); border-color: rgba(216, 180, 106, 0.4); } .ds-s5 { color: var(--crisis, #ff4d9d); border-color: rgba(255, 77, 157, 0.45); background: rgba(255, 77, 157, 0.08); }"
+    },
+    {
+      "name": "Dot-matrix History Meter",
+      "kind": "custom",
+      "description": "The house chart. One column per sample, scrolling left, newest column glowing. Zone-coded: --lvl drives the height AND the colour, which is why a band that never crosses a threshold renders as a solid slab.",
+      "html": "<span class=\"ds-meter\" aria-hidden=\"true\"><i style=\"--lvl:34%\"></i><i style=\"--lvl:37%\"></i><i style=\"--lvl:41%\"></i><i style=\"--lvl:39%\"></i><i style=\"--lvl:44%\"></i><i style=\"--lvl:48%\"></i><i style=\"--lvl:46%\"></i><i style=\"--lvl:52%\" class=\"ds-w\"></i><i style=\"--lvl:56%\" class=\"ds-w\"></i><i style=\"--lvl:61%\" class=\"ds-w\"></i><i style=\"--lvl:58%\" class=\"ds-w\"></i><i style=\"--lvl:54%\" class=\"ds-w\"></i><i style=\"--lvl:49%\"></i><i style=\"--lvl:45%\"></i><i style=\"--lvl:51%\" class=\"ds-w\"></i><i style=\"--lvl:57%\" class=\"ds-w\"></i><i style=\"--lvl:63%\" class=\"ds-w\"></i><i style=\"--lvl:71%\" class=\"ds-w\"></i><i style=\"--lvl:78%\" class=\"ds-r\"></i><i style=\"--lvl:74%\" class=\"ds-w ds-now\"></i></span>",
+      "css": ".ds-meter { --cell: 6px; --dot: 2.4px; display: flex; align-items: flex-end; gap: 0; height: 46px; padding: 2px 0; mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 100%); } .ds-meter > i { position: relative; width: var(--cell); height: 100%; --c: var(--ok, #d8b46a); } .ds-meter > i.ds-w { --c: var(--caution, #9d8cff); } .ds-meter > i.ds-r { --c: var(--crisis, #ff4d9d); } .ds-meter > i::before { content: ''; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: var(--dot); height: var(--lvl); border-radius: 1px; background: var(--c); opacity: 0.75; transition: height 0.6s cubic-bezier(0.22, 1, 0.36, 1); } .ds-meter > i.ds-now::before { opacity: 1; box-shadow: 0 0 7px var(--c); }"
+    },
+    {
+      "name": "Event Line",
+      "kind": "custom",
+      "description": "One event in the floor stream: time faint, actor lit, body secondary.",
+      "html": "<span class=\"ds-ev\"><span class=\"ds-ev-t\">23:41</span><span class=\"ds-ev-who\">palworld</span> · kestrel joined · 7 online</span>",
+      "css": ".ds-ev { font: 300 14px/1.6 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); font-variant-numeric: tabular-nums; } .ds-ev-t { color: var(--ink-3, #7d7160); margin-right: 8px; } .ds-ev-who { color: var(--ink, #f5dfc1); }"
+    },
+    {
+      "name": "Step Rail",
+      "kind": "navigation",
+      "refersTo": "wz-rail",
+      "description": "First-run progress: five stops on one line with the light travelling down it. Done is a solid lumen disc with no glow, current is a lumen ring with one, ahead is a dim ink ring. Completion is a class, never a positional selector - a step can finish out of order.",
+      "html": "<div class=\"ds-rail\"><span class=\"ds-stop is-done\"><i>✓</i><b>database</b></span><span class=\"ds-line is-lit\"></span><span class=\"ds-stop is-now\"><i>2</i><b>secure</b></span><span class=\"ds-line\"></span><span class=\"ds-stop\"><i>3</i><b>deploy</b></span></div>",
+      "css": ".ds-rail { display: flex; align-items: flex-start; } .ds-stop { display: grid; justify-items: center; gap: 9px; } .ds-stop i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 500 12px/1 var(--mono, 'Spline Sans Mono', Consolas, monospace); font-style: normal; color: var(--ink-3, #7d7160); border: 1px solid rgba(182, 168, 148, 0.28); } .ds-stop b { font: 600 11px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); white-space: nowrap; } .ds-stop.is-now i { color: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); box-shadow: 0 0 10px rgba(var(--lumen-rgb, 255, 194, 102), 0.5); } .ds-stop.is-now b { color: var(--ink, #f5dfc1); } .ds-stop.is-done i { color: var(--d0, #050d14); background: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); box-shadow: none; } .ds-stop.is-done b { color: var(--ink-2, #b6a894); } .ds-line { height: 1px; flex: 1 1 0; margin: 15px 12px 0; background: rgba(182, 168, 148, 0.18); } .ds-line.is-lit { background: rgba(var(--lumen-rgb, 255, 194, 102), 0.4); }"
+    },
+    {
+      "name": "Strength Meter",
+      "kind": "indicator",
+      "refersTo": "pw-meter",
+      "description": "Four discrete segments, not a bar with a percentage - a floor to clear rather than a number to optimise. Ink until earned, lumen once earned; never caution or crisis, because a strength reading is advice and not a status. The gate (twelve characters) and the meter are different questions.",
+      "html": "<div class=\"ds-pw\"><span class=\"ds-pw-bar\"><i class=\"lit\"></i><i class=\"lit\"></i><i class=\"lit\"></i><i></i></span><span class=\"ds-pw-read\">good</span></div>",
+      "css": ".ds-pw { display: grid; gap: 7px; } .ds-pw-bar { display: grid; grid-auto-flow: column; gap: 6px; } .ds-pw-bar i { height: 2px; border-radius: 1px; background: rgba(182, 168, 148, 0.18); } .ds-pw-bar i.lit { background: var(--lumen, #ffc266); } .ds-pw-read { font: 300 10.5px/1.2 var(--mono, 'Spline Sans Mono', Consolas, monospace); letter-spacing: 0.06em; color: var(--ok, #d8b46a); }"
+    },
+    {
+      "name": "Interstitial",
+      "kind": "overlay",
+      "refersTo": "dbr",
+      "description": "A full-screen surface for the moments the panel is not running. Above every other layer, on the water column, with three dots dimming in sequence on the meter band cadence - the panel is busy, not broken, so the house says \"working\" with rhythm rather than rotation.",
+      "html": "<div class=\"ds-int\"><span class=\"ds-int-pulse\"><i></i><i></i><i></i></span><b>connecting to postgres</b><span>the panel is restarting onto your database.</span></div>",
+      "css": ".ds-int { width: 520px; max-width: 100%; display: grid; justify-items: center; gap: 12px; text-align: center; padding: 34px 30px; border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 6px; background: linear-gradient(180deg, rgba(10,30,44,0.6), rgba(7,21,33,0.8)); box-shadow: 0 18px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(var(--lumen-rgb, 255, 194, 102), 0.07); } .ds-int-pulse { display: grid; grid-auto-flow: column; gap: 7px; } .ds-int-pulse i { width: 7px; height: 7px; border-radius: 50%; background: var(--lumen, #ffc266); box-shadow: 0 0 8px rgba(var(--lumen-rgb, 255, 194, 102), 0.5); animation: dsPulse 1.4s ease-in-out infinite; } .ds-int-pulse i:nth-child(2) { animation-delay: 0.18s; } .ds-int-pulse i:nth-child(3) { animation-delay: 0.36s; } @keyframes dsPulse { 0%, 100% { opacity: 0.22; } 45% { opacity: 1; } } .ds-int b { font: 700 22px/1.2 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.05em; color: var(--ink, #f5dfc1); } .ds-int span:last-child { font: 400 13px/1.55 var(--ui, Archivo, 'Segoe UI', sans-serif); color: var(--ink-3, #7d7160); }"
+    },
+    {
+      "name": "Toggle Switch",
+      "kind": "input",
+      "refersTo": "tgl",
+      "description": "A 34x18 pill with a 12px knob and a mono label, wrapped around a visually-hidden checkbox. The knob carries the light, not the track: on is one small bright thing, off is none, so a column of them scans as a count of what is live.",
+      "html": "<label class=\"ds-tgl\"><input type=\"checkbox\" checked><i></i><span>auto-restart on crash</span></label><label class=\"ds-tgl\"><input type=\"checkbox\"><i></i><span>public listing</span></label>",
+      "css": ".ds-tgl { display: flex; align-items: center; gap: 10px; position: relative; padding: 9px 0; cursor: pointer; font: 400 13px/1 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); } .ds-tgl input { position: absolute; opacity: 0; pointer-events: none; } .ds-tgl i { width: 34px; height: 18px; border-radius: 9px; flex: none; position: relative; background: rgba(125, 113, 96, 0.25); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); transition: background 0.2s, border-color 0.2s; } .ds-tgl i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink-3, #7d7160); transition: transform 0.2s, background 0.2s; } .ds-tgl input:checked + i { background: rgba(var(--lumen-rgb, 255, 194, 102), 0.25); border-color: rgba(var(--lumen-rgb, 255, 194, 102), 0.5); } .ds-tgl input:checked + i::after { transform: translateX(16px); background: var(--lumen, #ffc266); box-shadow: 0 0 8px rgba(var(--lumen-rgb, 255, 194, 102), 0.7); } .ds-tgl:hover i { border-color: rgba(var(--lumen-rgb, 255, 194, 102), 0.4); } .ds-tgl input:focus-visible + i { outline: 2px solid var(--lumen, #ffc266); outline-offset: 2px; }"
+    },
+    {
+      "name": "Command Block",
+      "kind": "custom",
+      "refersTo": "cmd",
+      "description": "An install command on the deepest well in the house. Every substitution you still owe goes Sodium Lumen. It wraps with a hanging indent rather than scrolling sideways - the opposite of the read-only box, because a command is a sequence you must read in full, not one opaque fact.",
+      "html": "<pre class=\"ds-cmd\">curl -fsSL https://example.invalid/install.sh | \\\n  sudo bash -s -- --role agent --panel-url https://panel.example.invalid \\\n  --enroll-token <b>&lt;enrollment-token&gt;</b> \\\n  --tunnel</pre>",
+      "css": ".ds-cmd { margin: 0; max-width: 100%; min-width: 0; padding: 12px 14px 12px calc(14px + 3ch); font: 300 12px/1.7 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); background: rgba(2,9,14,0.6); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; white-space: pre-wrap; overflow-wrap: break-word; text-indent: -3ch; } .ds-cmd b { color: var(--lumen, #ffc266); font-weight: 500; }"
+    },
+    {
+      "name": "Solid Button",
+      "kind": "button",
+      "refersTo": "button-solid",
+      "description": "The house's only filled control and the only inverted one: dark text on a Sodium Lumen to Ember Gold gradient with a lumen-tinted cast beneath. One per surface, and it is the one that commits.",
+      "html": "<button class=\"ds-btn-solid\">create server</button>",
+      "css": ".ds-btn-solid { font: 600 11px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.24em; text-transform: uppercase; padding: 10px 18px; border: none; border-radius: 4px; cursor: pointer; color: var(--d0, #050d14); background: linear-gradient(180deg, var(--lumen, #ffc266), #d99a3c); box-shadow: 0 6px 20px rgba(var(--lumen-rgb, 255, 194, 102), 0.25); transition: transform 0.1s, filter 0.2s; } .ds-btn-solid:hover { filter: brightness(1.1); } .ds-btn-solid:active { transform: translateY(2px); } .ds-btn-solid:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: 2px; } .ds-btn-solid:disabled { opacity: 0.4; filter: none; cursor: default; }"
+    },
+    {
+      "name": "Tab Strip",
+      "kind": "nav",
+      "refersTo": "tab-strip",
+      "description": "Radio-driven panel switcher: caps at the widest tracking in the system over a hairline rule, the active tab going lumen with a bottom border pulled onto that rule. It moves between panels, never between screens.",
+      "html": "<div class=\"ds-tabs\"><input type=\"radio\" name=\"ds-stn\" id=\"ds-stn-a\" checked><input type=\"radio\" name=\"ds-stn\" id=\"ds-stn-b\"><div class=\"ds-tabrow\"><label for=\"ds-stn-a\">console</label><label for=\"ds-stn-b\">settings</label></div></div>",
+      "css": ".ds-tabs input { position: absolute; opacity: 0; pointer-events: none; } .ds-tabrow { display: flex; border-bottom: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); } .ds-tabrow label { padding: 10px 16px; cursor: pointer; font: 600 11px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.28em; text-transform: uppercase; color: var(--ink-3, #7d7160); border-bottom: 1px solid transparent; margin-bottom: -1px; transition: color 0.15s; } .ds-tabrow label:hover { color: var(--ink-2, #b6a894); } .ds-tabs #ds-stn-a:checked ~ .ds-tabrow label[for=\"ds-stn-a\"], .ds-tabs #ds-stn-b:checked ~ .ds-tabrow label[for=\"ds-stn-b\"] { color: var(--lumen, #ffc266); border-bottom-color: var(--lumen, #ffc266); } .ds-tabs input:focus-visible ~ .ds-tabrow label { outline: none; }"
+    },
+    {
+      "name": "Corner Segmented Switch",
+      "kind": "chip",
+      "refersTo": "switch-corner",
+      "description": "A two-option toggle parked in the corner of the surface it governs, at 0.775 opacity until the pointer is anywhere in that surface. The smallest type in the house, on a blurred well.",
+      "html": "<div class=\"ds-cornerwrap\"><div class=\"ds-cd\"><label class=\"ds-cd-opt\"><input type=\"radio\" name=\"ds-cd\" checked>yaml</label><label class=\"ds-cd-opt\"><input type=\"radio\" name=\"ds-cd\">json</label></div></div>",
+      "css": ".ds-cornerwrap { position: relative; min-height: 74px; border-radius: 5px; border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); background: rgba(2, 9, 14, 0.6); } .ds-cd { position: absolute; top: 20px; right: 20px; display: inline-flex; border: 1px solid rgba(var(--lumen-rgb, 255, 194, 102), 0.31); border-radius: 4px; overflow: hidden; background: rgba(3, 10, 17, 0.82); backdrop-filter: blur(4px); } .ds-cd-opt { opacity: 0.775; display: inline-flex; align-items: center; position: relative; cursor: pointer; padding: 5px 11px; font: 600 9px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3, #7d7160); transition: color 0.2s, background 0.2s, opacity 0.2s; } .ds-cornerwrap:hover .ds-cd-opt { opacity: 1; } .ds-cd-opt + .ds-cd-opt { border-left: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); } .ds-cd-opt input { position: absolute; opacity: 0; pointer-events: none; } .ds-cd-opt:hover { color: var(--ink-2, #b6a894); } .ds-cd-opt:has(:checked) { color: var(--lumen, #ffc266); background: var(--lumen-soft, rgba(255, 194, 102, 0.09)); } .ds-cd-opt:has(:focus-visible) { outline: 2px solid var(--lumen, #ffc266); outline-offset: -2px; }"
+    },
+    {
+      "name": "Label-Value Row",
+      "kind": "custom",
+      "refersTo": "row-kv",
+      "description": "The smallest readout in the house: tracked caps label, mono tabular value, pushed to opposite edges of one line. The value cancels the label's tracking and caps, because a machine value is never tracked.",
+      "html": "<div class=\"ds-kv\"><span>next backup</span><b>03:00 <small>utc</small></b></div><div class=\"ds-kv\"><span>retained</span><b>14</b></div>",
+      "css": ".ds-kv { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; font: 400 13px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3, #7d7160); } .ds-kv b { font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-weight: 500; color: var(--ink, #f5dfc1); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; } .ds-kv b small { color: var(--ok, #d8b46a); font-size: 0.78em; font-weight: 300; margin-left: 1px; }"
+    },
+    {
+      "name": "Net State Flip",
+      "kind": "input",
+      "refersTo": "net-state",
+      "description": "A binary state flip built as checkbox + label with both words stacked in one grid cell — only the live face visible, so toggling never resizes the pill. Checked is Status Gold, unchecked is Caution Violet: a closed port is a caution fact, not an unlit thing.",
+      "html": "<input type=\"checkbox\" class=\"ds-nsr\" id=\"ds-ns1\" checked><label class=\"ds-net-state\" for=\"ds-ns1\"><span class=\"ds-ns-stack\"><span class=\"ds-ns-w on\">open</span><span class=\"ds-ns-w off\">closed</span></span></label><input type=\"checkbox\" class=\"ds-nsr\" id=\"ds-ns2\"><label class=\"ds-net-state\" for=\"ds-ns2\"><span class=\"ds-ns-stack\"><span class=\"ds-ns-w on\">open</span><span class=\"ds-ns-w off\">closed</span></span></label>",
+      "css": ".ds-nsr { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; } .ds-net-state { display: inline-flex; align-items: center; justify-content: center; min-width: 56px; margin-right: 10px; font: 600 10px/1.4 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; padding: 3px 9px; border-radius: 3px; cursor: pointer; transition: color 0.2s, border-color 0.2s, filter 0.2s; } .ds-ns-stack { display: grid; justify-items: center; } .ds-ns-w { grid-area: 1 / 1; visibility: hidden; margin-right: -0.18em; } .ds-nsr:checked + .ds-net-state .ds-ns-w.on, .ds-nsr:not(:checked) + .ds-net-state .ds-ns-w.off { visibility: visible; } .ds-nsr:checked + .ds-net-state { color: var(--ok, #d8b46a); border: 1px solid rgba(var(--ok-rgb, 216, 180, 106), 0.4); } .ds-nsr:not(:checked) + .ds-net-state { color: var(--caution, #9d8cff); border: 1px solid rgba(var(--caution-rgb, 157, 140, 255), 0.45); } .ds-net-state:hover { filter: brightness(1.3); } .ds-nsr:focus-visible + .ds-net-state { outline: 2px solid var(--lumen, #ffc266); outline-offset: 1px; }"
+    },
+    {
+      "name": "Schedule Row",
+      "kind": "custom",
+      "refersTo": "sch-row",
+      "description": "A standing order: name over its action · cron small, next firing at the right edge in Status Gold — the backup list’s “scheduled” voice. Paused keeps its place and gives up its ink; every control is a ghost because backups above spends the surface’s one solid.",
+      "html": "<div class=\"ds-sch-row\"><span class=\"ds-sch-main\"><span>nightly backup</span><small>backup · 0 3 * * *</small></span><span class=\"ds-sch-acts\"><span class=\"ds-sch-next\">03:00</span><button class=\"ds-sch-act\">pause</button><button class=\"ds-sch-act del\">delete</button></span></div><div class=\"ds-sch-row paused\"><span class=\"ds-sch-main\"><span>autosave sweep</span><small>command: save-all · 0 * * * *</small></span><span class=\"ds-sch-acts\"><span class=\"ds-sch-next\">paused</span><button class=\"ds-sch-act\">resume</button><button class=\"ds-sch-act del\">delete</button></span></div>",
+      "css": ".ds-sch-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; font: 300 13px/1.3 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); font-variant-numeric: tabular-nums; } .ds-sch-main { display: grid; gap: 3px; min-width: 0; } .ds-sch-main small { font-size: 11px; color: var(--ink-3, #7d7160); letter-spacing: 0.04em; } .ds-sch-acts { display: flex; align-items: center; gap: 6px; flex: none; } .ds-sch-next { color: var(--ok, #d8b46a); } .ds-sch-row.paused { opacity: 0.55; } .ds-sch-row.paused .ds-sch-next { color: var(--ink-3, #7d7160); } .ds-sch-act { font: 600 10px/1.4 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--lumen, #ffc266); padding: 3px 9px; border: 1px solid rgba(var(--lumen-rgb, 255, 194, 102), 0.45); border-radius: 3px; background: none; cursor: pointer; transition: all 0.2s; } .ds-sch-act:hover { color: var(--d0, #050d14); background: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); } .ds-sch-act.del { color: var(--crisis, #ff4d9d); border-color: rgba(var(--crisis-rgb, 255, 77, 157), 0.45); } .ds-sch-act.del:hover { color: var(--d0, #050d14); background: var(--crisis, #ff4d9d); border-color: var(--crisis, #ff4d9d); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Room at Depth",
+    "overview": "Kraken is a professional operations surface that happens to sit at the bottom of the sea. The seriousness comes first: dense, tabular, glanceable telemetry engineered for a 10ft read on screens from 1080p to 4K. The atmosphere comes only from light and depth — grounds graduate from shallow blue-green into near-black like a water column, panels are lit faintly from within, and one sodium gold is the only light source on the surface. Nothing is illustrated; no creatures, no metaphor imagery. The sea is a palette and a physics of light, never a costume.\n\nThe pane is singular: one full-bleed screen, no sidebar, no top navigation, no routes. Everything drills in through full-screen overlays and returns. The fleet itself scrolls — identity and event stream stay pinned while the deck between them grows with the estate — but the page never does. Density is a feature — wider viewports show more, not bigger.",
+    "keyCharacteristics": [
+      "One light source: sodium gold carries \"alive\"; its absence carries \"stopped\".",
+      "Depth gradients instead of decoration; glow instead of ornament.",
+      "Live data everywhere: charts breathe, numbers tick, staleness is visible.",
+      "10ft legibility: primary numerals are huge, labels are tracked caps, everything tabular."
+    ],
+    "rules": [
+      {
+        "name": "The One Light Rule",
+        "body": "Sodium gold is the surface's only light source and always means \"alive\". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what \"done\" looks like, and it is what lets one glow on the rail mean *here*."
+      },
+      {
+        "name": "The Warm Light, Cold Water Rule",
+        "body": "The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent."
+      },
+      {
+        "name": "The Tinted Neutral Rule",
+        "body": "No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue."
+      },
+      {
+        "name": "The Token Channel Rule",
+        "body": "Any colour needing an alpha uses its `--*-rgb` channel token. Hardcoded triplets are how a palette half-migrates."
+      },
+      {
+        "name": "The Whose-Fault Rule",
+        "body": "Where an HTTP status is shown — the audit log, and the response list on an endpoint row in the api reference — its colour comes from the status *family*, not from a verdict we invent: 2xx Status Gold, 4xx Caution Violet — the caller got it wrong — and 5xx Crisis Magenta, meaning we did. A 4xx is never painted crisis, because a mistyped password is not an outage."
+      },
+      {
+        "name": "The Verb-Risk Rule",
+        "body": "Where an HTTP method is shown, it is lit by what the call can *do to you*, never by which verb it happens to be. A read is left unlit in Sand Faint because nothing happens; every method that writes takes Sodium Lumen; `DELETE` alone takes Crisis Magenta, because it is the only one you cannot take back. Three colours, not the five a generated reference reaches for by default — the difference between `POST` and `PUT` is already written in the word, and a hue per verb spends the whole palette saying nothing. A websocket route takes no colour at all, only the dashed edge the house uses for \"different in kind\"."
+      },
+      {
+        "name": "The Mono Means Measured Rule",
+        "body": "Spline Sans Mono is reserved for values a machine produced — numbers, addresses, versions, timestamps, and protocol tokens such as an HTTP method or a route. Prose and names never use it. A protocol token is also reproduced exactly and never folded into the house lowercase: `POST /servers` is what goes on the wire, so it is what goes on the page."
+      },
+      {
+        "name": "The Hollow Nameplate Rule",
+        "body": "The node name renders as a large outlined letterform: transparent fill, 1.4px gold text-stroke, gold drop-glow, 0.1em tracking. Server names stay solid Archivo 700. The brand wordmark on the login screen earns it too — at the same 1.4px, which the chosen value landed on independently — because that screen has no data to be the lit thing and the name takes its place. Everything else stays solid, the header wordmark included: a fixed 1.4px stroke is 2.9–4.3% of the login mark (`clamp(32.5px, 3vw, 49px)`) but 5.4–8.2% of the header one (`clamp(17px, 1.2vw, 26px)`), so repeating the declaration there would be a heavier design rather than the same one smaller. Two nameplates, no third."
+      },
+      {
+        "name": "The Pinned Ends Rule",
+        "body": "The identity strip and the event stream are locked by being grid rows *outside* the scroller, never by `position: sticky`. Neither of them has a background: both sit directly on the page ground, which is what keeps the water column unbroken. A sticky element stays inside the scrolling box, so cards would travel visibly *through* the wordmark and the event line — and the only fix would be giving the ends an opaque fill, which is the thing the world is built to avoid. One `1fr` row scrolls; the two `auto` rows cannot. There is no `position: sticky` anywhere in the build, and that is on purpose."
+      },
+      {
+        "name": "The Light-Not-Lift Rule",
+        "body": "Interaction feedback is a change of light (border, glow, brightness), never a bigger drop shadow."
+      },
+      {
+        "name": "The Lit-From-Below Rule",
+        "body": "The page's water column is lit from above; anything that opens over it is lit from beneath. A drill-in and every sheet replace the backdrop with the trench ground, whose only light is an Upwelling Violet radial rising from 130% of the viewport height — below the fold, off screen, inferred. That is the whole reason a full-screen surface reads as *further down* rather than stacked on top, and it is done with a light source rather than a scrim: a scrim would say \"something is in front of this\", and the house needs it to say \"you have descended\"."
+      },
+      {
+        "name": "The Topmost Closes Last Rule",
+        "body": "When one full-screen surface replaces another, the surface on top closes *after* the one beneath it has finished opening — never in the same tick. Every member of this house wipes with a 0.65s `clip-path` circle, so two of them transitioning at once means the viewer sees through one into the other mid-flight: during the Postgres restart the interstitial and the login screen were both mid-wipe and both partly visible. Open the lower one first, hidden behind the upper, then let the upper wipe away to reveal a screen that is already fully there. The reveal is free; the overlap is the bug."
+      },
+      {
+        "name": "The One Committing Control Rule",
+        "body": "One filled control per surface, and it is the one that commits. A screen with two solid buttons is a screen that has not decided what it is for; every other action on it takes a ghost. This is the One Light Rule spent on controls instead of data."
+      },
+      {
+        "name": "The Tabs Don't Travel Rule",
+        "body": "The strip moves between panels; it never changes what the screen is. Page-level movement belongs to the sheet family, which plunges. A tab is a swap inside one surface, so it gets the cheapest possible transition (`color 0.15s`) and no motion at all on the panel beneath: the `:checked ~ .panel` sibling rules simply lay out one panel and not the others, and a panel that is not chosen is `display: none` rather than hidden, so it costs no layout."
+      },
+      {
+        "name": "The Quiet Until Asked Rule",
+        "body": "A control that changes *how you are reading* something sits at 0.775 opacity until the pointer is anywhere in the surface it governs, then comes up to full. The container is the hover target, never the control itself: you notice you want the switch while looking at the content, not while looking at the corner. The unchosen option is `display: none`, not `visibility: hidden`: only the chosen serialisation exists, so nothing is laid out twice and the scroller's height is honest. The first line of the content it governs carries a 96px right pad so it cannot run under the pill."
+      },
+      {
+        "name": "The Head-Not-Edge Rule",
+        "body": "The chosen row in a picker is marked at its head, not its edge. With `appearance: base-select` the option list is ours, and selection there is a leading indicator column: every option reserves a 15px ring in Sand Faint at 0.6, and the chosen one fills its ring with the house tick in Sodium Lumen. Both marks are `mask` layers over a `background-color` — the ring and the tick are black SVGs in custom properties on the select, so the shape comes from the mask and the colour from the token, and neither hex is written a second time. Because the mark is a fixed 15px slot at `order: -1`, all eight labels align on one axis and the list reads as a roster you scan down. The checked row gives up both of the things it used to carry — the inset lumen bar and the lumen label — and goes back to Sand: **the filled ring is the one lit thing in the row.** The trailing `::checkmark` glyph the browser supplies is not restyled, it is replaced: `content: ''` empties it, and it is `display: none` on every row that is not checked so the reserved ring shows through instead."
+      },
+      {
+        "name": "The Both-Faces Rule",
+        "body": "A flip control names both of its states in the DOM and stacks them in one grid cell (`grid-area: 1 / 1`), showing only the live face, so toggling can never resize the control or reflow its row. Checked wears Status Gold (text plus a 0.4 border), unchecked wears Caution Violet at 0.45 — the closed-port reading the One Light Rule assigns. The stack is reused wherever a word must swap in place: the endpoint’s copy button flips `copy`/`copied` (going Status Gold once done) and the DNS publish control wears `unpublish`/`publish`. The tracked caps leave a trailing 0.18em inside each word’s text box; every face cancels it with `margin-right: -0.18em` so the glyphs sit on the pill’s true optical centre."
+      }
+    ],
+    "dos": [
+      "Do keep one full-bleed pane: drill-ins are full-screen overlays over the same page, opened from the element itself.",
+      "Do give every live value a mono, tabular, generously sized numeral — the 10ft read is the acceptance test.",
+      "Do tint every neutral with the blue-green hue (text, borders, grounds).",
+      "Do show data staleness (\"last ping Ns\") and label all mock data synthetic.",
+      "Do theme browser surfaces: selection (gold on abyss), focus-visible (2px gold outline), thin scrollbars in gold-tint.",
+      "Do scroll the deck, never the page: pin the ends as `auto` grid rows around a `1fr` scroller.",
+      "Do declare a table's columns once on the container and inherit them into every head and row with `grid-template-columns: subgrid`.",
+      "Do make a multi-step flow's outcome the app's actual state: the node the wizard brings online is the node the fleet then shows, and the specs it imports are the ones the spec sheet lists. A setup that ends somewhere the rest of the product never mentions is describing a different install.",
+      "Do centre a capped single-column view with `margin-inline: auto`, and leave the title bar above it full-bleed — chrome holds one position across every page; only content narrows."
+    ],
+    "donts": [
+      "Don't use Tailwind — plain CSS only (user-pinned).",
+      "Don't add a sidebar, top navigation, or content routes (user-pinned).",
+      "Don't introduce sea imagery — creatures, bubbles, portholes, waves. The world is light and depth only. The one exception is the brand mark: Kraken's glyph is an identity, not decoration, and it appears only in the lockup (header and login) at the wordmark's own scale. A creature anywhere else — an empty state, a loading spinner, a background — is still out.",
+      "Don't use pure gray, pure white, or pure black anywhere.",
+      "Don't spend magenta or violet outside true semantics; never color a stopped server crisis-magenta.",
+      "Don't ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.",
+      "Don't sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a **real `<button>` in the DOM**, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.",
+      "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)"
+    ]
+  }
+}

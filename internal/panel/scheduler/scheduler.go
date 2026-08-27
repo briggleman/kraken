@@ -38,7 +38,7 @@ type Placement struct {
 // chosen node; on total failure no node is modified and the error names each
 // node with the reason it was rejected.
 func Place(s *spec.Spec, nodes []*cluster.Node) (*Placement, error) {
-	memReq := s.Resources.MinMemoryMB
+	memReq := s.Resources.AllocMemoryMB()
 	reqs := make([]cluster.PortRequest, len(s.Ports))
 	for i, p := range s.Ports {
 		reqs[i] = cluster.PortRequest{Name: p.Name, Preferred: p.Default}

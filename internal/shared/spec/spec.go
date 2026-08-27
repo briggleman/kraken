@@ -215,6 +215,21 @@ type Resources struct {
 	RecommendedMemoryMB int `json:"recommended_memory_mb,omitempty"`
 }
 
+// AllocMemoryMB is the memory a new server of this spec should be given.
+//
+// The recommended figure, when the spec states one — the minimum is the floor
+// at which the game *boots*, not the figure it *runs* at, and a server placed
+// at the floor is set up to fail: Valheim provisioned at its 2048MB minimum
+// was OOM-killed (exit 137) generating its first world on a node with 21GB
+// free. Specs distinguish the two numbers precisely so placement can use the
+// honest one; the minimum remains the fallback for specs that state nothing.
+func (r Resources) AllocMemoryMB() int {
+	if r.RecommendedMemoryMB > 0 {
+		return r.RecommendedMemoryMB
+	}
+	return r.MinMemoryMB
+}
+
 // PlatformKinds returns the spec's platform kinds in priority order.
 func (s *Spec) PlatformKinds() []PlatformKind {
 	kinds := make([]PlatformKind, 0, len(s.Platforms))

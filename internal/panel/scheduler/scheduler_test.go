@@ -116,6 +116,37 @@ func TestPlace_SkipsInsufficientMemory(t *testing.T) {
 	}
 }
 
+// A spec that states a recommended figure gets it: the minimum is the floor at
+// which the game boots, not the figure it runs at, so placing at the floor sets
+// a server up to be OOM-killed under real load.
+func TestPlace_ReservesRecommendedMemoryWhenStated(t *testing.T) {
+	sp := crossPlatformSpec()
+	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
+	n := linuxNode("lin-a", 16384, true)
+	p, err := Place(sp, []*cluster.Node{n})
+	if err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	if p.MemoryMB != 4096 {
+		t.Fatalf("expected the recommended 4096MB reserved, got %d", p.MemoryMB)
+	}
+	if got := n.TotalMemoryMB - n.AvailableMemoryMB(); got != 4096 {
+		t.Fatalf("expected 4096MB taken from the node, got %d", got)
+	}
+}
+
+// With no recommendation stated, the minimum remains the allocation.
+func TestPlace_FallsBackToMinimumMemory(t *testing.T) {
+	n := linuxNode("lin-a", 16384, true)
+	p, err := Place(crossPlatformSpec(), []*cluster.Node{n}) // min 2048, no recommendation
+	if err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	if p.MemoryMB != 2048 {
+		t.Fatalf("expected the minimum 2048MB reserved, got %d", p.MemoryMB)
+	}
+}
+
 func TestPlace_BestFitMostAvailableMemory(t *testing.T) {
 	a := linuxNode("lin-a", 4096, true)
 	b := linuxNode("lin-b", 16384, true) // most available → chosen

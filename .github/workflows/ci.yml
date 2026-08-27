@@ -4,6 +4,12 @@ name: ci
 # The weekly Docker image rebuild lives in steam-images.yml, not here.
 on:
   pull_request:
+    # `edited` matters: the default types are [opened, synchronize, reopened],
+    # so correcting a non-conventional PR title never re-runs the title check
+    # and the PR stays red until someone pushes an unrelated commit. The
+    # expensive jobs below opt out of `edited` so a title or body tweak doesn't
+    # rebuild and retest everything.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -50,6 +56,7 @@ jobs:
 
   go:
     name: go (build · vet · staticcheck · test)
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     # Postgres so the store integration tests run for real (they self-migrate
     # and skip only when KRAKEN_TEST_DATABASE_URL is unset).
@@ -114,7 +121,8 @@ jobs:
         run: go test -race ./...
 
   web:
-    name: web (typecheck · build)
+    name: web (design gate · svelte-check · build)
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,6 +137,14 @@ jobs:
         run: npm ci
         working-directory: web
 
-      - name: build (tsc --noEmit && vite build)
+      - name: design drift gate (house.css matches the committed mock)
+        run: npm run check:design
+        working-directory: web
+
+      - name: csp gate (no inline style attributes)
+        run: npm run check:csp
+        working-directory: web
+
+      - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web

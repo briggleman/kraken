@@ -153,6 +153,16 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
+	// Open a fresh install buffer before anything can fail, so even a
+	// connect-time failure leaves the operator something to read. failServer
+	// closes it out on every failure path; the success path drops it.
+	s.installs.Start(server.ID)
+	nodeName := node.Name
+	if nodeName == "" {
+		nodeName = node.ID
+	}
+	s.installs.Append(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
+
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		s.failServer(server, "connect agent: "+err.Error())
@@ -212,13 +222,23 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 			s.failServer(server, "install stream interrupted: "+err.Error())
 			return
 		}
-		if f, ok := ev.Event.(*agentpb.InstallEvent_Failed); ok {
-			s.failServer(server, "install failed: "+f.Failed)
+		switch e := ev.Event.(type) {
+		case *agentpb.InstallEvent_LogLine:
+			// The installer's own output — SteamCMD's download progress, unpack
+			// errors, a game's first-run complaints. This is the only place it
+			// exists: the install container is removed when the phase ends.
+			s.installs.Append(server.ID, e.LogLine)
+		case *agentpb.InstallEvent_Failed:
+			s.failServer(server, "install failed: "+e.Failed)
 			return
 		}
 	}
 
 	s.setServerState(server.ID, store.StateOffline, "")
+	// A successful install's log has no reader: the console surface shows this
+	// server's own output from here on, and only an install state routes to the
+	// buffer. Keeping it would retain memory nothing can display.
+	s.installs.Drop(server.ID)
 	s.logger.Info("server installed", "id", server.ID)
 }
 
@@ -232,7 +252,16 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 // without shell access to the Panel host.
 func (s *Server) failServer(server *store.Server, reason string) {
 	s.logger.Error("server provisioning failed", "id", server.ID, "reason", reason)
+	// The reason lands in the install buffer too, not just on the record: the
+	// failures that abort before the Agent stream opens (no route to the node, a
+	// rejected create, missing Steam credentials) have no other line to read,
+	// and a mid-install failure belongs at the end of the output it interrupted.
+	s.installs.AppendError(server.ID, "[panel] "+reason)
+	// State first, then close the buffer: a subscriber released by Finish
+	// reconnects immediately, and it should find the failed state (and so be
+	// handed the log it just lost) rather than a still-installing one.
 	s.setServerState(server.ID, store.StateInstallFailed, reason)
+	s.installs.Finish(server.ID)
 }
 
 // setServerState reloads the server and updates only its state (plus the
@@ -489,6 +518,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not delete server")
 		return
 	}
+	s.installs.Drop(sv.ID)
 	writeJSON(w, http.StatusNoContent, nil)
 }
 

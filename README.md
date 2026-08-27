@@ -52,7 +52,7 @@ Kraken is a personal project with the goal of being something I've built to use 
 |------------------|------------------------------|-------------------------------------------------------------|
 | **Panel**        | Go (HTTP API + gRPC)         | Auth/RBAC, game spec catalog, scheduling, state of record   |
 | **Agent**        | Go (Docker Engine API)       | Per-host daemon; runs game servers in Docker containers     |
-| **Web UI**       | React + TS + Vite            | Manage games, servers, nodes, users                         |
+| **Web UI**       | Svelte 5 + TS + Vite         | Manage games, servers, nodes, users                         |
 | **Postgres**     | —                            | Source-of-truth state                                       |
 
 - **Browser ⇄ Panel:** REST (OpenAPI) + WebSocket. Console and stats streams
@@ -325,7 +325,8 @@ internal/agent/   docker (OS-aware runtime), fileops (native host file ops),
 internal/shared/  domain types, spec schema, gRPC client/server glue
 proto/            .proto definitions (Panel <-> Agent)
 internal/panel/store/migrate/sql/   goose SQL migrations
-web/              React + TS + Vite UI (design-system/ + src/)
+web/              Svelte 5 + TS + Vite UI (src/; no router — sheets navigate)
+design/           DESIGN.md's living mock (the UI's drift reference)
 images/           Dockerfiles: steam-base, steam-win
 specs/            bundled Game Specs (the "egg" equivalent)
 deploy/           compose files, Panel/Agent Dockerfiles, install.sh,

@@ -1,0 +1,20 @@
+# Branch-protection contract.
+#
+# main requires these status checks by EXACT name. Every entry here must be
+# declared as a job `name:` in .github/workflows/ci.yml — the "branch-protection
+# contract" step in the web job enforces that, so a rename fails loudly instead
+# of silently blocking every future PR (#136).
+#
+# Keep these names short and stable and put descriptive detail in STEP names,
+# which are not part of the contract and can be reworded freely.
+#
+# Changing a name here means updating branch protection in the same breath:
+#   gh api --method PATCH \
+#     repos/briggleman/kraken/branches/main/protection/required_status_checks \
+#     -F strict=true -f 'contexts[]=<name>' ...   # all names, the array is replaced
+#
+# CodeQL is also required by protection but is reported by GitHub code scanning,
+# not by a job in ci.yml, so it is deliberately not listed here.
+pr title (conventional commits)
+go
+web

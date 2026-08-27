@@ -55,7 +55,9 @@ jobs:
             not "feat: Add BepInEx toggle").
 
   go:
-    name: go (build · vet · staticcheck · test)
+    # Short and stable on purpose — this name is a branch-protection contract
+    # (see .github/required-checks.txt). Detail belongs in the step names.
+    name: go
     if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     # Postgres so the store integration tests run for real (they self-migrate
@@ -121,7 +123,9 @@ jobs:
         run: go test -race ./...
 
   web:
-    name: web (design gate · svelte-check · build)
+    # Short and stable on purpose — see the go job above and
+    # .github/required-checks.txt.
+    name: web
     if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
@@ -132,6 +136,22 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      # Renaming a required job silently blocks every future PR: protection
+      # matches by exact string, so the check simply never reports and the PR
+      # waits at "Expected" forever, with nothing in the run pointing at the
+      # cause (#136). Fail here instead, where the message can say what to do.
+      - name: branch-protection contract (required check names)
+        run: |
+          missing=0
+          while IFS= read -r name; do
+            case "$name" in ''|'#'*) continue ;; esac
+            if ! grep -qxF "    name: $name" .github/workflows/ci.yml; then
+              echo "::error file=.github/required-checks.txt::required check \"$name\" is not declared as a job name in .github/workflows/ci.yml. Branch protection matches by exact string, so main is now unmergeable. Either restore the job name or update BOTH branch protection and .github/required-checks.txt."
+              missing=1
+            fi
+          done < .github/required-checks.txt
+          exit $missing
 
       - name: install
         run: npm ci

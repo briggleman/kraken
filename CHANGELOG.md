@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/briggleman/kraken/compare/v0.26.0...v0.26.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **agent:** reject peer-agent certs on the gRPC listener ([#138](https://github.com/briggleman/kraken/issues/138)) ([6ddd8be](https://github.com/briggleman/kraken/commit/6ddd8bed0a2aa9b62c583f5ad8de3d9f76e215b5))
+
 ## [0.26.0](https://github.com/briggleman/kraken/compare/v0.25.1...v0.26.0) (2026-08-27)
 
 

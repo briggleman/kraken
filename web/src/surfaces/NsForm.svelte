@@ -1,17 +1,110 @@
 <script lang="ts">
   import { ui, closeSheet, openSheet } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
+  import { fleet, refreshFleet } from "@/lib/fleet.svelte";
+  import { api } from "@/api/client";
+  import { fmtGb } from "@/lib/fmt";
+  import type { Spec } from "@/api/types";
 
-  // the spec link names the game this form is building, so it tracks the game select rather
-  // than sitting on whichever option happened to be selected when the markup was written.
-  // options carry no value attribute, so the option text is the value (mock: nsGame.value
-  // || options[selectedIndex].text). seeded to the mock's `selected` option.
-  let nsGame = $state("palworld");
+  // The form is real: games come from the specs you have, settings are the
+  // spec's user-editable variables, ports are allocated by the panel from the
+  // node's pool, and the cost strip does the actual memory arithmetic.
+
+  const open = $derived(!!ui.open.nsForm);
+
+  let specId = $state("");
+  let name = $state("");
+  let vars = $state<Record<string, string>>({});
+  let steamGuard = $state("");
+  let bepinex = $state(false);
+  let startAfter = $state(true);
+  let nightlyBackup = $state(true);
+  let busy = $state(false);
+  let err = $state<string | null>(null);
+
+  const spec = $derived<Spec | undefined>(fleet.specs.find((s) => s.id === specId));
+  const node = $derived(
+    fleet.nodes.find((n) => n.id === ui.nsFormNodeId) ?? fleet.nodes[0],
+  );
+
+  // (re)seed when the sheet opens or the game changes
+  $effect(() => {
+    if (!open) return;
+    if (!specId && fleet.specs.length) specId = fleet.specs[0].id;
+  });
+  $effect(() => {
+    const s = spec;
+    if (!s) return;
+    name = s.slug + "-" + String(fleet.servers.filter((x) => x.spec_id === s.id).length + 1).padStart(2, "0");
+    const v: Record<string, string> = {};
+    for (const sv of s.variables ?? []) if (sv.user_editable) v[sv.key] = sv.default;
+    vars = v;
+    steamGuard = "";
+    bepinex = false;
+    err = null;
+  });
+
+  const platformWords = $derived(
+    (spec?.platforms ?? []).map((p) =>
+      p.kind === "linux-native" ? "linux" : p.kind === "windows-native" ? "windows" : "wine",
+    ),
+  );
+  const minMb = $derived(spec?.resources.min_memory_mb ?? 0);
+  const memAfter = $derived(node ? node.allocated_memory_mb + minMb : minMb);
+
+  async function create() {
+    if (!spec || busy) return;
+    busy = true;
+    err = null;
+    try {
+      const created = await api.createServer({
+        spec_id: spec.id,
+        name: name.trim() || spec.slug,
+        variables: Object.keys(vars).length ? vars : undefined,
+        node_id: node?.id,
+        steam_guard_code: steamGuard.trim() || undefined,
+        install_bepinex: bepinex || undefined,
+      });
+      if (nightlyBackup) {
+        await api
+          .createSchedule(created.id, {
+            name: "nightly backup",
+            action: "backup",
+            cron: "0 4 * * *",
+            enabled: true,
+          })
+          .catch(() => {});
+      }
+      closeSheet("nsForm");
+      await refreshFleet();
+      if (startAfter) {
+        // start once the install finishes: watch until the container exists
+        const poll = setInterval(async () => {
+          try {
+            const s = await api.getServer(created.id);
+            if (s.state === "offline") {
+              clearInterval(poll);
+              await api.powerServer(created.id, "start");
+              await refreshFleet();
+            } else if (s.state !== "installing") {
+              clearInterval(poll); // failed or already running — leave it be
+            }
+          } catch {
+            clearInterval(poll);
+          }
+        }, 3000);
+      }
+    } catch (e) {
+      err = e instanceof Error ? e.message : String(e);
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <div
   class="sheet"
-  class:open={!!ui.open.nsForm}
+  class:open
   id="nsForm"
   role="dialog"
   aria-modal="true"
@@ -24,87 +117,85 @@
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 6 10 V 2 M 2 6 L 6 2 L 10 6"/></svg>
       surface
     </button>
-    <h2 class="depth-title" id="nsFormTitle">new server on <b class="node-name-inline">behemoth</b></h2>
-    <div class="prefs-note"><span class="synthetic">values are sample — surface not wired</span></div>
+    <h2 class="depth-title" id="nsFormTitle">new server on <b class="node-name-inline">{node?.name ?? "—"}</b></h2>
+    <div class="prefs-note"></div>
   </div>
   <div class="sheet-body ns-body">
     <section class="prefs-group" aria-label="New server settings">
       <div class="cfg-head">
         <h3 class="pane-label">every setting, one screen</h3>
         <span class="cfg-badge env">defaults from the game template</span>
-        <span class="cfg-badge ok">ports free</span>
+        <span class="cfg-badge ok">ports allocated from the node's pool</span>
       </div>
       <div class="ns-pad ns-grid">
         <div class="ns-legend"><h4>game</h4><i></i><small>decides install method and port defaults</small></div>
         <div class="cfg-row">
           <span>game — from the specs you have</span>
-          <select class="cfg-in" id="nsGame" aria-label="Game" bind:value={nsGame}><option>abiotic factor</option><option>enshrouded</option><option>factorio</option><option>palworld</option><option>runescape dragonwilds</option><option>v rising</option><option>valheim</option><option>windrose</option></select>
+          <select class="cfg-in" id="nsGame" aria-label="Game" bind:value={specId}>
+            {#each fleet.specs as s (s.id)}
+              <option value={s.id}>{s.name.toLowerCase()}</option>
+            {/each}
+          </select>
         </div>
         <div class="cfg-row">
-          <span>operating system</span>
-          <select class="cfg-in has-badge" aria-label="Operating system"><button><selectedcontent></selectedcontent><span class="cfg-badge env">min 8192 mb</span></button><option value="linux-native" selected>linux</option><option value="windows-native">windows</option><option value="linux-wine">wine</option></select>
+          <span>platforms — the scheduler places by node</span>
+          <input class="cfg-in" type="text" value={platformWords.join(" / ") || "—"} disabled aria-label="Platforms" />
         </div>
         <div class="cfg-row">
           <span>spec</span>
-          <button class="cfg-btn ghost spec-link" id="specLink" onclick={(e) => openSheet("specs", e.clientX, e.clientY, e.currentTarget)}><span class="spec-link-name" id="specLinkName">{nsGame}</span>&nbsp;spec <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3.5 8.5 L 8.5 3.5 M 5 3.5 H 8.5 V 7"/></svg></button>
+          <button class="cfg-btn ghost spec-link" id="specLink" onclick={(e) => openSheet("specs", e.clientX, e.clientY, e.currentTarget)}><span class="spec-link-name" id="specLinkName">{spec?.slug ?? "—"}</span>&nbsp;spec <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3.5 8.5 L 8.5 3.5 M 5 3.5 H 8.5 V 7"/></svg></button>
         </div>
 
         <div class="ns-legend"><h4>identity</h4><i></i><small>what backups and moves carry</small></div>
         <div class="cfg-row">
           <span>server name</span>
-          <input type="text" class="cfg-in" value="palworld-02" aria-label="Server name" />
-        </div>
-        <div class="cfg-row">
-          <span>world name</span>
-          <input type="text" class="cfg-in" value="feybreak-02" aria-label="World name" />
-        </div>
-        <div class="cfg-row">
-          <span>data directory</span>
-          <input type="text" class="cfg-in ns-path" value="/srv/kraken/palworld-02" aria-label="Data directory" />
+          <input type="text" class="cfg-in" bind:value={name} aria-label="Server name" />
         </div>
 
-        <div class="ns-legend"><h4>network</h4><i></i><small>next free ports above the running servers</small></div>
-        <div class="cfg-row">
-          <span>game port</span>
-          <input type="text" class="cfg-in" value="8212" aria-label="Game port" />
-        </div>
-        <div class="cfg-row">
-          <span>query port</span>
-          <input type="text" class="cfg-in" value="27016" aria-label="Query port" />
-        </div>
-        <div class="cfg-row">
-          <span>rcon port</span>
-          <input type="text" class="cfg-in" value="25576" aria-label="Rcon port" />
-        </div>
+        {#if spec?.variables?.some((v) => v.user_editable)}
+          <div class="ns-legend"><h4>settings</h4><i></i><small>the spec's launch variables — changeable later</small></div>
+          {#each spec.variables ?? [] as v (v.key)}
+            {#if v.user_editable}
+              <div class="cfg-row">
+                <span>{v.label || v.key}</span>
+                <input type="text" class="cfg-in" bind:value={vars[v.key]} aria-label={v.label || v.key} />
+              </div>
+            {/if}
+          {/each}
+        {/if}
 
-        <div class="ns-legend"><h4>limits</h4><i></i><small>behemoth has 42.6G memory and 812G disk unclaimed</small></div>
-        <div class="cfg-row">
-          <span>memory cap</span>
-          <input type="text" class="cfg-in" value="8G" aria-label="Memory cap" />
-        </div>
-        <div class="cfg-row">
-          <span>cpu share</span>
-          <select class="cfg-in"><option>4 of 16 cores</option><option>6 of 16 cores</option><option>8 of 16 cores</option><option>no limit</option></select>
-        </div>
-        <div class="cfg-row">
-          <span>disk quota</span>
-          <input type="text" class="cfg-in" value="40G" aria-label="Disk quota" />
-        </div>
+        {#if spec?.ports?.length}
+          <div class="ns-legend"><h4>network</h4><i></i><small>allocated by the panel from the node's port pool</small></div>
+          {#each spec.ports as p (p.name)}
+            <div class="cfg-row">
+              <span>{p.name} port · {p.protocol}</span>
+              <input type="text" class="cfg-in" value="allocated on create (default :{p.default})" disabled aria-label="{p.name} port" />
+            </div>
+          {/each}
+        {/if}
 
         <div class="ns-legend"><h4>operations</h4><i></i><small>changeable later in the server's own settings</small></div>
-        <label class="tgl"><input type="checkbox" checked /><i></i>start once the install finishes</label>
-        <label class="tgl"><input type="checkbox" checked /><i></i>restart if it exits unexpectedly</label>
-        <label class="tgl"><input type="checkbox" checked /><i></i>nightly backup at 04:00</label>
-        <label class="tgl"><input type="checkbox" /><i></i>update to latest on every start</label>
+        <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install finishes</label>
+        <label class="tgl"><input type="checkbox" bind:checked={nightlyBackup} /><i></i>nightly backup at 04:00</label>
+        {#if spec?.install?.bepinex_compatible}
+          <label class="tgl"><input type="checkbox" bind:checked={bepinex} /><i></i>install bepinex (mod loader)</label>
+        {/if}
+        {#if spec?.install?.requires_steam_login}
+          <div class="cfg-row">
+            <span>steam guard code — this game needs a steam login to install</span>
+            <input type="text" class="cfg-in" bind:value={steamGuard} autocomplete="off" spellcheck="false" aria-label="Steam guard code" />
+          </div>
+        {/if}
       </div>
       <div class="ns-alloc">
-        <div class="ns-cost"><span>memory after</span><b>29.4<em>/64G</em></b></div>
-        <div class="ns-cost"><span>cores claimed</span><b>10<em>/16</em></b></div>
-        <div class="ns-cost"><span>disk after</span><b>40<em>/812G free</em></b></div>
-        <div class="ns-cost"><span>download</span><b>~9<em>G</em></b></div>
+        <div class="ns-cost"><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
+        <div class="ns-cost"><span>min memory</span><b>{fmtGb(minMb)}<em>G</em></b></div>
+        <div class="ns-cost"><span>recommended</span><b>{spec?.resources.recommended_memory_mb ? fmtGb(spec.resources.recommended_memory_mb) : "—"}<em>G</em></b></div>
+        <div class="ns-cost"><span>ports needed</span><b>{spec?.ports?.length ?? 0}<em></em></b></div>
         <div class="ns-acts">
+          {#if err}<span class="cfg-note" style="color: var(--crisis)">{err}</span>{/if}
           <button class="cfg-btn ghost" onclick={() => closeSheet("nsForm")}>cancel</button>
-          <button class="cfg-btn solid">create server</button>
+          <button class="cfg-btn solid" disabled={busy || !spec} onclick={() => void create()}>create server</button>
         </div>
       </div>
     </section>

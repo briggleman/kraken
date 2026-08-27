@@ -6,6 +6,8 @@
 import { stepWalk, pushSample } from "./walk";
 import { allSyntheticTracks, allNodeInstruments, sampleAllocTracks } from "./views.svelte";
 import { deleteCurrentServer, surface } from "./depth.svelte";
+import { fleet, refreshFleet } from "./fleet.svelte";
+import { api } from "@/api/client";
 
 export const reducedMotion =
   typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -54,6 +56,11 @@ export const ui = $state({
   loginSub: null as string | null,
   rotateOpen: false,
   dbRestartOpen: false,
+
+  // which node / spec the nodeCfg, specEdit, and nsForm sheets are about
+  nodeCfgId: null as string | null,
+  specEditId: null as string | null,
+  nsFormNodeId: null as string | null,
 });
 
 const sheetReturn = new Map<SheetId, HTMLElement | null>();
@@ -101,49 +108,22 @@ export async function confirmGo() {
   if (c.noun === "spec") {
     // a spec is a recipe, not a running thing: it leaves the list and the
     // editor closes; servers built from it keep running
-    specDelete(c.name);
+    const spec = fleet.specs.find((sp) => sp.name.toLowerCase() === c.name.toLowerCase());
     ui.confirm = null;
     closeSheet("specEdit");
+    if (spec) {
+      try {
+        await api.deleteSpec(spec.id);
+        await refreshFleet();
+      } catch {
+        /* the audit log records the refusal; the list simply keeps the row */
+      }
+    }
     return;
   }
   const ok = await deleteCurrentServer();
   ui.confirm = null;
   if (ok) surface();
-}
-
-// ---------------------------------------------------------------------------
-// game specs — still the mock's demo list; the specs sheet goes live with
-// the sheet-wiring wave
-
-export interface SpecRow {
-  name: string;
-  slug: string;
-  plats: string[]; // 'linux' | 'win' | 'wine'
-  art: string | null;
-  ver: string;
-  leaving: boolean;
-}
-
-export const sim = $state({
-  specs: [
-    { name: "Abiotic Factor", slug: "abiotic-factor", plats: ["win", "wine"], art: null, ver: "v1", leaving: false },
-    { name: "RuneScape Dragonwilds", slug: "runescape-dragonwilds", plats: ["wine"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/3061810/library_hero.jpg", ver: "v1", leaving: false },
-    { name: "Enshrouded", slug: "enshrouded", plats: ["win"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/library_hero.jpg", ver: "v1", leaving: false },
-    { name: "Factorio", slug: "factorio", plats: ["linux"], art: null, ver: "v1", leaving: false },
-    { name: "Palworld", slug: "palworld", plats: ["linux", "win"], art: "https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/library_hero.jpg", ver: "v1", leaving: false },
-    { name: "Valheim", slug: "valheim", plats: ["linux"], art: null, ver: "v1", leaving: false },
-    { name: "V Rising", slug: "v-rising", plats: ["win"], art: null, ver: "v1", leaving: false },
-    { name: "Windrose", slug: "windrose", plats: ["win"], art: null, ver: "v1", leaving: false },
-  ] as SpecRow[],
-});
-
-export function specDelete(name: string) {
-  const row = sim.specs.find((r) => r.name.toLowerCase() === name.toLowerCase());
-  if (!row) return;
-  row.leaving = true;
-  setTimeout(() => {
-    sim.specs = sim.specs.filter((r) => r !== row);
-  }, 260);
 }
 
 // ---------------------------------------------------------------------------

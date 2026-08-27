@@ -1,8 +1,27 @@
 <script lang="ts">
-  import { ui, sim, openSheet, closeSheet } from "@/lib/state.svelte";
+  import { ui, openSheet, closeSheet } from "@/lib/state.svelte";
+  import { fleet } from "@/lib/fleet.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
+  import type { PlatformKind, Spec } from "@/api/types";
 
-  const n = $derived(sim.specs.length);
+  const n = $derived(fleet.specs.length);
+
+  // platform kind → short tag; also the row-class suffix the CSS :has() chips
+  // filter on (.p-linux / .p-win / .p-wine)
+  const PLAT: Record<PlatformKind, string> = {
+    "linux-native": "linux",
+    "windows-native": "win",
+    "linux-wine": "wine",
+  };
+
+  function rowClass(s: Spec): string {
+    return "spec-row" + s.platforms.map((p) => " p-" + PLAT[p.kind]).join("");
+  }
+
+  function manage(s: Spec, e: MouseEvent & { currentTarget: HTMLElement }) {
+    ui.specEditId = s.id;
+    openSheet("specEdit", e.clientX, e.clientY, e.currentTarget);
+  }
 </script>
 
 <div
@@ -21,7 +40,6 @@
       surface
     </button>
     <h2 class="depth-title" id="specsTitle">game specs</h2>
-    <div class="prefs-note"><span class="synthetic">values are sample — surface not wired</span></div>
   </div>
   <div class="sheet-body specs-body">
     <div class="audit-bar">
@@ -36,8 +54,8 @@
     </div>
 
     <div class="spec-list">
-      {#each sim.specs as row}
-        <div class="spec-row{row.plats.map((p) => " p-" + p).join("")}" style={row.leaving ? "opacity: 0.2" : ""}>{#if row.art}<span class="spec-art" style="background-image: url('{row.art}')" aria-hidden="true"></span>{/if}<span class="spec-shade" aria-hidden="true"></span><span class="spec-id"><span class="spec-name">{row.name}</span><span class="spec-slug">{row.slug}</span></span><span class="spec-plat">{#each row.plats as p}<span class="spec-tag">{p}</span>{/each}</span><span class="spec-ver">{row.ver}</span><span class="spec-act"><button class="cfg-btn ghost" onclick={(e) => openSheet("specEdit", e.clientX, e.clientY, e.currentTarget)}>manage</button><button class="cfg-btn ghost spec-go" onclick={(e) => openSheet("nsForm", e.clientX, e.clientY, e.currentTarget)}>deploy</button></span></div>
+      {#each fleet.specs as row (row.id)}
+        <div class={rowClass(row)}>{#if row.banner_url}<span class="spec-art" style="background-image: url('{row.banner_url}')" aria-hidden="true"></span>{/if}<span class="spec-shade" aria-hidden="true"></span><span class="spec-id"><span class="spec-name">{row.name}</span><span class="spec-slug">{row.slug}</span></span><span class="spec-plat">{#each row.platforms as p (p.kind)}<span class="spec-tag">{PLAT[p.kind]}</span>{/each}</span><span class="spec-ver">v{row.version}</span><span class="spec-act"><button class="cfg-btn ghost" onclick={(e) => manage(row, e)}>manage</button><button class="cfg-btn ghost spec-go" onclick={(e) => openSheet("nsForm", e.clientX, e.clientY, e.currentTarget)}>deploy</button></span></div>
       {/each}
     </div>
 

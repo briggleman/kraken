@@ -3,7 +3,7 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
-  import { openSheet } from "@/lib/state.svelte";
+  import { openSheet, ui } from "@/lib/state.svelte";
   import { instrumentsFor, nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
@@ -27,13 +27,19 @@
       <button
         class="prefs-open"
         aria-label="Open node settings"
-        onclick={(e) => openSheet("nodeCfg", e.clientX, e.clientY, e.currentTarget)}
+        onclick={(e) => {
+          ui.nodeCfgId = node.id;
+          openSheet("nodeCfg", e.clientX, e.clientY, e.currentTarget);
+        }}
         >node settings</button
       >
       <button
         class="prefs-open ns-form-btn"
         aria-label="Create a new server"
-        onclick={(e) => openSheet("nsForm", e.clientX, e.clientY, e.currentTarget)}
+        onclick={(e) => {
+          ui.nsFormNodeId = node.id;
+          openSheet("nsForm", e.clientX, e.clientY, e.currentTarget);
+        }}
         ><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 7 2.4 V 11.6 M 2.4 7 H 11.6"/></svg><span class="btn-cased">New Server</span></button
       >
     </span>

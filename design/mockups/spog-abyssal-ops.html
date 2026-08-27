@@ -4045,7 +4045,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       closeSheet($('specEdit'));
       return;
     }
-    logDepthLine('<span class="warn">[Server] ' + name + ' deleted — world, backups and config removed</span>');
+    logDepthLine('[Server] ' + name + ' deleted — world, backups and config removed', 'warn');
     delete SERVERS[name];
     document.querySelectorAll('.srv').forEach(b => {
       const n = b.querySelector('.srv-name');
@@ -4413,7 +4413,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     if (act.classList.contains('del')) {
       row.style.opacity = '0.3';
       setTimeout(() => row.remove(), 250);
-      logDepthLine('<span class="warn">[Schedule] deleted ' + name + '</span>');
+      logDepthLine('[Schedule] deleted ' + name, 'warn');
     } else {
       const paused = row.classList.toggle('paused');
       act.textContent = paused ? 'resume' : 'pause';
@@ -4476,7 +4476,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     if (act.classList.contains('del')) {
       row.style.opacity = '0.3';
       setTimeout(() => row.remove(), 250);
-      logDepthLine('<span class="warn">[Backup] deleted ' + label + '</span>');
+      logDepthLine('[Backup] deleted ' + label, 'warn');
     } else {
       act.textContent = 'restoring…';
       act.disabled = true;
@@ -4484,14 +4484,30 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       setTimeout(() => {
         act.textContent = 'restore';
         act.disabled = false;
-        logDepthLine('<span class="good">[Backup] restore complete — world reloaded</span>');
+        logDepthLine('[Backup] restore complete — world reloaded', 'good');
       }, 2600);
     }
   });
-  function logDepthLine(html) {
+  // Console rows are built from text nodes, never from a markup string: the
+  // values interpolated here come from the schedule/backup name inputs, so
+  // innerHTML would let anything typed into them execute (js/xss-through-dom).
+  // tone selects the voice — 'warn' for a prevented or destructive action,
+  // 'good' for a completed one, omitted for plain narration.
+  function logDepthLine(text, tone) {
     const log = $('consoleLog');
     const d = document.createElement('div');
-    d.innerHTML = '<span class="t">' + new Date().toLocaleTimeString('en-US', { hour12: false }) + '</span>' + html;
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+    d.appendChild(t);
+    if (tone) {
+      const body = document.createElement('span');
+      body.className = tone;
+      body.textContent = text;
+      d.appendChild(body);
+    } else {
+      d.appendChild(document.createTextNode(text));
+    }
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
   }

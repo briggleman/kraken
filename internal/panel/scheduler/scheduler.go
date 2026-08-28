@@ -37,8 +37,18 @@ type Placement struct {
 // the first that has enough memory and free ports. The reservation mutates the
 // chosen node; on total failure no node is modified and the error names each
 // node with the reason it was rejected.
+//
+// The reservation is the spec's own figure (Resources.AllocMemoryMB); use
+// PlaceWithMemory to size a server explicitly.
 func Place(s *spec.Spec, nodes []*cluster.Node) (*Placement, error) {
-	memReq := s.Resources.AllocMemoryMB()
+	return PlaceWithMemory(s, nodes, s.Resources.AllocMemoryMB())
+}
+
+// PlaceWithMemory is Place with an explicit memory reservation, for a caller
+// that is sizing a server itself rather than taking the spec's figure. memReq
+// is used verbatim: validating it against the spec's floor is the caller's
+// job, because only the caller knows whether an operator deliberately chose it.
+func PlaceWithMemory(s *spec.Spec, nodes []*cluster.Node, memReq int) (*Placement, error) {
 	reqs := make([]cluster.PortRequest, len(s.Ports))
 	for i, p := range s.Ports {
 		reqs[i] = cluster.PortRequest{Name: p.Name, Preferred: p.Default}

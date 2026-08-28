@@ -288,6 +288,26 @@ paths:
                 variables:
                   type: object
                   additionalProperties: { type: string }
+                memory_mb:
+                  type: integer
+                  description: >-
+                    Memory to reserve. Omit to take the spec's own figure — its
+                    recommended memory, falling back to the minimum. An explicit
+                    value must be at least the spec's min_memory_mb: below that
+                    floor the game does not boot.
+                node_id:
+                  type: string
+                  format: uuid
+                  description: >-
+                    Pin placement to one node. The scheduler still checks
+                    eligibility and reserves; an ineligible pin is a 409 naming
+                    the reason rather than a silent placement elsewhere.
+                install_bepinex:
+                  type: boolean
+                  description: Honored only when the spec is bepinex_compatible.
+                steam_guard_code:
+                  type: string
+                  description: One-time 2FA code for specs whose install needs an authenticated Steam login. Used for this install only, never persisted.
       responses:
         '201':
           description: Created

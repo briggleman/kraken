@@ -18,6 +18,7 @@
     forwardSet,
     settingsApply,
     reinstall,
+    sftpShow,
   } from "@/lib/depth.svelte";
   import { openConfirm } from "@/lib/state.svelte";
   import { specOf } from "@/lib/fleet.svelte";
@@ -259,6 +260,24 @@
           <label for="stnConsole">{installing ? "install log" : "live console"}</label>
           <label for="stnSettings">settings</label>
           <label for="stnFiles">files</label>
+          <!-- The chip is present whenever the node can answer for SFTP at all,
+               not only when it is on: per the Far-End Affordance Rule it exists
+               so the strip answers "is SFTP even on?" without being opened, and
+               a chip that vanishes when disabled leaves no way to enable it. -->
+          {#if depth.sftp}
+            <button
+              type="button"
+              class="stn-chip"
+              onclick={sftpShow}
+              aria-label="SFTP connection details"
+            >
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4.6" cy="9.4" r="2.6"/><path d="M 6.5 7.5 L 11.4 2.6 M 9.4 4.6 l 1.6 1.6"/></svg>
+              <span class="stn-chip-k">sftp</span>
+              <span class="stn-chip-v"
+                >{depth.sftp.enabled && depth.sftp.port ? ":" + depth.sftp.port : "off"}</span
+              >
+            </button>
+          {/if}
         </div>
         <div class="stn-panel p-console">
           <div class="console-log" id="consoleLog" bind:this={consoleLog}>

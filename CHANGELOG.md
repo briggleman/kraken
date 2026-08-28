@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.0](https://github.com/briggleman/kraken/compare/v0.28.0...v0.29.0) (2026-08-28)
+
+
+### Features
+
+* **web:** animate the events floor as a continuous ticker ([#152](https://github.com/briggleman/kraken/issues/152)) ([53450e3](https://github.com/briggleman/kraken/commit/53450e345f9c86fcd80f1fcd1af3415ddba46ef9))
+* **web:** sftp connection details from the station strip ([#155](https://github.com/briggleman/kraken/issues/155)) ([cd9bf0f](https://github.com/briggleman/kraken/commit/cd9bf0f9d7f11cebb23da04b9d7a052616c718ee))
+
 ## [0.28.0](https://github.com/briggleman/kraken/compare/v0.27.0...v0.28.0) (2026-08-28)
 
 

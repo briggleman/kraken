@@ -6,9 +6,10 @@
 // no feed to draw from yet (phase 2 of the node & fleet telemetry issue).
 // Tracks are cached per server so the walks keep their history across polls.
 
-import type { Server, Spec } from "@/api/types";
+import type { Node, Server, Spec } from "@/api/types";
 import { fleet, specOf, nodeOf } from "./fleet.svelte";
 import { seedHistory, type WalkSpec } from "./walk";
+import { fmtGb } from "./fmt";
 
 export interface Track {
   walk: WalkSpec;
@@ -90,6 +91,19 @@ export function playersLabel(server: Server): { num: string; max: string; pct: n
     num: String(players),
     max: max ? String(max) : "?",
     pct: max ? Math.round((players / max) * 100) : 0,
+  };
+}
+
+/**
+ * The node band's memory readout: memory the scheduler has committed to servers
+ * against the node's total. This is the number that decides whether the next
+ * server fits, and unlike host usage it is known even when the agent is not
+ * reachable.
+ */
+export function nodeMemLabel(node: Node): { used: string; total: string } {
+  return {
+    used: node.total_memory_mb ? fmtGb(node.allocated_memory_mb) : "",
+    total: node.total_memory_mb ? Math.round(node.total_memory_mb / 1024) + "G" : "",
   };
 }
 

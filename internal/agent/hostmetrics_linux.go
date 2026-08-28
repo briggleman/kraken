@@ -265,52 +265,93 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 	return false
 }
 
-// cpuThermalTypes are thermal-zone type names that name a CPU sensor. Preferred
-// over the hottest-zone fallback, which on a laptop can be the battery or a
-// wireless card.
-var cpuThermalTypes = []string{"x86_pkg_temp", "cpu-thermal", "coretemp", "k10temp", "soc_thermal", "cpu_thermal"}
+// cpuSensorNames are thermal-zone types and hwmon driver names that identify a
+// CPU sensor. coretemp/x86_pkg_temp are Intel; k10temp and zenpower are AMD.
+var cpuSensorNames = []string{
+	"x86_pkg_temp", "coretemp", "k10temp", "zenpower",
+	"cpu-thermal", "cpu_thermal", "soc_thermal",
+}
 
+// packageLabels mark the die/package reading among an hwmon device's several
+// temperatures. Intel's coretemp exposes "Package id 0" alongside a per-core
+// "Core N"; AMD's k10temp exposes "Tctl"/"Tdie" alongside per-CCD "Tccd1".
+// The package figure is the one that describes the chip as a whole.
+var packageLabels = []string{"package", "tdie", "tctl"}
+
+// readTemp finds the CPU package temperature.
+//
+// Order matters. A sensor that NAMES itself a CPU sensor always beats an
+// unnamed one, from either source, before the hottest-zone fallback is
+// considered — otherwise a machine with a generic acpitz zone and a real
+// k10temp hwmon device reports its chipset instead of its CPU, which is both
+// wrong and plausible enough that nobody notices.
 func (r *hostReader) readTemp(s *hostSnapshot) {
-	if c, ok := r.thermalZoneTemp(); ok {
-		s.tempC, s.tempOK = c, true
-		return
-	}
-	if c, ok := r.hwmonTemp(); ok {
-		s.tempC, s.tempOK = c, true
+	for _, probe := range []func() (float64, bool){
+		r.cpuThermalZone, // a thermal zone that names a CPU sensor
+		r.hwmonTemp,      // an hwmon device that names a CPU driver
+		r.hottestZone,    // last resort: the hottest zone of any kind
+	} {
+		if c, ok := probe(); ok {
+			s.tempC, s.tempOK = c, true
+			return
+		}
 	}
 }
 
-// thermalZoneTemp scans /sys/class/thermal. A zone whose type names a CPU sensor
-// wins outright; otherwise the hottest plausible zone stands in.
-func (r *hostReader) thermalZoneTemp() (float64, bool) {
-	zones, err := filepath.Glob(filepath.Join(r.sys, "class", "thermal", "thermal_zone*"))
-	if err != nil || len(zones) == 0 {
-		return 0, false
+// thermalZone is one readable entry under /sys/class/thermal.
+type thermalZone struct {
+	kind    string // the zone's "type" file: "x86_pkg_temp", "acpitz", "BAT0"…
+	celsius float64
+}
+
+// zones lists the readable thermal zones.
+func (r *hostReader) zones() []thermalZone {
+	paths, err := filepath.Glob(filepath.Join(r.sys, "class", "thermal", "thermal_zone*"))
+	if err != nil {
+		return nil
 	}
-	var hottest float64
-	var found bool
-	for _, z := range zones {
-		milli, ok := readMilliDegrees(filepath.Join(z, "temp"))
+	var out []thermalZone
+	for _, z := range paths {
+		c, ok := readMilliDegrees(filepath.Join(z, "temp"))
 		if !ok {
 			continue
 		}
-		found = true
-		if milli > hottest {
-			hottest = milli
-		}
-		zType, err := os.ReadFile(filepath.Join(z, "type")) // #nosec G304 -- sysfs root, globbed zone dir
+		kind, err := os.ReadFile(filepath.Join(z, "type")) // #nosec G304 -- sysfs root, globbed zone dir
 		if err != nil {
-			continue
+			kind = nil
 		}
-		if hasAnyPrefix(strings.TrimSpace(string(zType)), cpuThermalTypes) {
-			return milli, true
+		out = append(out, thermalZone{strings.TrimSpace(string(kind)), c})
+	}
+	return out
+}
+
+// cpuThermalZone returns the temperature of a thermal zone whose type names a
+// CPU sensor.
+func (r *hostReader) cpuThermalZone() (float64, bool) {
+	for _, z := range r.zones() {
+		if hasAnyPrefix(z.kind, cpuSensorNames) {
+			return z.celsius, true
+		}
+	}
+	return 0, false
+}
+
+// hottestZone is the fallback for a host with no identifiable CPU sensor: the
+// hottest zone is more often than not the one tracking the CPU, and a roughly
+// right number beats an empty instrument on a machine that has sensors.
+func (r *hostReader) hottestZone() (float64, bool) {
+	var hottest float64
+	var found bool
+	for _, z := range r.zones() {
+		if z.celsius > hottest {
+			hottest, found = z.celsius, true
 		}
 	}
 	return hottest, found
 }
 
-// hwmonTemp is the fallback for hosts with no thermal zones: read temp1_input
-// from an hwmon device whose name is a known CPU sensor driver.
+// hwmonTemp reads the package temperature from an hwmon device whose name is a
+// known CPU driver, preferring the die/package sensor over a per-core one.
 func (r *hostReader) hwmonTemp() (float64, bool) {
 	devs, err := filepath.Glob(filepath.Join(r.sys, "class", "hwmon", "hwmon*"))
 	if err != nil {
@@ -318,14 +359,36 @@ func (r *hostReader) hwmonTemp() (float64, bool) {
 	}
 	for _, d := range devs {
 		name, err := os.ReadFile(filepath.Join(d, "name")) // #nosec G304 -- sysfs root, globbed hwmon dir
-		if err != nil || !hasAnyPrefix(strings.TrimSpace(string(name)), cpuThermalTypes) {
+		if err != nil || !hasAnyPrefix(strings.TrimSpace(string(name)), cpuSensorNames) {
 			continue
 		}
-		if c, ok := readMilliDegrees(filepath.Join(d, "temp1_input")); ok {
+		if c, ok := hwmonPackageTemp(d); ok {
 			return c, true
 		}
 	}
 	return 0, false
+}
+
+// hwmonPackageTemp picks the package/die reading out of one hwmon device,
+// falling back to temp1_input when nothing is labelled (many drivers expose a
+// single unlabelled temperature, which is the package one).
+func hwmonPackageTemp(dir string) (float64, bool) {
+	inputs, err := filepath.Glob(filepath.Join(dir, "temp*_input"))
+	if err != nil {
+		return 0, false
+	}
+	for _, in := range inputs {
+		label, err := os.ReadFile(strings.TrimSuffix(in, "_input") + "_label") // #nosec G304 -- sysfs root, globbed sensor
+		if err != nil {
+			continue
+		}
+		if hasAnyPrefix(strings.ToLower(strings.TrimSpace(string(label))), packageLabels) {
+			if c, ok := readMilliDegrees(in); ok {
+				return c, true
+			}
+		}
+	}
+	return readMilliDegrees(filepath.Join(dir, "temp1_input"))
 }
 
 // plausibleTempC bounds a temperature reading to a range a CPU could actually

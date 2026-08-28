@@ -3,15 +3,17 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
-  import { fmtCapacityMB, fmtGb } from "@/lib/fmt";
+  import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
+  import { nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
-  // Every instrument here is fed by the node's agent (see lib/telemetry).
-  // A metric the host can't report — no thermal sensor, an agent too old for
-  // the telemetry RPC, a node the panel can't reach — reads as an em-dash with
-  // its chart blanked, never as a zero.
+  // cpu, disk, network and temp are live host readings from the node's agent
+  // (see lib/telemetry); memory is the scheduler's commitment from the node
+  // record. A metric the host can't report — no thermal sensor, an agent too
+  // old for the telemetry RPC, a node the panel can't reach — reads as an
+  // em-dash with its chart blanked, never as a zero.
   let { node, index }: { node: Node; index: number } = $props();
 
   const vitals = $derived(vitalsFor(node.id));
@@ -21,12 +23,10 @@
   const temp = $derived(now?.temp_known ? now.temp_celsius : undefined);
   const mbps = $derived(netMbps(now));
 
-  // Capacity is known from the node record even when live usage isn't, so an
-  // un-upgraded agent still shows what the box holds — "— / 64G" rather than a
-  // wholly blank readout.
-  const memTotal = $derived(
-    now?.mem_known ? now.mem_total_mb : node.total_memory_mb || undefined,
-  );
+  // Memory is the scheduler's commitment, not host usage: it answers "will the
+  // next server fit". It comes from the node record, so it reads true even for
+  // a node whose agent is unreachable.
+  const mem = $derived(nodeMemLabel(node));
 
   // The packet channel's tempo is throughput against this node's own observed
   // peak; there is no link speed to normalize against.
@@ -79,13 +79,12 @@
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">memory</span><span class="metric-val"
-        >{#if now?.mem_known}<span>{fmtGb(now.mem_used_mb)}</span>{:else}—{/if}<small
-          >{memTotal ? "/" + fmtCapacityMB(memTotal) : ""}</small
-        ></span
+        >{#if mem.used}<span>{mem.used}</span><small>/{mem.total}</small>{:else}—<small
+          ></small>{/if}</span
       >
     </div>
     <div class="zone-track">
-      <DotTrack history={vitals?.mem ?? []} />
+      <DotTrack history={vitals?.alloc ?? []} />
       <span class="th t50" aria-hidden="true"></span>
       <span class="th t75" aria-hidden="true"></span>
     </div>

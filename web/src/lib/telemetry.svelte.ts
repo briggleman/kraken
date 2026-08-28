@@ -1,6 +1,10 @@
-// Node host vitals — cpu, memory, disk, network and temperature, polled from
-// the Panel's telemetry cache and accumulated into the history the node band's
-// instruments draw.
+// The histories behind the node band's instruments.
+//
+// cpu, disk, network and temperature are host readings polled from the Panel's
+// telemetry cache. Memory is the exception: the band shows the memory the
+// scheduler has committed to servers (from the node record), because that is
+// what decides whether the next server fits. The agent's host-memory reading is
+// still carried on the API for anything that wants it.
 //
 // Polled separately from the 10s fleet sweep, and faster: vitals are the one
 // thing on the pane that is supposed to move. The Panel refreshes its own cache
@@ -13,6 +17,7 @@
 // empty instrument. Nothing here ever substitutes a zero for a missing value.
 
 import { api } from "@/api/client";
+import { fleet } from "./fleet.svelte";
 import type { NodeTelemetry } from "@/api/types";
 
 const POLL_MS = 5_000;
@@ -25,8 +30,14 @@ export interface NodeVitals {
   now?: NodeTelemetry;
   /** cpu % per sample, oldest first. Sparse: gaps are dropped, not zero-filled. */
   cpu: number[];
-  /** memory used % per sample. */
-  mem: number[];
+  /**
+   * Memory the scheduler has committed to servers, as a % of the node's total.
+   * From the node record rather than the agent: this is the number that decides
+   * whether the next server fits, and it is available even for a node whose
+   * agent is unreachable. It only moves on deploy or delete — a flat line here
+   * is the truth, not a dead feed.
+   */
+  alloc: number[];
   /** disk used % per sample. */
   disk: number[];
   /**
@@ -53,9 +64,10 @@ function pct(used: number, total: number): number | undefined {
   return Math.max(0, Math.min(100, (used / total) * 100));
 }
 
-export function memPct(t: NodeTelemetry | undefined): number | undefined {
-  if (!t?.mem_known) return undefined;
-  return pct(t.mem_used_mb, t.mem_total_mb);
+/** Committed memory as a % of the node's total, from the node record. */
+export function allocPct(node: { allocated_memory_mb: number; total_memory_mb: number } | undefined): number | undefined {
+  if (!node) return undefined;
+  return pct(node.allocated_memory_mb, node.total_memory_mb);
 }
 
 export function diskPct(t: NodeTelemetry | undefined): number | undefined {
@@ -81,35 +93,27 @@ export async function refreshTelemetry(): Promise<void> {
   try {
     const res = await api.nodeTelemetry();
     const incoming = res.nodes ?? {};
+    // Keyed off the fleet, not the payload: allocation comes from the node
+    // record, so a node whose agent is unreachable still gets an entry (and a
+    // real memory readout) while its agent-fed instruments sit empty.
+    const ids = new Set([...fleet.nodes.map((n) => n.id), ...Object.keys(incoming)]);
     const next: Record<string, NodeVitals> = {};
-    for (const [id, t] of Object.entries(incoming)) {
+    for (const id of ids) {
       const prev = telemetry.byNode[id];
+      const t = incoming[id];
       const v: NodeVitals = {
         now: t,
         cpu: prev ? [...prev.cpu] : [],
-        mem: prev ? [...prev.mem] : [],
+        alloc: prev ? [...prev.alloc] : [],
         disk: prev ? [...prev.disk] : [],
         netPeakMbps: prev?.netPeakMbps ?? 0,
       };
-      push(v.cpu, t.cpu_known ? t.cpu_percent : undefined);
-      push(v.mem, memPct(t));
+      push(v.cpu, t?.cpu_known ? t.cpu_percent : undefined);
+      push(v.alloc, allocPct(fleet.nodes.find((n) => n.id === id)));
       push(v.disk, diskPct(t));
       const mbps = netMbps(t);
       if (mbps !== undefined) v.netPeakMbps = Math.max(v.netPeakMbps, mbps);
       next[id] = v;
-    }
-    // Nodes absent from the payload keep their history but lose their reading,
-    // so the band shows an emptying instrument rather than a frozen number.
-    for (const [id, prev] of Object.entries(telemetry.byNode)) {
-      if (!next[id]) {
-        next[id] = {
-          now: undefined,
-          cpu: prev.cpu,
-          mem: prev.mem,
-          disk: prev.disk,
-          netPeakMbps: prev.netPeakMbps,
-        };
-      }
     }
     telemetry.byNode = next;
     telemetry.loaded = true;

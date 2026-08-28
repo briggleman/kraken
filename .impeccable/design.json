@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-28T14:32:01-04:00",
+  "generatedAt": "2026-08-28T15:39:31-04:00",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -701,7 +701,7 @@
       },
       {
         "name": "The Dim-What-Is-Lit Rule",
-        "body": "The shared veil is `rgba(2,9,14,0.78)`, and it is a real dimmer over the pane — a panel at `#0a1e2c` lands near `#040e15` beneath it, roughly halved. Over the **trench** ground a drill-in and every sheet use (`#030d16` → `#02090E`), it does almost nothing: `#030d16` resolves to about `#020a10`, a change of one or two levels per channel. Near-black cannot dim near-black. A modal opened from inside a drill-in therefore reads as floating on an undimmed backdrop, and no amount of alpha on a colour this close to the ground will fix it — the veil would have to change hue or the card would have to carry its own separation. **This is a known limitation, not a documented behaviour:** verify a modal against the surface it will actually open over, with that surface open, before calling the separation good.",
+        "body": "The shared veil is `rgba(2,9,14,0.78)`, and what it dims is the *content*, not the ground. A panel at `#0a1e2c` lands near `#040e15` beneath it — roughly halved — and lit controls fall with it. The grounds barely move: the trench a drill-in and every sheet use (`#030d16`) resolves to about `#020a10`, one or two levels per channel. That is not a failure, it is the point. A near-black ground has no light to take, and it does not need to lose any: the separation comes from every lit thing standing on it going quiet at once. Judge a veil by what happens to the panels and the buttons, never by arithmetic on the backdrop colour — and judge it with the surface it will really open over actually open, since a modal checked against the pane has been checked against the wrong ground.",
         "section": "components"
       },
       {
@@ -760,7 +760,7 @@
       "Don't ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.",
       "Don't sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a real `<button>` in the DOM, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.",
       "Don't hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.",
-      "Don't judge an overlay's veil against the pane. `rgba(2,9,14,0.78)` halves a panel and does essentially nothing to the trench ground a drill-in and every sheet use — open the surface it will really sit over before deciding the separation reads.",
+      "Don't judge a veil by arithmetic on the backdrop colour. The grounds are already near-black and barely move; what carries the separation is every lit panel and control dimming at once. Open the surface it will really sit over and look at the buttons.",
       "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)"
     ]
   }

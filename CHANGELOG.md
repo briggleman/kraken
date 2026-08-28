@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0](https://github.com/briggleman/kraken/compare/v0.27.0...v0.28.0) (2026-08-28)
+
+
+### Features
+
+* rename a node from node settings ([#148](https://github.com/briggleman/kraken/issues/148)) ([5179f0c](https://github.com/briggleman/kraken/commit/5179f0c00e4969b4d76e1b8ddcb8fed375ce9dd4))
+
+
+### Bug Fixes
+
+* honor memory_mb when creating a server ([#149](https://github.com/briggleman/kraken/issues/149)) ([739b886](https://github.com/briggleman/kraken/commit/739b886d547a628207ee1263a1f35df26a0f6bb2))
+
 ## [0.27.0](https://github.com/briggleman/kraken/compare/v0.26.1...v0.27.0) (2026-08-28)
 
 

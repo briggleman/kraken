@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/briggleman/kraken/compare/v0.26.1...v0.27.0) (2026-08-28)
+
+
+### Features
+
+* report real node host vitals on the node bands ([#142](https://github.com/briggleman/kraken/issues/142)) ([995e41f](https://github.com/briggleman/kraken/commit/995e41f86ab7a3f8a019276ba35337b3e9c285ea)), closes [#128](https://github.com/briggleman/kraken/issues/128)
+
 ## [0.26.1](https://github.com/briggleman/kraken/compare/v0.26.0...v0.26.1) (2026-08-27)
 
 

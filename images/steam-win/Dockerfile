@@ -22,7 +22,7 @@
 # game servers (e.g. V Rising) statically import. They come from the larger
 # Windows Server base; XInput 1.3 isn't in any base, so it's pulled from the
 # legacy DirectX redistributable. (Determined empirically by diffing V Rising's
-# loaded modules against Server Core — see SECURITY/BACKLOG notes.)
+# loaded modules against Server Core — see SECURITY.md.)
 FROM mcr.microsoft.com/windows/server:ltsc2022 AS deps
 SHELL ["powershell", "-NoLogo", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop';"]
 RUN New-Item -ItemType Directory -Force C:\sys32 | Out-Null; \

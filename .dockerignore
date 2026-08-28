@@ -54,6 +54,5 @@ Thumbs.db
 
 # docs / meta not needed inside the image
 docs/
-BACKLOG.md
 CLAUDE.md
 SECURITY.md

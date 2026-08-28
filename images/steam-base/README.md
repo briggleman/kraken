@@ -71,6 +71,9 @@ docker build -t ghcr.io/briggleman/kraken-steam-base:latest images/steam-base
 ## Related
 
 - Windows-native equivalent: [`images/steam-win`](../steam-win) (Server Core + SteamCMD).
-- BepInEx (modded) variant: planned (queued next) — see [BACKLOG.md](../../BACKLOG.md). **No new
-  image**: BepInEx installs into `/data` during the install phase (it's Unity-version/backend-specific)
-  and the server boots through the Doorstop loader, so modded and vanilla share this same base.
+- BepInEx (modded) servers: shipped, and they run on **this image** — there is no separate
+  modded variant. BepInEx is Unity-version/backend-specific, so it installs into `/data`
+  during the install phase and the server boots through the Doorstop loader; modded and
+  vanilla share this same base. A spec opts in with `bepinex_compatible: true` (see
+  `valheim.yaml` and `vrising.yaml` in `internal/panel/catalog/bundled/`), which surfaces
+  the per-server toggle at deploy time.

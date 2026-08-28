@@ -130,10 +130,9 @@ the git log and release-please changelog stay clean without it.
 
 ## Backlog = GitHub issues
 
-Deferred work is tracked as **GitHub issues labeled `backlog`**, not in
-BACKLOG.md (which is now the historical record of shipped items).
-**Whenever an item gets backlogged, open an issue for it** — never just a
-file note:
+Deferred work is tracked as **GitHub issues labeled `backlog`** — there is no
+backlog file. **Whenever an item gets backlogged, open an issue for it** —
+never just a file note:
 
 - **Plan decided?** The issue carries the execution plan in detail, as a
   checklist.
@@ -148,6 +147,6 @@ file note:
 
 - Product context (users, positioning, constraints) → **[PRODUCT.md](PRODUCT.md)**
 - Design language → **[DESIGN.md](DESIGN.md)**
-- Shipped-work history (active items → GitHub issues) → **[BACKLOG.md](BACKLOG.md)**
+- Shipped-work history → **[CHANGELOG.md](CHANGELOG.md)** (release-please) + the git log
 - Security posture & audit history → **[SECURITY.md](SECURITY.md)**
 - Project overview → **[README.md](README.md)**

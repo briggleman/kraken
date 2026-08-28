@@ -137,8 +137,9 @@ collection *to the software* remains a separate decision requiring its own yes.
 **Explicitly undecided — do not invent an answer:**
 
 - **Openness to outside contributions.** Whether external PRs are accepted at
-  all, and under what bar, is deliberately unresolved (see BACKLOG.md). GPL-3.0
-  is the license context.
+  all, and under what bar, is deliberately unresolved (tracked as
+  [#88](https://github.com/briggleman/kraken/issues/88)). GPL-3.0 is the
+  license context.
 - **Accessibility bar** — see below.
 - **Agent self-update policy** (fleet-wide vs. per-node-with-confirmation) and
   **runtime spec catalog from an external repo** are designed but unshipped.
@@ -169,7 +170,7 @@ collection *to the software* remains a separate decision requiring its own yes.
   Valheim, V Rising, Enshrouded, Factorio, Abiotic Factor, DragonWilds,
   Windrose, plus a `windemo` Windows demo — authored against the SPECS.md
   convention in the same directory.
-- Live-validated deployments recorded in BACKLOG.md with dates and specifics:
+- Live-validated deployments, each recorded in the commit that shipped it:
   modded Valheim booting through BepInEx/Doorstop, Abiotic Factor reaching a
   joinable session under Wine 10, a 3.6 GB Palworld backup replicated
   byte-identically to a real SFTP remote, Windows-native end-to-end on a Windows
@@ -186,8 +187,8 @@ collection *to the software* remains a separate decision requiring its own yes.
 press, user counts, star counts, download figures, uptime statistics, benchmarks,
 or performance comparisons against other panels. No pricing, plans, licensing
 tiers, hosted offering, SLA, or support commitment. No screenshots or demo
-recordings currently exist as committed assets. No roadmap dates beyond what
-BACKLOG.md states.
+recordings currently exist as committed assets. No roadmap dates at all — the
+`backlog` issues carry intent, never delivery dates.
 
 ## Product Principles
 

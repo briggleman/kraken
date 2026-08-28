@@ -177,9 +177,18 @@ func placeholderNodeName(address string, mode cluster.ConnectionMode) string {
 	return "node-" + host
 }
 
+// maxNodeNameLen bounds a node name so it stays renderable in the node band
+// and the logs it appears in.
+const maxNodeNameLen = 64
+
 // updateNodeRequest carries the operator-editable capacity fields. Pointer
 // fields distinguish "leave unchanged" (absent) from an explicit value.
 type updateNodeRequest struct {
+	// Name renames the node. The name is display-only — servers reference a
+	// node by its UUID — so a rename is safe at any time and does not disturb
+	// what is running.
+	Name *string `json:"name,omitempty"`
+
 	TotalMemMB *int `json:"total_memory_mb,omitempty"`
 	PortStart  *int `json:"port_start,omitempty"`
 	PortEnd    *int `json:"port_end,omitempty"`
@@ -196,10 +205,10 @@ type updateNodeRequest struct {
 	Address *string `json:"address,omitempty"`
 }
 
-// handleUpdateNode edits a node's schedulable capacity — total memory and the
-// game-port range — and flips its connection mode. Port-range changes preserve
-// existing allocations, so running servers keep their ports; only future
-// placements draw from the new range.
+// handleUpdateNode edits a node's name and schedulable capacity — total memory
+// and the game-port range — and flips its connection mode. Port-range changes
+// preserve existing allocations, so running servers keep their ports; only
+// future placements draw from the new range.
 func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	var req updateNodeRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -217,6 +226,24 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if n.Ports == nil {
 		n.Ports = cluster.NewPortPool()
+	}
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			writeError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		if len(name) > maxNodeNameLen {
+			writeError(w, http.StatusBadRequest,
+				fmt.Sprintf("name cannot exceed %d characters", maxNodeNameLen))
+			return
+		}
+		// A rename also settles the identity question: the record is no longer
+		// waiting to adopt the agent's self-reported id, or the operator's
+		// chosen name would be silently overwritten on the next reconcile.
+		n.Name = name
+		n.IdentityPending = false
 	}
 
 	if req.TotalMemMB != nil {

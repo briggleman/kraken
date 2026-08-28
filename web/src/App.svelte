@@ -3,6 +3,7 @@
   import Pane from "@/surfaces/Pane.svelte";
   import Depth from "@/surfaces/Depth.svelte";
   import ConfirmDelete from "@/surfaces/ConfirmDelete.svelte";
+  import SftpAccess from "@/surfaces/SftpAccess.svelte";
   import Prefs from "@/surfaces/Prefs.svelte";
   import Users from "@/surfaces/Users.svelte";
   import Specs from "@/surfaces/Specs.svelte";
@@ -20,7 +21,7 @@
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
-  import { depth, surface, syncDepthFromFleet } from "@/lib/depth.svelte";
+  import { depth, surface, syncDepthFromFleet, sftpHide } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
   startSim();
@@ -53,10 +54,16 @@
   });
 
   // Escape routing, top layer first (The Topmost Closes Last Rule):
-  // confirm → open sheet → prefs → drill-in. Login/rotate/interstitial are
-  // deliberately not members of the Escape family.
+  // sftp → confirm → open sheet → prefs → drill-in. Login/rotate/interstitial
+  // are deliberately not members of the Escape family. Every member routes
+  // here rather than handling its own key, so one press closes one layer —
+  // a dialog that also swallowed Escape locally would take the drill-in with it.
   function onKeydown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
+    if (depth.sftpOpen) {
+      sftpHide();
+      return;
+    }
     if (ui.confirm) {
       ui.confirm = null;
       return;
@@ -94,3 +101,4 @@
 <DbRestart />
 <Setup />
 <ConfirmDelete />
+<SftpAccess />

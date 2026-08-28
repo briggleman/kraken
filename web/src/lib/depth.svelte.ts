@@ -10,6 +10,7 @@ import type {
   Server,
   ServerDnsState,
   ServerSettings,
+  SftpStatus,
 } from "@/api/types";
 import type { ScheduleInput } from "@/api/client";
 import { ServerStream, type StreamMode } from "./stream.svelte";
@@ -35,6 +36,14 @@ export const depth = $state({
   restoringBackup: null as string | null,
   powerBusy: false,
   error: null as string | null,
+  sftp: null as SftpStatus | null,
+  sftpOpen: false,
+  sftpBusy: false,
+  sftpError: null as string | null,
+  // The plaintext password, held only for as long as the dialog is on screen.
+  // The Panel stores a hash and returns this exactly once, so it is deliberately
+  // not part of `sftp` — nothing that survives a close may carry it.
+  sftpPassword: null as string | null,
 });
 
 export const stream = new ServerStream();
@@ -72,6 +81,11 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.files = null;
   depth.filesDir = ".";
   depth.error = null;
+  depth.sftp = null;
+  depth.sftpOpen = false;
+  depth.sftpBusy = false;
+  depth.sftpError = null;
+  depth.sftpPassword = null;
   depth.open = true;
   stream.set(id, streamModeFor(depth.server?.state));
   void refreshDetail();
@@ -94,9 +108,10 @@ async function refreshDetail() {
     api.getServerDns(id),
     api.getServerSettings(id),
     api.listFiles(id, "."),
+    api.getServerSftp(id),
   ]);
   if (depth.serverId !== id) return; // drilled elsewhere meanwhile
-  const [srv, bk, sch, dns, settings, files] = results;
+  const [srv, bk, sch, dns, settings, files, sftp] = results;
   if (srv.status === "fulfilled") {
     depth.server = srv.value;
     stream.set(id, streamModeFor(srv.value.state));
@@ -106,7 +121,12 @@ async function refreshDetail() {
   if (dns.status === "fulfilled") depth.dns = dns.value;
   if (settings.status === "fulfilled") depth.settings = settings.value;
   if (files.status === "fulfilled") depth.files = files.value;
-  const firstErr = results.find((r) => r.status === "rejected") as
+  // SFTP keeps its own error line: it is one optional affordance in the tab
+  // strip, and a node that cannot answer for it must not blank the drill-in.
+  depth.sftp = sftp.status === "fulfilled" ? sftp.value : null;
+  depth.sftpError =
+    sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
+  const firstErr = results.slice(0, -1).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
     | undefined;
   depth.error = firstErr ? String(firstErr.reason?.message ?? firstErr.reason) : null;
@@ -326,6 +346,66 @@ export async function dnsUnpublish() {
   } catch (e) {
     depth.error = e instanceof Error ? e.message : String(e);
   }
+}
+
+// --- sftp ------------------------------------------------------------------
+
+export function sftpShow() {
+  depth.sftpError = null;
+  depth.sftpOpen = true;
+}
+
+export function sftpHide() {
+  depth.sftpOpen = false;
+  // The One Sighting Rule: closing ends the reveal. The plaintext is gone
+  // rather than remembered, which is exactly what reopening does in production.
+  depth.sftpPassword = null;
+  depth.sftpError = null;
+}
+
+async function sftpRun(fn: (id: string) => Promise<SftpStatus>) {
+  if (!depth.serverId || depth.sftpBusy) return;
+  depth.sftpBusy = true;
+  depth.sftpError = null;
+  try {
+    depth.sftp = await fn(depth.serverId);
+  } catch (e) {
+    depth.sftpError = e instanceof Error ? e.message : String(e);
+  } finally {
+    depth.sftpBusy = false;
+  }
+}
+
+export async function sftpRotate() {
+  if (!depth.serverId || depth.sftpBusy) return;
+  depth.sftpBusy = true;
+  depth.sftpError = null;
+  try {
+    const r = await api.resetServerSftpPassword(depth.serverId);
+    depth.sftp = r.status;
+    depth.sftpPassword = r.password;
+  } catch (e) {
+    depth.sftpError = e instanceof Error ? e.message : String(e);
+  } finally {
+    depth.sftpBusy = false;
+  }
+}
+
+export async function sftpAddKey(key: string) {
+  const k = key.trim();
+  if (!k) return;
+  const keys = [...(depth.sftp?.keys ?? []), k];
+  await sftpRun((id) => api.setServerSftpKeys(id, keys));
+}
+
+export async function sftpRemoveKey(key: string) {
+  const keys = (depth.sftp?.keys ?? []).filter((k) => k !== key);
+  await sftpRun((id) => api.setServerSftpKeys(id, keys));
+}
+
+export async function sftpDisable() {
+  await sftpRun((id) => api.disableServerSftp(id));
+  if (!depth.sftpError) sftpHide();
 }
 
 export async function forwardSet(portName: string, open: boolean) {

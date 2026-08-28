@@ -24,7 +24,12 @@ type createServerRequest struct {
 	SpecID    string            `json:"spec_id"`
 	Name      string            `json:"name"`
 	Variables map[string]string `json:"variables"`
-	MemoryMB  int               `json:"memory_mb"`
+	// MemoryMB sizes the server explicitly. Zero (or absent) takes the spec's
+	// own figure — its recommended memory, falling back to the minimum. An
+	// explicit value must still clear the spec's minimum: below that floor the
+	// game does not boot, and provisioning a server that cannot start is not a
+	// choice worth honoring.
+	MemoryMB int `json:"memory_mb,omitempty"`
 	// NodeID pins placement to one node. The scheduler still runs — it checks
 	// eligibility (OS/kind, memory, ports) and reserves resources — but only
 	// this node is a candidate, and an ineligible pin is a 409 naming the
@@ -93,8 +98,19 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		nodes = []*cluster.Node{pinned}
 	}
 
+	// Memory: the spec's own figure unless the caller sized it explicitly.
+	memReq := sp.Resources.AllocMemoryMB()
+	if req.MemoryMB != 0 {
+		if req.MemoryMB < sp.Resources.MinMemoryMB {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf(
+				"memory_mb must be at least the spec's minimum of %dMB", sp.Resources.MinMemoryMB))
+			return
+		}
+		memReq = req.MemoryMB
+	}
+
 	// Scheduler reserves memory + ports on the chosen node (in the loaded copy).
-	placement, err := scheduler.Place(sp, nodes)
+	placement, err := scheduler.PlaceWithMemory(sp, nodes, memReq)
 	if err != nil {
 		if pinnedName != "" {
 			writeError(w, http.StatusConflict, "node "+pinnedName+" can't host this spec: "+err.Error())

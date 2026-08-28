@@ -17,6 +17,7 @@
   let name = $state("");
   let vars = $state<Record<string, string>>({});
   let steamGuard = $state("");
+  let memMb = $state("");
   let bepinex = $state(false);
   let startAfter = $state(true);
   let nightlyBackup = $state(true);
@@ -42,6 +43,7 @@
     vars = v;
     steamGuard = "";
     bepinex = false;
+    memMb = String(s.resources.recommended_memory_mb || s.resources.min_memory_mb || 0);
     err = null;
   });
 
@@ -57,7 +59,14 @@
   const allocMb = $derived(
     spec?.resources.recommended_memory_mb || spec?.resources.min_memory_mb || 0,
   );
-  const memAfter = $derived(node ? node.allocated_memory_mb + allocMb : allocMb);
+  // What the operator actually asked for. Blank or unparseable falls back to
+  // the spec figure, which is also what the panel would pick on its own.
+  const chosenMb = $derived(Number.isFinite(+memMb) && +memMb > 0 ? Math.round(+memMb) : allocMb);
+  const minMb = $derived(spec?.resources.min_memory_mb ?? 0);
+  // Below the spec's floor the game does not boot; the panel refuses it, so
+  // say so here rather than letting the request come back as a 400.
+  const belowMin = $derived(chosenMb < minMb);
+  const memAfter = $derived(node ? node.allocated_memory_mb + chosenMb : chosenMb);
   // Recommended figures are larger than the old minimums, so over-commit is a
   // live case now: the panel will refuse the placement, and the strip should
   // say so before the button is pressed rather than printing 34/32G mutely.
@@ -65,6 +74,10 @@
 
   async function create() {
     if (!spec || busy) return;
+    if (belowMin) {
+      err = `memory must be at least the spec's minimum of ${fmtGb(minMb)}G`;
+      return;
+    }
     busy = true;
     err = null;
     try {
@@ -75,6 +88,10 @@
         node_id: node?.id,
         steam_guard_code: steamGuard.trim() || undefined,
         install_bepinex: bepinex || undefined,
+        // Only when the operator moved it off the spec's figure — otherwise let
+        // the panel decide, so a spec edit is picked up rather than pinned to
+        // whatever this sheet last rendered.
+        memory_mb: chosenMb !== allocMb ? chosenMb : undefined,
       });
       if (nightlyBackup) {
         await api
@@ -185,6 +202,18 @@
           {/each}
         {/if}
 
+        <div class="ns-legend"><h4>sizing</h4><i></i><small>the spec's recommended figure — raise it for heavier worlds</small></div>
+        <div class="cfg-row">
+          <span>memory (mb)</span>
+          <input type="text" class="cfg-in" bind:value={memMb} aria-label="Memory in MB" />
+          <p class="cfg-help">
+            {spec ? `spec minimum ${spec.resources.min_memory_mb}MB` : "—"}{spec?.resources
+              .recommended_memory_mb
+              ? `, recommended ${spec.resources.recommended_memory_mb}MB`
+              : ""}. the minimum is the floor at which the game boots, not the figure it runs well at.
+          </p>
+        </div>
+
         <div class="ns-legend"><h4>operations</h4><i></i><small>changeable later in the server's own settings</small></div>
         <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install finishes</label>
         <label class="tgl"><input type="checkbox" bind:checked={nightlyBackup} /><i></i>nightly backup at 04:00</label>
@@ -200,13 +229,16 @@
       </div>
       <div class="ns-alloc">
         <div class="ns-cost" class:over={overCapacity}><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
-        <div class="ns-cost"><span>rec memory</span><b>{fmtGb(allocMb)}<em>G</em></b></div>
+        <div class="ns-cost" class:over={belowMin}><span>memory</span><b>{fmtGb(chosenMb)}<em>G</em></b></div>
         <div class="ns-cost"><span>ports needed</span><b>{spec?.ports?.length ?? 0}<em></em></b></div>
         <div class="ns-acts">
           {#if err}<span class="cfg-note" use:istyle={"color: var(--crisis)"}>{err}</span>
+          {:else if belowMin}<span class="cfg-note" use:istyle={"color: var(--crisis)"}
+            >below the spec's {fmtGb(minMb)}G minimum — the game will not boot</span
+          >
           {:else if overCapacity}<span class="cfg-note" use:istyle={"color: var(--caution)"}
             >{node?.name} has {fmtGb(node.total_memory_mb - node.allocated_memory_mb)}G free — this
-            needs {fmtGb(allocMb)}G</span
+            needs {fmtGb(chosenMb)}G</span
           >{/if}
           <button class="cfg-btn ghost" onclick={() => closeSheet("nsForm")}>cancel</button>
           <button class="cfg-btn solid" disabled={busy || !spec} onclick={() => void create()}>create server</button>

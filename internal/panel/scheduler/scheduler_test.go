@@ -263,3 +263,53 @@ func TestPlace_NoPortsAvailable_RollsBackMemory(t *testing.T) {
 			n.AllocatedMemoryMB, memBefore)
 	}
 }
+
+// An operator sizing a server explicitly gets exactly that reservation, not the
+// spec's figure — the whole point of the override.
+func TestPlaceWithMemory_ReservesTheGivenFigure(t *testing.T) {
+	sp := crossPlatformSpec()
+	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
+	n := linuxNode("lin-a", 16384, true)
+
+	p, err := PlaceWithMemory(sp, []*cluster.Node{n}, 8192)
+	if err != nil {
+		t.Fatalf("PlaceWithMemory: %v", err)
+	}
+	if p.MemoryMB != 8192 {
+		t.Fatalf("reserved %dMB, want the requested 8192", p.MemoryMB)
+	}
+	// And the node's allocation reflects it, so the next placement sees it gone.
+	if got := n.AllocatedMemoryMB; got != 8192 {
+		t.Fatalf("node allocated %dMB, want 8192", got)
+	}
+}
+
+// The override is still bounded by the node: asking for more than it has is a
+// placement failure, not an over-commit.
+func TestPlaceWithMemory_StillBoundedByNodeCapacity(t *testing.T) {
+	sp := crossPlatformSpec()
+	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
+	n := linuxNode("lin-a", 8192, true)
+
+	if _, err := PlaceWithMemory(sp, []*cluster.Node{n}, 16384); err == nil {
+		t.Fatal("expected a placement failure when the request exceeds the node")
+	}
+	if n.AllocatedMemoryMB != 0 {
+		t.Fatalf("a failed placement must reserve nothing, got %dMB", n.AllocatedMemoryMB)
+	}
+}
+
+// Place stays the spec-driven path — the override must not change its behavior.
+func TestPlaceDelegatesToTheSpecFigure(t *testing.T) {
+	sp := crossPlatformSpec()
+	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
+	n := linuxNode("lin-a", 16384, true)
+
+	p, err := Place(sp, []*cluster.Node{n})
+	if err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	if p.MemoryMB != sp.Resources.AllocMemoryMB() {
+		t.Fatalf("Place reserved %dMB, want the spec's %dMB", p.MemoryMB, sp.Resources.AllocMemoryMB())
+	}
+}

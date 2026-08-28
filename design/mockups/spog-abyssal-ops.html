@@ -181,6 +181,28 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   #stnFiles:checked ~ .stn-tabs label[for="stnFiles"] {
     color: var(--lumen); border-bottom-color: var(--lumen);
   }
+  /* SFTP handoff. Connection details are set once per server and then never
+     touched again, so SFTP earns an affordance in the strip rather than a
+     destination beside the three places you visit every session. The chip
+     carries the live port, so the strip also answers "is SFTP even on?". */
+  .stn-chip {
+    margin-left: auto; margin-right: 12px; align-self: center;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 10px;
+    background: rgba(var(--lumen-rgb), 0.05);
+    border: 1px solid var(--edge); border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .stn-chip:hover { border-color: rgba(var(--lumen-rgb), 0.4); background: rgba(var(--lumen-rgb), 0.09); }
+  .stn-chip:focus-visible { outline: 2px solid var(--lumen); outline-offset: 2px; }
+  .stn-chip svg { width: 12px; height: 12px; flex: none; color: var(--ink-3); transition: color 0.15s; }
+  .stn-chip:hover svg { color: var(--ok); }
+  .stn-chip-k {
+    font-family: var(--ui); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .stn-chip-v { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink); }
   .stn-panel { display: none; min-height: 0; }
   #stnConsole:checked ~ .p-console { display: grid; grid-template-rows: 1fr auto; }
   #stnSettings:checked ~ .p-settings { display: grid; grid-template-rows: 1fr auto; }
@@ -469,6 +491,67 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .confirm-hint { margin: 0; min-height: 1em; font-size: clamp(10px, 0.7vw, 12px); letter-spacing: 0.06em; color: var(--ink-3); }
   .confirm-acts { display: flex; justify-content: flex-end; gap: 10px; margin-top: 2px; }
   .confirm-acts .ctl { flex: 0 0 auto; padding: 11px 18px; }
+  /* SFTP access. A read-and-copy surface, not a form: the operator came to carry
+     four values to another client and leave, so it is a compact dialog rather
+     than a sheet. The only writes are rotating the password and adding a key. */
+  .sftp { position: fixed; inset: 0; z-index: 42; display: none; place-items: center; padding: 24px; }
+  .sftp.open { display: grid; }
+  .sftp-veil { position: absolute; inset: 0; background: rgba(2,9,14,0.78); }
+  .sftp-card {
+    position: relative; width: min(780px, 100%);
+    border: 1px solid var(--edge); border-radius: 6px;
+    background: linear-gradient(180deg, #0a1e2c, #071521);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07);
+    padding: clamp(18px, 2.2vh, 26px) clamp(18px, 1.8vw, 26px);
+    display: grid; gap: 16px;
+  }
+  .sftp-title {
+    margin: 0; font-size: clamp(14px, 1vw, 18px); font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--lumen);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sftp-title svg { width: 15px; height: 15px; flex: none; }
+  .sftp-title b { font-family: var(--mono); font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .sftp-field { display: grid; gap: 6px; }
+  .sftp-field > span { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); }
+  .sftp-line { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  /* DESIGN.md on .cfg-ro: a summary you have to drag sideways is not a summary.
+     A connection URI is several facts (user, host, port), so it wraps here rather
+     than hiding its tail behind an overflow scroll. */
+  .sftp-line .cfg-ro { white-space: normal; overflow-x: visible; word-break: break-all; line-height: 1.55; }
+  .sftp-line .mini-act { justify-self: end; }
+  .sftp-parts { display: grid; gap: 9px; }
+  .sftp-parts .kv { align-items: center; }
+  .sftp-parts .kv b { min-width: 0; }
+  .sftp-rule { height: 1px; background: var(--edge); }
+  .sftp-auth { display: grid; gap: 10px; }
+  .sftp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sftp-row > span { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); }
+  .sftp-row em { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .sftp-key {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-family: var(--mono); font-weight: 300; font-size: 12px; color: var(--ink-2);
+    background: rgba(5,13,20,0.6); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 7px 10px;
+  }
+  .sftp-key span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The reveal. The plaintext is never stored, so this is the only time it exists
+     on screen — caution violet, because losing it costs a rotation, not a crisis. */
+  .sftp-reveal { display: none; gap: 8px; }
+  .sftp-reveal.on { display: grid; }
+  .sftp-pw {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+    background: rgba(5,13,20,0.6); border: 1px solid rgba(var(--caution-rgb), 0.45); border-radius: 4px;
+    padding: 9px 12px;
+  }
+  .sftp-pw code {
+    font-family: var(--mono); font-size: 14px; color: var(--ink);
+    overflow-x: auto; white-space: nowrap;
+    scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent;
+  }
+  .sftp-once { margin: 0; font-size: 11px; line-height: 1.5; letter-spacing: 0.04em; color: var(--caution); }
+  .sftp-note { margin: 0; max-width: 62ch; font-size: clamp(11px, 0.72vw, 12px); line-height: 1.6; color: var(--ink-2); }
+  .sftp-acts { display: flex; justify-content: flex-end; gap: 10px; }
   .roster { display: grid; gap: 2px; }
   .roster-row {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1037,7 +1120,17 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .floor-label { font-size: clamp(10px, 0.7vw, 13px); font-weight: 600; letter-spacing: 0.28em; color: var(--ink-3); text-transform: uppercase; white-space: nowrap; }
   /* flex items floor at min-content unless told otherwise, so the nowrap event list was
      setting the width of the whole page; min-width:0 lets it clip inside its own box */
-  .events { display: flex; gap: clamp(22px, 2.6vw, 56px); overflow: hidden; flex: 1; min-width: 0; }
+  .events { overflow: hidden; flex: 1; min-width: 0; }
+  /* The floor is a ticker. The event set is duplicated in the markup so translating
+     the rail by -50% lands exactly on the seam and the loop never shows a gap.
+     Linear, because a constant speed is the only honest one for a continuous feed.
+     Hover parks it so a line can be read without losing the click-through to the
+     audit log; the second set is aria-hidden so it is not announced twice. */
+  .ev-rail { display: flex; width: max-content; animation: evTicker 46s linear infinite; }
+  .ev-set { display: flex; gap: clamp(22px, 2.6vw, 56px); padding-right: clamp(22px, 2.6vw, 56px); }
+  .events:hover .ev-rail, .events:focus-within .ev-rail { animation-play-state: paused; }
+  @keyframes evTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .ev-rail { animation-play-state: paused; } }
   .ev { font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.78vw, 15px); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .ev .t { color: var(--ink-3); margin-right: 8px; }
   .ev .who { color: var(--ink); }
@@ -2218,10 +2311,20 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   <footer class="floor fl-door" data-sheet-open="auditLog" role="button" tabindex="0" aria-label="Open the full audit log">
     <span class="floor-label">events</span>
     <div class="events">
-      <span class="ev"><span class="t">23:41</span><span class="who">palworld</span> — kestrel joined · 7 online</span>
-      <span class="ev warn"><span class="t">23:37</span>behemoth — disk i/o spike settled</span>
-      <span class="ev"><span class="t">22:58</span><span class="who">dragonwilds</span> — stopped by owner</span>
-      <span class="ev"><span class="t">22:14</span><span class="who">enshrouded</span> — backup completed · 1.2G</span>
+      <div class="ev-rail">
+        <div class="ev-set">
+          <span class="ev"><span class="t">23:41</span><span class="who">palworld</span> — kestrel joined · 7 online</span>
+          <span class="ev warn"><span class="t">23:37</span>behemoth — disk i/o spike settled</span>
+          <span class="ev"><span class="t">22:58</span><span class="who">dragonwilds</span> — stopped by owner</span>
+          <span class="ev"><span class="t">22:14</span><span class="who">enshrouded</span> — backup completed · 1.2G</span>
+        </div>
+        <div class="ev-set" aria-hidden="true">
+          <span class="ev"><span class="t">23:41</span><span class="who">palworld</span> — kestrel joined · 7 online</span>
+          <span class="ev warn"><span class="t">23:37</span>behemoth — disk i/o spike settled</span>
+          <span class="ev"><span class="t">22:58</span><span class="who">dragonwilds</span> — stopped by owner</span>
+          <span class="ev"><span class="t">22:14</span><span class="who">enshrouded</span> — backup completed · 1.2G</span>
+        </div>
+      </div>
     </div>
     <span class="synthetic">synthetic data — mock feed</span>
     <span class="fl-cue">full audit log <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 4h9M7 1l3 3-3 3"/></svg></span>
@@ -2253,6 +2356,11 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <label for="stnConsole">live console</label>
         <label for="stnSettings">settings</label>
         <label for="stnFiles">files</label>
+        <button type="button" class="stn-chip" aria-label="SFTP connection details">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4.6" cy="9.4" r="2.6"/><path d="M 6.5 7.5 L 11.4 2.6 M 9.4 4.6 l 1.6 1.6"/></svg>
+          <span class="stn-chip-k">sftp</span>
+          <span class="stn-chip-v">:2022</span>
+        </button>
       </div>
       <div class="stn-panel p-console">
         <div class="console-log" id="consoleLog"></div>
@@ -3696,6 +3804,65 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   </div>
 </div>
 
+<div class="sftp" id="sftpAccess" role="dialog" aria-modal="true" aria-labelledby="sftpTitle">
+  <div class="sftp-veil" data-sftp-close></div>
+
+  <div class="sftp-card">
+    <h2 class="sftp-title" id="sftpTitle">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4.6" cy="9.4" r="2.6"/><path d="M 6.5 7.5 L 11.4 2.6 M 9.4 4.6 l 1.6 1.6"/></svg>
+      sftp access <b id="sftpServer">palworld-01</b>
+    </h2>
+
+    <div class="sftp-field">
+      <span>connection</span>
+      <div class="sftp-line">
+        <div class="cfg-ro" id="sftpUri">sftp://9f3c1e40-7a2b-4d55-9c81-2ee6f0a41b73@72.14.201.88:2022</div>
+        <button class="mini-act res copy-act" data-copy="sftp://9f3c1e40-7a2b-4d55-9c81-2ee6f0a41b73@72.14.201.88:2022" aria-label="Copy connection string"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button>
+      </div>
+    </div>
+
+    <div class="sftp-parts">
+      <div class="kv"><span>host</span><b>72.14.201.88</b><button class="mini-act res copy-act" data-copy="72.14.201.88" aria-label="Copy host"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
+      <div class="kv"><span>port</span><b>2022</b><button class="mini-act res copy-act" data-copy="2022" aria-label="Copy port"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
+      <div class="kv">
+        <span>user</span>
+        <b title="9f3c1e40-7a2b-4d55-9c81-2ee6f0a41b73">9f3c1e40-7a2b-4d55-9c81-2ee6f0a41b73</b>
+        <button class="mini-act res copy-act" data-copy="9f3c1e40-7a2b-4d55-9c81-2ee6f0a41b73" aria-label="Copy username"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button>
+      </div>
+    </div>
+
+    <div class="sftp-rule" aria-hidden="true"></div>
+
+    <div class="sftp-auth">
+      <div class="sftp-row">
+        <span>password</span>
+        <em id="sftpPwState">set</em>
+        <button class="mini-act res" id="sftpReset">rotate</button>
+      </div>
+      <div class="sftp-reveal" id="sftpReveal">
+        <div class="sftp-pw">
+          <code id="sftpPw">7Qk2mBvR4tYxLpN8dWfHs3Ag</code>
+          <button class="mini-act res copy-act" data-copy="7Qk2mBvR4tYxLpN8dWfHs3Ag" aria-label="Copy password"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button>
+        </div>
+        <p class="sftp-once">copy it now — the panel keeps only a hash, so this is the one time it exists on screen.</p>
+      </div>
+
+      <div class="sftp-row"><span>keys</span><em>1 authorized</em><button class="mini-act" id="sftpAddKey">add key</button></div>
+      <div class="sftp-key">
+        <span>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN2rP4vQm8sKxT1bW9fJ3hLpYc6dEuZg ben@behemoth</span>
+        <button class="mini-act" aria-label="Remove this key">remove</button>
+      </div>
+    </div>
+
+    <p class="sftp-note">password and keys both work; either is enough. access is chrooted to this server's data directory — nothing above it is reachable.</p>
+
+    <div class="sftp-acts">
+      <button class="cfg-btn ghost" data-sftp-close>close</button>
+    </div>
+  </div>
+
+</div>
+
 <script>
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -4089,6 +4256,37 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     b.classList.add('did');
     setTimeout(() => b.classList.remove('did'), 1600);
   });
+
+  // ---- sftp access ----
+  (() => {
+    const dlg = $('sftpAccess');
+    const reveal = $('sftpReveal');
+    let restoreFocus = null;
+    const open = () => {
+      restoreFocus = document.activeElement;
+      dlg.classList.add('open');
+      dlg.querySelector('.mini-act').focus();
+    };
+    const close = () => {
+      dlg.classList.remove('open');
+      // The reveal is a one-time state: closing the dialog ends it, exactly as
+      // reopening would in production — the plaintext is gone, not remembered.
+      reveal.classList.remove('on');
+      $('sftpPwState').textContent = 'set';
+      if (restoreFocus) restoreFocus.focus();
+    };
+    document.addEventListener('click', e => {
+      if (e.target.closest('.stn-chip')) { open(); return; }
+      if (e.target.closest('[data-sftp-close]')) close();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && dlg.classList.contains('open')) close();
+    });
+    $('sftpReset').addEventListener('click', () => {
+      reveal.classList.add('on');
+      $('sftpPwState').textContent = 'rotated just now';
+    });
+  })();
 
   // ---- console settings (global) ----
   const prefs = $('prefs');

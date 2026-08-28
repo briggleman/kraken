@@ -289,6 +289,15 @@ The house's one navigation mechanism, since there are no routes. A sheet is `pos
 
 The first-run wizard is a member with **one deliberate omission: it has no `surface` button.** Every other sheet can be left because there is a fleet behind it; on first run there is not one yet. The way out is the footer's own opt-out — "skip for now", "skip & finish" — which says what leaving means instead of offering a way back to a page that does not exist. Its focus landing follows from that: with no `surface` button to catch focus, the plunge ends on the open step's first field, or on its primary action when the step has no fields.
 
+### Modal Card (centred dialog family)
+The house's *other* overlay, and deliberately not a member of the Sheet family. A modal card is `position: fixed; inset: 0` with `display: grid; place-items: center` and a 24px gutter, over a full-bleed veil layer that closes on click; the card itself is `width: min(<measure>, 100%)`, 6px radius, 1px border, the panel gradient (`#0a1e2c` → `#071521`) and the **Lifted** shadow. Two members so far: the typed-delete confirmation (`.confirm`, `z-index: 40`, 430px, crisis-tinted border) and SFTP access (`.sftp`, `z-index: 42`, 780px, neutral Edge border). They are the same card at two widths, and the border colour is the only thing severity changes.
+
+**The No-Plunge Rule.** A modal card appears; it does not descend. The circular `clip-path` wipe is the Sheet family's signature and it means *you have gone somewhere* — so a surface you will dismiss in ten seconds without leaving the page must not spend it. The measure follows from the same reasoning: a card is sized to its content, not to a `--measure` token, because it is an interruption rather than a page. 430px holds one sentence and one input; 780px is what the SFTP connection URI needs to sit on one line, and the width was chosen by what wrapped, not by a scale.
+
+**The Dim-What-Is-Lit Rule.** The shared veil is `rgba(2,9,14,0.78)`, and what it dims is the *content*, not the ground. A panel at `#0a1e2c` lands near `#040e15` beneath it — roughly halved — and lit controls fall with it. The grounds barely move: the trench a drill-in and every sheet use (`#030d16`) resolves to about `#020a10`, one or two levels per channel. That is not a failure, it is the point. A near-black ground has no light to take, and it does not need to lose any: the separation comes from every lit thing standing on it going quiet at once. Judge a veil by what happens to the panels and the buttons, never by arithmetic on the backdrop colour — and judge it with the surface it will really open over actually open, since a modal checked against the pane has been checked against the wrong ground.
+
+**The One Sighting Rule.** A secret the panel does not store is shown exactly once, and the interface says so in the same breath. Plaintext lands in a `rgba(caution-rgb, 0.45)`-bordered well — Caution Violet, not Crisis Magenta, because losing it costs a rotation, not an outage — with a copy control and a single line naming why this is the only sighting. Closing the dialog clears the reveal rather than remembering it, which is exactly what reopening does in production. Never render a stored-secret field that *looks* like this one; the border is a promise about the value's lifetime.
+
 ### Tab Strip
 Radio-driven, no script: caps at 600 with the widest tracking the house spends on a control (0.28em - only the wordmark at 0.34em and section labels at 0.3em go wider) in Sand
 Faint, 10x16 padding, over a 1px Edge rule under the whole row. The active tab goes Sodium Lumen
@@ -301,6 +310,17 @@ belongs to the sheet family, which plunges. A tab is a swap inside one surface, 
 cheapest possible transition (`color 0.15s`) and no motion at all on the panel beneath: the
 `:checked ~ .panel` sibling rules simply lay out one panel and not the others, and a panel that is
 not chosen is `display: none` rather than hidden, so it costs no layout.
+
+**The Far-End Affordance Rule.** The strip may carry things that are not tabs, and they go to the
+far end on `margin-left: auto` where nothing can be mistaken for the next tab in the sequence. A
+tab and a far-end affordance must not share a silhouette: tabs are bare tracked caps that mark
+themselves with a bottom border on the rule, so an affordance takes the opposite shape — a bordered
+4px chip on a 5% lumen ground (`.stn-chip`), lifting to a 0.4 lumen border and a 9% ground on hover
+per the Light-Not-Lift Rule. It earns the strip rather than a panel of its own when it is *read
+once and left*: SFTP connection details are set when a server is created and then carried to another
+client, so a fourth tab would spend a permanent seat on a destination nobody revisits. The chip
+also does a tab's job in passing — it shows the live port (`:2022` in Wire mono against a Sand Faint
+tracked key), so the strip answers "is SFTP even on?" without being opened.
 
 ### Corner Segmented Switch
 A two-option toggle parked in the top-right corner of the surface it governs (`.cd-sw`, at 20px
@@ -455,6 +475,12 @@ A `<details>` with no script behind it. Closed: a Wire Token pill, then the rout
 ### Event Stream
 Single mono line per event: time in Sand Faint, actor in Sand, description in Sand Secondary; caution violet only when the event itself is a warning. Synthetic data carries a dashed-border tag.
 
+The floor is a **ticker**, not a list: the events sit on a `.ev-rail` (`width: max-content`) inside the `overflow: hidden` `.events` window and travel right-to-left forever at `evTicker 46s linear infinite`. The easing is the load-bearing choice — `linear`, because a feed that has no beginning and no end must have no acceleration either; any ease would imply a start and a stop that the data does not have. 46s is slow enough that a line crossing the window can be read without chasing it.
+
+**The Doubled Set Rule.** A continuous ticker duplicates its content in the DOM and translates the rail by exactly `-50%`. The seam then lands on an identical frame and the loop is invisible; animating a single set to `-100%` walks the content off one edge and leaves the window empty until it re-enters, which is a gap the eye reads as a stall. The consequences are not optional: the two sets must be **the same set** (in production, one array rendered twice — never two hand-written copies, which drift the moment the data is live), the duplicate carries `aria-hidden="true"` so every event is announced once, and the rail's halves must measure equal or `-50%` misses the seam. Measuring both `.ev-set` widths is the acceptance test, not reading the CSS.
+
+Motion yields twice. `.events:hover` and `:focus-within` set `animation-play-state: paused`, so a line can be held still and read without losing the floor's click-through to the audit log — parking is not the same as cancelling the gesture. `prefers-reduced-motion` pauses the same way rather than with `animation: none`, which matches `.tick-lane .tk` and `.pk` and leaves the events legible in place instead of collapsing the rail.
+
 ### Charts (signature)
 Every chart is an area chart in the gold family: faint grid lines at rgba(255,194,102,0.09), glowing line, gradient fill to transparent, emphasized endpoint. Charts animate by appending points (2s cadence), respecting `prefers-reduced-motion`.
 
@@ -479,4 +505,6 @@ Every chart is an area chart in the gold family: faint grid lines at rgba(255,19
 - **Don't** spend magenta or violet outside true semantics; never color a stopped server crisis-magenta.
 - **Don't** ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.
 - **Don't** sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a **real `<button>` in the DOM**, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.
+- **Don't** hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.
+- **Don't** judge a veil by arithmetic on the backdrop colour. The grounds are already near-black and barely move; what carries the separation is every lit panel and control dimming at once. Open the surface it will really sit over and look at the buttons.
 - **Don't** put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)

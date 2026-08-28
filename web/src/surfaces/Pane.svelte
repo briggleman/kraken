@@ -10,6 +10,31 @@
   // the events floor shows the audit tail — the four most recent entries
   const recent = $derived(fleet.audit.slice(0, 4));
 
+  // The floor is a ticker. Per the Doubled Set Rule the rail carries the set
+  // twice and travels -50%, so the seam lands on an identical frame — which is
+  // why both passes render the same `recent`, never a hand-written copy.
+  let eventsEl: HTMLDivElement | undefined = $state();
+  let scrolls = $state(false);
+  const passes = $derived(scrolls ? [0, 1] : [0]);
+
+  // ...but only when the set is actually wider than the window it sits in. A
+  // tail of two short entries on a 4K display fits outright, and translating a
+  // rail that fits opens a gap where the seam should be. A set that fits needs
+  // no duplicate and no animation; it just sits there.
+  $effect(() => {
+    void recent;
+    const win = eventsEl;
+    if (!win) return;
+    const measure = () => {
+      const set = win.querySelector<HTMLElement>(".ev-set");
+      scrolls = !!set && set.offsetWidth > win.clientWidth;
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(win);
+    return () => ro.disconnect();
+  });
+
   function footerOpen(e: MouseEvent | KeyboardEvent) {
     const el = e.currentTarget as HTMLElement;
     if (e instanceof KeyboardEvent) {
@@ -100,15 +125,23 @@
     }}
   >
     <span class="floor-label">events</span>
-    <div class="events">
-      {#each recent as ev (ev.id)}
-        <span class="ev{ev.status >= 400 ? ' warn' : ''}"
-          ><span class="t">{fmtHm(ev.time)}</span><span class="who">{ev.actor}</span>
-          — {ev.action} · {ev.status}</span
-        >
+    <div class="events" bind:this={eventsEl}>
+      {#if recent.length}
+        <div class="ev-rail" style:animation-name={scrolls ? null : "none"}>
+          {#each passes as pass (pass)}
+            <div class="ev-set" aria-hidden={pass ? "true" : undefined}>
+              {#each recent as ev (ev.id)}
+                <span class="ev{ev.status >= 400 ? ' warn' : ''}"
+                  ><span class="t">{fmtHm(ev.time)}</span><span class="who">{ev.actor}</span>
+                  — {ev.action} · {ev.status}</span
+                >
+              {/each}
+            </div>
+          {/each}
+        </div>
       {:else}
         <span class="ev"><span class="t">—</span>no events yet</span>
-      {/each}
+      {/if}
     </div>
     <span class="fl-cue"
       >full audit log <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 4h9M7 1l3 3-3 3"/></svg></span

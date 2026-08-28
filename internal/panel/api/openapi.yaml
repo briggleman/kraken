@@ -631,13 +631,14 @@ paths:
             application/json: { schema: { $ref: '#/components/schemas/Node' } }
     patch:
       tags: [Nodes]
-      summary: Update a node's schedulable capacity (total memory, game-port range)
+      summary: Rename a node, or update its schedulable capacity (total memory, game-port range)
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                name: { type: string, maxLength: 64, description: "Display name; servers reference a node by UUID, so renaming never disturbs what is running. Must not be blank." }
                 total_memory_mb: { type: integer, description: Must cover memory already reserved by servers on the node }
                 port_start: { type: integer, description: Set together with port_end; existing allocations are preserved }
                 port_end: { type: integer }

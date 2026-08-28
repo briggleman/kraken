@@ -27,6 +27,7 @@
   // system config — GET/PUT /nodes/{id}/config; secrets are write-only
   let target = $state("local");
   let backupDir = $state("");
+  let nodeName = $state("");
   let sftpHost = $state("");
   let sftpUser = $state("");
   let sftpPassword = $state("");
@@ -77,6 +78,7 @@
       const range = n?.ports?.ranges?.[0];
       portStart = range ? String(range.start) : "";
       portEnd = range ? String(range.end) : "";
+      nodeName = n?.name ?? "";
       if (id) void load(id);
       else loadErr = "no node selected";
     });
@@ -93,7 +95,18 @@
     // capacity first, changed fields only — a validation refusal aborts the save
     try {
       const n = fleet.nodes.find((x) => x.id === id);
-      const patch: { total_memory_mb?: number; port_start?: number; port_end?: number } = {};
+      const patch: {
+        name?: string;
+        total_memory_mb?: number;
+        port_start?: number;
+        port_end?: number;
+      } = {};
+      if (nodeName.trim() === "") {
+        res = { cls: "bad", text: "node name cannot be blank." };
+        busy = false;
+        return;
+      }
+      if (n && nodeName.trim() !== n.name) patch.name = nodeName.trim();
       if (memMB.trim() !== "" && n && +memMB !== n.total_memory_mb) patch.total_memory_mb = +memMB;
       if (portStart.trim() !== "" || portEnd.trim() !== "") {
         if (portStart.trim() === "" || portEnd.trim() === "") {
@@ -171,6 +184,17 @@
     {/if}
   </div>
   <div class="sheet-body">
+    <section class="prefs-group" aria-label="Identity">
+      <div class="cfg-head"><h3 class="pane-label">identity</h3></div>
+      <div class="cfg">
+        <label class="cfg-row">
+          <span>node name</span>
+          <input class="cfg-in" type="text" maxlength="64" bind:value={nodeName} />
+          <p class="cfg-help">display only — servers reference this node by id, so renaming never disturbs what is running on it.</p>
+        </label>
+      </div>
+    </section>
+
     <section class="prefs-group" aria-label="Capacity">
       <div class="cfg-head"><h3 class="pane-label">capacity</h3></div>
       <div class="cfg">

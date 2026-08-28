@@ -428,7 +428,7 @@ export const api = {
   },
   // Capacity edits only; omitted fields stay unchanged. Port-range changes
   // preserve existing allocations (running servers keep their ports).
-  updateNode(id: string, input: { total_memory_mb?: number; port_start?: number; port_end?: number }): Promise<Node> {
+  updateNode(id: string, input: { name?: string; total_memory_mb?: number; port_start?: number; port_end?: number }): Promise<Node> {
     return request("PATCH", `/nodes/${id}`, input);
   },
   deleteNode(id: string): Promise<void> {

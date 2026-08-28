@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -214,5 +215,115 @@ func TestNodes_RequirePermission(t *testing.T) {
 	rec := do(t, h, http.MethodGet, "/api/v1/nodes", "", nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 listing nodes without token, got %d", rec.Code)
+	}
+}
+
+// A node's name is display-only — servers reference it by UUID — so a rename
+// must be accepted at any time and leave placement untouched.
+func TestUpdateNodeRenames(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startAgentWithRuntimeStatus(t, "rename-node", agentpb.RuntimeStatus_RUNTIME_STATUS_OK, "")
+	id := registerNode(t, h, token, addr)
+
+	rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+id, token, map[string]any{"name": "abyss-prime"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var n struct {
+		Name          string `json:"name"`
+		TotalMemoryMB int    `json:"total_memory_mb"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n.Name != "abyss-prime" {
+		t.Errorf("name = %q, want abyss-prime", n.Name)
+	}
+	// Capacity must be untouched by a name-only patch.
+	if n.TotalMemoryMB != 16384 {
+		t.Errorf("total_memory_mb = %d, want the registered 16384 — a rename must not disturb capacity", n.TotalMemoryMB)
+	}
+
+	// And it persists.
+	rec = do(t, h, http.MethodGet, "/api/v1/nodes/"+id, token, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n.Name != "abyss-prime" {
+		t.Errorf("after reload name = %q, want abyss-prime", n.Name)
+	}
+}
+
+func TestUpdateNodeRejectsBlankName(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startAgentWithRuntimeStatus(t, "blank-name", agentpb.RuntimeStatus_RUNTIME_STATUS_OK, "")
+	id := registerNode(t, h, token, addr)
+
+	for _, blank := range []string{"", "   "} {
+		rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+id, token, map[string]any{"name": blank})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("name %q: status %d, want 400", blank, rec.Code)
+		}
+	}
+}
+
+func TestUpdateNodeRejectsOverlongName(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startAgentWithRuntimeStatus(t, "long-name", agentpb.RuntimeStatus_RUNTIME_STATUS_OK, "")
+	id := registerNode(t, h, token, addr)
+
+	rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+id, token, map[string]any{"name": strings.Repeat("x", 65)})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status %d, want 400 for a 65-character name", rec.Code)
+	}
+}
+
+// A node registered before its agent answered carries a placeholder name and
+// adopts the agent's id on first contact. Renaming it must win over that
+// adoption — otherwise the operator's chosen name is silently overwritten the
+// moment the agent shows up.
+func TestUpdateNodeRenameSurvivesFirstContact(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startAgentWithRuntimeStatus(t, "self-reported-id", agentpb.RuntimeStatus_RUNTIME_STATUS_OK, "")
+
+	// Register with no name: the record is identity-pending.
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes", token, map[string]any{
+		"address": addr, "os": "linux", "total_memory_mb": 8192,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID              string `json:"id"`
+		IdentityPending bool   `json:"identity_pending"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !created.IdentityPending {
+		t.Fatal("expected the node to be identity-pending before first contact")
+	}
+
+	if rec := do(t, h, http.MethodPatch, "/api/v1/nodes/"+created.ID, token,
+		map[string]any{"name": "chosen-by-operator"}); rec.Code != http.StatusOK {
+		t.Fatalf("rename: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	// First contact would otherwise adopt the agent's self-reported node id.
+	pollNode(t, h, token, created.ID)
+
+	rec = do(t, h, http.MethodGet, "/api/v1/nodes/"+created.ID, token, nil)
+	var n struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n.Name != "chosen-by-operator" {
+		t.Errorf("name = %q, want the operator's rename to survive first contact", n.Name)
 	}
 }

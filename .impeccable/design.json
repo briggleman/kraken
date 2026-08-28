@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T14:51:13-04:00",
+  "generatedAt": "2026-08-28T14:32:01-04:00",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -589,6 +589,34 @@
       "description": "A standing order: name over its action · cron small, next firing at the right edge in Status Gold — the backup list’s “scheduled” voice. Paused keeps its place and gives up its ink; every control is a ghost because backups above spends the surface’s one solid.",
       "html": "<div class=\"ds-sch-row\"><span class=\"ds-sch-main\"><span>nightly backup</span><small>backup · 0 3 * * *</small></span><span class=\"ds-sch-acts\"><span class=\"ds-sch-next\">03:00</span><button class=\"ds-sch-act\">pause</button><button class=\"ds-sch-act del\">delete</button></span></div><div class=\"ds-sch-row paused\"><span class=\"ds-sch-main\"><span>autosave sweep</span><small>command: save-all · 0 * * * *</small></span><span class=\"ds-sch-acts\"><span class=\"ds-sch-next\">paused</span><button class=\"ds-sch-act\">resume</button><button class=\"ds-sch-act del\">delete</button></span></div>",
       "css": ".ds-sch-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; font: 300 13px/1.3 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); font-variant-numeric: tabular-nums; } .ds-sch-main { display: grid; gap: 3px; min-width: 0; } .ds-sch-main small { font-size: 11px; color: var(--ink-3, #7d7160); letter-spacing: 0.04em; } .ds-sch-acts { display: flex; align-items: center; gap: 6px; flex: none; } .ds-sch-next { color: var(--ok, #d8b46a); } .ds-sch-row.paused { opacity: 0.55; } .ds-sch-row.paused .ds-sch-next { color: var(--ink-3, #7d7160); } .ds-sch-act { font: 600 10px/1.4 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--lumen, #ffc266); padding: 3px 9px; border: 1px solid rgba(var(--lumen-rgb, 255, 194, 102), 0.45); border-radius: 3px; background: none; cursor: pointer; transition: all 0.2s; } .ds-sch-act:hover { color: var(--d0, #050d14); background: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); } .ds-sch-act.del { color: var(--crisis, #ff4d9d); border-color: rgba(var(--crisis-rgb, 255, 77, 157), 0.45); } .ds-sch-act.del:hover { color: var(--d0, #050d14); background: var(--crisis, #ff4d9d); border-color: var(--crisis, #ff4d9d); }"
+    },
+    {
+      "name": "Event Ticker",
+      "kind": "custom",
+      "description": "The floor stream in motion: a max-content rail of two identical event sets translating -50% on a linear loop, so the seam is invisible. Hover, focus and reduced motion all park it rather than cancel it.",
+      "html": "<div class=\"ds-ticker\"><div class=\"ds-ev-rail\"><div class=\"ds-ev-set\"><span class=\"ds-ev\"><span class=\"ds-ev-t\">23:41</span><span class=\"ds-ev-who\">palworld</span> — kestrel joined · 7 online</span><span class=\"ds-ev ds-ev-warn\"><span class=\"ds-ev-t\">23:37</span>behemoth — disk i/o spike settled</span></div><div class=\"ds-ev-set\" aria-hidden=\"true\"><span class=\"ds-ev\"><span class=\"ds-ev-t\">23:41</span><span class=\"ds-ev-who\">palworld</span> — kestrel joined · 7 online</span><span class=\"ds-ev ds-ev-warn\"><span class=\"ds-ev-t\">23:37</span>behemoth — disk i/o spike settled</span></div></div></div>",
+      "css": ".ds-ticker { overflow: hidden; min-width: 0; } .ds-ev-rail { display: flex; width: max-content; animation: dsEvTicker 46s linear infinite; } .ds-ev-set { display: flex; gap: 40px; padding-right: 40px; } .ds-ticker:hover .ds-ev-rail, .ds-ticker:focus-within .ds-ev-rail { animation-play-state: paused; } @keyframes dsEvTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } } @media (prefers-reduced-motion: reduce) { .ds-ev-rail { animation-play-state: paused; } } .ds-ev { font: 300 14px/1.6 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-ev-t { color: var(--ink-3, #7d7160); margin-right: 8px; } .ds-ev-who { color: var(--ink, #f5dfc1); } .ds-ev-warn { color: var(--caution, #9d8cff); }"
+    },
+    {
+      "name": "Strip Chip (far-end affordance)",
+      "kind": "chip",
+      "description": "A non-tab affordance parked at the far end of a tab strip on margin-left:auto. Bordered chip on a 5% lumen ground so it cannot be mistaken for the next tab, and it carries a live value so the strip answers a question without being opened.",
+      "html": "<button type=\"button\" class=\"ds-strip-chip\" aria-label=\"SFTP connection details\"><svg viewBox=\"0 0 14 14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"4.6\" cy=\"9.4\" r=\"2.6\"/><path d=\"M 6.5 7.5 L 11.4 2.6 M 9.4 4.6 l 1.6 1.6\"/></svg><span class=\"ds-strip-chip-k\">sftp</span><span class=\"ds-strip-chip-v\">:2022</span></button>",
+      "css": ".ds-strip-chip { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; background: rgba(255, 194, 102, 0.05); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; cursor: pointer; transition: border-color 0.15s, background-color 0.15s; } .ds-strip-chip:hover { border-color: rgba(255, 194, 102, 0.4); background: rgba(255, 194, 102, 0.09); } .ds-strip-chip:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: 2px; } .ds-strip-chip svg { width: 12px; height: 12px; flex: none; color: var(--ink-3, #7d7160); transition: color 0.15s; } .ds-strip-chip:hover svg { color: var(--ok, #d8b46a); } .ds-strip-chip-k { font: 600 10px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3, #7d7160); } .ds-strip-chip-v { font: 12px var(--mono, 'Spline Sans Mono', Consolas, monospace); font-variant-numeric: tabular-nums; color: var(--ink, #f5dfc1); }"
+    },
+    {
+      "name": "Modal Card",
+      "kind": "card",
+      "description": "The centred dialog family: an interruption that appears rather than descending, so it takes none of the sheet family's clip-path plunge. Sized to its content (430px for a confirmation, 780px for connection details), Lifted shadow, border colour carrying severity.",
+      "html": "<div class=\"ds-modal\"><div class=\"ds-modal-veil\"></div><div class=\"ds-modal-card\"><h2 class=\"ds-modal-title\">sftp access <b>palworld-01</b></h2><p class=\"ds-modal-body\">password and keys both work; either is enough.</p><div class=\"ds-modal-acts\"><button class=\"ds-modal-close\">close</button></div></div></div>",
+      "css": ".ds-modal { position: relative; display: grid; place-items: center; padding: 24px; min-height: 220px; } .ds-modal-veil { position: absolute; inset: 0; background: rgba(2, 9, 14, 0.78); } .ds-modal-card { position: relative; width: min(430px, 100%); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 6px; background: linear-gradient(180deg, #0a1e2c, #071521); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 194, 102, 0.07); padding: 22px; display: grid; gap: 16px; } .ds-modal-title { margin: 0; font: 700 16px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.16em; text-transform: uppercase; color: var(--lumen, #ffc266); } .ds-modal-title b { font: 500 16px var(--mono, 'Spline Sans Mono', Consolas, monospace); letter-spacing: 0; text-transform: none; color: var(--ink, #f5dfc1); } .ds-modal-body { margin: 0; font: 13px/1.6 var(--ui, Archivo, 'Segoe UI', sans-serif); color: var(--ink-2, #b6a894); } .ds-modal-acts { display: flex; justify-content: flex-end; } .ds-modal-close { padding: 10px 18px; border-radius: 4px; border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); background: none; font: 600 11px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2, #b6a894); cursor: pointer; transition: color 0.15s, border-color 0.15s; } .ds-modal-close:hover { color: var(--lumen, #ffc266); border-color: rgba(255, 194, 102, 0.4); }"
+    },
+    {
+      "name": "Secret Reveal",
+      "kind": "custom",
+      "description": "A value the panel does not store, shown exactly once. Caution Violet border (losing it costs a rotation, not an outage), a copy control, and one line naming why this is the only sighting. Never reuse this treatment for a stored secret.",
+      "html": "<div class=\"ds-reveal\"><div class=\"ds-reveal-pw\"><code>7Qk2mBvR4tYxLpN8dWfHs3Ag</code><button class=\"ds-reveal-copy\">copy</button></div><p class=\"ds-reveal-note\">copy it now — the panel keeps only a hash, so this is the one time it exists on screen.</p></div>",
+      "css": ".ds-reveal { display: grid; gap: 8px; } .ds-reveal-pw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: rgba(5, 13, 20, 0.6); border: 1px solid rgba(157, 140, 255, 0.45); border-radius: 4px; padding: 9px 12px; } .ds-reveal-pw code { font: 14px var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink, #f5dfc1); overflow-x: auto; white-space: nowrap; } .ds-reveal-copy { border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; background: none; padding: 4px 10px; font: 600 10px var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2, #b6a894); cursor: pointer; } .ds-reveal-note { margin: 0; font: 11px/1.5 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.04em; color: var(--caution, #9d8cff); }"
     }
   ],
   "narrative": {
@@ -603,71 +631,113 @@
     "rules": [
       {
         "name": "The One Light Rule",
-        "body": "Sodium gold is the surface's only light source and always means \"alive\". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what \"done\" looks like, and it is what lets one glow on the rail mean *here*."
+        "body": "Sodium gold is the surface's only light source and always means \"alive\". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what \"done\" looks like, and it is what lets one glow on the rail mean *here*.",
+        "section": "colors"
       },
       {
         "name": "The Warm Light, Cold Water Rule",
-        "body": "The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent."
+        "body": "The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent.",
+        "section": "colors"
       },
       {
         "name": "The Tinted Neutral Rule",
-        "body": "No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue."
+        "body": "No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue.",
+        "section": "colors"
       },
       {
         "name": "The Token Channel Rule",
-        "body": "Any colour needing an alpha uses its `--*-rgb` channel token. Hardcoded triplets are how a palette half-migrates."
+        "body": "Any colour needing an alpha uses its `--*-rgb` channel token. Hardcoded triplets are how a palette half-migrates.",
+        "section": "colors"
       },
       {
         "name": "The Whose-Fault Rule",
-        "body": "Where an HTTP status is shown — the audit log, and the response list on an endpoint row in the api reference — its colour comes from the status *family*, not from a verdict we invent: 2xx Status Gold, 4xx Caution Violet — the caller got it wrong — and 5xx Crisis Magenta, meaning we did. A 4xx is never painted crisis, because a mistyped password is not an outage."
+        "body": "Where an HTTP status is shown — the audit log, and the response list on an endpoint row in the api reference — its colour comes from the status *family*, not from a verdict we invent: 2xx Status Gold, 4xx Caution Violet — the caller got it wrong — and 5xx Crisis Magenta, meaning we did. A 4xx is never painted crisis, because a mistyped password is not an outage.",
+        "section": "colors"
       },
       {
         "name": "The Verb-Risk Rule",
-        "body": "Where an HTTP method is shown, it is lit by what the call can *do to you*, never by which verb it happens to be. A read is left unlit in Sand Faint because nothing happens; every method that writes takes Sodium Lumen; `DELETE` alone takes Crisis Magenta, because it is the only one you cannot take back. Three colours, not the five a generated reference reaches for by default — the difference between `POST` and `PUT` is already written in the word, and a hue per verb spends the whole palette saying nothing. A websocket route takes no colour at all, only the dashed edge the house uses for \"different in kind\"."
+        "body": "Where an HTTP method is shown, it is lit by what the call can *do to you*, never by which verb it happens to be. A read is left unlit in Sand Faint because nothing happens; every method that writes takes Sodium Lumen; `DELETE` alone takes Crisis Magenta, because it is the only one you cannot take back. Three colours, not the five a generated reference reaches for by default — the difference between `POST` and `PUT` is already written in the word, and a hue per verb spends the whole palette saying nothing. A websocket route takes no colour at all, only the dashed edge the house uses for \"different in kind\".",
+        "section": "colors"
       },
       {
         "name": "The Mono Means Measured Rule",
-        "body": "Spline Sans Mono is reserved for values a machine produced — numbers, addresses, versions, timestamps, and protocol tokens such as an HTTP method or a route. Prose and names never use it. A protocol token is also reproduced exactly and never folded into the house lowercase: `POST /servers` is what goes on the wire, so it is what goes on the page."
+        "body": "Spline Sans Mono is reserved for values a machine produced — numbers, addresses, versions, timestamps, and protocol tokens such as an HTTP method or a route. Prose and names never use it. A protocol token is also reproduced exactly and never folded into the house lowercase: `POST /servers` is what goes on the wire, so it is what goes on the page.",
+        "section": "typography"
       },
       {
         "name": "The Hollow Nameplate Rule",
-        "body": "The node name renders as a large outlined letterform: transparent fill, 1.4px gold text-stroke, gold drop-glow, 0.1em tracking. Server names stay solid Archivo 700. The brand wordmark on the login screen earns it too — at the same 1.4px, which the chosen value landed on independently — because that screen has no data to be the lit thing and the name takes its place. Everything else stays solid, the header wordmark included: a fixed 1.4px stroke is 2.9–4.3% of the login mark (`clamp(32.5px, 3vw, 49px)`) but 5.4–8.2% of the header one (`clamp(17px, 1.2vw, 26px)`), so repeating the declaration there would be a heavier design rather than the same one smaller. Two nameplates, no third."
+        "body": "The node name renders as a large outlined letterform: transparent fill, 1.4px gold text-stroke, gold drop-glow, 0.1em tracking. Server names stay solid Archivo 700. The brand wordmark on the login screen earns it too — at the same 1.4px, which the chosen value landed on independently — because that screen has no data to be the lit thing and the name takes its place. Everything else stays solid, the header wordmark included: a fixed 1.4px stroke is 2.9–4.3% of the login mark (`clamp(32.5px, 3vw, 49px)`) but 5.4–8.2% of the header one (`clamp(17px, 1.2vw, 26px)`), so repeating the declaration there would be a heavier design rather than the same one smaller. Two nameplates, no third.",
+        "section": "typography"
       },
       {
         "name": "The Pinned Ends Rule",
-        "body": "The identity strip and the event stream are locked by being grid rows *outside* the scroller, never by `position: sticky`. Neither of them has a background: both sit directly on the page ground, which is what keeps the water column unbroken. A sticky element stays inside the scrolling box, so cards would travel visibly *through* the wordmark and the event line — and the only fix would be giving the ends an opaque fill, which is the thing the world is built to avoid. One `1fr` row scrolls; the two `auto` rows cannot. There is no `position: sticky` anywhere in the build, and that is on purpose."
+        "body": "The identity strip and the event stream are locked by being grid rows *outside* the scroller, never by `position: sticky`. Neither of them has a background: both sit directly on the page ground, which is what keeps the water column unbroken. A sticky element stays inside the scrolling box, so cards would travel visibly *through* the wordmark and the event line — and the only fix would be giving the ends an opaque fill, which is the thing the world is built to avoid. One `1fr` row scrolls; the two `auto` rows cannot. There is no `position: sticky` anywhere in the build, and that is on purpose.",
+        "section": "layout"
       },
       {
         "name": "The Light-Not-Lift Rule",
-        "body": "Interaction feedback is a change of light (border, glow, brightness), never a bigger drop shadow."
+        "body": "Interaction feedback is a change of light (border, glow, brightness), never a bigger drop shadow.",
+        "section": "elevation"
       },
       {
         "name": "The Lit-From-Below Rule",
-        "body": "The page's water column is lit from above; anything that opens over it is lit from beneath. A drill-in and every sheet replace the backdrop with the trench ground, whose only light is an Upwelling Violet radial rising from 130% of the viewport height — below the fold, off screen, inferred. That is the whole reason a full-screen surface reads as *further down* rather than stacked on top, and it is done with a light source rather than a scrim: a scrim would say \"something is in front of this\", and the house needs it to say \"you have descended\"."
+        "body": "The page's water column is lit from above; anything that opens over it is lit from beneath. A drill-in and every sheet replace the backdrop with the trench ground, whose only light is an Upwelling Violet radial rising from 130% of the viewport height — below the fold, off screen, inferred. That is the whole reason a full-screen surface reads as *further down* rather than stacked on top, and it is done with a light source rather than a scrim: a scrim would say \"something is in front of this\", and the house needs it to say \"you have descended\".",
+        "section": "elevation"
       },
       {
         "name": "The Topmost Closes Last Rule",
-        "body": "When one full-screen surface replaces another, the surface on top closes *after* the one beneath it has finished opening — never in the same tick. Every member of this house wipes with a 0.65s `clip-path` circle, so two of them transitioning at once means the viewer sees through one into the other mid-flight: during the Postgres restart the interstitial and the login screen were both mid-wipe and both partly visible. Open the lower one first, hidden behind the upper, then let the upper wipe away to reveal a screen that is already fully there. The reveal is free; the overlap is the bug."
+        "body": "When one full-screen surface replaces another, the surface on top closes *after* the one beneath it has finished opening — never in the same tick. Every member of this house wipes with a 0.65s `clip-path` circle, so two of them transitioning at once means the viewer sees through one into the other mid-flight: during the Postgres restart the interstitial and the login screen were both mid-wipe and both partly visible. Open the lower one first, hidden behind the upper, then let the upper wipe away to reveal a screen that is already fully there. The reveal is free; the overlap is the bug.",
+        "section": "elevation"
       },
       {
         "name": "The One Committing Control Rule",
-        "body": "One filled control per surface, and it is the one that commits. A screen with two solid buttons is a screen that has not decided what it is for; every other action on it takes a ghost. This is the One Light Rule spent on controls instead of data."
+        "body": "One filled control per surface, and it is the one that commits. A screen with two solid buttons is a screen that has not decided what it is for; every other action on it takes a ghost. This is the One Light Rule spent on controls instead of data.",
+        "section": "components"
+      },
+      {
+        "name": "The No-Plunge Rule",
+        "body": "A modal card appears; it does not descend. The circular `clip-path` wipe is the Sheet family's signature and it means *you have gone somewhere* — so a surface you will dismiss in ten seconds without leaving the page must not spend it. The measure follows from the same reasoning: a card is sized to its content, not to a `--measure` token, because it is an interruption rather than a page. 430px holds one sentence and one input; 780px is what the SFTP connection URI needs to sit on one line, and the width was chosen by what wrapped, not by a scale.",
+        "section": "components"
+      },
+      {
+        "name": "The Dim-What-Is-Lit Rule",
+        "body": "The shared veil is `rgba(2,9,14,0.78)`, and it is a real dimmer over the pane — a panel at `#0a1e2c` lands near `#040e15` beneath it, roughly halved. Over the **trench** ground a drill-in and every sheet use (`#030d16` → `#02090E`), it does almost nothing: `#030d16` resolves to about `#020a10`, a change of one or two levels per channel. Near-black cannot dim near-black. A modal opened from inside a drill-in therefore reads as floating on an undimmed backdrop, and no amount of alpha on a colour this close to the ground will fix it — the veil would have to change hue or the card would have to carry its own separation. **This is a known limitation, not a documented behaviour:** verify a modal against the surface it will actually open over, with that surface open, before calling the separation good.",
+        "section": "components"
+      },
+      {
+        "name": "The One Sighting Rule",
+        "body": "A secret the panel does not store is shown exactly once, and the interface says so in the same breath. Plaintext lands in a `rgba(caution-rgb, 0.45)`-bordered well — Caution Violet, not Crisis Magenta, because losing it costs a rotation, not an outage — with a copy control and a single line naming why this is the only sighting. Closing the dialog clears the reveal rather than remembering it, which is exactly what reopening does in production. Never render a stored-secret field that *looks* like this one; the border is a promise about the value's lifetime.",
+        "section": "components"
       },
       {
         "name": "The Tabs Don't Travel Rule",
-        "body": "The strip moves between panels; it never changes what the screen is. Page-level movement belongs to the sheet family, which plunges. A tab is a swap inside one surface, so it gets the cheapest possible transition (`color 0.15s`) and no motion at all on the panel beneath: the `:checked ~ .panel` sibling rules simply lay out one panel and not the others, and a panel that is not chosen is `display: none` rather than hidden, so it costs no layout."
+        "body": "The strip moves between panels; it never changes what the screen is. Page-level movement belongs to the sheet family, which plunges. A tab is a swap inside one surface, so it gets the cheapest possible transition (`color 0.15s`) and no motion at all on the panel beneath: the `:checked ~ .panel` sibling rules simply lay out one panel and not the others, and a panel that is not chosen is `display: none` rather than hidden, so it costs no layout.",
+        "section": "components"
+      },
+      {
+        "name": "The Far-End Affordance Rule",
+        "body": "The strip may carry things that are not tabs, and they go to the far end on `margin-left: auto` where nothing can be mistaken for the next tab in the sequence. A tab and a far-end affordance must not share a silhouette: tabs are bare tracked caps that mark themselves with a bottom border on the rule, so an affordance takes the opposite shape — a bordered 4px chip on a 5% lumen ground (`.stn-chip`), lifting to a 0.4 lumen border and a 9% ground on hover per the Light-Not-Lift Rule. It earns the strip rather than a panel of its own when it is *read once and left*: SFTP connection details are set when a server is created and then carried to another client, so a fourth tab would spend a permanent seat on a destination nobody revisits. The chip also does a tab's job in passing — it shows the live port (`:2022` in Wire mono against a Sand Faint tracked key), so the strip answers \"is SFTP even on?\" without being opened.",
+        "section": "components"
       },
       {
         "name": "The Quiet Until Asked Rule",
-        "body": "A control that changes *how you are reading* something sits at 0.775 opacity until the pointer is anywhere in the surface it governs, then comes up to full. The container is the hover target, never the control itself: you notice you want the switch while looking at the content, not while looking at the corner. The unchosen option is `display: none`, not `visibility: hidden`: only the chosen serialisation exists, so nothing is laid out twice and the scroller's height is honest. The first line of the content it governs carries a 96px right pad so it cannot run under the pill."
-      },
-      {
-        "name": "The Head-Not-Edge Rule",
-        "body": "The chosen row in a picker is marked at its head, not its edge. With `appearance: base-select` the option list is ours, and selection there is a leading indicator column: every option reserves a 15px ring in Sand Faint at 0.6, and the chosen one fills its ring with the house tick in Sodium Lumen. Both marks are `mask` layers over a `background-color` — the ring and the tick are black SVGs in custom properties on the select, so the shape comes from the mask and the colour from the token, and neither hex is written a second time. Because the mark is a fixed 15px slot at `order: -1`, all eight labels align on one axis and the list reads as a roster you scan down. The checked row gives up both of the things it used to carry — the inset lumen bar and the lumen label — and goes back to Sand: **the filled ring is the one lit thing in the row.** The trailing `::checkmark` glyph the browser supplies is not restyled, it is replaced: `content: ''` empties it, and it is `display: none` on every row that is not checked so the reserved ring shows through instead."
+        "body": "A control that changes *how you are reading* something sits at 0.775 opacity until the pointer is anywhere in the surface it governs, then comes up to full. The container is the hover target, never the control itself: you notice you want the switch while looking at the content, not while looking at the corner. The unchosen option is `display: none`, not `visibility: hidden`: only the chosen serialisation exists, so nothing is laid out twice and the scroller's height is honest. The first line of the content it governs carries a 96px right pad so it cannot run under the pill.",
+        "section": "components"
       },
       {
         "name": "The Both-Faces Rule",
-        "body": "A flip control names both of its states in the DOM and stacks them in one grid cell (`grid-area: 1 / 1`), showing only the live face, so toggling can never resize the control or reflow its row. Checked wears Status Gold (text plus a 0.4 border), unchecked wears Caution Violet at 0.45 — the closed-port reading the One Light Rule assigns. The stack is reused wherever a word must swap in place: the endpoint’s copy button flips `copy`/`copied` (going Status Gold once done) and the DNS publish control wears `unpublish`/`publish`. The tracked caps leave a trailing 0.18em inside each word’s text box; every face cancels it with `margin-right: -0.18em` so the glyphs sit on the pill’s true optical centre."
+        "body": "A flip control names both of its states in the DOM and stacks them in one grid cell (`grid-area: 1 / 1`), showing only the live face, so toggling can never resize the control or reflow its row. Checked wears Status Gold (text plus a 0.4 border), unchecked wears Caution Violet at 0.45 — the closed-port reading the One Light Rule assigns. The stack is reused wherever a word must swap in place: the endpoint’s copy button flips `copy`/`copied` (going Status Gold once done) and the DNS publish control wears `unpublish`/`publish`. The tracked caps leave a trailing 0.18em inside each word’s text box; every face cancels it with `margin-right: -0.18em` so the glyphs sit on the pill’s true optical centre.",
+        "section": "components"
+      },
+      {
+        "name": "The Head-Not-Edge Rule",
+        "body": "The chosen row in a picker is marked at its head, not its edge. With `appearance: base-select` the option list is ours, and selection there is a leading indicator column: every option reserves a 15px ring in Sand Faint at 0.6, and the chosen one fills its ring with the house tick in Sodium Lumen. Both marks are `mask` layers over a `background-color` — the ring and the tick are black SVGs in custom properties on the select, so the shape comes from the mask and the colour from the token, and neither hex is written a second time. Because the mark is a fixed 15px slot at `order: -1`, all eight labels align on one axis and the list reads as a roster you scan down. The checked row gives up both of the things it used to carry — the inset lumen bar and the lumen label — and goes back to Sand: **the filled ring is the one lit thing in the row.** The trailing `::checkmark` glyph the browser supplies is not restyled, it is replaced: `content: ''` empties it, and it is `display: none` on every row that is not checked so the reserved ring shows through instead.",
+        "section": "components"
+      },
+      {
+        "name": "The Doubled Set Rule",
+        "body": "A continuous ticker duplicates its content in the DOM and translates the rail by exactly `-50%`. The seam then lands on an identical frame and the loop is invisible; animating a single set to `-100%` walks the content off one edge and leaves the window empty until it re-enters, which is a gap the eye reads as a stall. The consequences are not optional: the two sets must be **the same set** (in production, one array rendered twice — never two hand-written copies, which drift the moment the data is live), the duplicate carries `aria-hidden=\"true\"` so every event is announced once, and the rail's halves must measure equal or `-50%` misses the seam. Measuring both `.ev-set` widths is the acceptance test, not reading the CSS.",
+        "section": "components"
       }
     ],
     "dos": [
@@ -688,7 +758,9 @@
       "Don't use pure gray, pure white, or pure black anywhere.",
       "Don't spend magenta or violet outside true semantics; never color a stopped server crisis-magenta.",
       "Don't ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.",
-      "Don't sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a **real `<button>` in the DOM**, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.",
+      "Don't sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a real `<button>` in the DOM, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.",
+      "Don't hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.",
+      "Don't judge an overlay's veil against the pane. `rgba(2,9,14,0.78)` halves a panel and does essentially nothing to the trench ground a drill-in and every sheet use — open the surface it will really sit over before deciding the separation reads.",
       "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)"
     ]
   }

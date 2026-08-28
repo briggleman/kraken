@@ -18,6 +18,7 @@ import type {
   NodeConfig,
   NodeConfigUpdate,
   NodeConfigUpdateResult,
+  NodeTelemetry,
   PanelVersion,
   PowerActionName,
   Role,
@@ -384,6 +385,10 @@ export const api = {
    *  flag agents whose build differs — by artifact hash when available. */
   listNodes(): Promise<{ nodes: Node[] | null; panel_version?: string; panel_agent_sha?: Record<string, string> }> {
     return request("GET", "/nodes");
+  },
+  /** Live host vitals per node id. Nodes with no fresh reading are absent from the map. */
+  nodeTelemetry(): Promise<{ nodes: Record<string, NodeTelemetry> | null }> {
+    return request("GET", "/nodes/telemetry");
   },
   getNode(id: string): Promise<Node> {
     return request("GET", `/nodes/${id}`);

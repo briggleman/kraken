@@ -1,10 +1,11 @@
 // App shell state: sheet navigation, the typed-confirm dialog, the first-run
 // wizard, and the synthetic instrument ticker. Server/fleet data is real
-// (see fleet.svelte.ts / depth.svelte.ts); the walks that remain here cover
-// only readouts the backend has no telemetry feed for yet.
+// (see fleet.svelte.ts, depth.svelte.ts, and telemetry.svelte.ts for the node
+// bands); the walks that remain here cover only the server-card readouts the
+// backend has no fleet-wide feed for yet.
 
 import { stepWalk, pushSample } from "./walk";
-import { allSyntheticTracks, allNodeInstruments, sampleAllocTracks } from "./views.svelte";
+import { allSyntheticTracks } from "./views.svelte";
 import { deleteCurrentServer, surface } from "./depth.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 import { api } from "@/api/client";
@@ -199,17 +200,14 @@ export function rotateDone() {
 }
 
 // ---------------------------------------------------------------------------
-// the synthetic instrument ticker — walks for readouts with no backend feed
+// the synthetic instrument ticker — walks for the server-card readouts, which
+// have no fleet-wide feed yet. Node bands are driven by real telemetry and are
+// deliberately not ticked here.
 
 function tickInstruments() {
   for (const t of allSyntheticTracks()) {
     pushSample(t.history, stepWalk(t.walk));
   }
-  for (const inst of allNodeInstruments()) {
-    inst.net.rate = inst.net.base + Math.random() * inst.net.span;
-    inst.temp.deg = Math.round(inst.temp.floor + inst.cpu.walk.v / inst.temp.div);
-  }
-  sampleAllocTracks();
 }
 
 let started = false;

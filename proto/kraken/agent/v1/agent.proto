@@ -45,6 +45,13 @@ service NodeService {
   // and to reconcile the Panel's view of the node.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (NodeInfo);
 
+  // GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
+  // temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+  // slow reconcile that writes to the Panel's database, while this is a cheap
+  // read of an Agent-side sampler meant to be polled every few seconds. The
+  // Agent samples on its own fixed tick, so rates don't skew with poll cadence.
+  rpc GetNodeTelemetry(GetNodeTelemetryRequest) returns (NodeTelemetry);
+
   // UpdateAgent replaces the Agent's own binary with one streamed by the Panel
   // (the Panel embeds the agent builds matching its own version, so agents can
   // only ever be moved to the Panel's version). The first message carries the
@@ -387,6 +394,55 @@ message NodeInfo {
   string arch = 13;                  // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
   string last_update_error = 14;     // most recent self-update failure ("" = none); cleared by the next successful update
   string binary_sha256 = 15;         // hex SHA-256 of the agent's own running binary ("" from older agents) — artifact-identity skew detection
+}
+
+message GetNodeTelemetryRequest {}
+
+// NodeTelemetry is a snapshot of the host's live vitals, sampled by the Agent on
+// its own fixed tick and read (not computed) when the Panel polls.
+//
+// Every metric group carries a *_known flag. A host that cannot supply a metric
+// — no thermal zone, a Windows host with no WMI temperature source, a /proc that
+// isn't readable — reports known=false rather than zero, because a zero here is
+// indistinguishable from a real reading and would render as a confident lie on
+// the node band. Consumers must render unknown groups as "no data", not as 0.
+message NodeTelemetry {
+  int64 ts_unix_ms = 1;      // when this snapshot was sampled
+  int64 uptime_seconds = 2;  // host uptime (0 when unknown)
+
+  // CPU utilization across all cores, 0-100, computed from the delta between
+  // the sampler's two most recent ticks (so the first tick after start is
+  // unknown, not a spike).
+  double cpu_percent = 3;
+  int32 cpu_cores = 4;
+  bool cpu_known = 5;
+
+  // Physical host memory. Used is total minus available (Linux MemAvailable —
+  // reclaimable cache is not "used"), which is what an operator judging
+  // headroom means by the word.
+  int64 mem_total_mb = 6;
+  int64 mem_used_mb = 7;
+  bool mem_known = 8;
+
+  // The filesystem holding the Agent's data directory — the one that fills up
+  // when game servers grow, and therefore the only disk worth a node band.
+  string disk_path = 9;
+  int64 disk_total_mb = 10;
+  int64 disk_used_mb = 11;
+  bool disk_known = 12;
+
+  // Aggregate throughput over the host's physical interfaces, in bytes per
+  // second, as a rate over the sampler's tick (loopback, veth, docker and
+  // bridge interfaces are excluded — they double-count container traffic).
+  double net_rx_bps = 13;
+  double net_tx_bps = 14;
+  bool net_known = 15;
+
+  // Hottest CPU/package temperature in degrees Celsius. Frequently unavailable:
+  // no thermal zone in a VM, no WMI provider on Windows, no /sys in a
+  // restricted container.
+  double temp_celsius = 16;
+  bool temp_known = 17;
 }
 
 // UpdateAgentChunk is one message of the Panel->Agent binary push. The first

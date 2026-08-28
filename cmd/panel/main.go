@@ -190,6 +190,12 @@ func run(logger *slog.Logger) error {
 	// gRPC round trip per node per pass.
 	srv.StartNodeReconciler(reconcileCtx, 20*time.Second)
 
+	// Node host vitals (cpu / memory / disk / network / temp) for the node bands.
+	// Its own loop rather than a job inside the reconciler above: vitals need a
+	// far faster cadence, and none of the reconciler's persistence, cert checks
+	// or DNS work should run at that rate. Owns its interval — see telemetry.go.
+	srv.StartNodeTelemetryPoller(reconcileCtx)
+
 	// Background scheduler: runs due cron tasks (restart / backup / command).
 	srv.StartScheduler(reconcileCtx, 30*time.Second)
 

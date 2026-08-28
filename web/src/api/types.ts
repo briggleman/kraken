@@ -308,6 +308,45 @@ export interface NodePortRange {
   end: number;
 }
 
+/**
+ * One node's live host vitals, as sampled by its agent and cached by the panel.
+ *
+ * Every metric group carries a *_known flag. False means the host cannot supply
+ * that metric — a Windows node has no temperature source, and cpu/net are
+ * unknown until the agent has taken two samples — so the value must be rendered
+ * as "no data", never as 0. A node the panel has no fresh reading for is absent
+ * from the telemetry map entirely.
+ */
+export interface NodeTelemetry {
+  /** When the agent sampled this reading (unix ms). */
+  ts_unix_ms: number;
+  uptime_seconds?: number;
+
+  /** 0-100 across all cores. Meaningful only when cpu_known. */
+  cpu_percent: number;
+  cpu_cores?: number;
+  cpu_known: boolean;
+
+  mem_total_mb: number;
+  /** Physical memory in use — total minus available, so reclaimable cache is not counted. */
+  mem_used_mb: number;
+  mem_known: boolean;
+
+  /** The filesystem measured: the one holding the agent's data dir. */
+  disk_path?: string;
+  disk_total_mb: number;
+  disk_used_mb: number;
+  disk_known: boolean;
+
+  /** Bytes per second across the host's physical interfaces. */
+  net_rx_bps: number;
+  net_tx_bps: number;
+  net_known: boolean;
+
+  temp_celsius: number;
+  temp_known: boolean;
+}
+
 export interface Node {
   id: string;
   name: string;

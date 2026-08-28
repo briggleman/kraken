@@ -3,17 +3,37 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
+  import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
-  import { instrumentsFor, nodeMemLabel } from "@/lib/views.svelte";
+  import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
+  import { nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
-  // Identity, memory, and status are real (from /nodes). The cpu / disk /
-  // network / temp instruments are synthetic texture until the agent reports
-  // node telemetry — see the backlog issue on node & fleet stats.
+  // cpu, disk, network and temp are live host readings from the node's agent
+  // (see lib/telemetry); memory is the scheduler's commitment from the node
+  // record. A metric the host can't report — no thermal sensor, an agent too
+  // old for the telemetry RPC, a node the panel can't reach — reads as an
+  // em-dash with its chart blanked, never as a zero.
   let { node, index }: { node: Node; index: number } = $props();
 
-  const inst = $derived(instrumentsFor(node, index));
+  const vitals = $derived(vitalsFor(node.id));
+  const now = $derived(vitals?.now);
+
+  const cpu = $derived(now?.cpu_known ? now.cpu_percent : undefined);
+  const temp = $derived(now?.temp_known ? now.temp_celsius : undefined);
+  const mbps = $derived(netMbps(now));
+
+  // Memory is the scheduler's commitment, not host usage: it answers "will the
+  // next server fit". It comes from the node record, so it reads true even for
+  // a node whose agent is unreachable.
   const mem = $derived(nodeMemLabel(node));
+
+  // The packet channel's tempo is throughput against this node's own observed
+  // peak; there is no link speed to normalize against.
+  const netRate = $derived(
+    mbps === undefined ? 0 : mbps / Math.max(vitals?.netPeakMbps ?? 0, 1),
+  );
+
   const num = $derived("node " + String(index + 1).padStart(2, "0"));
   const statusWord = $derived(node.cordoned ? "cordoned" : node.status);
 </script>
@@ -47,11 +67,11 @@
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">cpu</span><span class="metric-val"
-        ><span>{Math.round(inst.cpu.walk.v)}</span><small>%</small></span
+        >{#if cpu === undefined}—<small></small>{:else}<span>{Math.round(cpu)}</span><small>%</small>{/if}</span
       >
     </div>
     <div class="zone-track">
-      <DotTrack track={inst.cpu} />
+      <DotTrack history={vitals?.cpu ?? []} />
       <span class="th t50" aria-hidden="true"></span>
       <span class="th t75" aria-hidden="true"></span>
     </div>
@@ -59,35 +79,44 @@
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">memory</span><span class="metric-val"
-        ><span>{mem.used}</span><small>/{mem.total}</small></span
+        >{#if mem.used}<span>{mem.used}</span><small>/{mem.total}</small>{:else}—<small
+          ></small>{/if}</span
       >
     </div>
     <div class="zone-track">
-      <DotTrack track={inst.alloc} />
+      <DotTrack history={vitals?.alloc ?? []} />
       <span class="th t50" aria-hidden="true"></span>
       <span class="th t75" aria-hidden="true"></span>
     </div>
   </div>
   <div class="metric">
     <div class="metric-head">
-      <span class="metric-label">disk</span><span class="metric-val">—<small></small></span>
+      <span class="metric-label">disk</span><span class="metric-val"
+        >{#if now?.disk_known}<span>{fmtCapacityMB(now.disk_used_mb)}</span><small
+            >/{fmtCapacityMB(now.disk_total_mb)}</small
+          >{:else}—<small></small>{/if}</span
+      >
     </div>
-    <Spark seed={inst.diskSeed} flat />
+    <Spark values={vitals?.disk ?? []} capacity={TELEMETRY_HISTORY} flat={!now?.disk_known} />
   </div>
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">network</span><span class="metric-val"
-        ><span>{inst.net.rate.toFixed(1)}</span><small>Mb/s</small></span
+        >{#if mbps === undefined}—<small></small>{:else}<span>{mbps.toFixed(1)}</span><small
+            >Mb/s</small
+          >{/if}</span
       >
     </div>
-    <PacketChan rate={inst.net.rate / inst.net.ref} packets={inst.packets} />
+    <PacketChan rate={netRate} variant={index} unknown={mbps === undefined} />
   </div>
   <div class="metric">
     <div class="metric-head">
       <span class="metric-label">temp</span><span class="metric-val"
-        ><span>{inst.temp.deg}</span><small>°C</small></span
+        >{#if temp === undefined}—<small></small>{:else}<span>{Math.round(temp)}</span><small
+            >°C</small
+          >{/if}</span
       >
     </div>
-    <TempSpec deg={inst.temp.deg} />
+    <TempSpec deg={temp ?? 0} unknown={temp === undefined} />
   </div>
 </section>

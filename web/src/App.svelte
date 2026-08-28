@@ -19,6 +19,7 @@
   import { startSim, ui, closeSheet, type SheetId } from "@/lib/state.svelte";
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
+  import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
   import { depth, surface, syncDepthFromFleet } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
@@ -31,6 +32,8 @@
   $effect(() => {
     if (authed && !mustChangePassword()) {
       startFleetPolling();
+      // node vitals on their own faster cadence — see lib/telemetry.svelte.ts
+      startTelemetryPolling();
       void api
         .version()
         .then((v) => {
@@ -39,6 +42,7 @@
         .catch(() => {});
     } else {
       stopFleetPolling();
+      stopTelemetryPolling();
     }
   });
 

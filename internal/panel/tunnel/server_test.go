@@ -281,18 +281,52 @@ func TestTunnelReplacesSession(t *testing.T) {
 	_ = stream.Close()
 }
 
+// sessionRecorder captures session-hook callbacks for assertion.
+//
+// The hook fires just AFTER the server updates its session registry, and
+// deliberately not under the same lock — the server will not hold its mutex
+// across a caller-supplied callback. So Connected() flipping is not proof the
+// matching event has been recorded yet, and a test that waits on Connected()
+// can reach its assertion first. Wait on the events themselves.
+type sessionRecorder struct {
+	mu     sync.Mutex
+	events []bool
+}
+
+func (r *sessionRecorder) hook(_ string, _ string, connected bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, connected)
+}
+
+func (r *sessionRecorder) snapshot() []bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]bool(nil), r.events...)
+}
+
+// waitFor polls the recorded events until cond is satisfied, returning them.
+func (r *sessionRecorder) waitFor(t *testing.T, want string, cond func([]bool) bool) []bool {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got := r.snapshot()
+		if cond(got) {
+			return got
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session hook events: got %v, waiting for %s", got, want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestTunnelEvictsOnClose — when the agent goes away, DialContext returns
 // ErrNoSession and the session hook reports the disconnect.
 func TestTunnelEvictsOnClose(t *testing.T) {
 	pki := newTestPKI(t)
-	var mu sync.Mutex
-	events := []bool{}
-	hook := func(_ string, _ string, connected bool) {
-		mu.Lock()
-		events = append(events, connected)
-		mu.Unlock()
-	}
-	srv, addr := startServer(t, pki, staticResolver(map[string]string{"ident-1": "node-1"}), WithSessionHook(hook))
+	var rec sessionRecorder
+	srv, addr := startServer(t, pki, staticResolver(map[string]string{"ident-1": "node-1"}), WithSessionHook(rec.hook))
 
 	sess, err := dialAgent(t, addr, pki.agentTLS(t, "ident-1"))
 	if err != nil {
@@ -301,19 +335,19 @@ func TestTunnelEvictsOnClose(t *testing.T) {
 	waitConnected(t, srv, "node-1")
 	_ = sess.Close()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for srv.Connected("node-1") {
-		if time.Now().After(deadline) {
-			t.Fatal("session never evicted after close")
-		}
-		time.Sleep(5 * time.Millisecond)
+	// The server evicts the session before firing the disconnect hook, so
+	// waiting for the event also establishes that eviction has happened —
+	// which is what the DialContext assertion below depends on.
+	events := rec.waitFor(t, "connect then disconnect", func(e []bool) bool {
+		return len(e) >= 2 && !e[len(e)-1]
+	})
+	if !events[0] {
+		t.Fatalf("session hook events: got %v, want the connect first", events)
+	}
+	if srv.Connected("node-1") {
+		t.Fatal("session still registered after the disconnect hook fired")
 	}
 	if _, err := srv.DialContext(context.Background(), "node-1"); !errors.Is(err, ErrNoSession) {
 		t.Fatalf("DialContext after eviction: got %v, want ErrNoSession", err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(events) < 2 || events[0] != true || events[len(events)-1] != false {
-		t.Fatalf("session hook events: got %v, want connect then disconnect", events)
 	}
 }

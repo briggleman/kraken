@@ -20,6 +20,7 @@ type Service struct {
 	rt      Runtime
 	certs   *CertManager // nil when the agent serves without TLS
 	updater *SelfUpdater // nil when self-update is unavailable (e.g. fake runtime tests)
+	host    *HostSampler // nil when host telemetry is unavailable (e.g. fake runtime tests)
 }
 
 // ServiceOption customizes a Service at construction time.
@@ -35,6 +36,14 @@ func WithCertManager(cm *CertManager) ServiceOption {
 // Panel-pushed UpdateAgent RPC and report update state in NodeInfo.
 func WithSelfUpdater(u *SelfUpdater) ServiceOption {
 	return func(s *Service) { s.updater = u }
+}
+
+// WithHostSampler wires the host vitals sampler so the service can serve
+// GetNodeTelemetry. Without it that RPC reports Unimplemented, which the Panel
+// already treats as "this agent has no telemetry" — the same path an agent
+// predating the RPC takes.
+func WithHostSampler(h *HostSampler) ServiceOption {
+	return func(s *Service) { s.host = h }
 }
 
 // NewService wraps a Runtime as a gRPC NodeService implementation.
@@ -64,6 +73,23 @@ func (s *Service) GetNodeInfo(ctx context.Context, _ *agentpb.GetNodeInfoRequest
 		s.updater.MarkHealthy()
 	}
 	return info, nil
+}
+
+// GetNodeTelemetry returns the sampler's most recent host vitals. It reads a
+// precomputed snapshot rather than sampling on demand: the Panel polls this
+// every few seconds per node, and CPU/network are rates that need a fixed
+// measurement window to be stable.
+func (s *Service) GetNodeTelemetry(_ context.Context, _ *agentpb.GetNodeTelemetryRequest) (*agentpb.NodeTelemetry, error) {
+	if s.host == nil {
+		return nil, status.Error(codes.Unimplemented, "host telemetry is not available on this agent")
+	}
+	tel := s.host.Telemetry()
+	if tel == nil {
+		// Sampler started but hasn't produced yet. Everything unknown is the
+		// honest answer, and the Panel renders it as "no data".
+		return &agentpb.NodeTelemetry{TsUnixMs: time.Now().UnixMilli()}, nil
+	}
+	return tel, nil
 }
 
 // UpdateAgent receives a Panel-pushed agent binary (metadata first, then

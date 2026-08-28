@@ -1,13 +1,14 @@
-// View models: fleet API objects mapped into the shapes the pane renders,
-// with synthetic instrument tracks attached where the backend has no
-// telemetry feed yet (node cpu/net/temp/disk and card cpu/mem — see the
-// "node & fleet telemetry" backlog issue). Tracks are cached per entity so
-// the walks keep their history across the 10s fleet polls.
+// View models: fleet API objects mapped into the shapes the pane renders.
+//
+// Node band instruments are real — see lib/telemetry.svelte.ts. What remains
+// synthetic here is the SERVER CARD cpu/mem tracks: real per-server stats exist
+// only on the drill-in WebSocket, one server at a time, so the fleet view has
+// no feed to draw from yet (phase 2 of the node & fleet telemetry issue).
+// Tracks are cached per server so the walks keep their history across polls.
 
-import type { Node, Server, Spec } from "@/api/types";
+import type { Server, Spec } from "@/api/types";
 import { fleet, specOf, nodeOf } from "./fleet.svelte";
 import { seedHistory, type WalkSpec } from "./walk";
-import { fmtGb } from "./fmt";
 
 export interface Track {
   walk: WalkSpec;
@@ -18,60 +19,9 @@ function track(spec: WalkSpec, length: number): Track {
   return { walk: { ...spec }, history: seedHistory(spec, length) };
 }
 
-const NODE_TRACK = 48;
 const CARD_TRACK = 72;
 
-export interface NodeInstruments {
-  cpu: Track;
-  /** REAL: allocated/total memory ratio, sampled each tick — flat is truth. */
-  alloc: Track;
-  net: { base: number; span: number; ref: number; rate: number };
-  temp: { floor: number; div: number; deg: number };
-  diskSeed: number;
-  packets: string[];
-}
-
-const PACKET_SETS: string[][] = [
-  [
-    "--s:4; --d:3.1s; --dl:-0.5s; top:30%",
-    "--s:6; --d:4.4s; --dl:-2.4s; top:42%",
-    "--s:2.5; --d:2.2s; --dl:-1.4s; top:24%",
-    "--s:3; --d:2.7s; --dl:-0.2s; top:36%",
-    "rev|--s:3; --d:3.6s; --dl:-1.8s; top:62%",
-    "rev|--s:2; --d:2.5s; --dl:-0.7s; top:72%",
-    "rev|--s:4.5; --d:4.9s; --dl:-3s; top:68%",
-  ],
-  [
-    "--s:3; --d:3.4s; --dl:-0.9s; top:28%",
-    "--s:5; --d:4.8s; --dl:-2.1s; top:44%",
-    "--s:2; --d:2.6s; --dl:-1.1s; top:34%",
-    "rev|--s:2.5; --d:3.9s; --dl:-2.6s; top:64%",
-    "rev|--s:3.5; --d:4.3s; --dl:-0.4s; top:70%",
-  ],
-];
-
-const nodeInstruments = new Map<string, NodeInstruments>();
 const cardTracks = new Map<string, { cpu: Track; mem: Track }>();
-
-export function instrumentsFor(node: Node, index: number): NodeInstruments {
-  let inst = nodeInstruments.get(node.id);
-  if (!inst) {
-    const ratio = node.total_memory_mb
-      ? (node.allocated_memory_mb / node.total_memory_mb) * 100
-      : 0;
-    inst = {
-      cpu: track({ v: 20 + Math.random() * 20, lo: 8, hi: 88, step: 8 }, NODE_TRACK),
-      alloc: { walk: { v: ratio, lo: 0, hi: 100, step: 0 }, history: Array(NODE_TRACK).fill(ratio) },
-      net: { base: 3 + Math.random() * 8, span: 5, ref: 10, rate: 8 },
-      temp: { floor: 40 + Math.floor(Math.random() * 5), div: 9, deg: 44 },
-      diskSeed: 30 + Math.floor(Math.random() * 12),
-      packets: PACKET_SETS[index % PACKET_SETS.length],
-    };
-    inst.net.ref = inst.net.base + inst.net.span / 2;
-    nodeInstruments.set(node.id, inst);
-  }
-  return inst;
-}
 
 export function cardTracksFor(server: Server): { cpu: Track; mem: Track } {
   let t = cardTracks.get(server.id);
@@ -87,7 +37,6 @@ export function cardTracksFor(server: Server): { cpu: Track; mem: Track } {
 
 export function allSyntheticTracks(): Track[] {
   const out: Track[] = [];
-  for (const inst of nodeInstruments.values()) out.push(inst.cpu);
   // card walks only advance for servers that are actually running
   for (const s of fleet.servers) {
     if (s.state !== "running") continue;
@@ -95,23 +44,6 @@ export function allSyntheticTracks(): Track[] {
     if (t) out.push(t.cpu, t.mem);
   }
   return out;
-}
-
-export function allNodeInstruments(): NodeInstruments[] {
-  return [...nodeInstruments.values()];
-}
-
-/** Sample the real allocation ratio into each node's memory track. */
-export function sampleAllocTracks() {
-  for (const node of fleet.nodes) {
-    const inst = nodeInstruments.get(node.id);
-    if (!inst) continue;
-    const ratio = node.total_memory_mb
-      ? (node.allocated_memory_mb / node.total_memory_mb) * 100
-      : 0;
-    inst.alloc.history.push(ratio);
-    inst.alloc.history.shift();
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -159,10 +91,6 @@ export function playersLabel(server: Server): { num: string; max: string; pct: n
     max: max ? String(max) : "?",
     pct: max ? Math.round((players / max) * 100) : 0,
   };
-}
-
-export function nodeMemLabel(node: Node): { used: string; total: string } {
-  return { used: fmtGb(node.allocated_memory_mb), total: Math.round(node.total_memory_mb / 1024) + "G" };
 }
 
 /** The dead-note under a stopped card — real facts only. */

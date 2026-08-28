@@ -6,6 +6,18 @@ export function fmtGb(mb: number, digits = 1): string {
   return (mb / 1024).toFixed(digits);
 }
 
+/**
+ * Storage capacity from megabytes, in the readouts' voice: 512M, 420G, 7.6T.
+ * Disks are whole terabytes where memory is gigabytes, so this picks the unit
+ * rather than fixing one like fmtGb does.
+ */
+export function fmtCapacityMB(mb: number): string {
+  if (mb < 1024) return Math.round(mb) + "M";
+  const g = mb / 1024;
+  if (g < 1024) return (g >= 100 ? Math.round(g).toString() : g.toFixed(1)) + "G";
+  return (g / 1024).toFixed(1) + "T";
+}
+
 /** File sizes the way the mock's files list writes them: 0.3K, 4.2K, 218K, 1.1M, 4.8G. */
 export function fmtSize(bytes: number): string {
   if (bytes < 1024) return (bytes / 1024).toFixed(1) + "K";

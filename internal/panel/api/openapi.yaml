@@ -572,6 +572,33 @@ paths:
           description: Registered
           content:
             application/json: { schema: { $ref: '#/components/schemas/Node' } }
+  /nodes/telemetry:
+    get:
+      tags: [Nodes]
+      summary: Live host vitals for every node
+      description: >-
+        Cpu, memory, disk, network and temperature for each node, as sampled by
+        its Agent and cached by the Panel (refreshed every 5s). Intended to be
+        polled for the node instrument bands.
+
+
+        A node appears only when the Panel holds a recent reading for it: nodes
+        that are unreachable, or whose Agent predates the telemetry RPC, are
+        absent from the map rather than present with zero values. Within a node,
+        each metric group carries a *_known flag — false means the host could not
+        supply that metric (a Windows host has no temperature source, for
+        example) and the value must be rendered as "no data", never as 0.
+      responses:
+        '200':
+          description: Telemetry keyed by node id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: object
+                    additionalProperties: { $ref: '#/components/schemas/NodeTelemetry' }
   /nodes/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
     get:
@@ -1074,6 +1101,30 @@ components:
         external_ip: { type: string }
         total_memory_mb: { type: integer }
         allocated_memory_mb: { type: integer }
+    NodeTelemetry:
+      type: object
+      description: >-
+        One node's host vitals. Rate metrics (cpu, network) are measured by the
+        Agent over its own fixed sampling interval, so they do not skew with how
+        often this endpoint is polled.
+      properties:
+        ts_unix_ms: { type: integer, format: int64, description: when the Agent sampled this reading }
+        uptime_seconds: { type: integer, format: int64 }
+        cpu_percent: { type: number, format: double, description: 0-100 across all cores; meaningful only when cpu_known }
+        cpu_cores: { type: integer }
+        cpu_known: { type: boolean, description: false until the Agent has taken two samples, or when /proc is unreadable }
+        mem_total_mb: { type: integer, format: int64 }
+        mem_used_mb: { type: integer, format: int64, description: physical memory in use — total minus available, so reclaimable cache does not count as used }
+        mem_known: { type: boolean }
+        disk_path: { type: string, description: the filesystem measured — the one holding the Agent's data dir }
+        disk_total_mb: { type: integer, format: int64 }
+        disk_used_mb: { type: integer, format: int64 }
+        disk_known: { type: boolean }
+        net_rx_bps: { type: number, format: double, description: bytes per second across the host's physical interfaces }
+        net_tx_bps: { type: number, format: double }
+        net_known: { type: boolean }
+        temp_celsius: { type: number, format: double }
+        temp_known: { type: boolean, description: commonly false — no thermal sensor in a VM, and no WMI source on Windows }
     NodeRegister:
       type: object
       required: [address]

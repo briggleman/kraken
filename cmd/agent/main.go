@@ -203,6 +203,16 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	if updater != nil {
 		svcOpts = append(svcOpts, agent.WithSelfUpdater(updater))
 	}
+
+	// Host vitals for the Panel's node bands. Sampling is on the Agent's own
+	// tick (not per RPC) so cpu and network rates are measured over a fixed
+	// window regardless of how often — or from how many Panels — it is polled.
+	// Disk is reported for the filesystem holding the data dir, the one that
+	// fills up as game servers grow.
+	hostSampler := agent.NewHostSampler(cfg.DataDir)
+	hostSampler.Start(ctx)
+	svcOpts = append(svcOpts, agent.WithHostSampler(hostSampler))
+
 	svc := agent.NewService(rt, svcOpts...)
 	agentpb.RegisterNodeServiceServer(grpcServer, svc)
 

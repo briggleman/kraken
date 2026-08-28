@@ -25,6 +25,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	NodeService_GetNodeInfo_FullMethodName          = "/kraken.agent.v1.NodeService/GetNodeInfo"
+	NodeService_GetNodeTelemetry_FullMethodName     = "/kraken.agent.v1.NodeService/GetNodeTelemetry"
 	NodeService_UpdateAgent_FullMethodName          = "/kraken.agent.v1.NodeService/UpdateAgent"
 	NodeService_CreateServer_FullMethodName         = "/kraken.agent.v1.NodeService/CreateServer"
 	NodeService_RemoveServer_FullMethodName         = "/kraken.agent.v1.NodeService/RemoveServer"
@@ -63,6 +64,12 @@ type NodeServiceClient interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(ctx context.Context, in *GetNodeInfoRequest, opts ...grpc.CallOption) (*NodeInfo, error)
+	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
+	// temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+	// slow reconcile that writes to the Panel's database, while this is a cheap
+	// read of an Agent-side sampler meant to be polled every few seconds. The
+	// Agent samples on its own fixed tick, so rates don't skew with poll cadence.
+	GetNodeTelemetry(ctx context.Context, in *GetNodeTelemetryRequest, opts ...grpc.CallOption) (*NodeTelemetry, error)
 	// UpdateAgent replaces the Agent's own binary with one streamed by the Panel
 	// (the Panel embeds the agent builds matching its own version, so agents can
 	// only ever be moved to the Panel's version). The first message carries the
@@ -152,6 +159,16 @@ func (c *nodeServiceClient) GetNodeInfo(ctx context.Context, in *GetNodeInfoRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NodeInfo)
 	err := c.cc.Invoke(ctx, NodeService_GetNodeInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) GetNodeTelemetry(ctx context.Context, in *GetNodeTelemetryRequest, opts ...grpc.CallOption) (*NodeTelemetry, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeTelemetry)
+	err := c.cc.Invoke(ctx, NodeService_GetNodeTelemetry_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +502,12 @@ type NodeServiceServer interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*NodeInfo, error)
+	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
+	// temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+	// slow reconcile that writes to the Panel's database, while this is a cheap
+	// read of an Agent-side sampler meant to be polled every few seconds. The
+	// Agent samples on its own fixed tick, so rates don't skew with poll cadence.
+	GetNodeTelemetry(context.Context, *GetNodeTelemetryRequest) (*NodeTelemetry, error)
 	// UpdateAgent replaces the Agent's own binary with one streamed by the Panel
 	// (the Panel embeds the agent builds matching its own version, so agents can
 	// only ever be moved to the Panel's version). The first message carries the
@@ -572,6 +595,9 @@ type UnimplementedNodeServiceServer struct{}
 
 func (UnimplementedNodeServiceServer) GetNodeInfo(context.Context, *GetNodeInfoRequest) (*NodeInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNodeInfo not implemented")
+}
+func (UnimplementedNodeServiceServer) GetNodeTelemetry(context.Context, *GetNodeTelemetryRequest) (*NodeTelemetry, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNodeTelemetry not implemented")
 }
 func (UnimplementedNodeServiceServer) UpdateAgent(grpc.ClientStreamingServer[UpdateAgentChunk, UpdateAgentResponse]) error {
 	return status.Error(codes.Unimplemented, "method UpdateAgent not implemented")
@@ -689,6 +715,24 @@ func _NodeService_GetNodeInfo_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NodeServiceServer).GetNodeInfo(ctx, req.(*GetNodeInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_GetNodeTelemetry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeTelemetryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).GetNodeTelemetry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_GetNodeTelemetry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).GetNodeTelemetry(ctx, req.(*GetNodeTelemetryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1143,6 +1187,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNodeInfo",
 			Handler:    _NodeService_GetNodeInfo_Handler,
+		},
+		{
+			MethodName: "GetNodeTelemetry",
+			Handler:    _NodeService_GetNodeTelemetry_Handler,
 		},
 		{
 			MethodName: "CreateServer",

@@ -74,6 +74,11 @@ type Server struct {
 	// surface can show a running install and diagnose a failed one
 	// (see installlog.go).
 	installs *installLog
+
+	// telemetry caches each node's most recent host vitals for the node bands.
+	// Always non-nil so the endpoint can serve (an empty map) before the poller
+	// has been started — see telemetry.go.
+	telemetry *telemetryCache
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -117,6 +122,7 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		bootstrap:  newBootstrapRegistry(),
 		lastRotate: map[string]time.Time{},
 		installs:   newInstallLog(),
+		telemetry:  newTelemetryCache(),
 	}
 	for _, o := range opts {
 		o(s)
@@ -407,6 +413,7 @@ func (s *Server) routes() chi.Router {
 			// Node registry + live Agent control (Panel → Agent over gRPC).
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes", s.handleListNodes)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes", s.handleRegisterNode)
+			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/telemetry", s.handleNodeTelemetry)
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}", s.handleGetNode)
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}/info", s.handleNodeInfo)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Patch("/nodes/{id}", s.handleUpdateNode)

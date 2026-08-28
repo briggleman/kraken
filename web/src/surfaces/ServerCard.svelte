@@ -54,7 +54,7 @@
     </span>
     <span class="srv-chart"
       ><span class="srv-chart-label"><span>cpu</span><b>{Math.round(tracks.cpu.walk.v)}%</b></span
-      ><span class="zone-track"><DotTrack track={tracks.cpu} tag="span" /><span
+      ><span class="zone-track"><DotTrack history={tracks.cpu.history} tag="span" /><span
           class="th t50"
           aria-hidden="true"
         ></span><span class="th t75" aria-hidden="true"></span></span
@@ -65,7 +65,7 @@
         ><span>memory</span><b
           ><span>{((tracks.mem.walk.v / 100) * memGb).toFixed(1)}</span> / {Math.round(memGb)}G</b
         ></span
-      ><span class="zone-track"><DotTrack track={tracks.mem} tag="span" /><span
+      ><span class="zone-track"><DotTrack history={tracks.mem.history} tag="span" /><span
           class="th t50"
           aria-hidden="true"
         ></span><span class="th t75" aria-hidden="true"></span></span

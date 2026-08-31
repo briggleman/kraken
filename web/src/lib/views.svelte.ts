@@ -107,6 +107,25 @@ export function nodeMemLabel(node: Node): { used: string; total: string } {
   };
 }
 
+/**
+ * The two versions to show when the Panel has outrun a node's agent, or undefined
+ * when it hasn't. Mirrors the Panel's own agentNeedsUpdate (handlers_node.go):
+ * artifact identity decides when both sides report a SHA, because a panel-only
+ * release leaves the agent binary byte-identical and flagging the whole fleet for
+ * it teaches operators to ignore the flag. The version strings are only ever the
+ * DISPLAY; they are the test solely as a fallback for agents predating agent_sha.
+ *
+ * A node that has never been contacted has nothing to compare and is never flagged.
+ */
+export function agentDrift(node: Node): { from: string; to: string } | undefined {
+  if (!node.agent_version) return undefined;
+  const shown = { from: node.agent_version, to: fleet.panelVersion };
+  const want = fleet.panelAgentSha[`${node.os}/${node.arch}`];
+  if (node.agent_sha && want)
+    return node.agent_sha.toLowerCase() === want.toLowerCase() ? undefined : shown;
+  return node.agent_version !== fleet.panelVersion ? shown : undefined;
+}
+
 /** The dead-note under a stopped card — real facts only. */
 export function deadNote(server: Server): string {
   if (server.state === "install_failed")

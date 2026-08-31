@@ -3,10 +3,13 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
+  import { api } from "@/api/client";
+  import { hasPerm } from "@/lib/auth.svelte";
+  import { refreshFleet } from "@/lib/fleet.svelte";
   import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
-  import { nodeMemLabel } from "@/lib/views.svelte";
+  import { agentDrift, nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
   // cpu, disk, network and temp are live host readings from the node's agent
@@ -36,13 +39,55 @@
 
   const num = $derived("node " + String(index + 1).padStart(2, "0"));
   const statusWord = $derived(node.cordoned ? "cordoned" : node.status);
+
+  // The agent build this node is behind, or undefined when it is current. Only
+  // node.manage may push a binary, so a viewer sees the fact without the action —
+  // the drift is information about the fleet either way.
+  const drift = $derived(agentDrift(node));
+
+  let pushing = $state(false);
+  let pushErr = $state("");
+
+  // The push returns 202 and the agent restarts itself onto the new build, so
+  // there is nothing to confirm: the node drops and returns, and the drift line
+  // disappears on its own once it reports the new version. Refresh immediately so
+  // that happens as soon as it is true rather than at the next poll tick.
+  async function pushAgent() {
+    if (pushing) return;
+    pushing = true;
+    pushErr = "";
+    try {
+      await api.updateNodeAgent(node.id);
+      await refreshFleet();
+    } catch (e) {
+      pushErr = e instanceof Error ? e.message : String(e);
+    } finally {
+      pushing = false;
+    }
+  }
 </script>
 
 <section class="node-band" aria-label="Node {node.name} vitals">
   <div class="node-id">
     <span class="node-name">{node.name.toUpperCase()}</span>
     <span class="node-meta">{num} · {node.os}{node.wine_enabled ? " · wine" : ""} · {statusWord}</span>
-    <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version ? " · agent " + node.agent_version : ""}</span>
+    <!-- the agent version rides the address line while it is merely a fact; once the
+         panel has outrun it, it moves to the drift line below rather than printing twice -->
+    <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
+    {#if drift}
+      <span class="node-meta agent-drift">
+        <span class="ad-k">agent</span><b class="ad-v">{drift.from}</b><span class="ad-arw" aria-hidden="true">→</span><b class="ad-v new">{drift.to}</b>
+        {#if hasPerm("node.manage")}
+          <button
+            class="ad-go"
+            disabled={pushing}
+            title={pushErr || `push the panel's ${drift.to} agent to ${node.name} — it restarts itself`}
+            aria-label="Update the agent on {node.name} from {drift.from} to {drift.to}"
+            onclick={() => void pushAgent()}>{pushing ? "pushing…" : pushErr ? "failed" : "update"}</button
+          >
+        {/if}
+      </span>
+    {/if}
     <span class="node-actions">
       <button
         class="prefs-open"

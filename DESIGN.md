@@ -84,6 +84,16 @@ components:
     textColor: "{colors.sand-secondary}"
     rounded: "{rounded.md}"
     padding: "clamp(8px, 1vh, 14px) clamp(12px, 1.2vw, 22px)"
+  chip-agent-update:
+    backgroundColor: "rgba(157, 140, 255, 0.05)"
+    textColor: "{colors.caution-violet}"
+    rounded: "{rounded.sm}"
+    padding: "3px 9px"
+  chip-agent-update-hover:
+    backgroundColor: "rgba(157, 140, 255, 0.12)"
+    textColor: "{colors.caution-violet}"
+    rounded: "{rounded.sm}"
+    padding: "3px 9px"
 ---
 
 # Design System: Kraken
@@ -137,12 +147,14 @@ A two-family palette: abyssal blue-green grounds and a single living sodium gold
 
 ### Semantic (reserved)
 - **Status Gold** (#d8b46a): healthy-zone data (e.g. RAM under 50%); pairs with position/pattern, never color alone. Also 2xx in the audit log.
-- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, temp warm band, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading.
+- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, temp warm band, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading. Also an **agent whose version has fallen behind the panel's**: the node runs, but the panel is holding fixes it cannot execute yet, so something *is* prevented and the test comes out the same way.
 - **Crisis Magenta** (#ff4d9d): critical zone only (75%+ RAM, hot band). Never decorative. Also 5xx in the audit log, and the `DELETE` method in the api reference — the same colour the house already spends on destroying a server.
 - **Spectrum Deep Teal** (#1a7a6d): the cool end of the heat-spectrum strip (`.heat-ghost` / `.heat-fill`), and the only green on the page. **It is the last survivor of the pre-Kraken teal palette** - every other cool accent migrated to Caution Violet, and this one was missed. It is documented here as what the code actually renders, not as what the palette intends; retiring it is an open decision, because the spectrum strip is the one place a fourth hue earns its keep (it reads left-to-right as a scale, not as a status).
 
 ### Named Rules
 **The One Light Rule.** Sodium gold is the surface's only light source and always means "alive". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what "done" looks like, and it is what lets one glow on the rail mean *here*.
+**The Violet Pulse Rule.** Motion in the gold family means *alive* — a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make "alive" and "attend to me" the same signal. The finished-step clause above is unchanged — a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused` — it has your attention, it can stop asking); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off.
+
 **The Warm Light, Cold Water Rule.** The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent.
 **The Tinted Neutral Rule.** No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue.
 **The Token Channel Rule.** Any colour needing an alpha uses its `--*-rgb` channel token. Hardcoded triplets are how a palette half-migrates.
@@ -223,6 +235,32 @@ Quiet rectangles with 6px outer radius (4px for controls, 3px for chips), 1px go
 - **Running:** gold text on rgba(255,194,102,0.09), 1px gold border, glowing 7px dot, uppercase 0.2em label.
 - **Stopped:** Sand Faint text, hairline sand border, hollow dot. The whole parent band drops to 72% opacity.
 
+### Agent Drift (panel newer than the node's agent)
+
+A **third `.node-meta` line** in the node band's id cell, not an object of its own: `agent` as a
+0.8em/0.18em Archivo caps key in Sand Faint, then the two versions as mono 300 either side of a
+`&rarr;`, then the action. Only the version being moved **to** carries Caution Violet; the one the
+node is on is a fact and stays Sand Faint. It states itself as a line because the id cell is
+already where what-this-node-*is* gets said — a badge beside the display name would have spent a
+new silhouette on a sentence that fits the ones already there, and the name is the band's loudest
+element, so anything docked to it competes with the one thing that identifies the row.
+
+The action is a `.ad-go` chip: 0.76em/0.2em caps in Caution Violet, `3px 9px` on a 3px radius, and
+**lit at rest** — a 0.5 violet border on a 0.05 ground. That is a deliberate departure from the
+Ghost Button rule, and the reason is that this control exists only when there *is* an update: a
+list of eight of them cannot happen, and "unlit until pointed at" would hide the one thing the chip
+is there to say. It stays a ghost in every other respect; see the One Committing Control Rule for
+why the band's update affordance is not a lamp.
+
+Its motion is a **clipped traversal**, not a throb: a `::after` at `width: 55%` carrying a
+`linear-gradient(100deg, …0, …0.34, …0)` violet highlight crosses the chip once per 3.6s
+(`translateX(-160%)` → `260%` at the 45% mark, then a long wait) under `overflow: hidden`, so the
+light is masked to the chip's own box and the chip's geometry never moves. The long tail matters as
+much as the pass: a fleet parked on a second monitor gets a signal it can ignore between sweeps
+rather than something strobing at the edge of vision. Hover pauses it, focus takes the house's 2px
+violet outline, and `prefers-reduced-motion` drops the sweep and holds the lit state (0.6 border,
+0.12 ground). All three behaviours are required by The Violet Pulse Rule.
+
 ### Metric (vital readout)
 Label (tracked caps, Sand Faint) + huge mono value with a gold glow. Unit suffixes (`%`, `/64G`, `Mb/s`, `°C`) render in Status Gold at 0.5em. The chart zone beneath is one of the signature meters below (disk still carries the legacy gold area sparkline).
 
@@ -276,6 +314,8 @@ alone, where a still-gold button would read as pressable.
 
 ### Ghost Button ("open" affordance)
 Tracked-caps label + drawn SVG stroke icon (1.5px, round caps), 1px Edge border, 4px radius. Unlit at rest, always: a list of eight of them lit would spend more light than any screen here earns.
+
+The one documented exception is the agent-update chip, and it earns it by **existing conditionally**: it is rendered only when the panel is newer than the node's agent, so the "eight of them lit" case cannot arise, and an unlit chip would suppress the only fact it was added to carry. The test for any future exception is that same one — not "this action is important" (every action's owner thinks so), but "this control is absent whenever it has nothing to say".
 
 How it lights depends on whether its **parent is the target**. On a server card the whole card is the thing you are opening, so hovering the card fills the button — the button is a label for the card’s own affordance. In a row of records the row is not a target and holds more than one control, so hovering the row only **warms the primary action’s edge** (`color` to Sand Secondary, border to lumen at 0.4) and the fill stays the control’s own to give on its own hover or focus. Pointing at a row is not the same as pointing at its control.
 
@@ -503,6 +543,7 @@ Every chart is an area chart in the gold family: faint grid lines at rgba(255,19
 - **Don't** introduce sea imagery — creatures, bubbles, portholes, waves. The world is light and depth only. The one exception is the brand mark: Kraken's glyph is an identity, not decoration, and it appears only in the lockup (header and login) at the wordmark's own scale. A creature anywhere else — an empty state, a loading spinner, a background — is still out.
 - **Don't** use pure gray, pure white, or pure black anywhere.
 - **Don't** spend magenta or violet outside true semantics; never color a stopped server crisis-magenta.
+- **Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes "this is running" and "attend to me" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state — see The Violet Pulse Rule.
 - **Don't** ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.
 - **Don't** sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a **real `<button>` in the DOM**, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.
 - **Don't** hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-28T15:39:31-04:00",
+  "generatedAt": "2026-08-31T12:25:40.918Z",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -402,6 +402,11 @@
         "name": "chart-cadence",
         "value": "2000ms",
         "purpose": "Canvas area charts append one point per tick; reduced-motion stills them."
+      },
+      {
+        "name": "drift-sweep",
+        "value": "3.6s ease-in-out infinite",
+        "purpose": "The agent-update chip's violet highlight crosses once per cycle (translateX(-160%) to 260% by the 45% mark, then a long wait). The tail is the point: a signal that can be ignored between passes rather than a strobe."
       }
     ],
     "breakpoints": [
@@ -458,6 +463,14 @@
       "description": "Dark-state chip: hollow dot, Sand Faint. A stopped thing loses its light; it is never painted crisis for being off.",
       "html": "<span class=\"ds-chip-stop\"><i></i>stopped</span>",
       "css": ".ds-chip-stop { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 3px; font: 600 11px/1.6 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3, #7d7160); border: 1px solid rgba(125, 113, 96, 0.4); } .ds-chip-stop i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink-3, #7d7160); }"
+    },
+    {
+      "name": "Agent Drift Line",
+      "kind": "custom",
+      "refersTo": "chip-agent-update",
+      "description": "A third node-meta line, shown only when the panel is newer than the node's agent: the two versions in mono with a lit, sweeping violet action chip.",
+      "html": "<span class=\"ds-agent-drift\"><span class=\"ds-ad-k\">agent</span><b class=\"ds-ad-v\">v0.27.1</b><span class=\"ds-ad-arw\" aria-hidden=\"true\">&rarr;</span><b class=\"ds-ad-v ds-new\">v0.28.0</b><button class=\"ds-ad-go\" aria-label=\"Update the agent on TITAN to v0.28.0\">update</button></span>",
+      "css": ".ds-agent-drift { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 3px; font: 300 clamp(11px, 0.76vw, 15px)/1.4 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); } .ds-agent-drift .ds-ad-k { font-family: var(--ui, Archivo, 'Segoe UI', sans-serif); font-size: 0.8em; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); } .ds-agent-drift .ds-ad-v { font-weight: 300; color: var(--ink-3, #7d7160); } .ds-agent-drift .ds-ad-arw { color: var(--ink-3, #7d7160); } .ds-agent-drift .ds-ad-v.ds-new { color: var(--caution, #9d8cff); } .ds-ad-go { position: relative; overflow: hidden; font-family: var(--ui, Archivo, 'Segoe UI', sans-serif); font-size: 0.76em; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--caution, #9d8cff); padding: 3px 9px; border-radius: 3px; background: rgba(var(--caution-rgb, 157, 140, 255), 0.05); border: 1px solid rgba(var(--caution-rgb, 157, 140, 255), 0.5); cursor: pointer; transition: border-color 0.2s, background 0.2s; } .ds-ad-go::after { content: \"\"; position: absolute; top: 0; bottom: 0; left: 0; width: 55%; background: linear-gradient(100deg, rgba(var(--caution-rgb, 157, 140, 255), 0), rgba(var(--caution-rgb, 157, 140, 255), 0.34), rgba(var(--caution-rgb, 157, 140, 255), 0)); animation: dsAdSweep 3.6s ease-in-out infinite; pointer-events: none; } @keyframes dsAdSweep { 0% { transform: translateX(-160%); } 45%, 100% { transform: translateX(260%); } } .ds-ad-go:hover { border-color: rgba(var(--caution-rgb, 157, 140, 255), 0.65); background: rgba(var(--caution-rgb, 157, 140, 255), 0.12); } .ds-ad-go:hover::after { animation-play-state: paused; } .ds-ad-go:focus-visible { outline: 2px solid var(--caution, #9d8cff); outline-offset: 2px; } @media (prefers-reduced-motion: reduce) { .ds-ad-go::after { animation: none; opacity: 0; } .ds-ad-go { border-color: rgba(var(--caution-rgb, 157, 140, 255), 0.6); background: rgba(var(--caution-rgb, 157, 140, 255), 0.12); } }"
     },
     {
       "name": "Ghost Button",
@@ -635,6 +648,11 @@
         "section": "colors"
       },
       {
+        "name": "The Violet Pulse Rule",
+        "body": "Motion in the gold family means *alive* - a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make \"alive\" and \"attend to me\" the same signal. The One Light Rule's finished-step clause is unchanged - a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused`); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off.",
+        "section": "colors"
+      },
+      {
         "name": "The Warm Light, Cold Water Rule",
         "body": "The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent.",
         "section": "colors"
@@ -761,7 +779,8 @@
       "Don't sweep for a bare `button` inside any surface that holds a customizable `select`. With `appearance: base-select` the select owns a real `<button>` in the DOM, and it is usually first in document order — so `container.querySelector('button')` returns the select's internal button, and calling `.focus()` on it does nothing at all. The wizard opened with focus stranded on `<body>` for exactly this reason. Ask for one of ours (`.cfg-btn`) or for a field, never for a tag.",
       "Don't hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.",
       "Don't judge a veil by arithmetic on the backdrop colour. The grounds are already near-black and barely move; what carries the separation is every lit panel and control dimming at once. Open the surface it will really sit over and look at the buttons.",
-      "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)"
+      "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)",
+      "**Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes \"this is running\" and \"attend to me\" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state - see The Violet Pulse Rule."
     ]
   }
 }

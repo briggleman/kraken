@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/briggleman/kraken/compare/v0.29.0...v0.30.0) (2026-08-31)
+
+
+### Features
+
+* **web:** flag nodes whose agent the panel has outrun ([#156](https://github.com/briggleman/kraken/issues/156)) ([3c51892](https://github.com/briggleman/kraken/commit/3c518928f10d67e6db6942561e3bf8b7cb220a80))
+
 ## [0.29.0](https://github.com/briggleman/kraken/compare/v0.28.0...v0.29.0) (2026-08-28)
 
 

@@ -20,7 +20,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const mockPath = resolve(here, "..", "..", "design", "mockups", "spog-abyssal-ops.html");
 const outPath = resolve(here, "..", "src", "styles", "house.css");
 
-const mock = readFileSync(mockPath, "utf8");
+// Normalised to LF before anything is sliced out of it, so house.css is
+// byte-identical whoever generated it. Without this, a CRLF working tree (Windows,
+// despite .gitattributes eol=lf) leaves the leading newline below unstripped —
+// `^\n` does not match `\r\n` — and the generated file gains a blank line that a
+// LF checkout will not reproduce. That made check:design pass locally and fail in
+// CI, which is the worst shape a drift gate can take.
+const mock = readFileSync(mockPath, "utf8").split("\r\n").join("\n");
 
 const open = mock.indexOf("<style>");
 const close = mock.indexOf("</style>");
@@ -63,7 +69,9 @@ const header = `/* GENERATED FILE — do not edit.
 
 `;
 
-const next = header + css;
+// LF on the way out as well: the header above is a template literal in THIS file,
+// so on a CRLF checkout it carries CRLF of its own even once the mock is clean.
+const next = (header + css).split("\r\n").join("\n");
 
 if (process.argv.includes("--check")) {
   const current = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";

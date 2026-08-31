@@ -3,7 +3,8 @@
 # Kraken bare-metal installer.
 #
 # Downloads the release binaries from GitHub, verifies their checksums,
-# installs them to /usr/local/bin, and (optionally) drops in systemd
+# installs them to /usr/local/bin (the agent to /opt/kraken/bin, which it must
+# be able to write to replace itself), and (optionally) drops in systemd
 # units. Idempotent — safe to re-run to upgrade.
 #
 #   # both roles, latest release:
@@ -24,6 +25,7 @@ set -euo pipefail
 ROLE="both"           # panel | agent | both
 VERSION=""            # empty → resolve latest from GitHub
 PREFIX="/usr/local"
+AGENT_BIN_DIR="/opt/kraken/bin"  # the agent replaces its own binary; this dir is kraken-owned
 INSTALL_SYSTEMD=1
 REPO="briggleman/kraken"
 KRAKEN_USER="kraken"
@@ -137,9 +139,16 @@ log "verifying sha256 sums"
 
 # ---- install binaries --------------------------------------------------
 install -d "$PREFIX/bin"
+AGENT_SRC=""
 for name in $BINARIES; do
   # Strip the -linux-amd64 suffix so /usr/local/bin has stable names.
   short="${name%%-${OS}-${ARCH}}"
+  if [ "$short" = "kraken-agent" ]; then
+    # Deferred: it goes to $AGENT_BIN_DIR owned by the kraken user, which does
+    # not exist yet. See "agent binary" below.
+    AGENT_SRC="$TMP/$name"
+    continue
+  fi
   install -m 0755 "$TMP/$name" "$PREFIX/bin/$short"
   log "installed $PREFIX/bin/$short"
 done
@@ -163,6 +172,40 @@ fi
 
 install -d -m 0750 -o "$KRAKEN_USER" -g "$KRAKEN_USER" "$STATE_DIR"
 install -d -m 0750 -o root         -g "$KRAKEN_USER" "$CONFIG_DIR"
+
+# ---- agent binary: a home the agent can write ---------------------------
+# Self-update replaces the running binary in place: it writes <exe>.new beside
+# it and renames the running file to <exe>.old, so the agent needs write on the
+# containing DIRECTORY, not just the file. /usr/local/bin cannot give it that —
+# root-owned 0755, and read-only under the unit's ProtectSystem=strict — so the
+# agent gets a directory of its own holding exactly one replaceable file.
+# /usr/local/bin/kraken-agent stays as a symlink so the command is still on
+# PATH; /proc/self/exe resolves through it, so the updater sees the real path.
+if [ -n "$AGENT_SRC" ]; then
+  install -d -m 0755 -o root -g root "$(dirname "$AGENT_BIN_DIR")"
+  install -d -m 0750 -o "$KRAKEN_USER" -g "$KRAKEN_USER" "$AGENT_BIN_DIR"
+  # Land it under a temp name and rename into place. Writing the destination
+  # directly would open it O_TRUNC, and that is ETXTBSY while the agent is
+  # running out of this very path — which is the normal case for every upgrade
+  # after the first. rename() only unlinks the old name; the running process
+  # keeps its inode until it restarts. (This is the same reason selfupdate.go
+  # renames rather than overwrites.)
+  install -m 0755 -o "$KRAKEN_USER" -g "$KRAKEN_USER" "$AGENT_SRC" "$AGENT_BIN_DIR/kraken-agent.incoming"
+  mv -f "$AGENT_BIN_DIR/kraken-agent.incoming" "$AGENT_BIN_DIR/kraken-agent"
+  # Leftovers from an interrupted self-update; the new binary supersedes both.
+  rm -f "$AGENT_BIN_DIR/kraken-agent.old" "$AGENT_BIN_DIR/kraken-agent.new"
+  log "installed $AGENT_BIN_DIR/kraken-agent (owned by $KRAKEN_USER, self-updatable)"
+
+  # Migration from an install that ran the binary out of $PREFIX/bin: replace it
+  # with the symlink and clear any half-finished swap left by a failed update
+  # attempt against the old, unwritable location.
+  if [ -e "$PREFIX/bin/kraken-agent" ] && [ ! -L "$PREFIX/bin/kraken-agent" ]; then
+    log "moving the agent off $PREFIX/bin (it was not writable by $KRAKEN_USER)"
+  fi
+  rm -f "$PREFIX/bin/kraken-agent.old" "$PREFIX/bin/kraken-agent.new"
+  ln -sfn "$AGENT_BIN_DIR/kraken-agent" "$PREFIX/bin/kraken-agent"
+  log "linked $PREFIX/bin/kraken-agent -> $AGENT_BIN_DIR/kraken-agent"
+fi
 
 # ---- environment files -------------------------------------------------
 write_if_missing() {
@@ -295,6 +338,14 @@ EOF
 fi
 
 # ---- systemd -----------------------------------------------------------
+if [ "$INSTALL_SYSTEMD" -eq 0 ] && [ -n "$AGENT_SRC" ]; then
+  warn "the agent binary now lives at $AGENT_BIN_DIR/kraken-agent, but --no-systemd"
+  warn "means your unit still points at $PREFIX/bin (now a symlink, so it starts"
+  warn "fine). Panel-pushed self-update needs the new unit's ReadWritePaths:"
+  warn "  ExecStart=$AGENT_BIN_DIR/kraken-agent"
+  warn "  ReadWritePaths=$STATE_DIR $CONFIG_DIR $AGENT_BIN_DIR"
+fi
+
 if [ "$INSTALL_SYSTEMD" -eq 1 ] && [ -d /etc/systemd/system ]; then
   install_unit() {
     local name="$1"
@@ -317,6 +368,14 @@ if [ "$INSTALL_SYSTEMD" -eq 1 ] && [ -d /etc/systemd/system ]; then
   fi
 
   systemctl daemon-reload
+  # An upgrade in place leaves the old process running under the old unit, whose
+  # ExecStart and ReadWritePaths still point at $PREFIX/bin — so self-update
+  # would stay broken until something restarted it. try-restart is a no-op when
+  # the service is not running, which is what makes this safe on a fresh install.
+  if [ -n "$AGENT_SRC" ] && systemctl is-active --quiet kraken-agent; then
+    log "restarting kraken-agent onto $AGENT_BIN_DIR/kraken-agent"
+    systemctl try-restart kraken-agent
+  fi
   if [ "$ROLE" = "agent" ] && [ -n "$ENROLL_TOKEN" ]; then
     # One-command install: the enroll settings are in place, so bring the
     # agent up now — it enrolls with the Panel on first start.

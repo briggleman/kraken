@@ -21,10 +21,18 @@ import (
 // a few dozen messages.
 const updateChunkSize = 512 * 1024
 
-// handleNodeAgentUpdate pushes this Panel's embedded agent binary to a node
-// over the UpdateAgent RPC. The Panel can only push its own version — release
-// builds embed the agent builds compiled alongside the Panel — so this is
-// "bring the node to the Panel's version", never an arbitrary install.
+// handleNodeAgentUpdate starts a push of this Panel's embedded agent binary to a
+// node. The Panel can only push its own version — release builds embed the agent
+// builds compiled alongside the Panel — so this is "bring the node to the
+// Panel's version", never an arbitrary install.
+//
+// It answers 202 and streams in the background. The push moves ~17MB and writes
+// nothing downstream while it runs, so holding the request open put it at the
+// mercy of every proxy read timeout in the path (Cloudflare ~100s, nginx 60s):
+// the operator collected a 502 for a push that had often succeeded, and the
+// retry then collided with the update already in flight. Preflight stays
+// synchronous — a 409 or 503 is worth an immediate answer, not a poll — and only
+// the stream is deferred.
 func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 	n, err := s.store.GetNode(r.Context(), chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -36,7 +44,16 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	from, to, err := s.pushAgentUpdateTo(r.Context(), n)
+	// Name the job already in flight rather than letting the operator start a
+	// second push and read the Agent's refusal as a new problem.
+	if running, ok := s.agentJobs.running(n.ID); ok {
+		s.recordAudit(r, http.StatusConflict, "node-agent-update:"+n.ID)
+		writeError(w, http.StatusConflict,
+			"an update is already pushing to this node (job "+running.ID+")")
+		return
+	}
+
+	plan, err := s.prepareAgentUpdate(r.Context(), n)
 	if err != nil {
 		s.recordAudit(r, http.StatusBadGateway, "node-agent-update:"+n.ID)
 		var ae *agentUpdateError
@@ -47,14 +64,64 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "node-agent-update:"+n.ID)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"from_version": from,
-		"to_version":   to,
-		// The agent restarts right after responding; the node reconciler
-		// observes the new version (or the rollback) on its next pass.
-		"restarting": true,
+
+	job := s.agentJobs.start(n.ID, n.Name, plan.fromVersion, version.Version, int64(len(plan.data)))
+	go s.runAgentUpdate(job.ID, n.ID, n.Name, plan)
+
+	s.recordAudit(r, http.StatusAccepted, "node-agent-update:"+n.ID)
+	writeJSON(w, http.StatusAccepted, job.body())
+}
+
+// handleNodeAgentUpdateStatus reports the node's most recent push from THIS
+// Panel process. A 404 is a real answer, not a failure: it means no job is
+// known here — because none was started, because it aged out, or because the
+// Panel restarted — and the node record is then the thing to read. The UI
+// treats it as "refresh the fleet and trust the version you see".
+func (s *Server) handleNodeAgentUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.agentJobs.latest(chi.URLParam(r, "id"))
+	if !ok {
+		writeError(w, http.StatusNotFound,
+			"no agent update job for this node in this panel process — read the node's agent_version")
+		return
+	}
+	writeJSON(w, http.StatusOK, job.body())
+}
+
+// runAgentUpdate streams the prepared binary and records the outcome on the job.
+//
+// It takes no request context on purpose. The HTTP request is already answered
+// by the time this runs, so r.Context() is cancelled and would kill the stream
+// the moment the 202 went out — the exact bug this whole change exists to avoid.
+// Its own deadline is generous: 17MB over a slow WAN is minutes, and the old
+// 2-minute bound was itself part of the problem.
+func (s *Server) runAgentUpdate(jobID, nodeID, nodeName string, plan *agentUpdatePlan) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	stream, err := plan.client.UpdateAgent(ctx)
+	if err != nil {
+		s.logger.Error("agent update failed", "node", nodeID, "name", nodeName,
+			"from", plan.fromVersion, "to", version.Version, "err", err)
+		s.agentJobs.finish(jobID, agentUpdateFailed, "open update stream: "+err.Error())
+		return
+	}
+
+	resp, err := pushUpdate(stream, plan.meta(), plan.data, func(sent int64) {
+		s.agentJobs.progress(jobID, sent)
 	})
+	if err != nil {
+		// The Agent's refusal is the operator's whole diagnosis and it survives
+		// nowhere else: writeError does not log, and the audit entry carries
+		// only the status. It reaches the UI through the job's error field.
+		s.logger.Error("agent update failed", "node", nodeID, "name", nodeName,
+			"from", plan.fromVersion, "to", version.Version, "err", err)
+		s.agentJobs.finish(jobID, agentUpdateFailed, err.Error())
+		return
+	}
+
+	s.logger.Info("agent update pushed", "node", nodeID, "name", nodeName,
+		"from", resp.FromVersion, "to", resp.ToVersion, "bytes", len(plan.data), "sha256", plan.sha)
+	s.agentJobs.finish(jobID, agentUpdateRestarting, "")
 }
 
 // updateStream is the subset of the UpdateAgent client stream that pushUpdate
@@ -78,7 +145,11 @@ type updateStream interface {
 //
 // So: stop sending, then let CloseAndRecv speak. The Send error is only worth
 // reporting when the agent had nothing to say for itself.
-func pushUpdate(stream updateStream, meta *agentpb.UpdateAgentChunk_Meta, data []byte) (*agentpb.UpdateAgentResponse, error) {
+// onSent, when non-nil, is called with the running total after each accepted
+// chunk. It is the only progress signal available: gRPC gives no send-side
+// acknowledgement, so "handed to the stream" is the honest measure and the UI
+// should label it as such.
+func pushUpdate(stream updateStream, meta *agentpb.UpdateAgentChunk_Meta, data []byte, onSent func(sent int64)) (*agentpb.UpdateAgentResponse, error) {
 	sendErr := stream.Send(&agentpb.UpdateAgentChunk{
 		Payload: &agentpb.UpdateAgentChunk_Meta_{Meta: meta},
 	})
@@ -87,6 +158,9 @@ func pushUpdate(stream updateStream, meta *agentpb.UpdateAgentChunk_Meta, data [
 		sendErr = stream.Send(&agentpb.UpdateAgentChunk{
 			Payload: &agentpb.UpdateAgentChunk_Data{Data: data[off:end]},
 		})
+		if sendErr == nil && onSent != nil {
+			onSent(int64(end))
+		}
 	}
 
 	resp, err := stream.CloseAndRecv()
@@ -124,19 +198,46 @@ func (s *Server) embeddedAgentSHA(os cluster.NodeOS, arch string) string {
 	return agentbin.SHA(string(os), arch)
 }
 
-// pushAgentUpdateTo streams the Panel's embedded agent build to one node and
-// waits for the agent's swap-and-restart ack. Shared by the single-node
-// handler and the update-all wave. Returns (fromVersion, toVersion) on success.
-func (s *Server) pushAgentUpdateTo(ctx context.Context, n *cluster.Node) (string, string, error) {
+// agentUpdatePlan is everything preflight resolved, ready for a stream that may
+// outlive the request that asked for it. It deliberately holds no context: the
+// pushing goroutine makes its own (see runAgentUpdate).
+type agentUpdatePlan struct {
+	client      agentpb.NodeServiceClient
+	data        []byte
+	sha         string
+	os          string
+	arch        string
+	fromVersion string
+}
+
+func (p *agentUpdatePlan) meta() *agentpb.UpdateAgentChunk_Meta {
+	return &agentpb.UpdateAgentChunk_Meta{
+		Version:   version.Version,
+		Sha256:    p.sha,
+		TotalSize: int64(len(p.data)),
+		Os:        p.os,
+		Arch:      p.arch,
+	}
+}
+
+// prepareAgentUpdate does everything that must answer the operator immediately:
+// confirm the agent is reachable, refuse a pointless or impossible push, select
+// and load the binary, and get a client. All of it is fast, and each failure has
+// a precise status the caller should not have to poll for.
+//
+// It stops short of opening the stream. That belongs to the pushing goroutine,
+// because the stream's lifetime has to be the push's lifetime and not the
+// request's.
+func (s *Server) prepareAgentUpdate(ctx context.Context, n *cluster.Node) (*agentUpdatePlan, error) {
 	// Fresh NodeInfo first: confirms the agent is reachable and gives the
 	// authoritative os/arch/version to select the binary (and to refuse a
 	// pointless push).
 	info, err := s.reconcileNode(ctx, n)
 	if err != nil {
-		return "", "", &agentUpdateError{http.StatusBadGateway, "agent unreachable: " + err.Error()}
+		return nil, &agentUpdateError{http.StatusBadGateway, "agent unreachable: " + err.Error()}
 	}
 	if info.AgentVersion == version.Version {
-		return "", "", &agentUpdateError{http.StatusConflict, "agent is already at the panel's version (" + version.Version + ")"}
+		return nil, &agentUpdateError{http.StatusConflict, "agent is already at the panel's version (" + version.Version + ")"}
 	}
 	arch := info.Arch
 	if arch == "" {
@@ -148,40 +249,24 @@ func (s *Server) pushAgentUpdateTo(ctx context.Context, n *cluster.Node) (string
 
 	data, sha, err := agentbin.Get(info.Os, arch)
 	if errors.Is(err, agentbin.ErrNotEmbedded) {
-		return "", "", &agentUpdateError{http.StatusServiceUnavailable,
+		return nil, &agentUpdateError{http.StatusServiceUnavailable,
 			"this panel build has no embedded agent binary for " + info.Os + "/" + arch + " — release builds embed them; dev builds do not"}
 	}
 	if err != nil {
-		return "", "", &agentUpdateError{http.StatusInternalServerError, "load embedded agent: " + err.Error()}
+		return nil, &agentUpdateError{http.StatusInternalServerError, "load embedded agent: " + err.Error()}
 	}
 
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
-		return "", "", &agentUpdateError{http.StatusBadGateway, "agent connection: " + err.Error()}
-	}
-	// Generous bound: the binary is ~17MB and may cross a WAN.
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	stream, err := client.UpdateAgent(cctx)
-	if err != nil {
-		return "", "", &agentUpdateError{http.StatusBadGateway, "open update stream: " + err.Error()}
-	}
-	resp, err := pushUpdate(stream, &agentpb.UpdateAgentChunk_Meta{
-		Version:   version.Version,
-		Sha256:    sha,
-		TotalSize: int64(len(data)),
-		Os:        info.Os,
-		Arch:      arch,
-	}, data)
-	if err != nil {
-		// This is the operator's whole diagnosis and it survives nowhere else:
-		// writeError does not log, and the audit entry carries only the status.
-		s.logger.Error("agent update failed", "node", n.ID, "name", n.Name,
-			"from", info.AgentVersion, "to", version.Version, "err", err)
-		return "", "", &agentUpdateError{http.StatusBadGateway, err.Error()}
+		return nil, &agentUpdateError{http.StatusBadGateway, "agent connection: " + err.Error()}
 	}
 
-	s.logger.Info("agent update pushed", "node", n.ID, "name", n.Name,
-		"from", resp.FromVersion, "to", resp.ToVersion, "bytes", len(data), "sha256", sha)
-	return resp.FromVersion, resp.ToVersion, nil
+	return &agentUpdatePlan{
+		client:      client,
+		data:        data,
+		sha:         sha,
+		os:          info.Os,
+		arch:        arch,
+		fromVersion: info.AgentVersion,
+	}, nil
 }

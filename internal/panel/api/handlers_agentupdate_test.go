@@ -56,7 +56,7 @@ func TestPushUpdateSurfacesAgentRefusalNotEOF(t *testing.T) {
 		closeErr: status.Error(codes.Internal, refusal),
 	}
 
-	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*3))
+	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*3), nil)
 	if err == nil {
 		t.Fatal("pushUpdate succeeded; want the agent's refusal")
 	}
@@ -77,7 +77,7 @@ func TestPushUpdateSurfacesRefusalWhenMetadataSendFails(t *testing.T) {
 		closeErr: status.Error(codes.FailedPrecondition, refusal),
 	}
 
-	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*2))
+	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*2), nil)
 	if err == nil || !strings.Contains(err.Error(), refusal) {
 		t.Fatalf("want the agent's refusal, got: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestPushUpdateSendsEveryByteThenReturnsTheAck(t *testing.T) {
 	// A size that is deliberately not a multiple of the chunk size, so a
 	// mis-computed final chunk shows up as a byte count mismatch.
 	data := make([]byte, updateChunkSize*2+7)
-	resp, err := pushUpdate(stream, meta(), data)
+	resp, err := pushUpdate(stream, meta(), data, nil)
 	if err != nil {
 		t.Fatalf("pushUpdate: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestPushUpdateRefusesToReportSuccessOnATruncatedStream(t *testing.T) {
 		closeResp: &agentpb.UpdateAgentResponse{FromVersion: "v0.27.1", ToVersion: "v9.9.9"},
 	}
 
-	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*4))
+	_, err := pushUpdate(stream, meta(), make([]byte, updateChunkSize*4), nil)
 	if err == nil {
 		t.Fatal("pushUpdate reported success for a stream that failed mid-push")
 	}

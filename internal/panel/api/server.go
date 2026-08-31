@@ -41,6 +41,11 @@ type Server struct {
 	caKey     []byte
 	bootstrap *bootstrapRegistry
 
+	// agentJobs tracks in-flight agent-binary pushes. In memory on purpose: a
+	// push is one process's gRPC stream, and the durable record of what an agent
+	// is running is the node record (see agentupdatejobs.go).
+	agentJobs *agentUpdateJobs
+
 	// In-memory Panel client TLS bundle from WithClientTLSBytes. When set,
 	// the Agent pool uses these bytes rather than reading cfg.TLS{Cert,Key,CA}
 	// off disk — sidesteps volume-permission gymnastics for the auto-issued
@@ -120,6 +125,7 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 	s := &Server{
 		cfg: cfg, store: st, logger: logger,
 		bootstrap:  newBootstrapRegistry(),
+		agentJobs:  newAgentUpdateJobs(),
 		lastRotate: map[string]time.Time{},
 		installs:   newInstallLog(),
 		telemetry:  newTelemetryCache(),
@@ -418,7 +424,9 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}/info", s.handleNodeInfo)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Patch("/nodes/{id}", s.handleUpdateNode)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/agent-update", s.handleNodeAgentUpdate)
-			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/agent-update-all", s.handleUpdateAllAgents)
+			// Progress is readable by anyone who can see the node: viewers already
+			// see the drift line, so watching a push resolve tells them nothing new.
+			r.With(s.requirePermission(rbac.PermNodeView)).Get("/nodes/{id}/agent-update", s.handleNodeAgentUpdateStatus)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/cordon", s.handleCordonNode)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Post("/nodes/{id}/uncordon", s.handleUncordonNode)
 			r.With(s.requirePermission(rbac.PermNodeManage)).Delete("/nodes/{id}", s.handleDeleteNode)

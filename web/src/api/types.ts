@@ -347,6 +347,34 @@ export interface NodeTelemetry {
   temp_known: boolean;
 }
 
+/**
+ * One agent-binary push, as the Panel sees it. Tracked in memory by the Panel
+ * process that started it — so a 404 from the status endpoint means "this Panel
+ * knows nothing", and the node's agent_version is then the truth.
+ *
+ * There is no "done" phase on purpose: the job ends at `restarting`, when the
+ * agent has acked the binary and is swapping itself. Whether it came back on
+ * the new build is the node record's story — the drift line clearing is the
+ * success signal.
+ */
+export interface AgentUpdateJob {
+  job_id: string;
+  node_id: string;
+  from_version: string;
+  to_version: string;
+  phase: "pushing" | "restarting" | "failed";
+  /** The agent's verbatim refusal. Present only when phase is "failed". */
+  error?: string;
+  /** Bytes handed to the stream. gRPC gives no send-side ack, so this is
+   *  "sent", not "received" — label it as such if it is ever shown as progress. */
+  bytes_sent: number;
+  /** 0 when the push failed before the binary was sized: treat progress as
+   *  unknown rather than zero. */
+  bytes_total: number;
+  started_at: string;
+  finished_at?: string;
+}
+
 export interface Node {
   id: string;
   name: string;

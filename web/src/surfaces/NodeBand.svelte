@@ -3,6 +3,7 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import TempSpec from "@/components/TempSpec.svelte";
+  import { onDestroy } from "svelte";
   import { api } from "@/api/client";
   import { hasPerm } from "@/lib/auth.svelte";
   import { refreshFleet } from "@/lib/fleet.svelte";
@@ -52,22 +53,57 @@
   let pushing = $state(false);
   let pushErr = $state("");
 
-  // The push returns 202 and the agent restarts itself onto the new build, so
-  // there is nothing to confirm: the node drops and returns, and the drift line
-  // disappears on its own once it reports the new version. Refresh immediately so
-  // that happens as soon as it is true rather than at the next poll tick.
+  // The POST answers 202 and the Panel streams ~17MB in the background, so the
+  // outcome arrives by polling the job rather than by awaiting the request. The
+  // job ends at `restarting` — the agent has taken the binary and is rebooting
+  // itself — and the drift line then clears on its own once the node reports the
+  // new version, which is the actual success signal. A 404 means this Panel has
+  // no job for the node (it restarted, or the job aged out): stop polling and
+  // trust the node record. This deliberately keeps the current label swap; the
+  // in-flight and failure DESIGN is #159, which will consume bytes_sent.
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+  function stopPoll() {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+
+  onDestroy(stopPoll);
+
   async function pushAgent() {
     if (pushing) return;
     pushing = true;
     pushErr = "";
     try {
       await api.updateNodeAgent(node.id);
-      await refreshFleet();
     } catch (e) {
+      // Preflight is still synchronous, so this is a real refusal worth showing
+      // as-is: already current, no embedded binary, agent unreachable.
       pushErr = e instanceof Error ? e.message : String(e);
-    } finally {
       pushing = false;
+      return;
     }
+    stopPoll();
+    pollTimer = setInterval(() => void pollJob(), 2000);
+  }
+
+  async function pollJob() {
+    let job;
+    try {
+      job = await api.agentUpdateStatus(node.id);
+    } catch {
+      // 404 (or any read failure): the job is not knowable here. The node
+      // record is authoritative either way.
+      stopPoll();
+      pushing = false;
+      await refreshFleet();
+      return;
+    }
+    if (job.phase === "pushing") return;
+    stopPoll();
+    pushing = false;
+    if (job.phase === "failed") pushErr = job.error || "the agent refused the update";
+    await refreshFleet();
   }
 </script>
 

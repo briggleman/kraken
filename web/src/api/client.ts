@@ -1,4 +1,5 @@
 import type {
+  AgentUpdateJob,
   AdminUser,
   AuditEntry,
   Backup,
@@ -417,11 +418,17 @@ export const api = {
   }): Promise<Node> {
     return request("POST", "/nodes", input);
   },
-  updateNodeAgent(id: string): Promise<{ from_version: string; to_version: string; restarting: boolean }> {
+  /** Starts a push and returns 202 immediately — the ~17MB stream runs on the
+   *  Panel in the background, because holding the request open left it at the
+   *  mercy of every proxy read timeout in the path. Poll agentUpdateStatus. */
+  updateNodeAgent(id: string): Promise<AgentUpdateJob> {
     return request("POST", `/nodes/${id}/agent-update`);
   },
-  updateAllAgents(): Promise<{ updated: number; skipped: number; failed: number; nodes: { node_id: string; name: string; outcome: string; detail?: string }[] }> {
-    return request("POST", "/nodes/agent-update-all");
+  /** The node's most recent push from THIS Panel process. A 404 is an answer,
+   *  not a failure: no job is known here (never started, aged out, or the Panel
+   *  restarted), so the node's own agent_version is the thing to trust. */
+  agentUpdateStatus(id: string): Promise<AgentUpdateJob> {
+    return request("GET", `/nodes/${id}/agent-update`);
   },
   cordonNode(id: string): Promise<Node> {
     return request("POST", `/nodes/${id}/cordon`);

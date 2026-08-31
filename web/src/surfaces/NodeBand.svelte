@@ -83,12 +83,18 @@
   const rollbackErr = $derived(phase === "idle" ? (node.last_update_error ?? "") : "");
   const failure = $derived(pushErr || rollbackErr);
 
+  // failed keys off PHASE, not off having a message: the reason can arrive
+  // empty (Cloudflare replaces origin 502 bodies with HTML, and HTTP/2 has no
+  // statusText), and a failure with no words must still LOOK failed — the
+  // live contrivance produced an invisible failure the operator could click
+  // forever. rollbackErr alone still counts: it is a failure the node record
+  // reports with no local phase.
   const chipState = $derived<ChipState>(
     phase === "pushing"
       ? "pushing"
       : phase === "restarting"
         ? "restarting"
-        : failure
+        : phase === "failed" || failure
           ? "failed"
           : drift?.direction === "ahead"
             ? "ahead"
@@ -135,7 +141,11 @@
     } catch (e) {
       // Preflight is still synchronous, so this is a real refusal worth showing
       // as-is: already current, no embedded binary, agent unreachable.
-      pushErr = e instanceof Error ? e.message : String(e);
+      // A refusal can arrive wordless (an edge proxy that replaces the origin's
+      // JSON error with HTML leaves ApiError with an empty message). The state
+      // machine keys off phase, but the LINE still owes the operator a reason.
+      const msg = e instanceof Error ? e.message : String(e);
+      pushErr = msg || "the panel could not be reached, or refused without a reason — check the audit log";
       phase = "failed";
       return;
     }

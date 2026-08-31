@@ -82,7 +82,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     clearToken();
   }
   if (!res.ok) {
-    let msg = res.statusText;
+    // HTTP/2 has no reason phrase, so statusText is "" — and an edge proxy that
+    // swallowed the origin's JSON error (Cloudflare does this to 502/504 bodies)
+    // leaves nothing else. An ApiError must never have an empty message.
+    let msg = res.statusText || `HTTP ${res.status}`;
     let code: string | undefined;
     try {
       const data = await res.json();

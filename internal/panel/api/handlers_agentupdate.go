@@ -55,13 +55,15 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 
 	plan, err := s.prepareAgentUpdate(r.Context(), n)
 	if err != nil {
-		s.recordAudit(r, http.StatusBadGateway, "node-agent-update:"+n.ID)
+		status := http.StatusBadGateway
 		var ae *agentUpdateError
 		if errors.As(err, &ae) {
-			writeError(w, ae.status, ae.msg)
-			return
+			status = ae.status
 		}
-		writeError(w, http.StatusBadGateway, err.Error())
+		// The audit entry records the status the caller actually received —
+		// it used to say 502 even when the response was a 409 or 503.
+		s.recordAudit(r, status, "node-agent-update:"+n.ID)
+		writeError(w, status, err.Error())
 		return
 	}
 
@@ -234,7 +236,12 @@ func (s *Server) prepareAgentUpdate(ctx context.Context, n *cluster.Node) (*agen
 	// pointless push).
 	info, err := s.reconcileNode(ctx, n)
 	if err != nil {
-		return nil, &agentUpdateError{http.StatusBadGateway, "agent unreachable: " + err.Error()}
+		// 503, not 502: Cloudflare (and some other edges) replace an origin
+		// 502/504 body with their own HTML error page, which destroys the
+		// diagnosis this message carries — observed live, the UI received an
+		// unparseable page and an empty reason. A 503 passes through intact,
+		// and "the service cannot do this right now" is the truer meaning.
+		return nil, &agentUpdateError{http.StatusServiceUnavailable, "agent unreachable: " + err.Error()}
 	}
 	if info.AgentVersion == version.Version {
 		return nil, &agentUpdateError{http.StatusConflict, "agent is already at the panel's version (" + version.Version + ")"}
@@ -258,7 +265,8 @@ func (s *Server) prepareAgentUpdate(ctx context.Context, n *cluster.Node) (*agen
 
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
-		return nil, &agentUpdateError{http.StatusBadGateway, "agent connection: " + err.Error()}
+		// 503 for the same reason as the unreachable branch above.
+		return nil, &agentUpdateError{http.StatusServiceUnavailable, "agent connection: " + err.Error()}
 	}
 
 	return &agentUpdatePlan{

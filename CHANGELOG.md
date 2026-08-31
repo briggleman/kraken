@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/briggleman/kraken/compare/v0.30.0...v0.30.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **panel:** report the agent's refusal, not "stream binary: EOF" ([#160](https://github.com/briggleman/kraken/issues/160)) ([0169b09](https://github.com/briggleman/kraken/commit/0169b098a7d09c0a6987ddaf2ff09c85635feb24)), closes [#114](https://github.com/briggleman/kraken/issues/114)
+
 ## [0.30.0](https://github.com/briggleman/kraken/compare/v0.29.0...v0.30.0) (2026-08-31)
 
 

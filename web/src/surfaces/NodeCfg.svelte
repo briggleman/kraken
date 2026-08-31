@@ -16,6 +16,13 @@
   // the node this sheet is about — set by the node band before opening
   const node = $derived(fleet.nodes.find((n) => n.id === ui.nodeCfgId) ?? null);
 
+  // The panel refuses to delete a node that still owns servers, because nothing
+  // else would: servers.node_id has no foreign key, so the rows would survive
+  // pointing at a node that no longer exists — and a re-enrolled node is minted a
+  // fresh id, so they could never be reclaimed. Count it here so the control says
+  // so up front rather than surfacing a 409 after the operator has typed "delete".
+  const placed = $derived(node ? fleet.servers.filter((sv) => sv.node_id === node.id).length : 0);
+
   let cfg = $state<NodeConfig | null>(null);
   let loadErr = $state<string | null>(null);
 
@@ -267,10 +274,20 @@
       <div class="cfg-actions acts-split">
         <button
           class="cfg-btn danger"
-          disabled={!node}
+          disabled={!node || placed > 0}
+          title={placed > 0
+            ? `${placed} ${placed === 1 ? "server is" : "servers are"} still placed on this node — delete or move ${placed === 1 ? "it" : "them"} first`
+            : "remove this node from the panel"}
           onclick={(e) => openConfirm(nodeName || "this node", e.currentTarget, { noun: "node", body: CD_NODE_BODY })}
           >delete node</button
         >
+        {#if placed > 0}
+          <span class="cfg-note"
+            >{placed} {placed === 1 ? "server" : "servers"} placed here — delete or move {placed === 1
+              ? "it"
+              : "them"} to remove this node</span
+          >
+        {/if}
         {#if res}<span class="cfg-note wz-res shown {res.cls}">{res.text}</span>{:else}<span class="cfg-note">blank secret fields keep their stored values</span>{/if}
         <button class="cfg-btn ghost" onclick={() => closeSheet("nodeCfg")}>close</button>
         <button class="cfg-btn solid" disabled={busy || !cfg} onclick={() => void save()}>{busy ? "saving…" : "save & apply"}</button>

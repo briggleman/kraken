@@ -964,15 +964,21 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      node-id cell is already where what-this-node-IS gets said; a badge beside the
      name would have spent a new silhouette on a sentence that fits the ones there.
      The line itself never moves; only its action chip carries the signal. */
-  .agent-drift { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
-  .agent-drift .ad-k {
+  /* A node condition: one extra .node-meta line stating something true of the
+     node that its vitals cannot show. Shared layout, because a band may carry
+     more than one — version drift and untracked containers are both conditions,
+     and neither is the node being unwell. */
+  .node-cond { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
+  .node-cond .nc-k {
     font-family: var(--ui); font-size: 0.8em; font-weight: 600;
     letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3);
   }
-  .agent-drift .ad-v { font-weight: 300; color: var(--ink-3); }
-  .agent-drift .ad-arw { color: var(--ink-3); }
-  /* only the version being moved TO carries the colour: the one you are on is a fact */
-  .agent-drift .ad-v.new { color: var(--caution); }
+  .node-cond .nc-v { font-weight: 300; color: var(--ink-3); }
+  .node-cond .nc-sep { color: var(--ink-3); }
+  /* exactly one value in the line carries the colour: the one you would act on.
+     The version you are moving TO, the containers nobody is tracking — the rest
+     is context, and colouring context spends the semantic for nothing. */
+  .node-cond .nc-v.act { color: var(--caution); }
   /* a ghost, not a lamp - the One Committing Control Rule spends the band's one
      filled control nowhere, and an update you can defer is not a commit */
   .ad-go {
@@ -2216,6 +2222,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-name">BEHEMOTH</span>
       <span class="node-meta">node 01 · 16c/32t · up 27d 06h</span>
       <span class="node-meta">10.0.0.4 · debian 12</span>
+      <span class="node-meta node-cond container-drift">
+        <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
+      </span>
       <span class="node-actions">
         <button class="prefs-open" data-sheet-open="nodeCfg" aria-label="Open node settings">node settings</button>
         <button class="prefs-open ns-form-btn" data-sheet-open="nsForm" aria-label="Create a new server"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 7 2.4 V 11.6 M 2.4 7 H 11.6"/></svg><span class="btn-cased">New Server</span></button>
@@ -2274,8 +2283,8 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-name">TITAN</span>
       <span class="node-meta">node 02 &middot; 8c/16t &middot; up 6d 11h</span>
       <span class="node-meta">10.0.0.7 &middot; debian 12</span>
-      <span class="node-meta agent-drift">
-        <span class="ad-k">agent</span><b class="ad-v">v0.27.1</b><span class="ad-arw" aria-hidden="true">&rarr;</span><b class="ad-v new">v0.28.0</b>
+      <span class="node-meta node-cond agent-drift">
+        <span class="nc-k">agent</span><b class="nc-v">v0.27.1</b><span class="nc-sep" aria-hidden="true">&rarr;</span><b class="nc-v act">v0.28.0</b>
         <button class="ad-go" aria-label="Update the agent on TITAN to v0.28.0">update</button>
       </span>
       <span class="node-actions">

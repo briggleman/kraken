@@ -348,8 +348,36 @@ func (s *Server) handleGetNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, n)
 }
 
+// handleDeleteNode removes a node record. It refuses while servers are still
+// placed here, because nothing else would: servers.node_id carries no foreign
+// key, so the delete would succeed and leave rows pointing at a node that no
+// longer exists — and those rows are unrecoverable, since a re-enrolled node is
+// minted a fresh id rather than reclaiming its old one. The orphans also stop
+// being reconciled (reconcileOnce needs GetNode to succeed), so they sit
+// claiming whatever state they were last in, forever.
+//
+// The check lives here rather than in a constraint on purpose: the in-memory
+// store would orphan identically, and a foreign key would cover only Postgres.
 func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
-	err := s.store.DeleteNode(r.Context(), chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	if servers, lerr := s.store.ListServers(r.Context()); lerr == nil {
+		placed := 0
+		for _, sv := range servers {
+			if sv.NodeID == id {
+				placed++
+			}
+		}
+		if placed > 0 {
+			noun := "servers"
+			if placed == 1 {
+				noun = "server"
+			}
+			writeError(w, http.StatusConflict, fmt.Sprintf(
+				"%d %s still placed on this node — delete or move them first", placed, noun))
+			return
+		}
+	}
+	err := s.store.DeleteNode(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "node not found")
 		return
@@ -554,6 +582,13 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	}
 	if info.Arch != "" && n.Arch != info.Arch {
 		n.Arch = info.Arch
+		changed = true
+	}
+	// Adopted rather than derived: this is the Agent's count of its own managed
+	// containers, and comparing it to the servers the Panel placed here is what
+	// surfaces containers the Panel has lost track of.
+	if n.RunningServers != int(info.RunningServers) {
+		n.RunningServers = int(info.RunningServers)
 		changed = true
 	}
 	if n.LastUpdateError != info.LastUpdateError {

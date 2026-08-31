@@ -235,12 +235,24 @@ Quiet rectangles with 6px outer radius (4px for controls, 3px for chips), 1px go
 - **Running:** gold text on rgba(255,194,102,0.09), 1px gold border, glowing 7px dot, uppercase 0.2em label.
 - **Stopped:** Sand Faint text, hairline sand border, hollow dot. The whole parent band drops to 72% opacity.
 
+### Node Condition (`.node-cond`)
+An extra `.node-meta` line in the band's id cell, stating something true of the node that its
+vitals cannot show. A band may carry more than one, so the layout and the key / value / separator
+bits are shared: `.nc-k` is the 0.8em/0.18em Archivo caps key in Sand Faint, `.nc-v` the mono 300
+values, `.nc-sep` whatever glyph divides them. **Exactly one value per line takes `.nc-v.act` and
+its Caution Violet** — the one you would act on. The version being moved *to*, the containers
+nobody is tracking; everything else in the line is context, and colouring context spends the
+semantic for nothing.
+
+A condition is not the node being unwell, which is why none of this touches Status: the node is
+online, and something about it nevertheless needs attention. Two members so far — Agent Drift and
+Container Drift below.
+
 ### Agent Drift (panel newer than the node's agent)
 
-A **third `.node-meta` line** in the node band's id cell, not an object of its own: `agent` as a
-0.8em/0.18em Archivo caps key in Sand Faint, then the two versions as mono 300 either side of a
-`&rarr;`, then the action. Only the version being moved **to** carries Caution Violet; the one the
-node is on is a fact and stays Sand Faint. It states itself as a line because the id cell is
+A **Node Condition line** in the band's id cell, not an object of its own: `agent` as the key, then
+the two versions either side of a `&rarr;`, then the action. Only the version being moved **to**
+takes `.nc-v.act`; the one the node is on is a fact and stays Sand Faint. It states itself as a line because the id cell is
 already where what-this-node-*is* gets said — a badge beside the display name would have spent a
 new silhouette on a sentence that fits the ones already there, and the name is the band's loudest
 element, so anything docked to it competes with the one thing that identifies the row.
@@ -260,6 +272,24 @@ much as the pass: a fleet parked on a second monitor gets a signal it can ignore
 rather than something strobing at the edge of vision. Hover pauses it, focus takes the house's 2px
 violet outline, and `prefers-reduced-motion` drops the sweep and holds the lit state (0.6 border,
 0.12 ground). All three behaviours are required by The Violet Pulse Rule.
+
+### Container Drift (the panel has lost track of a container)
+A Node Condition line reading `containers · 3 running · 1 untracked`, where the surplus takes
+`.nc-v.act`. The two numbers come from opposite directions and that is the whole value: `3 running`
+is the **agent's own count** of its `kraken.managed` containers, adopted into the node record on
+reconcile, and the tracked figure is the servers the *panel* has placed here. Everything else in
+the panel reasons from its own rows outward — `reconcileOnce` walks its records and asks the agent
+about each — so this is the one place the question runs the other way, and the only way an
+untracked container can ever be seen.
+
+It exists because that state is reachable: deleting a server while its node is unreachable removes
+the row and leaves the container running, since the agent call is best-effort. Nothing else would
+ever notice. Caution Violet is the right band for it by the closed-port test — the node is
+perfectly healthy, but something on it is outside what the panel is guarding, and a surplus
+container is holding memory and ports the scheduler believes are free.
+
+A **deficit** reads the same way and is not an error either: containers stopped behind the panel's
+back. The line names whichever direction is true rather than assuming a surplus.
 
 ### Metric (vital readout)
 Label (tracked caps, Sand Faint) + huge mono value with a gold glow. Unit suffixes (`%`, `/64G`, `Mb/s`, `°C`) render in Status Gold at 0.5em. The chart zone beneath is one of the signature meters below (disk still carries the legacy gold area sparkline).

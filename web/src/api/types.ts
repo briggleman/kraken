@@ -366,6 +366,10 @@ export interface Node {
   /** SHA-256 of the agent's running binary; compared with the panel's embedded
    *  build for artifact-identity skew (empty from agents predating the field). */
   agent_sha?: string;
+  /** The AGENT's count of its own `kraken.managed` containers, observed on last
+   *  contact. Compared against the servers the panel placed here it surfaces
+   *  containers the panel has lost track of — see containerDrift(). */
+  running_servers?: number;
   /** Operator hold: excluded from new placements while its servers keep running. */
   cordoned?: boolean;
   /** Registered before its agent answered; name is a placeholder until first contact. */

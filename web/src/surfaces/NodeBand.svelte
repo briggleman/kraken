@@ -60,6 +60,19 @@
   let phase = $state<"idle" | "pushing" | "restarting" | "failed">("idle");
   let pushErr = $state("");
 
+  // The drift line dissolving is the episode ending — the node came back on the
+  // panel's build — but this component outlives it, so a terminal phase left
+  // behind would RESURRECT on the next drift (the next panel release) as a chip
+  // stuck on "restarting…" or an ancient failure, until a page reload. Watched
+  // for by construction rather than observed: two releases in one page-lifetime
+  // is exactly the case a fleet parked on a second monitor will eventually hit.
+  $effect(() => {
+    if (!drift && phase !== "idle" && phase !== "pushing") {
+      phase = "idle";
+      pushErr = "";
+    }
+  });
+
   // A failed-and-reverted update reports itself through the node record, not
   // through a job: the agent rolls back, and the reason arrives as
   // last_update_error on the next reconcile. It was plumbed all the way to the

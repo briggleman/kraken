@@ -50,8 +50,51 @@
   const drift = $derived(agentDrift(node));
   const containers = $derived(containerDrift(node));
 
-  let pushing = $state(false);
+  // One state at a time, named, so the CSS can grant the sweep to the two idle
+  // states rather than revoke it from the three busy ones. "rest" and "ahead"
+  // both mean nothing is in flight; the difference is only which word the chip
+  // uses, because "update" on a node whose agent is NEWER than the panel would
+  // be describing a downgrade.
+  type ChipState = "rest" | "ahead" | "pushing" | "restarting" | "failed";
+
+  let phase = $state<"idle" | "pushing" | "restarting" | "failed">("idle");
   let pushErr = $state("");
+
+  // A failed-and-reverted update reports itself through the node record, not
+  // through a job: the agent rolls back, and the reason arrives as
+  // last_update_error on the next reconcile. It was plumbed all the way to the
+  // web types and rendered nowhere, so a push that died AFTER the restart was
+  // invisible. An in-flight job wins the line while it lasts; otherwise this is
+  // the failure worth showing. It clears server-side on the next successful
+  // update, so there is nothing to dismiss.
+  const rollbackErr = $derived(phase === "idle" ? (node.last_update_error ?? "") : "");
+  const failure = $derived(pushErr || rollbackErr);
+
+  const chipState = $derived<ChipState>(
+    phase === "pushing"
+      ? "pushing"
+      : phase === "restarting"
+        ? "restarting"
+        : failure
+          ? "failed"
+          : drift?.direction === "ahead"
+            ? "ahead"
+            : "rest",
+  );
+
+  // The chip says what clicking it DOES. "failed" would name the state a second
+  // time — the reason on the line already does that — and offer nothing.
+  const chipLabel = $derived(
+    chipState === "pushing"
+      ? "pushing…"
+      : chipState === "restarting"
+        ? "restarting…"
+        : chipState === "failed"
+          ? "retry"
+          : chipState === "ahead"
+            ? "match panel"
+            : "update",
+  );
 
   // The POST answers 202 and the Panel streams ~17MB in the background, so the
   // outcome arrives by polling the job rather than by awaiting the request. The
@@ -71,8 +114,8 @@
   onDestroy(stopPoll);
 
   async function pushAgent() {
-    if (pushing) return;
-    pushing = true;
+    if (phase === "pushing") return;
+    phase = "pushing";
     pushErr = "";
     try {
       await api.updateNodeAgent(node.id);
@@ -80,7 +123,7 @@
       // Preflight is still synchronous, so this is a real refusal worth showing
       // as-is: already current, no embedded binary, agent unreachable.
       pushErr = e instanceof Error ? e.message : String(e);
-      pushing = false;
+      phase = "failed";
       return;
     }
     stopPoll();
@@ -95,14 +138,22 @@
       // 404 (or any read failure): the job is not knowable here. The node
       // record is authoritative either way.
       stopPoll();
-      pushing = false;
+      phase = "idle";
       await refreshFleet();
       return;
     }
     if (job.phase === "pushing") return;
     stopPoll();
-    pushing = false;
-    if (job.phase === "failed") pushErr = job.error || "the agent refused the update";
+    if (job.phase === "failed") {
+      pushErr = job.error || "the agent refused the update";
+      phase = "failed";
+    } else {
+      // restarting: the agent has the binary and is rebooting into it. Hold the
+      // state rather than inventing a timeout — the drift line dissolving when
+      // the node reports the new version IS the success signal, and a rollback
+      // arrives as last_update_error. Both come from the node record.
+      phase = "restarting";
+    }
     await refreshFleet();
   }
 </script>
@@ -127,15 +178,23 @@
          panel has outrun it, it moves to the drift line below rather than printing twice -->
     <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
     {#if drift}
-      <span class="node-meta node-cond agent-drift">
+      <span class="node-meta node-cond agent-drift st-{chipState}">
         <span class="nc-k">agent</span><b class="nc-v">{drift.from}</b><span class="nc-sep" aria-hidden="true">→</span><b class="nc-v act">{drift.to}</b>
+        {#if failure}
+          <!-- the reason takes the line's one act colour; .st-failed hands it over
+               from the target version, because the reason is the thing to act on -->
+          <b class="nc-v nc-fail" title={failure}>{failure}</b>
+        {/if}
         {#if hasPerm("node.manage")}
           <button
             class="nc-go ad-go"
-            disabled={pushing}
-            title={pushErr || `push the panel's ${drift.to} agent to ${node.name} — it restarts itself`}
-            aria-label="Update the agent on {node.name} from {drift.from} to {drift.to}"
-            onclick={() => void pushAgent()}>{pushing ? "pushing…" : pushErr ? "failed" : "update"}</button
+            disabled={chipState === "pushing" || chipState === "restarting"}
+            title={failure ||
+              (drift.direction === "ahead"
+                ? `downgrade the agent on ${node.name} to the panel's ${drift.to}`
+                : `push the panel's ${drift.to} agent to ${node.name} — it restarts itself`)}
+            aria-label="{drift.direction === 'ahead' ? 'Downgrade' : 'Update'} the agent on {node.name} from {drift.from} to {drift.to}"
+            onclick={() => void pushAgent()}>{chipLabel}</button
           >
         {/if}
       </span>

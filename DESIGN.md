@@ -153,7 +153,7 @@ A two-family palette: abyssal blue-green grounds and a single living sodium gold
 
 ### Named Rules
 **The One Light Rule.** Sodium gold is the surface's only light source and always means "alive". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what "done" looks like, and it is what lets one glow on the rail mean *here*.
-**The Violet Pulse Rule.** Motion in the gold family means *alive* — a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make "alive" and "attend to me" the same signal. The finished-step clause above is unchanged — a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused` — it has your attention, it can stop asking); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off.
+**The Violet Pulse Rule.** Motion in the gold family means *alive* — a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make "alive" and "attend to me" the same signal. The finished-step clause above is unchanged — a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused` — it has your attention, it can stop asking); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off. A fourth constraint arrived with the chip's states: **the sweep belongs to the idle states only.** "Waiting for you" stops being true the instant the operator acts, so a control that is working, restarting or failed must not still be asking — and the licence is written as a *grant* to the states that sweep, never as a revocation from the ones that don't, because naming two cannot silently miss a third the way un-setting three can.
 
 **The Warm Light, Cold Water Rule.** The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent.
 **The Tinted Neutral Rule.** No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue.
@@ -272,6 +272,30 @@ much as the pass: a fleet parked on a second monitor gets a signal it can ignore
 rather than something strobing at the edge of vision. Hover pauses it, focus takes the house's 2px
 violet outline, and `prefers-reduced-motion` drops the sweep and holds the lit state (0.6 border,
 0.12 ground). All three behaviours are required by The Violet Pulse Rule.
+
+**The chip's five states.** The line always carries exactly one `st-*` class, which is what lets
+the sweep be granted rather than revoked (see above). The chip's label always names what clicking
+it *does* — never the state it is in, which the line already says.
+
+| state | class | sweep | chip label | what it means |
+| --- | --- | --- | --- | --- |
+| rest | `st-rest` | yes | `update` | the panel is newer; the action is available |
+| ahead | `st-ahead` | yes | `match panel` | the **agent** is newer, after a panel rollback: the action downgrades it, so `update` would be a lie |
+| pushing | `st-pushing` | no | `pushing…` | the Panel is streaming the binary; the chip is disabled |
+| restarting | `st-restarting` | no | `restarting…` | the agent took the binary and is rebooting into it; disabled, and held with no timeout |
+| failed | `st-failed` | no | `retry` | the reason is on the line and takes the act colour |
+
+Two of those are worth their reasoning. **`ahead` keeps the action** rather than going
+information-only: a mixed fleet after a panel rollback genuinely needs it, and the arrow in the
+line is already honest about the direction. And **`failed` hands the act colour to the reason** —
+the target version gives it up, because one value per line carries the colour and in that state
+the reason is the thing to act on. The reason itself has two sources rendered identically: the
+job's error (the push refused) and `last_update_error` (the agent rolled back after restarting,
+which reaches the panel through the node record and had previously been rendered nowhere at all).
+
+`restarting` is deliberately unbounded. The outcome is not the job's to report: either the drift
+line dissolves because the node came back on the new build, or `last_update_error` appears. Both
+arrive from the node record, and a timeout here would only let the UI guess ahead of it.
 
 ### Container Drift (the panel has lost track of a container)
 A Node Condition line reading `containers · 3 running · 1 untracked`, where the surplus takes

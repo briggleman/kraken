@@ -13,6 +13,11 @@ export const fleet = $state({
   nodes: [] as Node[],
   audit: [] as AuditEntry[],
   panelVersion: "",
+  // The embedded agent build's SHA-256 per "os/arch". Preferred over panelVersion
+  // for skew detection (#93): a panel-only release leaves the agent artifact
+  // byte-identical, and flagging the fleet for that trains operators to ignore
+  // the flag. Absent from a panel built without embedded agent binaries.
+  panelAgentSha: {} as Record<string, string>,
   pingMs: 0,
   loaded: false,
   lastError: null as string | null,
@@ -41,6 +46,7 @@ export async function refreshFleet(): Promise<void> {
     fleet.nodes = n.nodes ?? [];
     fleet.audit = a.entries ?? [];
     fleet.panelVersion = n.panel_version ?? "";
+    fleet.panelAgentSha = n.panel_agent_sha ?? {};
     fleet.loaded = true;
     fleet.lastError = null;
   } catch (e) {

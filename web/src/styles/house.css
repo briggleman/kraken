@@ -906,6 +906,64 @@
     filter: drop-shadow(0 0 12px rgba(var(--lumen-rgb), 0.45));
   }
   .node-meta { font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.76vw, 15px); color: var(--ink-2); }
+  /* ---------- agent drift: the panel is newer than this node's agent ----------
+     Version drift is a condition, not a death. The node runs; the panel is holding
+     fixes it cannot execute yet - the same reading as a closed port on a running
+     server, so it takes Caution Violet and never the light. And it states itself as
+     a third .node-meta line rather than as an object of its own, because the
+     node-id cell is already where what-this-node-IS gets said; a badge beside the
+     name would have spent a new silhouette on a sentence that fits the ones there.
+     The line itself never moves; only its action chip carries the signal. */
+  .agent-drift { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
+  .agent-drift .ad-k {
+    font-family: var(--ui); font-size: 0.8em; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .agent-drift .ad-v { font-weight: 300; color: var(--ink-3); }
+  .agent-drift .ad-arw { color: var(--ink-3); }
+  /* only the version being moved TO carries the colour: the one you are on is a fact */
+  .agent-drift .ad-v.new { color: var(--caution); }
+  /* a ghost, not a lamp - the One Committing Control Rule spends the band's one
+     filled control nowhere, and an update you can defer is not a commit */
+  .ad-go {
+    position: relative; overflow: hidden;
+    font-family: var(--ui); font-size: 0.76em; font-weight: 600;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--caution);
+    padding: 3px 9px; border-radius: 3px;
+    /* lit at rest, unlike every other ghost in the house: this control appears
+       only when there IS an update, so "unlit until pointed at" would hide the
+       one thing it exists to say. Between sweeps it must still read as pending. */
+    background: rgba(var(--caution-rgb), 0.05);
+    border: 1px solid rgba(var(--caution-rgb), 0.5);
+    cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  }
+  /* One pass of light every 3.6s and a long wait, clipped to the chip's own box.
+     A traversal, not a throb: the chip's geometry never changes, so the pointer
+     never has to chase it, and a fleet parked on a second monitor gets a signal
+     it can ignore rather than something strobing in the corner of the eye. */
+  .ad-go::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 55%;
+    background: linear-gradient(100deg,
+      rgba(var(--caution-rgb), 0),
+      rgba(var(--caution-rgb), 0.34),
+      rgba(var(--caution-rgb), 0));
+    animation: adSweep 3.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes adSweep {
+    0%        { transform: translateX(-160%); }
+    45%, 100% { transform: translateX(260%); }
+  }
+  .ad-go:hover { border-color: rgba(var(--caution-rgb), 0.65); background: rgba(var(--caution-rgb), 0.12); }
+  /* pointing at it settles it: the chip has your attention, it can stop asking */
+  .ad-go:hover::after { animation-play-state: paused; }
+  .ad-go:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
+  /* the signal survives without the motion: hold the lit state instead of pausing
+     mid-sweep, which is the one place this parts with the ticker family's rule */
+  @media (prefers-reduced-motion: reduce) {
+    .ad-go::after { animation: none; opacity: 0; }
+    .ad-go { border-color: rgba(var(--caution-rgb), 0.6); background: rgba(var(--caution-rgb), 0.12); }
+  }
   .metric { display: grid; grid-template-rows: auto auto 1fr; gap: 4px; min-width: 0; }
   .metric-head { display: flex; justify-content: space-between; align-items: baseline; }
   .metric-label { font-size: clamp(11px, 0.72vw, 14px); font-weight: 600; letter-spacing: 0.3em; color: var(--ink-3); text-transform: uppercase; }

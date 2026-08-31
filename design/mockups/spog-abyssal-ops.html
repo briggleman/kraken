@@ -926,7 +926,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     border-color: rgba(var(--caution-rgb), 0.5);
     background: rgba(var(--caution-rgb), 0.05);
   }
-  .lock-node.on:hover { border-color: rgba(var(--caution-rgb), 0.7); background: rgba(var(--caution-rgb), 0.12); }
+  /* color is restated here on purpose: .cfg-btn.ghost:hover sets color to Sand at
+     (0,3,0), which outranks .lock-node.on at (0,2,0) — so without this a locked
+     node loses its violet exactly while you point at it. Same specificity trap the
+     Ghost Button rule documents for .row:hover .btn. */
+  .lock-node.on:hover {
+    color: var(--caution);
+    border-color: rgba(var(--caution-rgb), 0.7);
+    background: rgba(var(--caution-rgb), 0.12);
+  }
   .lock-node:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   .cfg-actions.acts-split .cfg-btn.danger {
     margin-right: auto; padding-right: 20px;

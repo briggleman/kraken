@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/briggleman/kraken/compare/v0.33.0...v0.34.0) (2026-08-31)
+
+
+### Features
+
+* **web:** the agent chip gets its five states ([#174](https://github.com/briggleman/kraken/issues/174)) ([bb610be](https://github.com/briggleman/kraken/commit/bb610bec79143653792a50ea1df37efd3b6fb11c)), closes [#159](https://github.com/briggleman/kraken/issues/159)
+
 ## [0.33.0](https://github.com/briggleman/kraken/compare/v0.32.0...v0.33.0) (2026-08-31)
 
 

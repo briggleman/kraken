@@ -473,6 +473,34 @@ Crisis Magenta, at one of three weights chosen by the control’s size, all off 
 
 Anything irreversible is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost, and keeps its confirm disabled until the word `delete` is typed — matched case-insensitively, so `DELETE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this removes the world, backups and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through.
 
+**The Opposite Ends Rule.** A destructive control that shares a row with the surface's committing
+one takes the **far end** of it, on `margin-right: auto`, with a hairline
+(`rgba(--ink-3-rgb, 0.22)`) between it and the safe cluster: the row's own geometry is what says
+these two are not the same kind of thing. It is opt-in per row (`.cfg-actions.acts-split`) and
+never the default, because a delete that drifted into the plain `.cfg-actions` would sit one
+mis-click from `save & apply` on every sheet in the house. The node-settings footer is the first
+member — `delete node · … · close · save & apply` — and its warning is the pattern for writing a
+new noun's: everything in it is true of a node and false of a server (the agent keeps running, the
+containers keep running, nothing on the host is stopped or deleted, the servers placed here lose
+their node, and re-adding needs a fresh enrollment token because the old identity is orphaned).
+
+### Split Read-Only Field (a value you also have to act on)
+A `.cfg-ro` that carries an action becomes two cells rather than a control floated over the value
+(`.cfg-ro.tok-split`): the value keeps its own `overflow-x` and the action takes a fixed-width
+gutter, so a long machine value scrolls *under* a control that stays put. A control that scrolls
+out of its own field is worse than no control, which is the whole reason for the split.
+
+The gutter carries **no tint and no seam at rest** — the value is the field's only permanent ink,
+and the control claims its cell on hover (`rgba(--lumen-rgb, 0.09)` wash, Sand Faint warming to
+Sodium Lumen). That is the Ghost Button rule applied to a cell: an affordance the operator uses
+once per token does not get to spend light while it waits. Three details are load-bearing: the
+button **fills the cell** (`width/height: 100%`, `min-height: 38px`), so the target is the gutter
+rather than an island inside it; the focus ring is **inset** (`outline-offset: -2px`), because the
+well is `overflow: hidden` and clips an outset one away entirely; and a glyph-only control drops
+`.ns-w`'s `-0.18em` and `letter-spacing`, because that cancel exists for a *text* pill's trailing
+space and skews a lone glyph off centre. First member: the enrollment token's refresh
+(`.tok-new`), a 17px rotate arc at the house 1.5px stroke.
+
 ### Step Rail (first run)
 Five stops on one line, and the light travels down it. The current step carries a lumen ring and
 the house dot-glow; steps behind it are **solid lumen discs with a `--d0` check and no glow**;
@@ -542,6 +570,8 @@ Every chart is an area chart in the gold family: faint grid lines at rgba(255,19
 - **Don't** add a sidebar, top navigation, or content routes (user-pinned).
 - **Don't** introduce sea imagery — creatures, bubbles, portholes, waves. The world is light and depth only. The one exception is the brand mark: Kraken's glyph is an identity, not decoration, and it appears only in the lockup (header and login) at the wordmark's own scale. A creature anywhere else — an empty state, a loading spinner, a background — is still out.
 - **Don't** use pure gray, pure white, or pure black anywhere.
+- **Don't** reach for a **dashed** border as decoration. It is a semantic mark here — "this value is real but not yours to change" (a disabled field, an env-managed setting) and "different in kind" (a websocket route, a synthetic-data tag). A dashed *divider* inside a `.cfg-ro` was the reason the token field read as unclean: it said something false one pixel from a border that said it honestly. Structural seams take solid `var(--edge)`, the divider every `.cfg-head` already uses.
+- **Don't** borrow `.ns-stack` without adding the control's own un-hide rule. `.ns-w` is `visibility: hidden` by default and only `.copy-act` and the net-state radio pair ever reverse it, so a new control that reuses the stack renders a **blank box** — the token refresh shipped exactly that in its first draft. Copy `.copy-act`'s three lines (`.on` visible, `.did` flips to the off-state) and check the glyph actually paints, since geometry and colour both measure fine on an invisible element.
 - **Don't** spend magenta or violet outside true semantics; never color a stopped server crisis-magenta.
 - **Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes "this is running" and "attend to me" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state — see The Violet Pulse Rule.
 - **Don't** ship a meter whose sample band sits entirely inside one zone. `--lvl` drives height *and* color, so a track that never crosses a threshold is a solid block of one color at one height — a slab wearing a dot matrix, and in the worst case the loudest color in the palette spent on a resting state. Check the band, not the stylesheet.

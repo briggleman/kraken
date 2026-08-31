@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-31T12:25:40.918Z",
+  "generatedAt": "2026-08-31T16:07:16.366Z",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -488,6 +488,14 @@
       "css": ".ds-field { display: grid; gap: 10px; width: 320px; } .ds-in { width: 100%; font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-size: 13px; color: var(--ink, #f5dfc1); background: rgba(5,13,20,0.6); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; padding: 9px 12px; transition: border-color 0.15s; } .ds-in:focus { outline: none; border-color: rgba(255, 194, 102, 0.45); } .ds-in:disabled { color: var(--ink-3, #7d7160); border-style: dashed; cursor: not-allowed; }"
     },
     {
+      "name": "Split Read-Only Field",
+      "kind": "custom",
+      "refersTo": "chip-agent-update",
+      "description": "A read-only machine value that also carries an action: two cells, so a long value scrolls under a control that stays put. The gutter is untinted and seamless at rest and claims its cell on hover.",
+      "html": "<div class=\"ds-cfg-ro ds-tok-split\"><span class=\"ds-tok-val\">krkn-enroll-0000-sample</span><span class=\"ds-tok-gutter\"><button class=\"ds-tok-new\" title=\"minting a new token stops the previous one from working\" aria-label=\"Generate a new enrollment token\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M 13.4 6.4 A 5.6 5.6 0 1 0 13.7 9.7\"/><path d=\"M 13.7 3 V 6.6 H 10.1\"/></svg></button></span></div>",
+      "css": ".ds-cfg-ro { font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-weight: 300; font-size: 13px; color: var(--ink-2, #b6a894); background: rgba(5, 13, 20, 0.6); border: 1px dashed rgba(var(--ink-2-rgb, 182, 168, 148), 0.25); border-radius: 4px; } .ds-tok-split { display: flex; align-items: stretch; padding: 0; overflow: hidden; } .ds-tok-split > .ds-tok-val { flex: 1 1 auto; min-width: 0; align-self: center; padding: 9px 12px; overflow-x: auto; white-space: nowrap; } .ds-tok-split > .ds-tok-gutter { flex: 0 0 auto; display: grid; place-items: center; padding: 0; } .ds-tok-new { width: 100%; height: 100%; min-height: 38px; min-width: 46px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--ink-3, #7d7160); cursor: pointer; transition: background 0.2s, color 0.2s; } .ds-tok-new:hover { background: rgba(var(--lumen-rgb, 255, 194, 102), 0.09); color: var(--lumen, #ffc266); } .ds-tok-new:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: -2px; }"
+    },
+    {
       "name": "Filter Chip",
       "kind": "chip",
       "description": "Filters a list in place with no script: a visually-hidden radio inside the label, lit through :has(:checked).",
@@ -713,6 +721,11 @@
         "section": "components"
       },
       {
+        "name": "The Opposite Ends Rule",
+        "body": "A destructive control sharing a row with the surface's committing one takes the **far end** of it, on `margin-right: auto`, with a hairline (`rgba(--ink-3-rgb, 0.22)`) between it and the safe cluster: the row's own geometry is what says these two are not the same kind of thing. Opt-in per row (`.cfg-actions.acts-split`), never the default — a delete that drifted into the plain `.cfg-actions` would sit one mis-click from `save & apply` on every sheet in the house.",
+        "section": "components"
+      },
+      {
         "name": "The No-Plunge Rule",
         "body": "A modal card appears; it does not descend. The circular `clip-path` wipe is the Sheet family's signature and it means *you have gone somewhere* — so a surface you will dismiss in ten seconds without leaving the page must not spend it. The measure follows from the same reasoning: a card is sized to its content, not to a `--measure` token, because it is an interruption rather than a page. 430px holds one sentence and one input; 780px is what the SFTP connection URI needs to sit on one line, and the width was chosen by what wrapped, not by a scale.",
         "section": "components"
@@ -780,7 +793,9 @@
       "Don't hand-write the second half of a ticker. The `-50%` loop is only seamless while both halves are byte-identical and equal in width, so the duplicate must be the same source rendered twice and marked `aria-hidden`. Two literal copies survive exactly until the feed is live.",
       "Don't judge a veil by arithmetic on the backdrop colour. The grounds are already near-black and barely move; what carries the separation is every lit panel and control dimming at once. Open the surface it will really sit over and look at the buttons.",
       "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)",
-      "**Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes \"this is running\" and \"attend to me\" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state - see The Violet Pulse Rule."
+      "**Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes \"this is running\" and \"attend to me\" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state - see The Violet Pulse Rule.",
+      "**Don't** reach for a **dashed** border as decoration. It is a semantic mark here — \"real but not yours to change\" (disabled fields, env-managed settings) and \"different in kind\" (websocket routes, synthetic-data tags). A dashed divider inside a `.cfg-ro` was why the token field read as unclean: it said something false one pixel from a border that said it honestly. Structural seams take solid `var(--edge)`.",
+      "**Don't** borrow `.ns-stack` without adding the control's own un-hide rule. `.ns-w` is `visibility: hidden` by default and only `.copy-act` and the net-state radio pair reverse it, so a new control reusing the stack renders a **blank box**. Copy `.copy-act`'s three lines and check the glyph actually paints — geometry and colour both measure fine on an invisible element."
     ]
   }
 }

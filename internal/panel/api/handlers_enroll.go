@@ -74,6 +74,23 @@ func (b *bootstrapRegistry) issue(nodeName string, ttl time.Duration) (string, t
 	return token, exp, nil
 }
 
+// revoke drops an outstanding token without redeeming it. Used when the operator
+// mints a replacement from the Add Node dialog: the UI promises that the token it
+// just replaced stops working, and this is what makes that true. Scoped to the one
+// token the caller names rather than sweeping every outstanding one, so a second
+// enrollment in another tab is not collateral damage. A no-op for a token that was
+// already redeemed, expired or never existed.
+func (b *bootstrapRegistry) revoke(token string) bool {
+	if token == "" {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.tokens[token]
+	delete(b.tokens, token)
+	return ok
+}
+
 // redeem validates and consumes a token. It returns the node name the token was
 // issued for, or an error if the token is unknown/expired.
 func (b *bootstrapRegistry) redeem(token string) (string, error) {
@@ -128,6 +145,12 @@ func (b *bootstrapRegistry) status(token string) enrollState {
 type bootstrapTokenRequest struct {
 	NodeName   string `json:"node_name"` // optional label, used for audit logging only
 	TTLSeconds int    `json:"ttl_seconds"`
+	// Replaces is a token this mint supersedes; it is revoked before the new one
+	// is issued. The Add Node dialog's refresh sends the token it is replacing,
+	// which is what makes its "the previous one stops working" promise true.
+	// Optional: omitting it leaves every outstanding token alone, so two
+	// enrollments in flight at once are unaffected.
+	Replaces string `json:"replaces,omitempty"`
 }
 
 func (s *Server) handleCreateBootstrapToken(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +177,14 @@ func (s *Server) handleCreateBootstrapToken(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
-	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", clientIP(r))
+	// Revoke the superseded token only AFTER the replacement exists: the other
+	// order leaves the operator holding neither when the mint fails.
+	revoked := false
+	if req.Replaces != "" {
+		revoked = s.bootstrap.revoke(req.Replaces)
+	}
+	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", clientIP(r),
+		"replaced_a_live_token", revoked)
 	// The CA fingerprint rides along so the Add Node dialog can embed a pin in
 	// the generated install command: the agent verifies the CA it receives
 	// against this value, which protects a plain-HTTP token exchange from a

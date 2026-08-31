@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.0](https://github.com/briggleman/kraken/compare/v0.31.0...v0.32.0) (2026-08-31)
+
+
+### Features
+
+* **web:** lock a node to hold new placements ([#171](https://github.com/briggleman/kraken/issues/171)) ([49b8132](https://github.com/briggleman/kraken/commit/49b81329a1d712d2cf93f7d977b31e37194804da)), closes [#167](https://github.com/briggleman/kraken/issues/167)
+
+
+### Bug Fixes
+
+* **panel:** refuse to delete a node that still owns servers ([#169](https://github.com/briggleman/kraken/issues/169)) ([a6db82b](https://github.com/briggleman/kraken/commit/a6db82ba4dc28850e3c3aa8701b4df9e3d7930ad)), closes [#166](https://github.com/briggleman/kraken/issues/166)
+
 ## [0.31.0](https://github.com/briggleman/kraken/compare/v0.30.2...v0.31.0) (2026-08-31)
 
 

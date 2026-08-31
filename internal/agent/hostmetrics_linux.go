@@ -237,12 +237,18 @@ func sumNetDev(text string, isPhysical func(string) (physical, known bool)) (rx,
 			ok = true
 		}
 	}
-	if anyKnown {
-		// sysfs answered; an empty result means this host genuinely has no
-		// physical interfaces (a VM with only virtio-less virtual NICs), and
-		// zero throughput is the honest reading.
+	if anyKnown && ok {
 		return rx, tx, true
 	}
+	// sysfs answered but classified NO interface as physical. The old reading of
+	// that — "this host genuinely has no physical NICs, zero is honest" — turned
+	// out to describe a live node reporting known-zero forever while its own
+	// tunnel traffic ticked the counters of every interface it refused to count.
+	// A netns or an unusual layout where nothing carries a device link is not a
+	// host with no traffic; fall through to the name heuristic and report what
+	// this vantage point can actually see. Double-counting is impossible here by
+	// construction: the fall-through only runs when zero physical interfaces
+	// were counted, so there is nothing to count twice.
 
 	rx, tx = 0, 0
 	for _, i := range ifaces {

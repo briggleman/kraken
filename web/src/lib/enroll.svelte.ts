@@ -51,10 +51,14 @@ export class Enrollment {
   }
 
   async generate(mode: EnrollMode, os: "linux" | "windows") {
+    // A token already on screen is superseded by this mint, so name it: the Panel
+    // revokes it once the replacement exists. Without this the refresh control
+    // would leave a second live credential behind and its tooltip would be a lie.
+    const superseded = this.token;
     this.stop();
     this.error = null;
     try {
-      const t = await api.createBootstrapToken();
+      const t = await api.createBootstrapToken(superseded ? { replaces: superseded } : undefined);
       this.token = t.token;
       this.caFingerprint = t.ca_fingerprint ?? "";
       this.expiresAt = t.expires_at;

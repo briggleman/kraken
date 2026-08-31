@@ -617,6 +617,16 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .copy-act.did .ns-w.on { visibility: hidden; }
   .copy-act.did .ns-w.off { visibility: visible; }
   .copy-act.did { color: var(--ok); border-color: rgba(var(--ok-rgb), 0.45); }
+  /* Every control that borrows .ns-stack needs its own un-hide rule: .ns-w is
+     visibility:hidden by default, and only .copy-act and the net-state radio pair
+     above ever reverse it. Borrow the stack without this and the control renders
+     a blank box — which is exactly how the token refresh shipped its first draft.
+     Same shape as .copy-act: on-state visible, .did flips to the tick and warms to
+     Status Gold. The gutter cell owns the border, so there is none to recolour. */
+  .tok-new .ns-w.on { visibility: visible; }
+  .tok-new.did .ns-w.on { visibility: hidden; }
+  .tok-new.did .ns-w.off { visibility: visible; }
+  .tok-new.did { color: var(--ok); }
   .mini-act.del { color: var(--crisis); border-color: rgba(var(--crisis-rgb), 0.45); }
   .mini-act.del:hover { color: var(--d0); background: var(--crisis); border-color: var(--crisis); }
 
@@ -852,6 +862,38 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     padding: 9px 12px; overflow-x: auto; white-space: nowrap;
     scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent;
   }
+  /* A read-only field that also has to be ACTED on splits into two cells rather
+     than floating a control over the value: the divider is the well's own dashed
+     idiom, so the seam belongs to the field instead of sitting on top of it. The
+     value keeps its own overflow, so a long token scrolls under a gutter that
+     stays put — a control that scrolls out of its field is worse than none. */
+  .cfg-ro.tok-split { display: flex; align-items: stretch; padding: 0; overflow: hidden; }
+  .cfg-ro.tok-split > .tok-val {
+    flex: 1 1 auto; min-width: 0; align-self: center;
+    padding: 9px 12px; overflow-x: auto; white-space: nowrap;
+    scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent;
+  }
+  /* No tint and no seam at rest: the token value is the field's only permanent
+     ink, and the control claims its cell only under the pointer. What used to
+     divide them was a DASHED rule, and dashed is a semantic mark in this house —
+     "real but not yours to change", worn by disabled fields, env-managed settings
+     and websocket routes. A structural seam has no business borrowing it, least
+     of all one pixel from a .cfg-ro whose dashed edge means it honestly. */
+  .cfg-ro.tok-split > .tok-gutter { flex: 0 0 auto; display: grid; place-items: center; padding: 0; }
+  /* One square glyph in a grid-centred box needs no optical compensation: there
+     is no trailing letter-spacing to cancel, which is the whole job of .ns-w's
+     -0.18em on a text pill. And it fills the cell, so the target is the gutter
+     rather than a 42x24 island inside a 63x34 box. */
+  .cfg-ro.tok-split .mini-act {
+    width: 100%; height: 100%; min-height: 38px; min-width: 46px;
+    display: grid; place-items: center; padding: 0; border: 0; background: none;
+    letter-spacing: normal; color: var(--ink-3);
+    transition: background 0.2s, color 0.2s;
+  }
+  .cfg-ro.tok-split .mini-act .ns-w { margin-right: 0; display: grid; place-items: center; }
+  .cfg-ro.tok-split .mini-act:hover { background: rgba(var(--lumen-rgb), 0.09); color: var(--lumen); }
+  /* inset, because the well is overflow:hidden and clips an outset ring away */
+  .cfg-ro.tok-split .mini-act:focus-visible { outline: 2px solid var(--lumen); outline-offset: -2px; }
   .cfg-in:disabled { color: var(--ink-3); border-style: dashed; cursor: not-allowed; }
   /* a locked control must not keep a live chevron: the dashed border already says the value
      is real but not yours to change, and an animated picker icon argues with it. */
@@ -863,6 +905,17 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   /* action-leads variant: the button sits first (in the DOM too, so focus order matches) and the
      caveat is pushed out to the right edge */
   .cfg-actions.actions-lead { align-items: center; }
+  /* A destructive control in an action row takes the far end, opposite the one
+     committing control, with a hairline between it and the safe pair — the row's
+     own geometry says these two are not the same kind of thing. Opt-in via
+     .acts-split, so every other .cfg-actions keeps its plain trailing cluster;
+     a delete that drifted into the default row would end up one mis-click from
+     "save & apply" on every sheet in the house. */
+  .cfg-actions.acts-split { align-items: center; flex-wrap: wrap; }
+  .cfg-actions.acts-split .cfg-btn.danger {
+    margin-right: auto; padding-right: 20px;
+    border-right: 1px solid rgba(var(--ink-3-rgb), 0.22);
+  }
   .cfg-actions.actions-lead .cfg-note { margin-right: 0; margin-left: auto; text-align: right; }
 
   /* settings split by what is actually editable: live integrations on one side, environment-pinned
@@ -2898,7 +2951,14 @@ FINISH: mock for direction comparison; the chosen direction's production build e
               <span class="cfg-badge env" id="enrollState">waiting for the agent to enroll</span>
             </div>
             <div class="cfg">
-              <div class="cfg-ro" id="tokenVal">—</div>
+              <div class="cfg-ro tok-split">
+                <span class="tok-val" id="tokenVal">&mdash;</span>
+
+                <span class="tok-gutter">
+                  <button class="mini-act tok-new" title="minting a new token stops the previous one from working" aria-label="Generate a new enrollment token"><span class="ns-stack"><span class="ns-w on"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 13.4 6.4 A 5.6 5.6 0 1 0 13.7 9.7"/><path d="M 13.7 3 V 6.6 H 10.1"/></svg></span><span class="ns-w off"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3 8.4 L 6.3 11.7 L 13 5"/></svg></span></span></button>
+                </span>
+
+              </div>
               <div class="os-tabs">
                 <div class="os-tablist" role="tablist">
                   <label class="os-tab"><input type="radio" name="nos" class="os-r-in" checked>linux install</label>
@@ -2986,7 +3046,8 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <label class="cfg-row"><span>username</span><input class="cfg-in" type="text"></label>
         <label class="cfg-row"><span>password</span><input class="cfg-in" type="password"></label>
       </div>
-      <div class="cfg-actions">
+      <div class="cfg-actions acts-split">
+        <button class="cfg-btn danger" data-confirm-open="node" data-confirm-name="behemoth" data-confirm-body="the panel forgets this node. the agent keeps running on the host and its containers keep running — nothing there is stopped or deleted. the 2 servers placed here lose their node, and re-adding it needs a fresh enrollment token because this one&apos;s identity is orphaned. it cannot be undone.">delete node</button>
         <button class="cfg-btn ghost" data-sheet-close="nodeCfg">close</button>
         <button class="cfg-btn solid">save &amp; apply</button>
       </div>

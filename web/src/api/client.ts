@@ -167,7 +167,13 @@ export const api = {
   importCatalog(id: string): Promise<Spec> {
     return request("POST", `/catalog/${id}/import`);
   },
-  createBootstrapToken(input?: { node_name?: string; ttl_seconds?: number }): Promise<BootstrapToken> {
+  /** `replaces` names a token this mint supersedes; the Panel revokes it once the
+   *  replacement exists, which is what makes the refresh control's promise true. */
+  createBootstrapToken(input?: {
+    node_name?: string;
+    ttl_seconds?: number;
+    replaces?: string;
+  }): Promise<BootstrapToken> {
     return request("POST", "/agents/bootstrap-tokens", input ?? {});
   },
   enrollStatus(token: string): Promise<EnrollStatus> {

@@ -83,6 +83,15 @@ export function closeSheet(id: SheetId) {
 export const CD_SERVER_BODY =
   "this removes the world, backups and config for this server. it cannot be undone.";
 
+// Every word of this is true of a node and false of a server, which is the point:
+// DESIGN.md requires the warning to describe the noun that opened the dialog.
+// Removing a node is panel-side bookkeeping — the host is left exactly as it is.
+export const CD_NODE_BODY =
+  "the panel forgets this node. the agent keeps running on the host and its containers keep " +
+  "running — nothing there is stopped or deleted. servers placed here lose their node, and " +
+  "re-adding it needs a fresh enrollment token because this one's identity is orphaned. " +
+  "it cannot be undone.";
+
 let confirmReturn: HTMLElement | null = null;
 
 export function openConfirm(
@@ -118,6 +127,23 @@ export async function confirmGo() {
         await refreshFleet();
       } catch {
         /* the audit log records the refusal; the list simply keeps the row */
+      }
+    }
+    return;
+  }
+  if (c.noun === "node") {
+    // Panel-side only: the agent and its containers are left running on the
+    // host. Uses ui.nodeCfgId rather than matching on name — the sheet already
+    // holds the id, and two nodes may legitimately share a display name.
+    const id = ui.nodeCfgId;
+    ui.confirm = null;
+    closeSheet("nodeCfg");
+    if (id) {
+      try {
+        await api.deleteNode(id);
+        await refreshFleet();
+      } catch {
+        /* the audit log records the refusal; the fleet simply keeps the band */
       }
     }
     return;

@@ -13,6 +13,27 @@
   let mode = $state<EnrollMode>("tunnel");
   let os = $state<"linux" | "windows">("linux");
 
+  // Re-minting: enroll.generate() stops the previous poll and replaces the token,
+  // so this is deliberately the same call the solid button makes. The tick is a
+  // transient acknowledgement — the token itself is the real feedback, so it
+  // clears on its own rather than waiting for another interaction.
+  let reminting = $state(false);
+  let minted = $state(false);
+  let mintedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function remint() {
+    if (reminting) return;
+    reminting = true;
+    try {
+      await enroll.generate(mode, os);
+      minted = true;
+      clearTimeout(mintedTimer);
+      mintedTimer = setTimeout(() => (minted = false), 1600);
+    } finally {
+      reminting = false;
+    }
+  }
+
   const panelOrigin = location.origin;
   const shown = $derived(enroll.status !== "idle");
 
@@ -99,7 +120,28 @@
         <span class="cfg-badge env" id="enrollState">{enroll.badge}</span>
       </div>
       <div class="cfg">
-        <div class="cfg-ro" id="tokenVal">{enroll.token || "—"}</div>
+        <!-- Split read-only field: the value keeps its own overflow so a long token
+             scrolls under a gutter that stays put. The refresh is the escape hatch
+             from the states that lock the solid button above — after a redeemed or
+             registered enrollment that never reached online, it was the only way to
+             mint a replacement short of reopening the sheet. -->
+        <div class="cfg-ro tok-split">
+          <span class="tok-val" id="tokenVal">{enroll.token || "—"}</span>
+          <span class="tok-gutter">
+            <button
+              class="mini-act tok-new"
+              class:did={minted}
+              disabled={reminting}
+              title="minting a new token stops the previous one from working"
+              aria-label="Generate a new enrollment token"
+              onclick={() => void remint()}
+              ><span class="ns-stack"
+                ><span class="ns-w on"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 13.4 6.4 A 5.6 5.6 0 1 0 13.7 9.7"/><path d="M 13.7 3 V 6.6 H 10.1"/></svg></span
+                ><span class="ns-w off"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3 8.4 L 6.3 11.7 L 13 5"/></svg></span
+              ></span></button
+            >
+          </span>
+        </div>
         <div class="os-tabs">
           <div class="os-tablist" role="tablist">
             <label class="os-tab"><input type="radio" name="nos" class="os-r-in" value="linux" bind:group={os} />linux install</label>

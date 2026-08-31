@@ -1,7 +1,7 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
   import { untrack } from "svelte";
-  import { ui, closeSheet } from "@/lib/state.svelte";
+  import { ui, closeSheet, openConfirm, CD_NODE_BODY } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api } from "@/api/client";
   import { fleet } from "@/lib/fleet.svelte";
@@ -262,7 +262,15 @@
         <label class="cfg-row"><span>username</span><input class="cfg-in" type="text" autocomplete="off" bind:value={steamUser} /></label>
         <label class="cfg-row"><span>{cfg?.steam_configured ? "replace password" : "password"}</span><input class="cfg-in" type="password" autocomplete="off" placeholder={cfg?.steam_configured ? "•••••••• (leave blank to keep)" : ""} bind:value={steamPass} /></label>
       </div>
-      <div class="cfg-actions">
+      <!-- The Opposite Ends Rule: the destructive control takes the far end of the
+           row, opposite the one committing control, with a hairline between them. -->
+      <div class="cfg-actions acts-split">
+        <button
+          class="cfg-btn danger"
+          disabled={!node}
+          onclick={(e) => openConfirm(nodeName || "this node", e.currentTarget, { noun: "node", body: CD_NODE_BODY })}
+          >delete node</button
+        >
         {#if res}<span class="cfg-note wz-res shown {res.cls}">{res.text}</span>{:else}<span class="cfg-note">blank secret fields keep their stored values</span>{/if}
         <button class="cfg-btn ghost" onclick={() => closeSheet("nodeCfg")}>close</button>
         <button class="cfg-btn solid" disabled={busy || !cfg} onclick={() => void save()}>{busy ? "saving…" : "save & apply"}</button>

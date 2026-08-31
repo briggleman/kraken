@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.3](https://github.com/briggleman/kraken/compare/v0.34.2...v0.34.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **web:** a wordless refusal must still look failed ([#182](https://github.com/briggleman/kraken/issues/182)) ([d7fee11](https://github.com/briggleman/kraken/commit/d7fee11cf173c528649608414fde46e281ca5432)), closes [#159](https://github.com/briggleman/kraken/issues/159)
+
 ## [0.34.2](https://github.com/briggleman/kraken/compare/v0.34.1...v0.34.2) (2026-08-31)
 
 

@@ -9,7 +9,7 @@
   import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
-  import { agentDrift, nodeMemLabel } from "@/lib/views.svelte";
+  import { agentDrift, containerDrift, nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
   // cpu, disk, network and temp are live host readings from the node's agent
@@ -44,6 +44,7 @@
   // node.manage may push a binary, so a viewer sees the fact without the action —
   // the drift is information about the fleet either way.
   const drift = $derived(agentDrift(node));
+  const containers = $derived(containerDrift(node));
 
   let pushing = $state(false);
   let pushErr = $state("");
@@ -75,8 +76,8 @@
          panel has outrun it, it moves to the drift line below rather than printing twice -->
     <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
     {#if drift}
-      <span class="node-meta agent-drift">
-        <span class="ad-k">agent</span><b class="ad-v">{drift.from}</b><span class="ad-arw" aria-hidden="true">→</span><b class="ad-v new">{drift.to}</b>
+      <span class="node-meta node-cond agent-drift">
+        <span class="nc-k">agent</span><b class="nc-v">{drift.from}</b><span class="nc-sep" aria-hidden="true">→</span><b class="nc-v act">{drift.to}</b>
         {#if hasPerm("node.manage")}
           <button
             class="ad-go"
@@ -86,6 +87,13 @@
             onclick={() => void pushAgent()}>{pushing ? "pushing…" : pushErr ? "failed" : "update"}</button
           >
         {/if}
+      </span>
+    {/if}
+    {#if containers}
+      <!-- The one comparison that runs from the agent's own count inward. A
+           surplus is holding memory and ports the scheduler believes are free. -->
+      <span class="node-meta node-cond container-drift">
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>
       </span>
     {/if}
     <span class="node-actions">

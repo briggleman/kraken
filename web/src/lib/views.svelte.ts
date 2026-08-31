@@ -126,6 +126,39 @@ export function agentDrift(node: Node): { from: string; to: string } | undefined
   return node.agent_version !== fleet.panelVersion ? shown : undefined;
 }
 
+/**
+ * Containers the panel has lost track of on a node, or undefined when the two
+ * counts agree. The comparison is deliberately between opposite directions:
+ * node.running_servers is the AGENT's count of its own kraken.managed containers
+ * (adopted on reconcile), and the tracked figure is what the panel placed here.
+ * Everywhere else the panel reasons from its own rows outward, so this is the one
+ * question asked the other way — and the only way an untracked container is seen.
+ *
+ * Reachable state, not a hypothetical: deleting a server while its node is
+ * unreachable drops the row and leaves the container running, because the agent
+ * call is best-effort. A deficit is reported too — containers stopped behind the
+ * panel's back is the same class of divergence.
+ *
+ * Skipped for a node that has never been contacted (no reported count to trust)
+ * and for one that is offline, where a stale count would invent a discrepancy.
+ */
+export function containerDrift(
+  node: Node,
+): { running: number; delta: number; word: "untracked" | "missing" } | undefined {
+  if (node.status === "offline" || !node.agent_version) return undefined;
+  const reported = node.running_servers ?? 0;
+  const tracked = fleet.servers.filter(
+    (sv) => sv.node_id === node.id && sv.state === "running",
+  ).length;
+  const delta = reported - tracked;
+  if (delta === 0) return undefined;
+  return {
+    running: reported,
+    delta: Math.abs(delta),
+    word: delta > 0 ? "untracked" : "missing",
+  };
+}
+
 /** The dead-note under a stopped card — real facts only. */
 export function deadNote(server: Server): string {
   if (server.state === "install_failed")

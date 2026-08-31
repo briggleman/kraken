@@ -79,6 +79,14 @@ type Node struct {
 	// contact.
 	AgentVersion string `json:"agent_version,omitempty"`
 
+	// RunningServers is how many `kraken.managed` containers the Agent reports
+	// running, observed on last contact. It is the Agent's own count, not ours,
+	// and that is the point: compared against the servers the Panel has placed
+	// here it detects containers the Panel has lost track of — the state a node
+	// is left in when a server record is deleted while the node is unreachable.
+	// Zero is indistinguishable from "never contacted"; pair it with Status.
+	RunningServers int `json:"running_servers,omitempty"`
+
 	// AgentSHA is the hex SHA-256 of the Agent's running binary, self-reported
 	// on last contact. Preferred over AgentVersion for skew detection: a
 	// panel-only release leaves the agent artifact byte-identical, and flagging

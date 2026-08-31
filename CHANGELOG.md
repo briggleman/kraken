@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.2](https://github.com/briggleman/kraken/compare/v0.34.1...v0.34.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **agent:** report visible traffic when no interface classifies as physical ([#180](https://github.com/briggleman/kraken/issues/180)) ([eb767ee](https://github.com/briggleman/kraken/commit/eb767eeb94e8f648687b44c019cb7cdbf4fe8e14))
+
 ## [0.34.1](https://github.com/briggleman/kraken/compare/v0.34.0...v0.34.1) (2026-08-31)
 
 

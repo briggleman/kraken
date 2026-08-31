@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.33.0](https://github.com/briggleman/kraken/compare/v0.32.0...v0.33.0) (2026-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **panel:** POST /nodes/{id}/agent-update returns 202 with a job body ({job_id, phase, bytes_sent, bytes_total}) instead of 200 with {from_version, to_version, restarting}. POST /nodes/agent-update-all is removed.
+
+### Features
+
+* **panel:** agent-update answers 202 and streams in the background ([#172](https://github.com/briggleman/kraken/issues/172)) ([d6a1e5a](https://github.com/briggleman/kraken/commit/d6a1e5ab526d78c95bb6831a68ee6eb4d446c5a5)), closes [#163](https://github.com/briggleman/kraken/issues/163)
+
 ## [0.32.0](https://github.com/briggleman/kraken/compare/v0.31.0...v0.32.0) (2026-08-31)
 
 

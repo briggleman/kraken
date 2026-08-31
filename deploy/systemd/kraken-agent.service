@@ -23,7 +23,16 @@ SupplementaryGroups=docker
 # migration.
 EnvironmentFile=-/etc/kraken/agent.env
 Environment=KRAKEN_STATE_DIR=/var/lib/kraken
-ExecStart=/usr/local/bin/kraken-agent
+# NOT /usr/local/bin. The Panel can push a new agent build over the UpdateAgent
+# RPC and the agent replaces its own binary in place, which needs write on the
+# *directory* (it creates kraken-agent.new and renames the running file to
+# .old). /usr/local/bin is root-owned 0755 and, under ProtectSystem=strict
+# below, read-only anyway — so self-update failed there twice over. /opt/kraken/bin
+# is kraken-owned and holds exactly one replaceable file, which is as narrow as
+# this permission gets. install.sh keeps /usr/local/bin/kraken-agent as a symlink
+# for the command line; /proc/self/exe resolves through it, so the updater still
+# sees the real path here.
+ExecStart=/opt/kraken/bin/kraken-agent
 Restart=on-failure
 RestartSec=5s
 # --- hardening ------------------------------------------------------------
@@ -34,7 +43,9 @@ ProtectSystem=strict
 # server-data + backup dirs are under /var/lib/kraken but operators can
 # point elsewhere via KRAKEN_DATA_DIR / KRAKEN_BACKUP_DIR — add those
 # via a systemd drop-in (systemctl edit kraken-agent) if you move them.
-ReadWritePaths=/var/lib/kraken /etc/kraken
+# /opt/kraken/bin is the self-update target (see ExecStart) — without it here,
+# ProtectSystem=strict makes the swap fail with EROFS.
+ReadWritePaths=/var/lib/kraken /etc/kraken /opt/kraken/bin
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -291,6 +291,38 @@ container is holding memory and ports the scheduler believes are free.
 A **deficit** reads the same way and is not an error either: containers stopped behind the panel's
 back. The line names whichever direction is true rather than assuming a surplus.
 
+### Locked Node (cordon)
+**"Lock" is the operator's word; `cordon` is the API's.** The panel says lock, `POST
+/nodes/{id}/cordon` says cordon, and that split is deliberate — do not reintroduce "cordon" into
+the interface. What it means: the scheduler places no new servers here. Nothing already running is
+touched, which is the whole reason it is not destructive — no crisis colour, and no confirmation.
+
+Two halves, deliberately different in kind:
+
+- **The mark** — a 21px drawn padlock (`.node-lock`) beside the display name, Caution Violet with
+  the house's 8px bloom. An indicator, never a control. Its entire job is that a node you locked
+  three days ago and forgot cannot look identical to one you did not, which is why it rides the
+  name: that is where the eye already lands when scanning the fleet. The stroke is **1.2 on a
+  6-unit body** — about 20%. That number is load-bearing: the first draft was 1.6 at 15px (27%),
+  which closed the interior to under 2px and read as a solid blob. A drawn glyph has to keep its
+  interior, and going bigger alone does not fix it — SVG scales stroke proportionally, so the size
+  and the weight had to move together.
+- **The control** — `.lock-node`, a full-size ghost in the node-settings footer sitting beside
+  `delete node`, so the two node-lifecycle controls group at one end and the hairline `.acts-split`
+  already draws separates both from `close` and `save & apply`. Geometry comes from
+  `.cfg-btn.ghost`; `.lock-node` adds only the glyph layout, and `.on` the locked state's Caution
+  Violet (0.5 border on a 0.05 ground).
+
+Locked takes the condition colour by the closed-port test: the node is perfectly healthy, and
+something is nevertheless prevented. That it is *intended* — a hold you put there yourself, unlike
+version drift or a closed port — does not change what the colour is for. It does change the motion:
+`.nc-go`'s chip carries no sweep, because a sweep says "something is waiting for you", which is
+false of your own hold. Only the agent update sweeps.
+
+**The status word gives way to the mark.** A node band must not say `cordoned` in its meta line and
+show a padlock beside its name — the same fact twice in one cell. The glyph wins because it is the
+glanceable one; the meta line keeps `online`.
+
 ### Metric (vital readout)
 Label (tracked caps, Sand Faint) + huge mono value with a gold glow. Unit suffixes (`%`, `/64G`, `Mb/s`, `°C`) render in Status Gold at 0.5em. The chart zone beneath is one of the signature meters below (disk still carries the legacy gold area sparkline).
 

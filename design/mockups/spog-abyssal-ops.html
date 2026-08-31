@@ -912,6 +912,30 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      a delete that drifted into the default row would end up one mis-click from
      "save & apply" on every sheet in the house. */
   .cfg-actions.acts-split { align-items: center; flex-wrap: wrap; }
+  /* "Lock" is the operator's word for what the API calls cordon: a hold on new
+     placements, with nothing already running touched. So it is not destructive
+     (no crisis) and not a commit (no lamp) — it sits beside delete because both
+     are node-lifecycle, and the hairline .acts-split already draws lands after
+     the pair, separating them from close and save.
+     Locked takes the condition colour, the closed-port reading: the node is
+     perfectly healthy, and something is nevertheless held. Geometry comes from
+     .cfg-btn.ghost; this adds only the glyph layout and the state. */
+  .lock-node { display: inline-flex; align-items: center; gap: 7px; }
+  .lock-node.on {
+    color: var(--caution);
+    border-color: rgba(var(--caution-rgb), 0.5);
+    background: rgba(var(--caution-rgb), 0.05);
+  }
+  /* color is restated here on purpose: .cfg-btn.ghost:hover sets color to Sand at
+     (0,3,0), which outranks .lock-node.on at (0,2,0) — so without this a locked
+     node loses its violet exactly while you point at it. Same specificity trap the
+     Ghost Button rule documents for .row:hover .btn. */
+  .lock-node.on:hover {
+    color: var(--caution);
+    border-color: rgba(var(--caution-rgb), 0.7);
+    background: rgba(var(--caution-rgb), 0.12);
+  }
+  .lock-node:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   .cfg-actions.acts-split .cfg-btn.danger {
     margin-right: auto; padding-right: 20px;
     border-right: 1px solid rgba(var(--ink-3-rgb), 0.22);
@@ -955,6 +979,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
     filter: drop-shadow(0 0 12px rgba(var(--lumen-rgb), 0.45));
   }
+  /* A locked node's mark, on the one element the eye already lands on. An
+     indicator, never a control: its whole job is that a node you cordoned three
+     days ago and forgot cannot look identical to one you did not. Caution Violet
+     by the closed-port test — the node is healthy, something is held. */
+  .node-name-row { display: flex; align-items: center; gap: clamp(8px, 0.7vw, 14px); min-width: 0; }
+  .node-lock {
+    flex: 0 0 auto; display: grid; place-items: center;
+    color: var(--caution); filter: drop-shadow(0 0 8px rgba(var(--caution-rgb), 0.4));
+  }
   .node-meta { font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.76vw, 15px); color: var(--ink-2); }
   /* ---------- agent drift: the panel is newer than this node's agent ----------
      Version drift is a condition, not a death. The node runs; the panel is holding
@@ -979,20 +1012,25 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      The version you are moving TO, the containers nobody is tracking — the rest
      is context, and colouring context spends the semantic for nothing. */
   .node-cond .nc-v.act { color: var(--caution); }
-  /* a ghost, not a lamp - the One Committing Control Rule spends the band's one
-     filled control nowhere, and an update you can defer is not a commit */
-  .ad-go {
-    position: relative; overflow: hidden;
+  /* A condition's action. A ghost, not a lamp — the One Committing Control Rule
+     spends the band's one filled control nowhere, and nothing a condition offers
+     is a commit. Lit at rest, unlike every other ghost in the house, because a
+     condition's control exists only while the condition does: "unlit until
+     pointed at" would hide the one thing it is there to say. */
+  .nc-go {
     font-family: var(--ui); font-size: 0.76em; font-weight: 600;
     letter-spacing: 0.2em; text-transform: uppercase; color: var(--caution);
     padding: 3px 9px; border-radius: 3px;
-    /* lit at rest, unlike every other ghost in the house: this control appears
-       only when there IS an update, so "unlit until pointed at" would hide the
-       one thing it exists to say. Between sweeps it must still read as pending. */
     background: rgba(var(--caution-rgb), 0.05);
     border: 1px solid rgba(var(--caution-rgb), 0.5);
     cursor: pointer; transition: border-color 0.2s, background 0.2s;
   }
+  .nc-go:hover { border-color: rgba(var(--caution-rgb), 0.65); background: rgba(var(--caution-rgb), 0.12); }
+  .nc-go:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
+  /* The sweep is the update's alone: it says "something is waiting for you",
+     which is true of a build you have not taken and false of a hold you put
+     there yourself. A cordon release must not appear to be asking. */
+  .ad-go { position: relative; overflow: hidden; }
   /* One pass of light every 3.6s and a long wait, clipped to the chip's own box.
      A traversal, not a throb: the chip's geometry never changes, so the pointer
      never has to chase it, and a fleet parked on a second monitor gets a signal
@@ -1010,10 +1048,8 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     0%        { transform: translateX(-160%); }
     45%, 100% { transform: translateX(260%); }
   }
-  .ad-go:hover { border-color: rgba(var(--caution-rgb), 0.65); background: rgba(var(--caution-rgb), 0.12); }
   /* pointing at it settles it: the chip has your attention, it can stop asking */
   .ad-go:hover::after { animation-play-state: paused; }
-  .ad-go:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   /* the signal survives without the motion: hold the lit state instead of pausing
      mid-sweep, which is the one place this parts with the ticker family's rule */
   @media (prefers-reduced-motion: reduce) {
@@ -2219,7 +2255,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   <main class="deck">
   <section class="node-band" aria-label="Node BEHEMOTH vitals">
     <div class="node-id">
-      <span class="node-name">BEHEMOTH</span>
+      <span class="node-name-row">
+        <span class="node-name">BEHEMOTH</span>
+        <span class="node-lock" title="locked — the scheduler places no new servers here" aria-label="BEHEMOTH is locked"><svg width="21" height="21" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6" rx="1.2"/><path d="M 5.6 7 V 5.4 A 2.4 2.4 0 0 1 10.4 5.4 V 7"/></svg></span>
+      </span>
       <span class="node-meta">node 01 · 16c/32t · up 27d 06h</span>
       <span class="node-meta">10.0.0.4 · debian 12</span>
       <span class="node-meta node-cond container-drift">
@@ -2285,7 +2324,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-meta">10.0.0.7 &middot; debian 12</span>
       <span class="node-meta node-cond agent-drift">
         <span class="nc-k">agent</span><b class="nc-v">v0.27.1</b><span class="nc-sep" aria-hidden="true">&rarr;</span><b class="nc-v act">v0.28.0</b>
-        <button class="ad-go" aria-label="Update the agent on TITAN to v0.28.0">update</button>
+        <button class="nc-go ad-go" aria-label="Update the agent on TITAN to v0.28.0">update</button>
       </span>
       <span class="node-actions">
         <button class="prefs-open" data-sheet-open="nodeCfg" aria-label="Open node settings">node settings</button>
@@ -3056,6 +3095,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <label class="cfg-row"><span>password</span><input class="cfg-in" type="password"></label>
       </div>
       <div class="cfg-actions acts-split">
+        <button class="cfg-btn ghost lock-node on" aria-pressed="true" aria-label="Unlock BEHEMOTH so the scheduler places new servers here"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.4" y="7" width="9.2" height="6.2" rx="1.2"/><path d="M 5.5 7 V 5.3 A 2.5 2.5 0 0 1 10.5 5.3 V 7"/></svg><span>locked</span></button>
         <button class="cfg-btn danger" data-confirm-open="node" data-confirm-name="behemoth" data-confirm-body="the panel forgets this node. the agent keeps running on the host and its containers keep running — nothing there is stopped or deleted. the 2 servers placed here lose their node, and re-adding it needs a fresh enrollment token because this one&apos;s identity is orphaned. it cannot be undone.">delete node</button>
         <button class="cfg-btn ghost" data-sheet-close="nodeCfg">close</button>
         <button class="cfg-btn solid">save &amp; apply</button>

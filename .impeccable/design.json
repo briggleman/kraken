@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-31T16:07:16.366Z",
+  "generatedAt": "2026-08-31T17:29:48.794Z",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -496,6 +496,14 @@
       "css": ".ds-cfg-ro { font-family: var(--mono, 'Spline Sans Mono', Consolas, monospace); font-weight: 300; font-size: 13px; color: var(--ink-2, #b6a894); background: rgba(5, 13, 20, 0.6); border: 1px dashed rgba(var(--ink-2-rgb, 182, 168, 148), 0.25); border-radius: 4px; } .ds-tok-split { display: flex; align-items: stretch; padding: 0; overflow: hidden; } .ds-tok-split > .ds-tok-val { flex: 1 1 auto; min-width: 0; align-self: center; padding: 9px 12px; overflow-x: auto; white-space: nowrap; } .ds-tok-split > .ds-tok-gutter { flex: 0 0 auto; display: grid; place-items: center; padding: 0; } .ds-tok-new { width: 100%; height: 100%; min-height: 38px; min-width: 46px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--ink-3, #7d7160); cursor: pointer; transition: background 0.2s, color 0.2s; } .ds-tok-new:hover { background: rgba(var(--lumen-rgb, 255, 194, 102), 0.09); color: var(--lumen, #ffc266); } .ds-tok-new:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: -2px; }"
     },
     {
+      "name": "Locked Node",
+      "kind": "custom",
+      "refersTo": "button-ghost",
+      "description": "Cordon, called \"lock\" in the interface: the scheduler places no new servers here, nothing running is touched. A drawn padlock beside the node name (indicator) plus a ghost control in the node-settings footer.",
+      "html": "<div class=\"ds-lock-demo\"><span class=\"ds-name-row\"><span class=\"ds-node-name\">BEHEMOTH</span><span class=\"ds-node-lock\" title=\"locked — the scheduler places no new servers here\"><svg width=\"21\" height=\"21\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3.5\" y=\"7\" width=\"9\" height=\"6\" rx=\"1.2\"/><path d=\"M 5.6 7 V 5.4 A 2.4 2.4 0 0 1 10.4 5.4 V 7\"/></svg></span></span><button class=\"ds-lock-node ds-on\" aria-pressed=\"true\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3.4\" y=\"7\" width=\"9.2\" height=\"6.2\" rx=\"1.2\"/><path d=\"M 5.5 7 V 5.3 A 2.5 2.5 0 0 1 10.5 5.3 V 7\"/></svg><span>locked</span></button></div>",
+      "css": ".ds-lock-demo { display: grid; gap: 18px; justify-items: start; } .ds-name-row { display: flex; align-items: center; gap: 11px; } .ds-node-name { font-family: var(--ui, Archivo, sans-serif); font-weight: 700; font-size: 40px; letter-spacing: 0.1em; color: transparent; -webkit-text-stroke: 1.4px var(--lumen, #ffc266); filter: drop-shadow(0 0 12px rgba(255, 194, 102, 0.45)); } .ds-node-lock { display: grid; place-items: center; color: var(--caution, #9d8cff); filter: drop-shadow(0 0 8px rgba(157, 140, 255, 0.4)); } .ds-lock-node { display: inline-flex; align-items: center; gap: 7px; font-family: var(--ui, Archivo, sans-serif); font-size: 11px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; padding: 10px 18px; border-radius: 4px; cursor: pointer; color: var(--ink-3, #7d7160); background: none; border: 1px solid rgba(182, 168, 148, 0.3); transition: all 0.2s; } .ds-lock-node.ds-on { color: var(--caution, #9d8cff); border-color: rgba(157, 140, 255, 0.5); background: rgba(157, 140, 255, 0.05); } .ds-lock-node.ds-on:hover { border-color: rgba(157, 140, 255, 0.7); background: rgba(157, 140, 255, 0.12); }"
+    },
+    {
       "name": "Filter Chip",
       "kind": "chip",
       "description": "Filters a list in place with no script: a visually-hidden radio inside the label, lit through :has(:checked).",
@@ -656,6 +664,11 @@
         "section": "colors"
       },
       {
+        "name": "The Operator's Word Rule",
+        "body": "Where the interface and the API disagree on a name, the interface uses the operator's word and the API keeps its own. The panel says **lock**; `POST /nodes/{id}/cordon` says cordon. The split is deliberate and one-directional: do not reintroduce the API's vocabulary into the UI to make them match. The API is a contract with other software and cannot be renamed cheaply; the label is a contract with a person reading it once, under time pressure.",
+        "section": "components"
+      },
+      {
         "name": "The Violet Pulse Rule",
         "body": "Motion in the gold family means *alive* - a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make \"alive\" and \"attend to me\" the same signal. The One Light Rule's finished-step clause is unchanged - a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused`); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off.",
         "section": "colors"
@@ -795,7 +808,8 @@
       "Don't put a property that appears in a `transition` list on the receiving end of an *ancestor's* `:has()` toggle. Chrome never schedules the transition, so the value stays pinned at its old computed value however specific the rule — `!important` does not help. Mark the state with an untransitioned property instead. (A `:has()` on the styled element itself, as the filter chips use, is fine.)",
       "**Don't** pulse in gold to ask for something. Gold motion is the house's word for *alive*, so an errand that blinks in the light makes \"this is running\" and \"attend to me\" the same signal. An attention pulse takes the semantic colour, moves light across a fixed silhouette rather than resizing one, settles on hover, and survives `prefers-reduced-motion` as a held lit state - see The Violet Pulse Rule.",
       "**Don't** reach for a **dashed** border as decoration. It is a semantic mark here — \"real but not yours to change\" (disabled fields, env-managed settings) and \"different in kind\" (websocket routes, synthetic-data tags). A dashed divider inside a `.cfg-ro` was why the token field read as unclean: it said something false one pixel from a border that said it honestly. Structural seams take solid `var(--edge)`.",
-      "**Don't** borrow `.ns-stack` without adding the control's own un-hide rule. `.ns-w` is `visibility: hidden` by default and only `.copy-act` and the net-state radio pair reverse it, so a new control reusing the stack renders a **blank box**. Copy `.copy-act`'s three lines and check the glyph actually paints — geometry and colour both measure fine on an invisible element."
+      "**Don't** borrow `.ns-stack` without adding the control's own un-hide rule. `.ns-w` is `visibility: hidden` by default and only `.copy-act` and the net-state radio pair reverse it, so a new control reusing the stack renders a **blank box**. Copy `.copy-act`'s three lines and check the glyph actually paints — geometry and colour both measure fine on an invisible element.",
+      "**Don't** scale a drawn glyph up and expect its interior back. SVG scales stroke proportionally, so a bigger padlock at the same stroke-width is the same blob, larger. The lock's stroke had to drop from 1.6 to 1.2 on a 6-unit body (27% to 20%) *and* the size go from 15px to 21px — weight and scale together, or the interior stays closed."
     ]
   }
 }

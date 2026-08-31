@@ -4,7 +4,7 @@
   import { ui, closeSheet, openConfirm, CD_NODE_BODY } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api } from "@/api/client";
-  import { fleet } from "@/lib/fleet.svelte";
+  import { fleet, refreshFleet } from "@/lib/fleet.svelte";
   import type { NodeConfig, NodeConfigUpdate } from "@/api/types";
 
   type Res = { cls: "ok" | "bad"; text: string } | null;
@@ -22,6 +22,30 @@
   // fresh id, so they could never be reclaimed. Count it here so the control says
   // so up front rather than surfacing a 409 after the operator has typed "delete".
   const placed = $derived(node ? fleet.servers.filter((sv) => sv.node_id === node.id).length : 0);
+
+  // "Lock" is the operator's word for cordon: the scheduler places no new servers
+  // here, and nothing already running is touched — so it needs no confirmation,
+  // and it is reversible from the same control. The label carries the state
+  // because there is one control for both directions; an in-flight push disables
+  // it rather than swapping to a third word.
+  const locked = $derived(!!node?.cordoned);
+  let locking = $state(false);
+  let lockErr = $state("");
+
+  async function toggleLock() {
+    if (!node || locking) return;
+    locking = true;
+    lockErr = "";
+    try {
+      if (locked) await api.uncordonNode(node.id);
+      else await api.cordonNode(node.id);
+      await refreshFleet();
+    } catch (e) {
+      lockErr = e instanceof Error ? e.message : String(e);
+    } finally {
+      locking = false;
+    }
+  }
 
   let cfg = $state<NodeConfig | null>(null);
   let loadErr = $state<string | null>(null);
@@ -272,6 +296,20 @@
       <!-- The Opposite Ends Rule: the destructive control takes the far end of the
            row, opposite the one committing control, with a hairline between them. -->
       <div class="cfg-actions acts-split">
+        <button
+          class="cfg-btn ghost lock-node"
+          class:on={locked}
+          disabled={!node || locking}
+          aria-pressed={locked}
+          title={lockErr ||
+            (locked
+              ? "unlock — let the scheduler place new servers on this node again"
+              : "lock — hold new placements; nothing already running is touched")}
+          onclick={() => void toggleLock()}
+          ><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.4" y="7" width="9.2" height="6.2" rx="1.2"/><path d="M 5.5 7 V 5.3 A 2.5 2.5 0 0 1 10.5 5.3 V 7"/></svg><span
+            >{locking ? "…" : locked ? "locked" : "lock node"}</span
+          ></button
+        >
         <button
           class="cfg-btn danger"
           disabled={!node || placed > 0}

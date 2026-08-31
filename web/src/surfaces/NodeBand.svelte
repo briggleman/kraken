@@ -38,7 +38,10 @@
   );
 
   const num = $derived("node " + String(index + 1).padStart(2, "0"));
-  const statusWord = $derived(node.cordoned ? "cordoned" : node.status);
+  // The padlock beside the name carries "locked", so the meta line must not say it
+  // too — the same fact twice in one cell. A cordoned node is reachable and
+  // healthy, so it reads "online" here and the glyph supplies the condition.
+  const statusWord = $derived(node.cordoned && node.status === "cordoned" ? "online" : node.status);
 
   // The agent build this node is behind, or undefined when it is current. Only
   // node.manage may push a binary, so a viewer sees the fact without the action —
@@ -70,7 +73,19 @@
 
 <section class="node-band" aria-label="Node {node.name} vitals">
   <div class="node-id">
-    <span class="node-name">{node.name.toUpperCase()}</span>
+    <span class="node-name-row">
+      <span class="node-name">{node.name.toUpperCase()}</span>
+      {#if node.cordoned}
+        <!-- An indicator, never a control: its job is that a node you locked and
+             forgot cannot look like one you did not. -->
+        <span
+          class="node-lock"
+          title="locked — the scheduler places no new servers here"
+          aria-label="{node.name} is locked"
+          ><svg width="21" height="21" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6" rx="1.2"/><path d="M 5.6 7 V 5.4 A 2.4 2.4 0 0 1 10.4 5.4 V 7"/></svg></span
+        >
+      {/if}
+    </span>
     <span class="node-meta">{num} · {node.os}{node.wine_enabled ? " · wine" : ""} · {statusWord}</span>
     <!-- the agent version rides the address line while it is merely a fact; once the
          panel has outrun it, it moves to the drift line below rather than printing twice -->
@@ -80,7 +95,7 @@
         <span class="nc-k">agent</span><b class="nc-v">{drift.from}</b><span class="nc-sep" aria-hidden="true">→</span><b class="nc-v act">{drift.to}</b>
         {#if hasPerm("node.manage")}
           <button
-            class="ad-go"
+            class="nc-go ad-go"
             disabled={pushing}
             title={pushErr || `push the panel's ${drift.to} agent to ${node.name} — it restarts itself`}
             aria-label="Update the agent on {node.name} from {drift.from} to {drift.to}"

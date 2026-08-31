@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"io"
+	"log/slog"
 	"runtime"
 	"time"
 
@@ -92,10 +93,23 @@ func (s *Service) GetNodeTelemetry(_ context.Context, _ *agentpb.GetNodeTelemetr
 	return tel, nil
 }
 
-// UpdateAgent receives a Panel-pushed agent binary (metadata first, then
-// chunks), verifies it, swaps it in transactionally, responds, and restarts
-// into the new build. See selfupdate.go for the rollback machinery.
+// UpdateAgent receives a Panel-pushed agent binary, logging any refusal before
+// it goes back on the wire. The gRPC status is the Panel's only copy of the
+// reason, and a Panel that keeps pushing chunks past an early refusal sees
+// io.EOF from Send instead of the status — so without this line the reason can
+// exist nowhere at all. Cheap insurance on the one path an operator debugs.
 func (s *Service) UpdateAgent(stream agentpb.NodeService_UpdateAgentServer) error {
+	err := s.updateAgent(stream)
+	if err != nil {
+		slog.Error("selfupdate: refused a Panel-pushed update", "err", err)
+	}
+	return err
+}
+
+// updateAgent takes the metadata first, then the chunks, verifies it, swaps it
+// in transactionally, responds, and restarts into the new build. See
+// selfupdate.go for the rollback machinery.
+func (s *Service) updateAgent(stream agentpb.NodeService_UpdateAgentServer) error {
 	if s.updater == nil {
 		return status.Error(codes.FailedPrecondition, "self-update is not available on this agent")
 	}

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -54,6 +55,51 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		// observes the new version (or the rollback) on its next pass.
 		"restarting": true,
 	})
+}
+
+// updateStream is the subset of the UpdateAgent client stream that pushUpdate
+// needs. It exists so the send/recv error handling below — the part that is easy
+// to get wrong and impossible to read off the happy path — is testable without a
+// gRPC server or an embedded agent binary.
+type updateStream interface {
+	Send(*agentpb.UpdateAgentChunk) error
+	CloseAndRecv() (*agentpb.UpdateAgentResponse, error)
+}
+
+// pushUpdate sends the metadata then the binary, and returns the agent's ack.
+//
+// The subtlety it exists for: gRPC returns io.EOF from Send once the SERVER has
+// ended the RPC, and the status saying WHY is only retrievable from
+// CloseAndRecv. The agent refuses before it reads a single chunk for every
+// reason an operator needs to know — an immutable container binary, a platform
+// mismatch, an install directory it cannot write — so returning the Send error
+// reports a bare "EOF" and throws the diagnosis away. That is exactly what
+// hid an unwritable /usr/local/bin behind "stream binary: EOF".
+//
+// So: stop sending, then let CloseAndRecv speak. The Send error is only worth
+// reporting when the agent had nothing to say for itself.
+func pushUpdate(stream updateStream, meta *agentpb.UpdateAgentChunk_Meta, data []byte) (*agentpb.UpdateAgentResponse, error) {
+	sendErr := stream.Send(&agentpb.UpdateAgentChunk{
+		Payload: &agentpb.UpdateAgentChunk_Meta_{Meta: meta},
+	})
+	for off := 0; sendErr == nil && off < len(data); off += updateChunkSize {
+		end := min(off+updateChunkSize, len(data))
+		sendErr = stream.Send(&agentpb.UpdateAgentChunk{
+			Payload: &agentpb.UpdateAgentChunk_Data{Data: data[off:end]},
+		})
+	}
+
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return nil, fmt.Errorf("agent rejected update: %w", err)
+	}
+	if sendErr != nil {
+		// The agent acked a binary it cannot have received in full. Never report
+		// that as success — the checksum should have caught it, and if it didn't,
+		// something is wrong that a green result would bury.
+		return nil, fmt.Errorf("stream binary: %w", sendErr)
+	}
+	return resp, nil
 }
 
 // agentUpdateError carries an HTTP status alongside the message so the
@@ -120,27 +166,19 @@ func (s *Server) pushAgentUpdateTo(ctx context.Context, n *cluster.Node) (string
 	if err != nil {
 		return "", "", &agentUpdateError{http.StatusBadGateway, "open update stream: " + err.Error()}
 	}
-	if err := stream.Send(&agentpb.UpdateAgentChunk{Payload: &agentpb.UpdateAgentChunk_Meta_{Meta: &agentpb.UpdateAgentChunk_Meta{
+	resp, err := pushUpdate(stream, &agentpb.UpdateAgentChunk_Meta{
 		Version:   version.Version,
 		Sha256:    sha,
 		TotalSize: int64(len(data)),
 		Os:        info.Os,
 		Arch:      arch,
-	}}}); err != nil {
-		return "", "", &agentUpdateError{http.StatusBadGateway, "send update metadata: " + err.Error()}
-	}
-	for off := 0; off < len(data); off += updateChunkSize {
-		end := min(off+updateChunkSize, len(data))
-		if err := stream.Send(&agentpb.UpdateAgentChunk{Payload: &agentpb.UpdateAgentChunk_Data{Data: data[off:end]}}); err != nil {
-			return "", "", &agentUpdateError{http.StatusBadGateway, "stream binary: " + err.Error()}
-		}
-	}
-	resp, err := stream.CloseAndRecv()
+	}, data)
 	if err != nil {
-		// The agent's refusal reasons (container, platform mismatch, checksum,
-		// already-updating) arrive as gRPC status messages — surface verbatim,
-		// they are the operator's whole diagnosis.
-		return "", "", &agentUpdateError{http.StatusBadGateway, "agent rejected update: " + err.Error()}
+		// This is the operator's whole diagnosis and it survives nowhere else:
+		// writeError does not log, and the audit entry carries only the status.
+		s.logger.Error("agent update failed", "node", n.ID, "name", n.Name,
+			"from", info.AgentVersion, "to", version.Version, "err", err)
+		return "", "", &agentUpdateError{http.StatusBadGateway, err.Error()}
 	}
 
 	s.logger.Info("agent update pushed", "node", n.ID, "name", n.Name,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/briggleman/kraken/compare/v0.34.0...v0.34.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **web:** reset the agent chip's phase when its drift episode ends ([#176](https://github.com/briggleman/kraken/issues/176)) ([1388fdb](https://github.com/briggleman/kraken/commit/1388fdb3498cd348e9981b59a471102b716bd40c)), closes [#159](https://github.com/briggleman/kraken/issues/159)
+
 ## [0.34.0](https://github.com/briggleman/kraken/compare/v0.33.0...v0.34.0) (2026-08-31)
 
 

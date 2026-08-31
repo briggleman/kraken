@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.2](https://github.com/briggleman/kraken/compare/v0.30.1...v0.30.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **deploy:** let the agent replace its own binary ([#162](https://github.com/briggleman/kraken/issues/162)) ([6119ade](https://github.com/briggleman/kraken/commit/6119ade5694f434bb24585dbc598841194cf4dce)), closes [#114](https://github.com/briggleman/kraken/issues/114)
+
 ## [0.30.1](https://github.com/briggleman/kraken/compare/v0.30.0...v0.30.1) (2026-08-31)
 
 

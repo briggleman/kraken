@@ -117,13 +117,50 @@ export function nodeMemLabel(node: Node): { used: string; total: string } {
  *
  * A node that has never been contacted has nothing to compare and is never flagged.
  */
-export function agentDrift(node: Node): { from: string; to: string } | undefined {
+export function agentDrift(node: Node): AgentDrift | undefined {
   if (!node.agent_version) return undefined;
-  const shown = { from: node.agent_version, to: fleet.panelVersion };
+  const shown: AgentDrift = {
+    from: node.agent_version,
+    to: fleet.panelVersion,
+    direction: versionCompare(node.agent_version, fleet.panelVersion) > 0 ? "ahead" : "behind",
+  };
   const want = fleet.panelAgentSha[`${node.os}/${node.arch}`];
   if (node.agent_sha && want)
     return node.agent_sha.toLowerCase() === want.toLowerCase() ? undefined : shown;
   return node.agent_version !== fleet.panelVersion ? shown : undefined;
+}
+
+export interface AgentDrift {
+  from: string;
+  to: string;
+  /** "behind" — the usual case, the panel is newer. "ahead" — the agent is newer,
+   *  which happens after a panel rollback and means the action DOWNGRADES the
+   *  agent. The skew test is deliberately direction-blind ("bring the node to the
+   *  panel's version"), so the direction exists only to keep the label honest:
+   *  a chip that says "update" while it would downgrade is lying. */
+  direction: "behind" | "ahead";
+}
+
+/**
+ * Compares two release-please semver strings, tolerating a leading "v" and
+ * non-numeric suffixes. Returns >0 when a is newer.
+ *
+ * Deliberately not a full semver implementation: these are our own tags, and the
+ * only decision riding on it is which word the chip uses. Anything it cannot
+ * parse compares as equal, which falls through to "behind" — the safe default,
+ * since that is what every normal fleet is.
+ */
+function versionCompare(a: string, b: string): number {
+  const parts = (v: string) =>
+    v.replace(/^v/, "").split(".").map((n) => parseInt(n, 10));
+  const [pa, pb] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return 0;
+    if (x !== y) return x - y;
+  }
+  return 0;
 }
 
 /**

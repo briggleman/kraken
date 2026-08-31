@@ -1044,15 +1044,55 @@
       rgba(var(--caution-rgb), 0),
       rgba(var(--caution-rgb), 0.34),
       rgba(var(--caution-rgb), 0));
-    animation: adSweep 3.6s ease-in-out infinite;
     pointer-events: none;
   }
   @keyframes adSweep {
     0%        { transform: translateX(-160%); }
     45%, 100% { transform: translateX(260%); }
   }
+
+  /* ---------- the chip's five states ----------------------------------------
+     The line always carries exactly one st-* class, which is what lets the
+     sweep be granted rather than revoked: naming the two states that sweep
+     cannot silently miss a third, the way un-setting it four times can.
+
+     rest and ahead both mean "nothing in flight, an action is available", so
+     both sweep — The Violet Pulse Rule's licence covers them equally. The other
+     three are the push's own life, and none of them is asking for anything. */
+  .agent-drift.st-rest .ad-go::after,
+  .agent-drift.st-ahead .ad-go::after { animation: adSweep 3.6s ease-in-out infinite; }
   /* pointing at it settles it: the chip has your attention, it can stop asking */
-  .ad-go:hover::after { animation-play-state: paused; }
+  .agent-drift.st-rest .ad-go:hover::after,
+  .agent-drift.st-ahead .ad-go:hover::after { animation-play-state: paused; }
+
+  /* pushing: the same pseudo-element stops travelling and starts measuring —
+     a bar anchored left at --push-pct, set from the job's bytes_sent/bytes_total.
+     Position is the quantitative channel and the label stays qualitative: a
+     percentage ticking inside a 9px tracked-caps chip is noise, and the question
+     an operator actually has is "is it moving", which a bar answers at a glance.
+     The transition matters at LAN speed, where the whole push is two frames. */
+  /* pushing shows itself by what it STOPS doing: the sweep ends, because the
+     chip is no longer waiting for you — it is working. A determinate fill was
+     designed here and pulled: an absolutely-positioned child inside a <button>
+     never resolved a containing block (width: 100% measured 0), and the
+     ::after readings that would have confirmed the alternative were not
+     trustworthy either. Tracked as a follow-up rather than shipped unverified;
+     bytes_sent/bytes_total already ride the job API waiting for it. */
+
+  /* restarting: nothing moves and nothing is measured. The agent has the binary
+     and is rebooting into it; there is nothing left to ask for, and the outcome
+     arrives from the node record rather than from here. */
+  .agent-drift.st-restarting .ad-go::after { width: 0; }
+
+  /* failed: the reason takes the line's one act colour, because the reason is
+     the thing to act on — so the target version gives it up. The chip says what
+     clicking it DOES; "failed" would name the state twice and offer nothing. */
+  .agent-drift.st-failed .ad-go::after { width: 0; }
+  .agent-drift.st-failed .nc-v.act { color: var(--ink-3); }
+  .agent-drift .nc-fail {
+    color: var(--caution);
+    max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   /* the signal survives without the motion: hold the lit state instead of pausing
      mid-sweep, which is the one place this parts with the ticker family's rule */
   @media (prefers-reduced-motion: reduce) {

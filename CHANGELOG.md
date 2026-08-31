@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/briggleman/kraken/compare/v0.30.2...v0.31.0) (2026-08-31)
+
+
+### Features
+
+* **web:** delete a node, and re-mint an enrollment token ([#165](https://github.com/briggleman/kraken/issues/165)) ([61c5a40](https://github.com/briggleman/kraken/commit/61c5a4007d6a46f10f503bbe859849cd8d1da272))
+
 ## [0.30.2](https://github.com/briggleman/kraken/compare/v0.30.1...v0.30.2) (2026-08-31)
 
 

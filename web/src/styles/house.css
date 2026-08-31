@@ -13,6 +13,7 @@
  * body-level rule applies to the ported markup unchanged. */
 #app { display: contents; }
 
+
   :root {
     /* Warm light in cold water: the living light is sodium gold against the abyssal ground, so
        caution and crisis sit on the cool side and can never be mistaken for the accent.
@@ -915,6 +916,22 @@
      a delete that drifted into the default row would end up one mis-click from
      "save & apply" on every sheet in the house. */
   .cfg-actions.acts-split { align-items: center; flex-wrap: wrap; }
+  /* "Lock" is the operator's word for what the API calls cordon: a hold on new
+     placements, with nothing already running touched. So it is not destructive
+     (no crisis) and not a commit (no lamp) — it sits beside delete because both
+     are node-lifecycle, and the hairline .acts-split already draws lands after
+     the pair, separating them from close and save.
+     Locked takes the condition colour, the closed-port reading: the node is
+     perfectly healthy, and something is nevertheless held. Geometry comes from
+     .cfg-btn.ghost; this adds only the glyph layout and the state. */
+  .lock-node { display: inline-flex; align-items: center; gap: 7px; }
+  .lock-node.on {
+    color: var(--caution);
+    border-color: rgba(var(--caution-rgb), 0.5);
+    background: rgba(var(--caution-rgb), 0.05);
+  }
+  .lock-node.on:hover { border-color: rgba(var(--caution-rgb), 0.7); background: rgba(var(--caution-rgb), 0.12); }
+  .lock-node:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   .cfg-actions.acts-split .cfg-btn.danger {
     margin-right: auto; padding-right: 20px;
     border-right: 1px solid rgba(var(--ink-3-rgb), 0.22);
@@ -958,6 +975,15 @@
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
     filter: drop-shadow(0 0 12px rgba(var(--lumen-rgb), 0.45));
   }
+  /* A locked node's mark, on the one element the eye already lands on. An
+     indicator, never a control: its whole job is that a node you cordoned three
+     days ago and forgot cannot look identical to one you did not. Caution Violet
+     by the closed-port test — the node is healthy, something is held. */
+  .node-name-row { display: flex; align-items: center; gap: clamp(8px, 0.7vw, 14px); min-width: 0; }
+  .node-lock {
+    flex: 0 0 auto; display: grid; place-items: center;
+    color: var(--caution); filter: drop-shadow(0 0 8px rgba(var(--caution-rgb), 0.4));
+  }
   .node-meta { font-family: var(--mono); font-weight: 300; font-size: clamp(11px, 0.76vw, 15px); color: var(--ink-2); }
   /* ---------- agent drift: the panel is newer than this node's agent ----------
      Version drift is a condition, not a death. The node runs; the panel is holding
@@ -982,20 +1008,25 @@
      The version you are moving TO, the containers nobody is tracking — the rest
      is context, and colouring context spends the semantic for nothing. */
   .node-cond .nc-v.act { color: var(--caution); }
-  /* a ghost, not a lamp - the One Committing Control Rule spends the band's one
-     filled control nowhere, and an update you can defer is not a commit */
-  .ad-go {
-    position: relative; overflow: hidden;
+  /* A condition's action. A ghost, not a lamp — the One Committing Control Rule
+     spends the band's one filled control nowhere, and nothing a condition offers
+     is a commit. Lit at rest, unlike every other ghost in the house, because a
+     condition's control exists only while the condition does: "unlit until
+     pointed at" would hide the one thing it is there to say. */
+  .nc-go {
     font-family: var(--ui); font-size: 0.76em; font-weight: 600;
     letter-spacing: 0.2em; text-transform: uppercase; color: var(--caution);
     padding: 3px 9px; border-radius: 3px;
-    /* lit at rest, unlike every other ghost in the house: this control appears
-       only when there IS an update, so "unlit until pointed at" would hide the
-       one thing it exists to say. Between sweeps it must still read as pending. */
     background: rgba(var(--caution-rgb), 0.05);
     border: 1px solid rgba(var(--caution-rgb), 0.5);
     cursor: pointer; transition: border-color 0.2s, background 0.2s;
   }
+  .nc-go:hover { border-color: rgba(var(--caution-rgb), 0.65); background: rgba(var(--caution-rgb), 0.12); }
+  .nc-go:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
+  /* The sweep is the update's alone: it says "something is waiting for you",
+     which is true of a build you have not taken and false of a hold you put
+     there yourself. A cordon release must not appear to be asking. */
+  .ad-go { position: relative; overflow: hidden; }
   /* One pass of light every 3.6s and a long wait, clipped to the chip's own box.
      A traversal, not a throb: the chip's geometry never changes, so the pointer
      never has to chase it, and a fleet parked on a second monitor gets a signal
@@ -1013,10 +1044,8 @@
     0%        { transform: translateX(-160%); }
     45%, 100% { transform: translateX(260%); }
   }
-  .ad-go:hover { border-color: rgba(var(--caution-rgb), 0.65); background: rgba(var(--caution-rgb), 0.12); }
   /* pointing at it settles it: the chip has your attention, it can stop asking */
   .ad-go:hover::after { animation-play-state: paused; }
-  .ad-go:focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   /* the signal survives without the motion: hold the lit state instead of pausing
      mid-sweep, which is the one place this parts with the ticker family's rule */
   @media (prefers-reduced-motion: reduce) {

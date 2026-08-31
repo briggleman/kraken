@@ -137,6 +137,24 @@ func TestSumNetDevFallsBackToNameHeuristic(t *testing.T) {
 	}
 }
 
+// The regression from the live fleet: sysfs answers for every interface but
+// classifies NONE as physical (no device links visible — a netns, or a layout
+// where nothing carries one). The old code declared that "a host with no
+// physical NICs" and returned a confident 0/0/true forever, while the agent's
+// own tunnel traffic ticked the interfaces it refused to count. An empty
+// physical set must fall through to the name heuristic, exactly as a
+// sysfs-can't-answer host does.
+func TestSumNetDevEmptyPhysicalSetFallsBack(t *testing.T) {
+	nonePhysical := func(string) (bool, bool) { return false, true }
+	rx, tx, ok := sumNetDev(sampleNetDev, nonePhysical)
+	if !ok {
+		t.Fatal("expected the fallback to produce a reading, got the confident zero")
+	}
+	if rx != 5000 || tx != 7000 {
+		t.Errorf("rx/tx = %d/%d, want 5000/7000 — the name heuristic should count eth0", rx, tx)
+	}
+}
+
 func TestSumNetDevEmptyInput(t *testing.T) {
 	if _, _, ok := sumNetDev("header only\n", func(string) (bool, bool) { return true, true }); ok {
 		t.Error("expected no reading from a file with no interface rows")

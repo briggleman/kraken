@@ -12,8 +12,7 @@
     { n: 1, label: "database", aria: "Step 1: database" },
     { n: 2, label: "secure", aria: "Step 2: secure" },
     { n: 3, label: "connect a node", aria: "Step 3: connect a node" },
-    { n: 4, label: "add a game", aria: "Step 4: add a game" },
-    { n: 5, label: "deploy", aria: "Step 5: deploy" },
+    { n: 4, label: "deploy", aria: "Step 4: deploy" },
   ];
 
   const open = $derived(!!ui.open.setup);
@@ -125,44 +124,38 @@
     setTimeout(() => (copyLabels[i] = "copy to clipboard"), 1800);
   }
 
-  // -- step 4: the catalog import — staged, so you can see it did something
+  // -- the catalog imports itself. The wizard has no manual import step: the
+  // bundled specs land quietly when setup opens, and the deploy step's
+  // footnote says so. A spec that fails to import stays pending and the
+  // specs sheet still lists it.
   let catalog = $state<CatalogItem[]>([]);
   let catLoaded = false;
   $effect(() => {
     if (!open || catLoaded) return;
     catLoaded = true;
-    void api
-      .listCatalog()
-      .then((r) => (catalog = r.catalog ?? []))
-      .catch(() => {});
+    void autoImport();
   });
-  let importing = $state(false);
-  const impCount = $derived(catalog.filter((c) => c.already_imported).length);
-
-  async function importAll() {
-    if (importing) return;
-    importing = true;
+  async function autoImport() {
+    try {
+      catalog = (await api.listCatalog()).catalog ?? [];
+    } catch {
+      return;
+    }
+    let imported = false;
     for (const item of catalog) {
       if (item.already_imported) continue;
       try {
         await api.importCatalog(item.id);
         item.already_imported = true;
-        await new Promise((r) => setTimeout(r, 90));
+        imported = true;
       } catch {
-        /* row simply stays pending; the count tells the truth */
+        /* stays pending; the specs sheet can still import it */
       }
     }
-    importing = false;
-    void refreshFleet();
+    if (imported) void refreshFleet();
   }
 
-  function plats(item: CatalogItem): string[] {
-    return item.platforms.map((p) =>
-      p === "linux-native" ? "linux" : p === "windows-native" ? "win" : "wine",
-    );
-  }
-
-  // -- step 5: hand off into the create-server sheet
+  // -- step 4: hand off into the create-server sheet
   function deploy() {
     closeSheet("setup");
     ui.nsFormNodeId = fleet.nodes[0]?.id ?? null;
@@ -211,7 +204,7 @@
               <span class="wz-lbl">{step.label}</span>
             </button>
             <input type="radio" name="wzstep" tabindex="-1" aria-hidden="true" checked={wz.at === step.n} />
-            {#if step.n < 5}<span class="wz-line" aria-hidden="true"></span>{/if}
+            {#if step.n < 4}<span class="wz-line" aria-hidden="true"></span>{/if}
           </div>
         {/each}
       </div>
@@ -249,7 +242,7 @@
         </div>
         <p class="cfg-help">or continue on the in-memory store for now — fine for trying things out, not for anything you would miss.</p>
         <div class="wz-foot">
-          <button class="wz-skip" onclick={skip}>skip for now</button>
+          <button class="cfg-btn ghost" onclick={skip}>skip for now</button>
           <div class="wz-fwd"><button class="cfg-btn solid" onclick={() => wzGo(2)}>continue</button></div>
         </div>
       </section>
@@ -345,37 +338,14 @@
 
         <div class="wz-foot">
           <button class="cfg-btn ghost" onclick={() => wzGo(2)}>back</button>
-          <div class="wz-fwd"><button class="cfg-btn solid" id="wzNodeNext" disabled={!nodeOk && !fleet.nodes.some((n) => n.status === "online")} onclick={() => wzGo(4)}>continue</button></div>
-        </div>
-      </section>
-
-      <section class="wz-panel{wz.at === 4 ? ' on' : ''}" id="wzPanel4" aria-label="Step 4: add a game">
-        <div class="prefs-group">
-          <div class="cfg-head">
-            <h3 class="pane-label">add a game</h3>
-            <span class="imp-count" id="impCount"><b>{impCount}</b> / {catalog.length} specs imported</span>
-            <button class="cfg-btn ghost" id="impAll" disabled={importing || (catalog.length > 0 && impCount === catalog.length)} onclick={() => void importAll()}>import all</button>
-          </div>
-          <div class="imp">
-            <div class="imp-head"><span>game</span><span>platform</span><span>status</span></div>
-            {#each catalog as item (item.id)}
-              <div class="imp-row{item.already_imported ? ' did' : ''}"><span class="imp-id"><b>{item.name}</b><span>{item.slug}</span></span><span class="imp-plat">{#each plats(item) as p}<span class="spec-tag">{p}</span>{/each}</span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">{item.already_imported ? "imported" : "pending"}</span></span></div>
-            {:else}
-              <div class="imp-row"><span class="imp-id"><b>no bundled catalog</b><span>author specs from the specs sheet</span></span><span class="imp-plat"></span><span class="imp-st"><span class="imp-w">—</span></span></div>
-            {/each}
-          </div>
-        </div>
-        <p class="cfg-help">a spec is the recipe kraken installs from — the app id, the image, the ports and the settings it writes. these are the ones bundled with the panel; you can author your own later.</p>
-        <div class="wz-foot">
-          <button class="cfg-btn ghost" onclick={() => wzGo(3)}>back</button>
           <div class="wz-fwd">
-            <button class="wz-skip" onclick={skip}>skip</button>
-            <button class="cfg-btn solid" onclick={() => wzGo(5)}>continue</button>
+            <button class="cfg-btn ghost" onclick={skip}>skip</button>
+            <button class="cfg-btn solid" id="wzNodeNext" disabled={!nodeOk && !fleet.nodes.some((n) => n.status === "online")} onclick={() => wzGo(4)}>continue</button>
           </div>
         </div>
       </section>
 
-      <section class="wz-panel{wz.at === 5 ? ' on' : ''}" id="wzPanel5" aria-label="Step 5: deploy">
+      <section class="wz-panel{wz.at === 4 ? ' on' : ''}" id="wzPanel4" aria-label="Step 4: deploy">
         <div class="prefs-group">
           <div class="wz-hero">
             <span class="wz-seal" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span>
@@ -384,8 +354,9 @@
             <button class="cfg-btn solid" id="wzDeployBtn" onclick={deploy}>deploy your first server</button>
           </div>
         </div>
+        <p class="cfg-help">game specs import automatically at setup — the {catalog.length ? catalog.length + " " : ""}bundled games are ready in setup &amp; catalog, and you can author your own any time.</p>
         <div class="wz-foot">
-          <button class="cfg-btn ghost" onclick={() => wzGo(4)}>back</button>
+          <button class="cfg-btn ghost" onclick={() => wzGo(3)}>back</button>
           <div class="wz-fwd"><button class="cfg-btn ghost" onclick={skipAndFinish}>skip &amp; finish</button></div>
         </div>
       </section>

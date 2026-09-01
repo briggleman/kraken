@@ -154,13 +154,13 @@ export async function confirmGo() {
 }
 
 // ---------------------------------------------------------------------------
-// first run: the forced rotation, then the five-step wizard
+// first run: the forced rotation, then the four-step wizard
 
 export const LG_SUB = "one console for every server on every node. sign in to reach it.";
 
 export const wz = $state({
   at: 1,
-  done: [false, false, false, false, false], // steps 1..5
+  done: [false, false, false, false], // steps 1..4
   dbMode: "in-memory" as "in-memory" | "postgres",
   dbRes: null as null | { cls: "ok" | "bad"; text: string },
   resumeSetup: false,

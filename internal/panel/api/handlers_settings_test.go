@@ -194,6 +194,9 @@ func TestServerSettings_LaunchVariables(t *testing.T) {
 
 	// A running server accepts variable edits too — the response just flags
 	// that a restart is required (vars are baked into the start command).
+	// Re-read through waitInstalled: the async install must have settled before
+	// the state is forced, or its completion write clobbers it (#200).
+	sv = waitInstalled(t, st, created.ID)
 	sv.State = store.StateRunning
 	if err := st.UpdateServer(context.Background(), sv); err != nil {
 		t.Fatalf("set running: %v", err)
@@ -273,10 +276,8 @@ func TestServerSettings_HotReload(t *testing.T) {
 		t.Fatalf("expected hot_reload: true in settings response: %s", rec.Body.String())
 	}
 
-	sv, err := st.GetServer(context.Background(), created.ID)
-	if err != nil {
-		t.Fatalf("get server: %v", err)
-	}
+	// Same install gate as TestServerSettings_LaunchVariables (#200).
+	sv := waitInstalled(t, st, created.ID)
 	sv.State = store.StateRunning
 	if err := st.UpdateServer(context.Background(), sv); err != nil {
 		t.Fatalf("set running: %v", err)

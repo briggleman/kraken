@@ -1130,6 +1130,24 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     text-shadow: 0 0 20px rgba(var(--lumen-rgb), 0.45);
   }
   .metric-val small { font-size: 0.5em; font-weight: 300; color: var(--ok); }
+  /* A resting metric gives up its ink. A fresh sample of exactly zero is TRUE —
+     an idle 32-core host at one jiffy per sampling window, a tunnel-mode NIC
+     whose eth0 averages bytes per second — but a board of lit zeroes above
+     imperceptibly-flat meters reads as a DEAD fleet, and an operator who
+     reported "the stats aren't updating" was making a reasonable read of it.
+     Truth should not look like failure. So a resting rate takes Sand Faint and
+     drops the bloom: the One Light Rule already says a thing at rest loses its
+     light, and this is that sentence spent on a number. It invents no state —
+     nothing is prevented by an idle node, so nothing here takes Caution.
+
+     Freshness is the whole condition. An UNKNOWN metric is still the em-dash,
+     because "the host cannot report this" is a different sentence; and a STALE
+     zero must not dim as though it were resting, because "the number stopped
+     arriving" is not "the number is zero". Rates only — memory and disk are
+     levels, and an empty level is a fact about capacity, not a thing at rest.
+     The unit suffix keeps its Status Gold: the scale the reading is measured
+     against did not stop being true. */
+  .metric-val.resting { color: var(--ink-3); text-shadow: none; }
   .metric canvas { width: 100%; height: clamp(30px, 4.5vh, 62px); display: block; }
   .seg-track {
     display: flex; align-items: stretch; gap: 0.5px;
@@ -2397,7 +2415,14 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </span>
     </div>
     <div class="metric">
-      <div class="metric-head"><span class="metric-label">cpu</span><span class="metric-val"><span id="vCpu2">19</span><small>%</small></span></div>
+      <!-- TITAN is the resting demonstration: a node that has just gone quiet, so
+           its cpu and network numerals sit at a fresh zero and dim, while the
+           history beside them still holds the load it was carrying a minute ago.
+           Both numerals are static here — dropping the id is what takes them out
+           of the live walk, and the walk still pushes samples into the meter, so
+           the chart stays a chart. The temp readout still follows that same walk,
+           which is honest: a host that stopped working is not instantly cold. -->
+      <div class="metric-head"><span class="metric-label">cpu</span><span class="metric-val resting"><span>0</span><small>%</small></span></div>
       <div class="zone-track">
         <div class="seg-track" id="cpuSegs2" aria-hidden="true"><i class="dotcol" style="--lvl:22.2%"></i><i class="dotcol" style="--lvl:22.7%"></i><i class="dotcol" style="--lvl:20.3%"></i><i class="dotcol" style="--lvl:23.4%"></i><i class="dotcol" style="--lvl:26.5%"></i><i class="dotcol" style="--lvl:26.7%"></i><i class="dotcol" style="--lvl:28.4%"></i><i class="dotcol" style="--lvl:29.2%"></i><i class="dotcol" style="--lvl:29.8%"></i><i class="dotcol" style="--lvl:29.6%"></i><i class="dotcol" style="--lvl:32.6%"></i><i class="dotcol" style="--lvl:29.8%"></i><i class="dotcol" style="--lvl:27.9%"></i><i class="dotcol" style="--lvl:25.1%"></i><i class="dotcol" style="--lvl:23.9%"></i><i class="dotcol" style="--lvl:24.4%"></i><i class="dotcol" style="--lvl:23.0%"></i><i class="dotcol" style="--lvl:23.7%"></i><i class="dotcol" style="--lvl:22.1%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:22.4%"></i><i class="dotcol" style="--lvl:23.9%"></i><i class="dotcol" style="--lvl:21.5%"></i><i class="dotcol" style="--lvl:25.2%"></i><i class="dotcol" style="--lvl:25.0%"></i><i class="dotcol" style="--lvl:22.9%"></i><i class="dotcol" style="--lvl:23.1%"></i><i class="dotcol" style="--lvl:26.5%"></i><i class="dotcol" style="--lvl:24.9%"></i><i class="dotcol" style="--lvl:28.4%"></i><i class="dotcol" style="--lvl:25.4%"></i><i class="dotcol" style="--lvl:23.4%"></i><i class="dotcol" style="--lvl:22.9%"></i><i class="dotcol" style="--lvl:20.9%"></i><i class="dotcol" style="--lvl:22.1%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:20.0%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:24.5%"></i><i class="dotcol" style="--lvl:24.6%"></i><i class="dotcol" style="--lvl:26.0%"></i><i class="dotcol" style="--lvl:28.1%"></i><i class="dotcol" style="--lvl:25.6%"></i><i class="dotcol" style="--lvl:25.6%"></i><i class="dotcol" style="--lvl:25.9%"></i><i class="dotcol" style="--lvl:28.9%"></i><i class="dotcol now" style="--lvl:26.6%"></i></div>
         <span class="th t50" aria-hidden="true"></span>
@@ -2414,8 +2439,11 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     </div>
     <div class="metric"><div class="metric-head"><span class="metric-label">disk</span><span class="metric-val">1.2<small>/4T</small></span></div><canvas data-spark="disk" data-seed="30"></canvas></div>
     <div class="metric">
-      <div class="metric-head"><span class="metric-label">network</span><span class="metric-val"><span id="vNet2">4.3</span><small>Mb/s</small></span></div>
-      <div class="chan" id="netChan2" aria-hidden="true">
+      <div class="metric-head"><span class="metric-label">network</span><span class="metric-val resting"><span>0.0</span><small>Mb/s</small></span></div>
+      <!-- the lane crawls to match the numeral it belongs to: 0.0 Mb/s beside
+           packets at nominal tempo would be the two halves of one readout
+           disagreeing. Demo data, not a treatment — the channel is unchanged. -->
+      <div class="chan" id="netChan2" style="--rate: 0.06" aria-hidden="true">
         <span class="end l">wan</span>
         <span class="end r">lan</span>
         <i class="pk" style="--s:3; --d:3.4s; --dl:-0.9s; top:28%"></i>
@@ -4234,6 +4262,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   const LIVE = [
     { val: 'vCpu',   seg: 'cpuSegs',  v: 34, lo: 12, hi: 88, step: 8, fmt: v => Math.round(v) },
     { val: 'vMem',   seg: 'memSegs',  v: 33, lo: 24, hi: 62, step: 6, fmt: v => (v / 100 * 64).toFixed(1) },
+    // TITAN's cpu numeral is the resting demonstration and carries no id, so the
+    // walk writes no text; the row stays because the meter still wants its samples
+    // and the temp readout still follows this walk by name (see TEMPS below).
     { val: 'vCpu2',  seg: 'cpuSegs2', v: 19, lo: 6,  hi: 52, step: 7, fmt: v => Math.round(v) },
     { val: 'vMem2',  seg: 'memSegs2', v: 44, lo: 30, hi: 68, step: 5, fmt: v => (v / 100 * 32).toFixed(1) },
     { val: 's1cVal', seg: 's1cSegs',  v: 22, lo: 12, hi: 45, step: 5, fmt: v => Math.round(v) + '%' },
@@ -4246,6 +4277,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     { val: 's4mVal', seg: 's4mSegs',  v: 69, lo: 58, hi: 80, step: 4, fmt: v => (v / 100 * 6).toFixed(1) }
   ];
   // the two that are not random walks: a rate, and a temperature that follows its own cpu
+  // vNet2 has no numeral either, and here the missing element takes the whole row
+  // out of the walk — lane tempo included, which is what leaves TITAN's channel
+  // crawling at the --rate its markup declares instead of being re-driven each tick.
   const NETS = [{ val: 'vNet', chan: 'netChan', base: 10, span: 6, ref: 12.4 },
                 { val: 'vNet2', chan: 'netChan2', base: 3, span: 4, ref: 5.2 }];
   const TEMPS = [{ val: 'vTemp', wrap: 'tempWrap', from: 'vCpu', floor: 44, div: 9 },

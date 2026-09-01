@@ -1133,6 +1133,24 @@
     text-shadow: 0 0 20px rgba(var(--lumen-rgb), 0.45);
   }
   .metric-val small { font-size: 0.5em; font-weight: 300; color: var(--ok); }
+  /* A resting metric gives up its ink. A fresh sample of exactly zero is TRUE —
+     an idle 32-core host at one jiffy per sampling window, a tunnel-mode NIC
+     whose eth0 averages bytes per second — but a board of lit zeroes above
+     imperceptibly-flat meters reads as a DEAD fleet, and an operator who
+     reported "the stats aren't updating" was making a reasonable read of it.
+     Truth should not look like failure. So a resting rate takes Sand Faint and
+     drops the bloom: the One Light Rule already says a thing at rest loses its
+     light, and this is that sentence spent on a number. It invents no state —
+     nothing is prevented by an idle node, so nothing here takes Caution.
+
+     Freshness is the whole condition. An UNKNOWN metric is still the em-dash,
+     because "the host cannot report this" is a different sentence; and a STALE
+     zero must not dim as though it were resting, because "the number stopped
+     arriving" is not "the number is zero". Rates only — memory and disk are
+     levels, and an empty level is a fact about capacity, not a thing at rest.
+     The unit suffix keeps its Status Gold: the scale the reading is measured
+     against did not stop being true. */
+  .metric-val.resting { color: var(--ink-3); text-shadow: none; }
   .metric canvas { width: 100%; height: clamp(30px, 4.5vh, 62px); display: block; }
   .seg-track {
     display: flex; align-items: stretch; gap: 0.5px;

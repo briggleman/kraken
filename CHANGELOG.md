@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.4](https://github.com/briggleman/kraken/compare/v0.34.3...v0.34.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **panel:** restore SHA-aware agent-update preflight ([#186](https://github.com/briggleman/kraken/issues/186)) ([02fac4d](https://github.com/briggleman/kraken/commit/02fac4dcf928b992229821addb1be3ee23a7e688))
+
 ## [0.34.3](https://github.com/briggleman/kraken/compare/v0.34.2...v0.34.3) (2026-08-31)
 
 

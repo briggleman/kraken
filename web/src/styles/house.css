@@ -1034,6 +1034,21 @@
      which is true of a build you have not taken and false of a hold you put
      there yourself. A cordon release must not appear to be asking. */
   .ad-go { position: relative; overflow: hidden; }
+  /* Two jobs, two elements. The ::after below is the sweep — "something is
+     waiting for you" — and .ad-fill is the measurement. Sharing one
+     pseudo-element between an animated traversal and a driven width was the
+     first design here and it never resolved; they are different statements and
+     they each get their own box. The fill sits at zero unless the push is
+     actually in flight, so a chip at rest carries it inert and costs nothing. */
+  .ad-fill {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+    background: rgba(var(--caution-rgb), 0.2);
+    pointer-events: none;
+  }
+  /* the label rides above the fill rather than being washed over by it: a
+     positioned sibling paints after the absolute one, and "pushing…" has to stay
+     readable at the exact moment it is telling you something */
+  .ad-lbl { position: relative; }
   /* One pass of light every 3.6s and a long wait, clipped to the chip's own box.
      A traversal, not a throb: the chip's geometry never changes, so the pointer
      never has to chase it, and a fleet parked on a second monitor gets a signal
@@ -1065,19 +1080,26 @@
   .agent-drift.st-rest .ad-go:hover::after,
   .agent-drift.st-ahead .ad-go:hover::after { animation-play-state: paused; }
 
-  /* pushing: the same pseudo-element stops travelling and starts measuring —
-     a bar anchored left at --push-pct, set from the job's bytes_sent/bytes_total.
-     Position is the quantitative channel and the label stays qualitative: a
-     percentage ticking inside a 9px tracked-caps chip is noise, and the question
-     an operator actually has is "is it moving", which a bar answers at a glance.
-     The transition matters at LAN speed, where the whole push is two frames. */
-  /* pushing shows itself by what it STOPS doing: the sweep ends, because the
-     chip is no longer waiting for you — it is working. A determinate fill was
-     designed here and pulled: an absolutely-positioned child inside a <button>
-     never resolved a containing block (width: 100% measured 0), and the
-     ::after readings that would have confirmed the alternative were not
-     trustworthy either. Tracked as a follow-up rather than shipped unverified;
-     bytes_sent/bytes_total already ride the job API waiting for it. */
+  /* pushing shows itself by what it STOPS doing — the sweep ends, because the
+     chip is no longer waiting for you, it is working — and by what starts:
+     .ad-fill is anchored left at --push-pct, set from the job's
+     bytes_sent/bytes_total. Position is the quantitative channel and the label
+     stays qualitative ("pushing…"): a percentage ticking inside a 9px
+     tracked-caps chip is noise, and the question an operator actually has is
+     "is it moving", which a bar answers at a glance. The Violet Pulse Rule
+     holds — the chip's geometry never changes, only the light inside it.
+
+     The var is read HERE and nowhere else, so a --push-pct left on the line
+     after the push ends cannot paint a stale bar; and a preflight that failed
+     before sizing (bytes_total 0) sets no var at all, which falls through to
+     the 0 default rather than lying with a full one.
+
+     The transition is what makes a LAN push legible: 17MB over a switch is two
+     poll ticks, and without it the bar is one frame at 0 and one at 100. */
+  .agent-drift.st-pushing .ad-fill {
+    width: var(--push-pct, 0%);
+    transition: width 0.3s linear;
+  }
 
   /* restarting: nothing moves and nothing is measured. The agent has the binary
      and is rebooting into it; there is nothing left to ask for, and the outcome
@@ -1098,6 +1120,9 @@
   @media (prefers-reduced-motion: reduce) {
     .ad-go::after { animation: none; opacity: 0; }
     .ad-go { border-color: rgba(var(--caution-rgb), 0.6); background: rgba(var(--caution-rgb), 0.12); }
+    /* the fill stays — it is a reading, not decoration — but it stops tweening
+       and jumps to each polled value, which is the honest rendering anyway */
+    .agent-drift.st-pushing .ad-fill { transition: none; }
   }
   .metric { display: grid; grid-template-rows: auto auto 1fr; gap: 4px; min-width: 0; }
   .metric-head { display: flex; justify-content: space-between; align-items: baseline; }

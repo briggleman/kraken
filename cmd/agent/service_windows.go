@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -171,25 +172,41 @@ func serviceControl(action string, cfg *config.Config) error {
 	}
 }
 
-// installService registers the agent as an auto-start service. The service
-// command line is the current invocation minus the --service flag, so
-// whatever configuration flags were typed at install time (--root, --addr, …)
-// carry into the service definition verbatim.
+// Service identity strings, re-asserted on every registration so an older
+// install's wording converges on the current one.
+const (
+	serviceDisplayName = "Kraken Agent"
+	serviceDescription = "Kraken node daemon — runs game servers via the local Docker daemon."
+)
+
+// installService registers the agent as an auto-start service, or brings an
+// already-registered one's configuration current. The service command line is
+// the current invocation minus the --service flag, so whatever configuration
+// flags were typed (--root, --addr, …) carry into the service definition
+// verbatim.
+//
+// It is idempotent on purpose (#184). It used to refuse when the service
+// existed, which meant the recovery actions were asserted exactly once per
+// service lifetime: a service registered before those settings existed kept its
+// legacy config through every binary upgrade forever, because upgrades only
+// swap the .exe. That is how abyss-win went offline after its fourth
+// self-update of a day — three restart slots' worth of legacy config, then
+// nothing. Re-running --service install is now the healing path.
 func installService(m *mgr.Mgr) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
+	args := stripServiceFlag(os.Args[1:])
 
 	if s, err := m.OpenService(serviceName); err == nil {
-		_ = s.Close()
-		return fmt.Errorf("service %s already exists — run --service uninstall first to change its configuration", serviceName)
+		defer func() { _ = s.Close() }()
+		return updateService(s, exe, args)
 	}
 
-	args := stripServiceFlag(os.Args[1:])
 	s, err := m.CreateService(serviceName, exe, mgr.Config{
-		DisplayName: "Kraken Agent",
-		Description: "Kraken node daemon — runs game servers via the local Docker daemon.",
+		DisplayName: serviceDisplayName,
+		Description: serviceDescription,
 		StartType:   mgr.StartAutomatic,
 		// Game containers need Docker up; delay past the boot rush the same
 		// way the systemd unit orders After=docker.service. (Docker Desktop
@@ -201,6 +218,60 @@ func installService(m *mgr.Mgr) error {
 	}
 	defer func() { _ = s.Close() }()
 
+	if err := setRecoveryActions(s); err != nil {
+		return err
+	}
+
+	fmt.Printf("service %s installed (%s %s)\n", serviceName, exe, joinArgs(args))
+	fmt.Printf("start it with: %s --service start\n", filepath.Base(exe))
+	return nil
+}
+
+// updateService re-registers an existing service's configuration in place:
+// command line, delayed auto-start, identity strings, and — the reason this
+// path exists — the recovery actions and the non-crash-failure flag.
+//
+// The existing Config is read and mutated rather than built from scratch so the
+// fields this command has no opinion about (service type, error control, and
+// especially the account the service runs as) survive untouched. UpdateConfig
+// needs a finished BinaryPathName, which CreateService would have assembled
+// itself — serviceCommandLine builds the identical string.
+//
+// Note that the command line is rewritten from THIS invocation's flags: run it
+// the way the service was installed (install.ps1 always passes --root), or the
+// service loses flags it was registered with. The new command line is printed
+// so a mistake is visible immediately.
+func updateService(s *mgr.Service, exe string, args []string) error {
+	cfg, err := s.Config()
+	if err != nil {
+		return fmt.Errorf("read service config: %w", err)
+	}
+	before := cfg.BinaryPathName
+
+	cfg.BinaryPathName = serviceCommandLine(exe, args, syscall.EscapeArg)
+	cfg.DisplayName = serviceDisplayName
+	cfg.Description = serviceDescription
+	cfg.StartType = mgr.StartAutomatic
+	cfg.DelayedAutoStart = true
+	if err := s.UpdateConfig(cfg); err != nil {
+		return fmt.Errorf("update service config: %w", err)
+	}
+
+	if err := setRecoveryActions(s); err != nil {
+		return err
+	}
+
+	fmt.Printf("service %s updated (%s)\n", serviceName, cfg.BinaryPathName)
+	if before != cfg.BinaryPathName {
+		fmt.Printf("  command line was: %s\n", before)
+	}
+	fmt.Println("  recovery actions re-asserted: restart after 5s/30s/60s, reset after a day, including non-crash failures")
+	return nil
+}
+
+// setRecoveryActions applies the current recovery policy to a service, whether
+// it was just created or already existed.
+func setRecoveryActions(s *mgr.Service) error {
 	// Mirror the systemd unit's Restart=on-failure: restart after 5s, and
 	// reset the failure counter after a day of clean running.
 	if err := s.SetRecoveryActions([]mgr.RecoveryAction{
@@ -221,9 +292,6 @@ func installService(m *mgr.Mgr) error {
 	if err := s.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
 		return fmt.Errorf("set recovery-on-noncrash-failures flag: %w", err)
 	}
-
-	fmt.Printf("service %s installed (%s %s)\n", serviceName, exe, joinArgs(args))
-	fmt.Printf("start it with: %s --service start\n", filepath.Base(exe))
 	return nil
 }
 

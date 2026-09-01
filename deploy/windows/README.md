@@ -47,7 +47,8 @@ That single run:
    firewall rule (port rules survive binary upgrades; program rules
    silently stop matching),
 5. registers `kraken-agent` as a **native Windows service** (delayed
-   auto-start, restart-on-failure) and starts it,
+   auto-start, restart-on-failure) — or re-asserts that configuration when
+   the service already exists — and starts it,
 6. waits for the log to report `agent serving with mutual TLS`.
 
 On first start the agent **enrolls itself**: it generates a key, exchanges
@@ -91,6 +92,39 @@ C:\kraken\bin\kraken-agent.exe --root C:\kraken --print-config
 
 # Uninstall the service (binaries + data stay):
 C:\kraken\bin\kraken-agent.exe --service uninstall
+```
+
+### Existing installs: bring the service's recovery config current
+
+Self-update relies on **SCM recovery actions** to restart the service after it
+swaps its binary and exits. Those actions used to be written once, when the
+service was first registered — a service registered by an older agent kept its
+original (legacy) recovery config through every upgrade, since an upgrade only
+replaces the `.exe`. The symptom is a node that goes **offline after the Nth
+agent update of a busy day**: the old config restarts the service a few times,
+then stops trying, and the new binary sits on disk with nothing to start it
+(#184).
+
+`--service install` is idempotent now, so one elevated command re-asserts the
+current policy (restart after 5s / 30s / 60s, counter reset after a day,
+**including non-crash failures** — self-update's clean exit is one):
+
+```powershell
+# Pass the same flags the service was installed with: this also rewrites the
+# service's command line. install.ps1 always passes --root.
+C:\kraken\bin\kraken-agent.exe --service install --root C:\kraken
+```
+
+Re-running `install.ps1` does this for you on every run, so the next upgrade
+heals the config with no extra step.
+
+On an agent **older** than this fix, `--service install` refuses while the
+service exists; use `sc.exe` directly instead (the #114 drill):
+
+```powershell
+sc.exe failure kraken-agent reset= 86400 actions= restart/5000/restart/30000/restart/60000
+sc.exe failureflag kraken-agent 1
+sc.exe qc kraken-agent          # confirm
 ```
 
 Configuration changes: edit `C:\kraken\agent.yaml`, then

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/briggleman/kraken/compare/v0.36.0...v0.37.0) (2026-09-01)
+
+
+### Features
+
+* **web:** the wizard drops its manual catalog step and promotes every skip ([#205](https://github.com/briggleman/kraken/issues/205)) ([06a34f9](https://github.com/briggleman/kraken/commit/06a34f9f3a31c3b2eafe711f3d5c3701016b951c))
+
 ## [0.36.0](https://github.com/briggleman/kraken/compare/v0.35.0...v0.36.0) (2026-09-01)
 
 

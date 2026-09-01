@@ -223,11 +223,16 @@ if ($NoService) {
   exit 0
 }
 
-if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
-  Log "registering the $ServiceName service"
-  & $agentExe --service install --root $Root
-  if ($LASTEXITCODE -ne 0) { Die "service install failed (exit $LASTEXITCODE)" }
-}
+# Run on EVERY invocation, not just when the service is missing. `--service
+# install` is idempotent: it registers the service, or re-asserts an existing
+# one's configuration — command line, delayed auto-start, and the recovery
+# actions (restart 5s/30s/60s, including non-crash failures). Those recovery
+# actions were previously written once, when the service was first registered,
+# so a service predating them carried legacy config through every upgrade and
+# eventually failed to come back from a self-update (#184).
+Log "registering / refreshing the $ServiceName service"
+& $agentExe --service install --root $Root
+if ($LASTEXITCODE -ne 0) { Die "service install failed (exit $LASTEXITCODE)" }
 
 Log "starting $ServiceName"
 Start-Service -Name $ServiceName

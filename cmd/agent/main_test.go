@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,57 @@ func TestStripServiceFlag(t *testing.T) {
 		if got != c.want {
 			t.Errorf("stripServiceFlag(%v) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestServiceCommandLine — re-registering an existing service (#184) has to
+// hand UpdateConfig the same command line CreateService would have assembled
+// from an exe plus args, or an "update" silently changes how the service
+// starts. The escaper is injected because syscall.EscapeArg is Windows-only;
+// what this locks down is the shape: exe first, one space between elements,
+// every element escaped exactly once.
+func TestServiceCommandLine(t *testing.T) {
+	// A stand-in for syscall.EscapeArg: quotes only what needs it, and marks
+	// every element it saw so a missed escape is visible.
+	esc := func(s string) string {
+		if strings.ContainsAny(s, " \t") {
+			return `"` + s + `"`
+		}
+		return s
+	}
+	cases := []struct {
+		exe  string
+		args []string
+		want string
+	}{{
+		`C:\kraken\bin\kraken-agent.exe`, []string{"--root", `C:\kraken`},
+		`C:\kraken\bin\kraken-agent.exe --root C:\kraken`,
+	}, {
+		// No flags typed: the command line is the bare exe, with no trailing space.
+		`C:\kraken\bin\kraken-agent.exe`, nil,
+		`C:\kraken\bin\kraken-agent.exe`,
+	}, {
+		// Spaces on either side must be escaped, not just in the args.
+		`C:\Program Files\kraken\kraken-agent.exe`, []string{"--root", `C:\Program Files\kraken`},
+		`"C:\Program Files\kraken\kraken-agent.exe" --root "C:\Program Files\kraken"`,
+	}}
+	for _, c := range cases {
+		if got := serviceCommandLine(c.exe, c.args, esc); got != c.want {
+			t.Errorf("serviceCommandLine(%q, %v) = %q, want %q", c.exe, c.args, got, c.want)
+		}
+	}
+}
+
+// The command line a re-registration writes must equal what a fresh install
+// would have produced from the same invocation — the two paths are only
+// interchangeable if they agree on the args as well as the escaping.
+func TestServiceCommandLineMatchesTheInstallInvocation(t *testing.T) {
+	const exe = `C:\kraken\bin\kraken-agent.exe`
+	typed := []string{"--service", "install", "--root", `C:\kraken`, "--addr", ":9091"}
+	want := exe + ` --root C:\kraken --addr :9091`
+	got := serviceCommandLine(exe, stripServiceFlag(typed), func(s string) string { return s })
+	if got != want {
+		t.Errorf("service command line = %q, want %q", got, want)
 	}
 }
 

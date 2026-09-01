@@ -2,10 +2,17 @@ package api_test
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/version"
 )
 
 // decodeJob pulls the job body off a response.
@@ -75,6 +82,46 @@ func TestAgentUpdateReturns202ThenFailsIndependentlyOfTheRequest(t *testing.T) {
 	// #160's whole point: the agent's refusal reaches the operator verbatim.
 	if msg, _ := last["error"].(string); !strings.Contains(msg, "self-update is not available") {
 		t.Errorf("job error should carry the agent's reason, got %q", msg)
+	}
+}
+
+// startFakeAgentReporting is startFakeAgent with the reported agent version
+// under the test's control. The shared fixture reports "test", which can never
+// equal the Panel's own version — so preflight's already-current refusal is
+// unreachable through it.
+//
+// The fake has no self-updater, so its NodeInfo carries no BinarySha256 (see
+// Service.GetNodeInfo): this fixture exercises exactly the missing-hash
+// version-string fallback. The hash branches need an embedded agent binary,
+// which a dev build and a CI checkout do not have — they are covered by
+// TestAgentUpdateSkew instead.
+func startFakeAgentReporting(t *testing.T, nodeID, agentVersion string) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := grpc.NewServer()
+	agentpb.RegisterNodeServiceServer(srv, agent.NewService(agent.NewFakeRuntime(nodeID, "linux", true, agentVersion)))
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	return lis.Addr().String()
+}
+
+// An agent that already reports the Panel's version, with no hash on either
+// side, must be refused with a 409 that names the version — the fallback half
+// of the skew rule, end to end through the handler.
+func TestAgentUpdateRefusesAnAgentAlreadyAtThePanelsVersion(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	nodeID := registerNode(t, h, token, startFakeAgentReporting(t, "node-current", version.Version))
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("POST agent-update: status %d, want 409; body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "already at the panel's version") {
+		t.Errorf("409 should say the agent is already current, got %s", rec.Body.String())
 	}
 }
 

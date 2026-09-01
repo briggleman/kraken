@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -200,6 +201,43 @@ func (s *Server) embeddedAgentSHA(os cluster.NodeOS, arch string) string {
 	return agentbin.SHA(string(os), arch)
 }
 
+// agentUpdateSkew decides whether pushing this Panel's embedded agent to a node
+// is worth doing: nil means push, non-nil is the 409 the caller gets instead.
+//
+// Artifact identity is the test whenever both sides can produce a hash (#93,
+// #178) — version strings are the fallback, not the rule:
+//
+//   - Hashes MATCH → refuse. A panel-only release bumps the version while the
+//     agent bytes are unchanged, and pushing then restarts the agent for nothing.
+//     The refusal has to say "identical binary", because an operator reading
+//     "already at the panel's version" while the versions plainly differ reads it
+//     as a version bug.
+//   - Hashes DIFFER → push, even when the version strings are equal. Equal
+//     version with different bytes is a dirty rebuild of the same tag, and
+//     "bring the node to the panel's build" means bytes, not labels.
+//   - Either hash missing (an agent too old to report one; a dev Panel with no
+//     embedded binary) → the version-string comparison stands.
+//
+// It takes strings rather than the Server so the whole decision matrix is
+// testable without an embedded binary — a dev build (and CI) has none, so the
+// hash branches are unreachable through the HTTP handler there.
+func agentUpdateSkew(agentVersion, panelVersion, agentSHA, panelSHA string) *agentUpdateError {
+	if agentSHA != "" && panelSHA != "" {
+		if !strings.EqualFold(agentSHA, panelSHA) {
+			return nil
+		}
+		msg := "agent binary is identical to this panel's embedded build"
+		if agentVersion != panelVersion {
+			msg += " (agent reports " + agentVersion + ", panel is " + panelVersion + ")"
+		}
+		return &agentUpdateError{http.StatusConflict, msg + " — nothing to push"}
+	}
+	if agentVersion == panelVersion {
+		return &agentUpdateError{http.StatusConflict, "agent is already at the panel's version (" + panelVersion + ")"}
+	}
+	return nil
+}
+
 // agentUpdatePlan is everything preflight resolved, ready for a stream that may
 // outlive the request that asked for it. It deliberately holds no context: the
 // pushing goroutine makes its own (see runAgentUpdate).
@@ -243,15 +281,20 @@ func (s *Server) prepareAgentUpdate(ctx context.Context, n *cluster.Node) (*agen
 		// and "the service cannot do this right now" is the truer meaning.
 		return nil, &agentUpdateError{http.StatusServiceUnavailable, "agent unreachable: " + err.Error()}
 	}
-	if info.AgentVersion == version.Version {
-		return nil, &agentUpdateError{http.StatusConflict, "agent is already at the panel's version (" + version.Version + ")"}
-	}
 	arch := info.Arch
 	if arch == "" {
 		// An agent old enough to not report its arch predates the update RPC
 		// too; amd64 is the overwhelmingly likely platform, and the push below
 		// fails cleanly with Unimplemented if the agent truly can't do this.
 		arch = "amd64"
+	}
+
+	// Refuse a pointless push. info.BinarySha256 is the agent's self-reported
+	// hash on the FRESH NodeInfo — preferred over the node record's copy, which
+	// can be a reconcile poll behind.
+	if skew := agentUpdateSkew(info.AgentVersion, version.Version,
+		info.BinarySha256, s.embeddedAgentSHA(cluster.NodeOS(info.Os), arch)); skew != nil {
+		return nil, skew
 	}
 
 	data, sha, err := agentbin.Get(info.Os, arch)

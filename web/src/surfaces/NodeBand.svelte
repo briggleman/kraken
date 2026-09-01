@@ -60,6 +60,13 @@
   let phase = $state<"idle" | "pushing" | "restarting" | "failed">("idle");
   let pushErr = $state("");
 
+  // How far the binary has got, as a percentage, or undefined for "not knowable".
+  // The house reads --push-pct only under .st-pushing, so this drives the chip's
+  // fill and nothing else. Undefined is a real answer: a preflight that died
+  // before sizing the binary reports bytes_total 0, and a full bar or a 0% bar
+  // would both be claims the Panel cannot make.
+  let pushPct = $state<number | undefined>(undefined);
+
   // The drift line dissolving is the episode ending — the node came back on the
   // panel's build — but this component outlives it, so a terminal phase left
   // behind would RESURRECT on the next drift (the next panel release) as a chip
@@ -121,8 +128,10 @@
   // itself — and the drift line then clears on its own once the node reports the
   // new version, which is the actual success signal. A 404 means this Panel has
   // no job for the node (it restarted, or the job aged out): stop polling and
-  // trust the node record. This deliberately keeps the current label swap; the
-  // in-flight and failure DESIGN is #159, which will consume bytes_sent.
+  // trust the node record. Each tick also feeds the chip's fill from bytes_sent
+  // — the one place the ~17MB over a WAN stops being a chip that has merely gone
+  // quiet. The bytes are "handed to the stream", not acknowledged by the agent
+  // (see the type), which is why the label stays the qualitative "pushing…".
   let pollTimer: ReturnType<typeof setInterval> | undefined;
 
   function stopPoll() {
@@ -136,6 +145,7 @@
     if (phase === "pushing") return;
     phase = "pushing";
     pushErr = "";
+    pushPct = undefined;
     try {
       await api.updateNodeAgent(node.id);
     } catch (e) {
@@ -165,7 +175,15 @@
       await refreshFleet();
       return;
     }
-    if (job.phase === "pushing") return;
+    if (job.phase === "pushing") {
+      // bytes_total 0 means the push failed before the binary was sized, so the
+      // var is left unset and the fill falls through to its 0% default rather
+      // than to a bar claiming either extreme.
+      if (job.bytes_total > 0) {
+        pushPct = Math.min(100, Math.max(0, (job.bytes_sent / job.bytes_total) * 100));
+      }
+      return;
+    }
     stopPoll();
     if (job.phase === "failed") {
       pushErr = job.error || "the agent refused the update";
@@ -201,7 +219,11 @@
          panel has outrun it, it moves to the drift line below rather than printing twice -->
     <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
     {#if drift}
-      <span class="node-meta node-cond agent-drift st-{chipState}">
+      <!-- the fill's width is read off this line, the way the mock's CSS reads it -->
+      <span
+        class="node-meta node-cond agent-drift st-{chipState}"
+        style={pushPct === undefined ? undefined : `--push-pct: ${pushPct.toFixed(1)}%`}
+      >
         <span class="nc-k">agent</span><b class="nc-v">{drift.from}</b><span class="nc-sep" aria-hidden="true">→</span><b class="nc-v act">{drift.to}</b>
         {#if failure}
           <!-- the reason takes the line's one act colour; .st-failed hands it over
@@ -217,7 +239,8 @@
                 ? `downgrade the agent on ${node.name} to the panel's ${drift.to}`
                 : `push the panel's ${drift.to} agent to ${node.name} — it restarts itself`)}
             aria-label="{drift.direction === 'ahead' ? 'Downgrade' : 'Update'} the agent on {node.name} from {drift.from} to {drift.to}"
-            onclick={() => void pushAgent()}>{chipLabel}</button
+            onclick={() => void pushAgent()}
+            ><i class="ad-fill" aria-hidden="true"></i><span class="ad-lbl">{chipLabel}</span></button
           >
         {/if}
       </span>

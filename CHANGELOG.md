@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.0](https://github.com/briggleman/kraken/compare/v0.34.5...v0.35.0) (2026-09-01)
+
+
+### Features
+
+* **web:** a resting metric gives up its ink ([#191](https://github.com/briggleman/kraken/issues/191)) ([68389bf](https://github.com/briggleman/kraken/commit/68389bfa808b88a5d7df00063b95740b020b2d04))
+* **web:** determinate progress fill for the pushing chip ([#187](https://github.com/briggleman/kraken/issues/187)) ([292e6c4](https://github.com/briggleman/kraken/commit/292e6c483959f933eef64e66af4745ed920ac416))
+
 ## [0.34.5](https://github.com/briggleman/kraken/compare/v0.34.4...v0.34.5) (2026-09-01)
 
 

@@ -14,6 +14,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel"
 	"github.com/briggleman/kraken/internal/panel/api"
 	"github.com/briggleman/kraken/internal/panel/config"
+	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/store/memory"
 )
 
@@ -65,6 +66,36 @@ func clearMustChangePassword(t *testing.T, st *memory.Store, username string) {
 	u.MustChangePassword = false
 	if err := st.UpdateUser(context.Background(), u); err != nil {
 		t.Fatalf("clear must-change: update user: %v", err)
+	}
+}
+
+// waitInstalled polls the store until the server has left the installing
+// state, then returns the settled record.
+//
+// POST /api/v1/servers answers as soon as the record is persisted and runs the
+// install in a background goroutine, whose completion write (provision →
+// setServerState → offline) reloads the server and overwrites State. A test
+// that seeds a state onto a server it created through the API must gate on this
+// first: otherwise that write can land after the test's own and silently undo
+// it, and the handler under test then honestly reads the wrong state (#200).
+func waitInstalled(t *testing.T, st *memory.Store, id string) *store.Server {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		sv, err := st.GetServer(context.Background(), id)
+		if err != nil {
+			t.Fatalf("wait for install: get server %s: %v", id, err)
+		}
+		// provision's final store write IS the transition out of installing
+		// (offline on success, install_failed on any failure path), so a
+		// non-installing state means no further background write is coming.
+		if sv.State != store.StateInstalling {
+			return sv
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("wait for install: server %s still installing after 10s", id)
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/briggleman/kraken/compare/v0.35.0...v0.36.0) (2026-09-01)
+
+
+### Features
+
+* **agent:** make the SCM config inspectable with --service status ([#199](https://github.com/briggleman/kraken/issues/199)) ([252f7f5](https://github.com/briggleman/kraken/commit/252f7f53ee212adc7d840eb479757361bca90492))
+
 ## [0.35.0](https://github.com/briggleman/kraken/compare/v0.34.5...v0.35.0) (2026-09-01)
 
 

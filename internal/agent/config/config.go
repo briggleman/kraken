@@ -90,7 +90,7 @@ type Flags struct {
 	ShowVersion bool
 	PrintConfig bool
 	// Service is a Windows service-control action: "install", "uninstall",
-	// "start", or "stop". Empty means run normally.
+	// "start", "stop", or "status". Empty means run normally.
 	Service string
 }
 
@@ -130,7 +130,8 @@ func Load(args []string) (*Config, Flags, error) {
 	fs.StringVar(&fromFlags.Runtime, "runtime", "", `container backend: "docker" or "fake"`)
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
-	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", or "stop"`)
+	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", "stop", or "status"`+
+		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed; run it with the same flags as install)`)
 	fs.BoolVar(&modes.ShowVersion, "version", false, "print version and exit")
 	fs.BoolVar(&modes.PrintConfig, "print-config", false, "print the resolved configuration and exit")
 	if err := fs.Parse(args); err != nil {
@@ -140,9 +141,9 @@ func Load(args []string) (*Config, Flags, error) {
 		return nil, modes, fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
 	}
 	switch modes.Service {
-	case "", "install", "uninstall", "start", "stop":
+	case "", "install", "uninstall", "start", "stop", "status":
 	default:
-		return nil, modes, fmt.Errorf(`config: --service must be "install", "uninstall", "start", or "stop" (got %q)`, modes.Service)
+		return nil, modes, fmt.Errorf(`config: --service must be "install", "uninstall", "start", "stop", or "status" (got %q)`, modes.Service)
 	}
 
 	// Which flags were actually typed — zero values must not outrank the file.

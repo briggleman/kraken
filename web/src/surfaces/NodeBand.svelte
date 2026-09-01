@@ -32,6 +32,18 @@
   // a node whose agent is unreachable.
   const mem = $derived(nodeMemLabel(node));
 
+  // A resting metric gives up its ink: a FRESH zero is true, and an all-zero
+  // board of lit numerals reads as a dead fleet when it is only an idle one —
+  // which is exactly the misread that produced "node stats aren't updating"
+  // against numbers that were every one of them correct. The test is what the
+  // operator SEES as zero, not what the float says: an idle 32-core host reads
+  // 0.0156% and prints "0", so rounding is the honest place to ask. Unknown is
+  // still the em-dash above (a different sentence), and memory/disk are levels
+  // rather than rates, so they never rest — an empty level is a fact about
+  // capacity. See DESIGN.md's Metric section.
+  const cpuResting = $derived(cpu !== undefined && Math.round(cpu) === 0);
+  const netResting = $derived(mbps !== undefined && mbps.toFixed(1) === "0.0");
+
   // The packet channel's tempo is throughput against this node's own observed
   // peak; there is no link speed to normalize against.
   const netRate = $derived(
@@ -275,7 +287,7 @@
   </div>
   <div class="metric">
     <div class="metric-head">
-      <span class="metric-label">cpu</span><span class="metric-val"
+      <span class="metric-label">cpu</span><span class="metric-val" class:resting={cpuResting}
         >{#if cpu === undefined}—<small></small>{:else}<span>{Math.round(cpu)}</span><small>%</small>{/if}</span
       >
     </div>
@@ -310,7 +322,7 @@
   </div>
   <div class="metric">
     <div class="metric-head">
-      <span class="metric-label">network</span><span class="metric-val"
+      <span class="metric-label">network</span><span class="metric-val" class:resting={netResting}
         >{#if mbps === undefined}—<small></small>{:else}<span>{mbps.toFixed(1)}</span><small
             >Mb/s</small
           >{/if}</span

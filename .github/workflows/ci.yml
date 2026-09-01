@@ -9,13 +9,25 @@ on:
     # and the PR stays red until someone pushes an unrelated commit. The
     # expensive jobs below opt out of `edited` so a title or body tweak doesn't
     # rebuild and retest everything.
+    #
+    # That opt-out is only half the story: an `edited` run also has to stay OUT
+    # of the build runs' concurrency group, or it cancels the in-flight
+    # `opened`/`synchronize` run whose go/web jobs are the required checks —
+    # leaving them cancelled-then-skipped and the PR permanently pending (#192,
+    # observed on #187, recovered only by close/reopen). See the split group
+    # below; do NOT collapse it back into a single group, and do NOT "simplify"
+    # this by dropping `edited` from the types.
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
-# Cancel superseded runs on the same ref (e.g. rapid PR pushes).
+# Cancel superseded runs on the same ref (e.g. rapid PR pushes) — but keep
+# metadata-only runs in their own group so a title/body edit can never cancel a
+# build run (#192). `push` events carry no `github.event.action`, so they land in
+# 'build' exactly as before; rapid `synchronize` runs still supersede each other;
+# `edited` runs now only supersede other `edited` runs.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' && 'meta' || 'build' }}
   cancel-in-progress: true
 
 permissions:

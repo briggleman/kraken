@@ -119,6 +119,21 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@latest
           staticcheck ./...
 
+      # Stub agent binaries so the embed-FS code paths actually run. A checkout
+      # embeds nothing (dist/ holds only .gitkeep), which makes every
+      # artifact-identity branch of the agent-update preflight unreachable
+      # end-to-end off a release build (#189). Distinct contents per platform so
+      # the per-platform SHAs differ — a shared hash would let a wrong-platform
+      # lookup pass. These are NOT runnable binaries and nothing executes them:
+      # the tests only need bytes with a stable SHA-256. Written after build/vet
+      # so nothing else sees them, and .gitignore keeps dist/kraken-agent-* out
+      # of commits.
+      - name: stub embedded agent binaries (agent-update e2e coverage)
+        run: |
+          printf 'stub-linux-amd64\n'   > internal/panel/agentbin/dist/kraken-agent-linux-amd64
+          printf 'stub-linux-arm64\n'   > internal/panel/agentbin/dist/kraken-agent-linux-arm64
+          printf 'stub-windows-amd64\n' > internal/panel/agentbin/dist/kraken-agent-windows-amd64.exe
+
       - name: test
         run: go test -race ./...
 

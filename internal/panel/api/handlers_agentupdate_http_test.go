@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/panel/agentbin"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/version"
 )
@@ -23,6 +26,31 @@ func decodeJob(t *testing.T, body []byte) map[string]any {
 		t.Fatalf("decode job: %v (body %s)", err, body)
 	}
 	return m
+}
+
+// embeddedStubSHA returns the SHA-256 of the agent binary this Panel build has
+// embedded for the platform the fake agents report — linux, on the test host's
+// GOARCH, because Service.GetNodeInfo stamps Arch = runtime.GOARCH.
+//
+// Everything downstream of preflight's binary lookup needs one to exist, and a
+// plain checkout embeds nothing (dist/ holds only .gitkeep). CI writes stubs
+// before the test step precisely so these paths run (#189), so a missing binary
+// there is a broken CI step, not an environment fact — fail loudly rather than
+// skip, or the coverage silently evaporates the way it did before. Locally the
+// skip stays: a dev checkout legitimately has no embedded agent, and
+// `make embed-agents` is the way to opt in.
+func embeddedStubSHA(t *testing.T) string {
+	t.Helper()
+	sha := agentbin.SHA("linux", runtime.GOARCH)
+	if sha == "" {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("no agent binary embedded for linux/%s on CI — the ci.yml step that writes "+
+				"internal/panel/agentbin/dist/kraken-agent-* stubs did not run, so the agent-update "+
+				"artifact-identity paths are untested (see #189)", runtime.GOARCH)
+		}
+		t.Skipf("panel built without an embedded agent binary for linux/%s — run `make embed-agents` to cover this path", runtime.GOARCH)
+	}
+	return sha
 }
 
 // The fake agent has no self-updater, so UpdateAgent refuses with
@@ -40,15 +68,12 @@ func TestAgentUpdateReturns202ThenFailsIndependentlyOfTheRequest(t *testing.T) {
 	addr := startFakeAgent(t, "node-x")
 	nodeID := registerNode(t, h, token, addr)
 
-	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
 	// A dev build embeds no agent binary, so preflight legitimately answers 503
-	// here. Both outcomes are correct; only the 503 short-circuits the job.
-	if rec.Code == http.StatusServiceUnavailable {
-		if !strings.Contains(rec.Body.String(), "no embedded agent binary") {
-			t.Fatalf("503 for an unexpected reason: %s", rec.Body.String())
-		}
-		t.Skip("panel built without embedded agent binaries — the async path needs one to push")
-	}
+	// and there is no push to observe. On CI that is a broken stub step, not an
+	// environment fact — embeddedStubSHA fails there instead of skipping (#189).
+	embeddedStubSHA(t)
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("POST agent-update: status %d, want 202; body %s", rec.Code, rec.Body.String())
 	}
@@ -90,19 +115,21 @@ func TestAgentUpdateReturns202ThenFailsIndependentlyOfTheRequest(t *testing.T) {
 // equal the Panel's own version — so preflight's already-current refusal is
 // unreachable through it.
 //
-// The fake has no self-updater, so its NodeInfo carries no BinarySha256 (see
-// Service.GetNodeInfo): this fixture exercises exactly the missing-hash
-// version-string fallback. The hash branches need an embedded agent binary,
-// which a dev build and a CI checkout do not have — they are covered by
-// TestAgentUpdateSkew instead.
-func startFakeAgentReporting(t *testing.T, nodeID, agentVersion string) string {
+// Called with an empty sha the fake has nothing to report, so its NodeInfo
+// carries no BinarySha256 (see Service.GetNodeInfo) — exactly the missing-hash
+// version-string fallback. With a sha it stands in for an agent whose
+// self-updater reports one, which is what makes the artifact-identity branches
+// (#93, #178, #186) reachable end to end; those also need a binary embedded on
+// the Panel side, so their tests go through embeddedStubSHA.
+func startFakeAgentReporting(t *testing.T, nodeID, agentVersion, sha string) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	srv := grpc.NewServer()
-	agentpb.RegisterNodeServiceServer(srv, agent.NewService(agent.NewFakeRuntime(nodeID, "linux", true, agentVersion)))
+	rt := agent.NewFakeRuntime(nodeID, "linux", true, agentVersion, agent.WithFakeBinarySHA(sha))
+	agentpb.RegisterNodeServiceServer(srv, agent.NewService(rt))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return lis.Addr().String()
@@ -114,7 +141,7 @@ func startFakeAgentReporting(t *testing.T, nodeID, agentVersion string) string {
 func TestAgentUpdateRefusesAnAgentAlreadyAtThePanelsVersion(t *testing.T) {
 	h, _ := newTestServerStore(t)
 	token := login(t, h)
-	nodeID := registerNode(t, h, token, startFakeAgentReporting(t, "node-current", version.Version))
+	nodeID := registerNode(t, h, token, startFakeAgentReporting(t, "node-current", version.Version, ""))
 
 	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
 	if rec.Code != http.StatusConflict {
@@ -122,6 +149,72 @@ func TestAgentUpdateRefusesAnAgentAlreadyAtThePanelsVersion(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "already at the panel's version") {
 		t.Errorf("409 should say the agent is already current, got %s", rec.Body.String())
+	}
+}
+
+// Artifact identity beats the version strings: an agent whose self-reported hash
+// equals the Panel's embedded build is refused even though the versions differ,
+// and the refusal has to SAY "identical" — an operator reading "already at the
+// panel's version" while the versions plainly differ reads it as a version bug
+// (#186). Asserted on the message text for that reason.
+//
+// This is the branch that had no end-to-end coverage: it needs a real hash on
+// both sides, so it runs only where a binary is embedded (CI stubs, or a local
+// `make embed-agents`).
+func TestAgentUpdateRefusesAnIdenticalBinaryDespiteADifferentVersion(t *testing.T) {
+	sha := embeddedStubSHA(t)
+
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	// A version string that cannot equal the Panel's, so a 409 here can only
+	// have come from the hash comparison.
+	nodeID := registerNode(t, h, token, startFakeAgentReporting(t, "node-identical", "v0.0.0-different", sha))
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("POST agent-update: status %d, want 409; body %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "identical") {
+		t.Errorf("409 must say the binary is identical, got %s", body)
+	}
+	if strings.Contains(body, "already at the panel's version") {
+		t.Errorf("409 took the version-string branch, not the hash branch: %s", body)
+	}
+	// The message also has to carry both labels, or "identical" reads as a
+	// contradiction of the versions the operator can see.
+	if !strings.Contains(body, "v0.0.0-different") || !strings.Contains(body, version.Version) {
+		t.Errorf("409 should name both versions, got %s", body)
+	}
+}
+
+// The other half of #178: equal version strings with DIFFERENT bytes is a dirty
+// rebuild of the same tag, and "bring the node to the panel's build" means bytes
+// — so it pushes. Covered until now only by the pure decision matrix, where the
+// version-equality shortcut could have been reinstated ahead of the hash check
+// without any end-to-end test noticing.
+func TestAgentUpdatePushesADifferentBinaryAtTheSameVersion(t *testing.T) {
+	embeddedStubSHA(t)
+
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	// Same version as the Panel, hash that cannot match the embedded build.
+	const otherSHA = "0000000000000000000000000000000000000000000000000000000000000000"
+	nodeID := registerNode(t, h, token, startFakeAgentReporting(t, "node-dirty-rebuild", version.Version, otherSHA))
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/agent-update", token, nil)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("POST agent-update: status %d, want 202; body %s", rec.Code, rec.Body.String())
+	}
+	job := decodeJob(t, rec.Body.Bytes())
+	if job["phase"] != "pushing" {
+		t.Errorf("phase = %v, want pushing", job["phase"])
+	}
+	// from/to both being the same version is the whole point of the edge — the
+	// push is justified by the bytes, not the label.
+	if job["from_version"] != version.Version || job["to_version"] != version.Version {
+		t.Errorf("job should push %s → %s, got from=%v to=%v",
+			version.Version, version.Version, job["from_version"], job["to_version"])
 	}
 }
 

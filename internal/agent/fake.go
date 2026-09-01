@@ -20,6 +20,7 @@ type FakeRuntime struct {
 	os          string
 	wineEnabled bool
 	version     string
+	binarySHA   string
 
 	mu      sync.Mutex
 	states  map[string]agentpb.ServerState
@@ -27,12 +28,32 @@ type FakeRuntime struct {
 	backups map[string][]*agentpb.BackupInfo // serverID → backups
 }
 
+// FakeOption customizes a FakeRuntime at construction time. It exists so the
+// fixture can grow without breaking the call sites that don't care.
+type FakeOption func(*FakeRuntime)
+
+// WithFakeBinarySHA makes the fake report a self-reported agent binary hash in
+// NodeInfo, the way an agent with a real self-updater does.
+//
+// The fake has no SelfUpdater, so Service.GetNodeInfo leaves BinarySha256 alone
+// (it only fills it in when an updater is wired) — which is what makes reporting
+// it from the runtime work, and what keeps a real updater authoritative if both
+// are ever present. Without this, the Panel's artifact-identity branches (#93,
+// #178, #186) are unreachable through the HTTP handler in a test.
+func WithFakeBinarySHA(sha string) FakeOption {
+	return func(f *FakeRuntime) { f.binarySHA = sha }
+}
+
 // NewFakeRuntime returns a fake runtime identifying as the given node.
-func NewFakeRuntime(nodeID, os string, wineEnabled bool, version string) *FakeRuntime {
-	return &FakeRuntime{
+func NewFakeRuntime(nodeID, os string, wineEnabled bool, version string, opts ...FakeOption) *FakeRuntime {
+	f := &FakeRuntime{
 		nodeID: nodeID, os: os, wineEnabled: wineEnabled, version: version,
 		states: make(map[string]agentpb.ServerState),
 	}
+	for _, o := range opts {
+		o(f)
+	}
+	return f
 }
 
 var _ Runtime = (*FakeRuntime)(nil)
@@ -66,6 +87,7 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 		Os:             f.os,
 		WineEnabled:    f.wineEnabled,
 		AgentVersion:   f.version,
+		BinarySha256:   f.binarySHA, // empty unless WithFakeBinarySHA was used
 		TotalMemoryMb:  16384,
 		RunningServers: int32(running),
 		Host:           PrimaryIP(),

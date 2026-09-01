@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
@@ -33,6 +35,18 @@ func isWindowsService() bool {
 	return err == nil && inService
 }
 
+// exitError carries the process exit status a control action wants alongside its
+// message. It exists for `--service status`, whose exit code is a documented
+// contract (0 in sync · 1 drift · 2 not installed or SCM error) that scripts in
+// the Windows README depend on. Actions without an opinion return a plain error
+// and keep exiting 1.
+type exitError struct {
+	code int
+	msg  string
+}
+
+func (e *exitError) Error() string { return e.msg }
+
 // serviceMain handles --service control actions and SCM-launched runs.
 // Returns true when it fully handled the invocation (main should return);
 // false means this is an interactive console start.
@@ -40,7 +54,12 @@ func serviceMain(cfg *config.Config, action string) bool {
 	if action != "" {
 		if err := serviceControl(action, cfg); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			code := 1
+			var ee *exitError
+			if errors.As(err, &ee) {
+				code = ee.code
+			}
+			os.Exit(code)
 		}
 		return true
 	}
@@ -136,17 +155,25 @@ func openServiceLog(stateDir string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 }
 
-// serviceControl implements --service install|uninstall|start|stop.
+// serviceControl implements --service install|uninstall|start|stop|status.
 func serviceControl(action string, cfg *config.Config) error {
 	m, err := mgr.Connect()
 	if err != nil {
-		return fmt.Errorf("connect to service manager (run from an elevated shell): %w", err)
+		err = fmt.Errorf("connect to service manager (run from an elevated shell): %w", err)
+		if action == "status" {
+			// status promises 2 for "could not read the SCM" — a script that
+			// treats 1 as drift must not read an unelevated shell as drift.
+			return &exitError{exitServiceUnavailable, err.Error()}
+		}
+		return err
 	}
 	defer func() { _ = m.Disconnect() }()
 
 	switch action {
 	case "install":
 		return installService(m)
+	case "status":
+		return statusService(m)
 	case "uninstall":
 		return uninstallService(m)
 	case "start":
@@ -273,12 +300,14 @@ func updateService(s *mgr.Service, exe string, args []string) error {
 // it was just created or already existed.
 func setRecoveryActions(s *mgr.Service) error {
 	// Mirror the systemd unit's Restart=on-failure: restart after 5s, and
-	// reset the failure counter after a day of clean running.
-	if err := s.SetRecoveryActions([]mgr.RecoveryAction{
-		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
-		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
-		{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
-	}, 86400); err != nil {
+	// reset the failure counter after a day of clean running. The delays and the
+	// reset period come from servicestatus.go so `--service status` compares
+	// against what this actually writes, not a second copy of the numbers.
+	actions := make([]mgr.RecoveryAction, 0, len(serviceRestartDelays))
+	for _, d := range serviceRestartDelays {
+		actions = append(actions, mgr.RecoveryAction{Type: mgr.ServiceRestart, Delay: d})
+	}
+	if err := s.SetRecoveryActions(actions, uint32(serviceFailureResetPeriod.Seconds())); err != nil {
 		return fmt.Errorf("set recovery actions: %w", err)
 	}
 	// By default Windows runs recovery actions only when the process CRASHES
@@ -293,6 +322,164 @@ func setRecoveryActions(s *mgr.Service) error {
 		return fmt.Errorf("set recovery-on-noncrash-failures flag: %w", err)
 	}
 	return nil
+}
+
+// statusService prints the service's ACTUAL SCM configuration beside what a
+// `--service install` from this same invocation would write, and exits 0 in
+// sync · 1 on drift · 2 when it cannot read the config at all.
+//
+// It exists because #184's failure was invisible without `sc.exe qc` +
+// `sc.exe qfailure`: a node that stopped coming back after self-updates because
+// its legacy recovery actions were exhausted, diagnosed only by an operator
+// pasting sc.exe output. The exit code is the point — it makes the README's
+// healing instruction scriptable ("nonzero means run --service install")
+// instead of something a human has to eyeball.
+func statusService(m *mgr.Mgr) error {
+	s, err := m.OpenService(serviceName)
+	if err != nil {
+		return &exitError{exitServiceUnavailable,
+			fmt.Sprintf("service %s is not installed (open service: %v) — register it with: %s --service install",
+				serviceName, err, filepath.Base(os.Args[0]))}
+	}
+	defer func() { _ = s.Close() }()
+
+	actual, err := readServiceFacts(s)
+	if err != nil {
+		return &exitError{exitServiceUnavailable, err.Error()}
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return &exitError{exitServiceUnavailable, fmt.Sprintf("resolve executable path: %v", err)}
+	}
+	// The same rule as install: the expected command line is rebuilt from THIS
+	// invocation's flags, so status has to be run the way the service was
+	// installed (install.ps1 always passes --root). The note below says so,
+	// because drift on that row is as likely to be the operator's flags as the
+	// service's configuration.
+	expected := expectedServiceFacts(serviceCommandLine(exe, stripServiceFlag(os.Args[1:]), syscall.EscapeArg))
+
+	rows := compareServiceConfig(actual, expected)
+	fmt.Printf("service %s (%s)\n", serviceName, serviceDisplayName)
+	if st, qerr := s.Query(); qerr == nil {
+		fmt.Printf("  run state: %s\n", serviceStateName(st.State))
+	}
+	fmt.Println()
+	for _, line := range formatServiceConfigTable(rows) {
+		fmt.Println(line)
+	}
+
+	drift := serviceConfigDrift(rows)
+	if len(drift) == 0 {
+		fmt.Printf("\n%s is configured as --service install would leave it.\n", serviceName)
+		return nil
+	}
+	fmt.Printf("\n%d field(s) differ from what --service install would write:\n", len(drift))
+	for _, d := range drift {
+		fmt.Printf("  - %s\n", d)
+	}
+	if actual.CommandLine != expected.CommandLine {
+		fmt.Print("\nNote: the expected command line is rebuilt from the flags YOU typed. Run status with the\n" +
+			"same flags the service was installed with (install.ps1 always passes --root), or this row\n" +
+			"reports drift that isn't there.\n")
+	}
+	fmt.Printf("\nHeal it with: %s --service install %s\n",
+		filepath.Base(exe), joinArgs(stripServiceFlag(os.Args[1:])))
+	return &exitError{exitServiceDrift,
+		fmt.Sprintf("service %s configuration has drifted (%d field(s))", serviceName, len(drift))}
+}
+
+// readServiceFacts reads back everything install asserts: config, failure
+// actions, reset period, and the non-crash-failures flag.
+//
+// The flag is read with mgr.Service.RecoveryActionsOnNonCrashFailures, which the
+// pinned golang.org/x/sys exposes as a getter — so no raw QueryServiceConfig2
+// call and no dependency bump.
+func readServiceFacts(s *mgr.Service) (serviceFacts, error) {
+	cfg, err := s.Config()
+	if err != nil {
+		return serviceFacts{}, fmt.Errorf("read service config: %w", err)
+	}
+	actions, err := s.RecoveryActions()
+	if err != nil {
+		return serviceFacts{}, fmt.Errorf("read recovery actions: %w", err)
+	}
+	reset, err := s.ResetPeriod()
+	if err != nil {
+		return serviceFacts{}, fmt.Errorf("read failure-count reset period: %w", err)
+	}
+	nonCrash, err := s.RecoveryActionsOnNonCrashFailures()
+	if err != nil {
+		return serviceFacts{}, fmt.Errorf("read recovery-on-noncrash-failures flag: %w", err)
+	}
+
+	steps := make([]serviceRecoveryStep, 0, len(actions))
+	for _, a := range actions {
+		steps = append(steps, serviceRecoveryStep{Action: recoveryActionName(a.Type), Delay: a.Delay})
+	}
+	return serviceFacts{
+		CommandLine:      cfg.BinaryPathName,
+		StartType:        startTypeName(cfg.StartType),
+		DelayedAutoStart: cfg.DelayedAutoStart,
+		Recovery:         steps,
+		ResetPeriod:      time.Duration(reset) * time.Second,
+		NonCrashFailures: nonCrash,
+	}, nil
+}
+
+// recoveryActionName renders an SCM failure-action type the way the expected
+// side spells it (see serviceRecoveryStep).
+func recoveryActionName(t int) string {
+	switch t {
+	case mgr.NoAction:
+		return "none"
+	case mgr.ComputerReboot:
+		return "reboot"
+	case mgr.ServiceRestart:
+		return "restart"
+	case mgr.RunCommand:
+		return "run command"
+	default:
+		return fmt.Sprintf("unknown(%d)", t)
+	}
+}
+
+func startTypeName(t uint32) string {
+	switch t {
+	case mgr.StartAutomatic:
+		return "automatic"
+	case mgr.StartManual:
+		return "manual"
+	case mgr.StartDisabled:
+		return "disabled"
+	case windows.SERVICE_BOOT_START:
+		return "boot"
+	case windows.SERVICE_SYSTEM_START:
+		return "system"
+	default:
+		return fmt.Sprintf("unknown(%d)", t)
+	}
+}
+
+func serviceStateName(st svc.State) string {
+	switch st {
+	case svc.Stopped:
+		return "stopped"
+	case svc.StartPending:
+		return "start pending"
+	case svc.StopPending:
+		return "stop pending"
+	case svc.Running:
+		return "running"
+	case svc.ContinuePending:
+		return "continue pending"
+	case svc.PausePending:
+		return "pause pending"
+	case svc.Paused:
+		return "paused"
+	default:
+		return fmt.Sprintf("unknown(%d)", st)
+	}
 }
 
 func uninstallService(m *mgr.Mgr) error {

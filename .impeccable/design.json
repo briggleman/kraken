@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-31T18:53:38.306970+00:00",
+  "generatedAt": "2026-09-01T20:33:34.416610Z",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -535,7 +535,7 @@
       "name": "Step Rail",
       "kind": "navigation",
       "refersTo": "wz-rail",
-      "description": "First-run progress: five stops on one line with the light travelling down it. Done is a solid lumen disc with no glow, current is a lumen ring with one, ahead is a dim ink ring. Completion is a class, never a positional selector - a step can finish out of order.",
+      "description": "First-run progress: four stops on one line (database, secure, connect a node, deploy) with the light travelling down it. Done is a solid lumen disc with no glow, current is a lumen ring with one, ahead is a dim ink ring. Completion is a class, never a positional selector - a step can finish out of order.",
       "html": "<div class=\"ds-rail\"><span class=\"ds-stop is-done\"><i>\u2713</i><b>database</b></span><span class=\"ds-line is-lit\"></span><span class=\"ds-stop is-now\"><i>2</i><b>secure</b></span><span class=\"ds-line\"></span><span class=\"ds-stop\"><i>3</i><b>deploy</b></span></div>",
       "css": ".ds-rail { display: flex; align-items: flex-start; } .ds-stop { display: grid; justify-items: center; gap: 9px; } .ds-stop i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 500 12px/1 var(--mono, 'Spline Sans Mono', Consolas, monospace); font-style: normal; color: var(--ink-3, #7d7160); border: 1px solid rgba(182, 168, 148, 0.28); } .ds-stop b { font: 600 11px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); white-space: nowrap; } .ds-stop.is-now i { color: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); box-shadow: 0 0 10px rgba(var(--lumen-rgb, 255, 194, 102), 0.5); } .ds-stop.is-now b { color: var(--ink, #f5dfc1); } .ds-stop.is-done i { color: var(--d0, #050d14); background: var(--lumen, #ffc266); border-color: var(--lumen, #ffc266); box-shadow: none; } .ds-stop.is-done b { color: var(--ink-2, #b6a894); } .ds-line { height: 1px; flex: 1 1 0; margin: 15px 12px 0; background: rgba(182, 168, 148, 0.18); } .ds-line.is-lit { background: rgba(var(--lumen-rgb, 255, 194, 102), 0.4); }"
     },
@@ -792,7 +792,7 @@
       "Do theme browser surfaces: selection (gold on abyss), focus-visible (2px gold outline), thin scrollbars in gold-tint.",
       "Do scroll the deck, never the page: pin the ends as `auto` grid rows around a `1fr` scroller.",
       "Do declare a table's columns once on the container and inherit them into every head and row with `grid-template-columns: subgrid`.",
-      "Do make a multi-step flow's outcome the app's actual state: the node the wizard brings online is the node the fleet then shows, and the specs it imports are the ones the spec sheet lists. A setup that ends somewhere the rest of the product never mentions is describing a different install.",
+      "Do make a multi-step flow's outcome the app's actual state: the node the wizard brings online is the node the fleet then shows, and the specs setup auto-imports are the ones the spec sheet lists. A setup that ends somewhere the rest of the product never mentions is describing a different install.",
       "Do centre a capped single-column view with `margin-inline: auto`, and leave the title bar above it full-bleed \u2014 chrome holds one position across every page; only content narrows."
     ],
     "donts": [

@@ -1950,13 +1950,6 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      under it - a wizard you cannot leave is a trap, and burying the exit is how that happens */
   .wz-foot { display: flex; align-items: center; gap: 12px; padding-top: clamp(4px, 0.8vh, 10px); }
   .wz-foot .wz-fwd { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-  .wz-skip {
-    background: none; border: none; padding: 6px 2px; cursor: pointer;
-    font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ink-3);
-    transition: color 0.2s;
-  }
-  .wz-skip:hover { color: var(--ink-2); }
-  .wz-skip:focus-visible { outline: 2px solid var(--lumen); outline-offset: 2px; border-radius: 3px; }
   .cfg-btn:disabled { opacity: 0.4; cursor: default; }
   .cfg-btn.solid:disabled { filter: none; }
 
@@ -3874,11 +3867,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   <div class="sheet-body">
     <div class="wz-body">
       <div class="wz-rail" id="wzRail" role="group" aria-label="Setup progress">
-        <div class="wz-step" data-step="1"><button class="wz-hit" data-wz-go="1" aria-label="Step 1: database"><span class="wz-dot"><b>1</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">database</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true" checked><span class="wz-line" aria-hidden="true"></span></div>
+        <div class="wz-step" data-step="1"><button class="wz-hit" data-wz-go="1" aria-label="Step 1: database"><span class="wz-dot"><b>1</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" checked><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">database</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"><span class="wz-line" aria-hidden="true"></span></div>
         <div class="wz-step" data-step="2"><button class="wz-hit" data-wz-go="2" aria-label="Step 2: secure"><span class="wz-dot"><b>2</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">secure</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"><span class="wz-line" aria-hidden="true"></span></div>
         <div class="wz-step" data-step="3"><button class="wz-hit" data-wz-go="3" aria-label="Step 3: connect a node"><span class="wz-dot"><b>3</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">connect a node</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"><span class="wz-line" aria-hidden="true"></span></div>
-        <div class="wz-step" data-step="4"><button class="wz-hit" data-wz-go="4" aria-label="Step 4: add a game"><span class="wz-dot"><b>4</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">add a game</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"><span class="wz-line" aria-hidden="true"></span></div>
-        <div class="wz-step" data-step="5"><button class="wz-hit" data-wz-go="5" aria-label="Step 5: deploy"><span class="wz-dot"><b>5</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">deploy</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"></div>
+        <div class="wz-step" data-step="4"><button class="wz-hit" data-wz-go="4" aria-label="Step 4: deploy"><span class="wz-dot"><b>4</b><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span><span class="wz-lbl">deploy</span></button><input type="radio" name="wzstep" tabindex="-1" aria-hidden="true"></div>
       </div>
 
       <section class="wz-panel on" id="wzPanel1" aria-label="Step 1: database">
@@ -3913,7 +3905,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </div>
         <p class="cfg-help">or continue on the in-memory store for now &#8212; fine for trying things out, not for anything you would miss.</p>
         <div class="wz-foot">
-          <button class="wz-skip" data-wz-skip>skip for now</button>
+          <button class="cfg-btn ghost" data-wz-skip>skip for now</button>
           <div class="wz-fwd"><button class="cfg-btn solid" data-wz-go="2">continue</button></div>
         </div>
       </section>
@@ -4004,40 +3996,14 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
         <div class="wz-foot">
           <button class="cfg-btn ghost" data-wz-go="2">back</button>
-          <div class="wz-fwd"><button class="cfg-btn solid" data-wz-go="4" id="wzNodeNext" disabled>continue</button></div>
-        </div>
-      </section>
-
-      <section class="wz-panel" id="wzPanel4" aria-label="Step 4: add a game">
-        <div class="prefs-group">
-          <div class="cfg-head">
-            <h3 class="pane-label">add a game</h3>
-            <span class="imp-count" id="impCount"><b>0</b> / 8 specs imported</span>
-            <button class="cfg-btn ghost" id="impAll">import all</button>
-          </div>
-          <div class="imp">
-            <div class="imp-head"><span>game</span><span>platform</span><span>status</span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Abiotic Factor</b><span>abiotic-factor</span></span><span class="imp-plat"><span class="spec-tag">win</span><span class="spec-tag">wine</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>RuneScape Dragonwilds</b><span>runescape-dragonwilds</span></span><span class="imp-plat"><span class="spec-tag">wine</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Enshrouded</b><span>enshrouded</span></span><span class="imp-plat"><span class="spec-tag">win</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Factorio</b><span>factorio</span></span><span class="imp-plat"><span class="spec-tag">linux</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Palworld</b><span>palworld</span></span><span class="imp-plat"><span class="spec-tag">linux</span><span class="spec-tag">win</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Valheim</b><span>valheim</span></span><span class="imp-plat"><span class="spec-tag">linux</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>V Rising</b><span>v-rising</span></span><span class="imp-plat"><span class="spec-tag">win</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-            <div class="imp-row" data-imp><span class="imp-id"><b>Windrose</b><span>windrose</span></span><span class="imp-plat"><span class="spec-tag">win</span></span><span class="imp-st"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span class="imp-w">pending</span></span></div>
-          </div>
-        </div>
-        <p class="cfg-help">a spec is the recipe kraken installs from &#8212; the app id, the image, the ports and the settings it writes. these are the ones bundled with the panel; you can author your own later.</p>
-        <div class="wz-foot">
-          <button class="cfg-btn ghost" data-wz-go="3">back</button>
           <div class="wz-fwd">
-            <button class="wz-skip" data-wz-skip>skip</button>
-            <button class="cfg-btn solid" data-wz-go="5">continue</button>
+            <button class="cfg-btn ghost" data-wz-skip>skip</button>
+            <button class="cfg-btn solid" data-wz-go="4" id="wzNodeNext" disabled>continue</button>
           </div>
         </div>
       </section>
 
-      <section class="wz-panel" id="wzPanel5" aria-label="Step 5: deploy">
+      <section class="wz-panel" id="wzPanel4" aria-label="Step 4: deploy">
         <div class="prefs-group">
           <div class="wz-hero">
             <span class="wz-seal" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg></span>
@@ -4046,8 +4012,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
             <button class="cfg-btn solid" id="wzDeployBtn">deploy your first server</button>
           </div>
         </div>
+        <p class="cfg-help">game specs import automatically at setup &#8212; the 8 bundled games are ready in setup &amp; catalog, and you can author your own any time.</p>
         <div class="wz-foot">
-          <button class="cfg-btn ghost" data-wz-go="4">back</button>
+          <button class="cfg-btn ghost" data-wz-go="3">back</button>
           <div class="wz-fwd"><button class="cfg-btn ghost" data-wz-skip>skip &amp; finish</button></div>
         </div>
       </section>
@@ -4708,7 +4675,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
   // -- the rail. `done` is a class because a step can be finished out of order.
   const wzSteps = [...document.querySelectorAll('.wz-step')];
-  const wzPanels = [1, 2, 3, 4, 5].map(n => $('wzPanel' + n));
+  const wzPanels = [1, 2, 3, 4].map(n => $('wzPanel' + n));
   let wzAt = 1;
   function markDone(n) { wzSteps[n - 1].classList.add('done'); syncReach(); }
   // a step you have not reached is not a place you can jump to, so the rail's own buttons are
@@ -4815,26 +4782,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     }, 3000);
   });
 
-  // -- step 4: the catalog import
-  const impRows = [...document.querySelectorAll('[data-imp]')], impCount = $('impCount');
-  function syncImp() {
-    const n = impRows.filter(r => r.classList.contains('did')).length;
-    impCount.innerHTML = '<b></b> / ' + impRows.length + ' specs imported';
-    impCount.firstChild.textContent = n;
-    $('impAll').disabled = n === impRows.length;
-  }
-  $('impAll').addEventListener('click', () => {
-    // staged rather than instant: eight rows flipping at once is a flash, and the point of
-    // this step is that you can see it did something
-    impRows.forEach((r, i) => setTimeout(() => {
-      r.classList.add('did');
-      r.querySelector('.imp-w').textContent = 'imported';
-      syncImp();
-    }, i * 90));
-  });
-  syncImp();
-
-  // -- step 5: hand off into the create-server sheet the app already has
+  // -- step 4: deploy hands off into the create-server sheet the app already has
   $('wzDeployBtn').addEventListener('click', e => {
     closeSheet(setupEl);
     openSheet($('nsForm'), e.clientX || innerWidth / 2, e.clientY || innerHeight / 2, null);

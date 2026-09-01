@@ -387,6 +387,26 @@ func stripServiceFlag(args []string) []string {
 	return out
 }
 
+// serviceCommandLine renders the command line the Windows SCM stores for the
+// service: the executable followed by its arguments, each escaped by esc.
+//
+// It exists because the two registration paths need the SAME string built two
+// different ways. mgr.CreateService takes the exe and args separately and
+// assembles the command line itself (escaping each element with
+// syscall.EscapeArg); mgr.Service.UpdateConfig takes only a finished
+// Config.BinaryPathName, so re-registering an existing service has to assemble
+// it by hand. Building it in one place — with the escaper passed in, since
+// syscall.EscapeArg is Windows-only and this file is not — keeps the updated
+// service's command line identical to the one a fresh install would create.
+func serviceCommandLine(exe string, args []string, esc func(string) string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, esc(exe))
+	for _, a := range args {
+		parts = append(parts, esc(a))
+	}
+	return strings.Join(parts, " ")
+}
+
 // joinArgs renders an arg list for display, quoting anything with spaces.
 func joinArgs(args []string) string {
 	quoted := make([]string, len(args))

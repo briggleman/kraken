@@ -4,6 +4,8 @@ name: steam images
 #   deps  → downloads/primes SteamCMD (the heavy, rarely-changing part)
 #   base  → COPYs SteamCMD from deps, adds runtime libs (the shipped image)
 # A weekly schedule rebuilds both so nodes never run a super-stale SteamCMD.
+# The WINDOWS image (kraken-steam-win) is NOT here — it needs a Windows runner
+# and rebuilds only on change: see steam-win-image.yml.
 on:
   push:
     branches: [main]

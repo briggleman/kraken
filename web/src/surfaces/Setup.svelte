@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, wz, wzGo, wzReachable, closeSheet, openSheet, TICK_MS } from "@/lib/state.svelte";
+  import { ui, wz, wzGo, wzReachable, closeSheet, openSheet, sheetZ, TICK_MS } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api, clearToken } from "@/api/client";
   import { auth } from "@/lib/auth.svelte";
@@ -184,7 +184,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="wzTitle"
-  use:istyle={`--ox: ${ui.open.setup?.ox ?? '50%'}; --oy: ${ui.open.setup?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.setup?.ox ?? '50%'}; --oy: ${ui.open.setup?.oy ?? '50%'}; z-index: ${sheetZ("setup")}`}
   use:sheetFocus
 >
   <div class="depth-head">

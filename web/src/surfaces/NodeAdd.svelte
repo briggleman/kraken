@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, closeSheet } from "@/lib/state.svelte";
+  import { ui, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { Enrollment, type EnrollMode } from "@/lib/enroll.svelte";
 
@@ -68,7 +68,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nodeAddTitle"
-  use:istyle={`--ox: ${ui.open.nodeAdd?.ox ?? '50%'}; --oy: ${ui.open.nodeAdd?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.nodeAdd?.ox ?? '50%'}; --oy: ${ui.open.nodeAdd?.oy ?? '50%'}; z-index: ${sheetZ("nodeAdd")}`}
   use:sheetFocus
 >
   <div class="depth-head">

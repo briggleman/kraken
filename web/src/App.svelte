@@ -17,7 +17,7 @@
   import Rotate from "@/surfaces/Rotate.svelte";
   import DbRestart from "@/surfaces/DbRestart.svelte";
   import Setup from "@/surfaces/Setup.svelte";
-  import { startSim, ui, closeSheet, type SheetId } from "@/lib/state.svelte";
+  import { startSim, ui, closeSheet } from "@/lib/state.svelte";
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
@@ -68,7 +68,8 @@
       ui.confirm = null;
       return;
     }
-    const openIds = Object.keys(ui.open) as SheetId[];
+    // topmost open sheet first — ui.stack is bottom → top and keeps closed ids
+    const openIds = [...ui.stack].reverse().filter((id) => ui.open[id]);
     const sheetId = openIds.find((id) => id !== "prefs");
     if (sheetId) {
       closeSheet(sheetId);

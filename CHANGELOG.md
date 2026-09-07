@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.2](https://github.com/briggleman/kraken/compare/v0.37.1...v0.37.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **specs:** enshrouded auth via userGroups and the single-port config ([#216](https://github.com/briggleman/kraken/issues/216)) ([1c440b5](https://github.com/briggleman/kraken/commit/1c440b58f45d90fa3042526f31eced76181bdc65))
+
 ## [0.37.1](https://github.com/briggleman/kraken/compare/v0.37.0...v0.37.1) (2026-09-07)
 
 

@@ -36,6 +36,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The windows-2022 runner ships the Docker binaries but NOT a running
+      # engine (first publish attempt died on npipe:////./pipe/docker_engine).
+      # Register the service if the image stopped shipping it registered, start
+      # it, and wait until the API actually answers before building.
+      - name: Start Docker engine
+        shell: pwsh
+        run: |
+          if (-not (Get-Service docker -ErrorAction SilentlyContinue)) {
+            & dockerd --register-service
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          Start-Service docker
+          $deadline = (Get-Date).AddMinutes(3)
+          while ($true) {
+            docker version *> $null
+            if ($LASTEXITCODE -eq 0) { break }
+            if ((Get-Date) -gt $deadline) { Write-Error "docker engine did not come up"; exit 1 }
+            Start-Sleep -Seconds 3
+          }
+          docker version
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

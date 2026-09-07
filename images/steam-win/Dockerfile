@@ -8,8 +8,12 @@
 # script or startup command (run via `cmd /S /C`).
 #
 # Note: Windows base images are large and host-version sensitive. ltsc2022 runs
-# on Windows 10/11 and Server 2022 via Hyper-V isolation. Build on a Windows host
-# with Docker in Windows-container mode:
+# on Windows 10/11 and Server 2022 via Hyper-V isolation.
+#
+# CI builds + publishes this to GHCR on changes to images/steam-win/**
+# (.github/workflows/steam-win-image.yml — its own workflow because it needs a
+# Windows runner and skips the Linux images' weekly rebuild). To build locally,
+# on a Windows host with Docker in Windows-container mode:
 #   docker build -t ghcr.io/briggleman/kraken-steam-win:ltsc2022 images/steam-win
 #
 # Size note: on Windows layers (same as Linux) files installed in RUN A and

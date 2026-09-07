@@ -1,0 +1,75 @@
+name: steam-win image
+
+# Build + publish the WINDOWS game-server base image to GHCR. This lives apart
+# from steam-images.yml on purpose:
+#   - it needs a Windows runner (Server Core containers can't build on Linux),
+#   - it rebuilds ONLY when the image itself changes — GitHub's native path
+#     filter below is the gate; there is deliberately NO weekly schedule. The
+#     Linux images rebuild weekly to keep SteamCMD current, but a Windows pull
+#     + build burns ~30-60 runner-minutes for an image whose SteamCMD
+#     self-updates on first run anyway.
+#
+# The published ref is what every windows-native Game Spec pins:
+#   ghcr.io/<owner>/kraken-steam-win:ltsc2022
+# Nodes pull it ANONYMOUSLY (the Agent holds no registry credentials), so the
+# GHCR package must be PUBLIC. The first push of a new package lands private —
+# flip it once in GitHub → Packages → kraken-steam-win → Change visibility.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/steam-win/**"
+      - ".github/workflows/steam-win-image.yml"
+    tags:
+      - "steam-win-v*"
+  workflow_dispatch:
+
+jobs:
+  win:
+    runs-on: windows-2022
+    # Server Core base pull + DirectX/vc_redist installs are slow on the
+    # 2-core runner; well under this in practice, but never the default 6h.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Plain docker build — the windows-2022 runner ships Docker in
+      # Windows-container mode, and ltsc2022 matches the host, so this builds
+      # with process isolation. No buildx: gha layer caching doesn't support
+      # Windows layers, and the base layers dominate the time anyway.
+      - name: Build (Server Core ltsc2022)
+        shell: pwsh
+        run: |
+          $img = "ghcr.io/${{ github.repository_owner }}/kraken-steam-win"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          docker build `
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" `
+            --label "org.opencontainers.image.revision=${{ github.sha }}" `
+            -t "${img}:ltsc2022" `
+            -t "${img}:sha-$sha" `
+            images/steam-win
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # `:ltsc2022` is the moving ref the specs use (same role as `:latest`
+      # on the Linux images, named for the Windows base it must match);
+      # `sha-<short>` is the immutable pin, mirroring metadata-action's
+      # `type=sha` tags on steam-base/steam-wine.
+      - name: Push
+        shell: pwsh
+        run: |
+          $img = "ghcr.io/${{ github.repository_owner }}/kraken-steam-win"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          docker push "${img}:ltsc2022"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          docker push "${img}:sha-$sha"
+          if ($LASTEXITCODE -ne 0) { exit 1 }

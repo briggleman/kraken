@@ -1,13 +1,14 @@
 name: Windows Demo Server
 slug: windemo
 description: >-
-  A Windows-native demo server. In production this would use the steam-win image
-  (Server Core + SteamCMD); here nanoserver + a cmd loop keeps the demo small and
-  runnable so you can watch the Windows lifecycle end to end.
+  A Windows-native demo server on the real steam-win image (Server Core +
+  SteamCMD) — the same base every production Windows game runs on. The cmd
+  loop keeps the demo fast so you can watch the Windows lifecycle end to end.
 # Windows-only game → single windows-native platform. The scheduler places it on
-# a Windows node (Docker in Windows-container mode).
+# a Windows node (Docker in Windows-container mode). steam-win is built on the
+# node itself (see images/steam-win/Dockerfile) — it is not published to GHCR.
 platforms:
-  - { kind: windows-native, image: mcr.microsoft.com/windows/nanoserver:ltsc2022 }
+  - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
 install:
   script: >-
     echo installing windows demo server & echo ok > C:\data\installed.txt & echo install done

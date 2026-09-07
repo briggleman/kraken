@@ -1,30 +1,49 @@
 name: Palworld
 slug: palworld
 description: Palworld dedicated server with the full PalWorldSettings.ini option set.
-banner_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/header.jpg
-icon_url: https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/capsule_231x87.jpg
+banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1623730/2d3bef9d1a0ad28c0ea002ec4522e12e7218fbff/library_hero_2x.jpg?t=1784714419
+icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1623730/804ab521bcc4720021d63744a245ab8c0ca19ade.jpg
 steam_app_ids:
   linux: 2394010
-# In production use the steam-base image; busybox here keeps the demo runnable and
-# lets you watch the rendered PalWorldSettings.ini in the console / Files tab.
 platforms:
-  - { kind: linux-native, image: busybox:latest }
-  - { kind: linux-wine, image: busybox:latest }
+  - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
 install:
-  script: echo "steamcmd +login anonymous +app_update 2394010 validate +quit"
+  # Palworld's Linux dedicated server is anonymous on SteamCMD (app 2394010).
+  # Run app_update twice: a fresh SteamCMD frequently fails the first pass with
+  # "Missing configuration" (client config not loaded yet) and exits nonzero; the
+  # second pass finds the primed config and completes. Use ';' (not '&&') so the
+  # second always runs, and its "Success!" line clears the first pass's failure
+  # for the agent's exit-0-but-app-failed guard.
+  script: >-
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
 startup:
+  # Palworld is a UE5 Steam dedicated server: it dlopens steamclient.so from
+  # $HOME/.steam/sdk64 (baked into steam-base, so it's present in this fresh
+  # runtime container), reads PalWorldSettings.ini from the install dir, and binds
+  # the game port over UDP. -port sets the bind/advertise port; the player cap and
+  # everything else come from the rendered ini. HOME is pinned so PalServer (and
+  # its child binary) resolve the Steam SDK regardless of the container default.
   command: >-
-    echo '== PalWorldSettings.ini ==';
-    cat /data/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini 2>/dev/null;
-    echo '== server up on {{PORT_GAME}} ==';
-    while true; do echo tick; sleep 10; done
-  ready_regex: server up on
+    export HOME=/home/steam &&
+    mkdir -p "$HOME/.steam/sdk64" &&
+    ln -sf /home/steam/steamcmd/linux64/steamclient.so "$HOME/.steam/sdk64/steamclient.so" &&
+    cd /data &&
+    ./PalServer.sh -port={{PORT_GAME}} -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS
+  # No ready_regex: Palworld has no stable "ready" log line, so the server is
+  # marked running once the process stays up (the watchdog catches crashes).
   restart:
     on_crash: true
     max_retries: 3
   stop: { type: signal, value: SIGINT }
 ports:
   - { name: game, protocol: udp, default: 8211, required: true }
+
+# Palworld doesn't answer A2S; player count comes from its REST API
+# (/v1/api/metrics, Basic auth "admin"). The Agent curls it inside the container,
+# so the REST port stays unpublished. Requires "Enable REST API" + an Admin
+# password in the server's Network settings; otherwise the count reads unknown.
+query: { method: palworld-rest, port: RESTAPIPort, password: AdminPassword }
 
 settings:
   groups:

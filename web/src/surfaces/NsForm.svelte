@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, closeSheet, openSheet } from "@/lib/state.svelte";
+  import { ui, closeSheet, openSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
   import { api } from "@/api/client";
@@ -72,6 +72,15 @@
   // say so before the button is pressed rather than printing 34/32G mutely.
   const overCapacity = $derived(!!node && memAfter > node.total_memory_mb);
 
+  // The chosen game's spec, opened OVER this sheet (the stack in
+  // state.svelte.ts puts the newest sheet on top) — its "surface" comes
+  // straight back here with the form intact.
+  function openSpec(e: MouseEvent & { currentTarget: HTMLElement }) {
+    if (!spec) return;
+    ui.specEditId = spec.id;
+    openSheet("specEdit", e.clientX, e.clientY, e.currentTarget);
+  }
+
   async function create() {
     if (!spec || busy) return;
     if (belowMin) {
@@ -137,7 +146,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nsFormTitle"
-  use:istyle={`--ox: ${ui.open.nsForm?.ox ?? '50%'}; --oy: ${ui.open.nsForm?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.nsForm?.ox ?? '50%'}; --oy: ${ui.open.nsForm?.oy ?? '50%'}; z-index: ${sheetZ("nsForm")}`}
   use:sheetFocus
 >
   <div class="depth-head">
@@ -171,7 +180,7 @@
         </div>
         <div class="cfg-row">
           <span>spec</span>
-          <button class="cfg-btn ghost spec-link" id="specLink" onclick={(e) => openSheet("specs", e.clientX, e.clientY, e.currentTarget)}><span class="spec-link-name" id="specLinkName">{spec?.slug ?? "—"}</span>&nbsp;spec <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3.5 8.5 L 8.5 3.5 M 5 3.5 H 8.5 V 7"/></svg></button>
+          <button class="cfg-btn ghost spec-link" id="specLink" disabled={!spec} onclick={openSpec}><span class="spec-link-name" id="specLinkName">{spec?.slug ?? "—"}</span>&nbsp;spec <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3.5 8.5 L 8.5 3.5 M 5 3.5 H 8.5 V 7"/></svg></button>
         </div>
 
         <div class="ns-legend"><h4>identity</h4><i></i><small>what backups and moves carry</small></div>

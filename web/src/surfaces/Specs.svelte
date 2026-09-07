@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, openSheet, closeSheet } from "@/lib/state.svelte";
+  import { ui, openSheet, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { fleet } from "@/lib/fleet.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import type { PlatformKind, Spec } from "@/api/types";
@@ -32,7 +32,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="specsTitle"
-  use:istyle={`--ox: ${ui.open.specs?.ox ?? '50%'}; --oy: ${ui.open.specs?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.specs?.ox ?? '50%'}; --oy: ${ui.open.specs?.oy ?? '50%'}; z-index: ${sheetZ("specs")}`}
   use:sheetFocus
 >
   <div class="depth-head">

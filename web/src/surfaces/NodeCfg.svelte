@@ -1,7 +1,7 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
   import { untrack } from "svelte";
-  import { ui, closeSheet, openConfirm, CD_NODE_BODY } from "@/lib/state.svelte";
+  import { ui, closeSheet, openConfirm, sheetZ, CD_NODE_BODY } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api } from "@/api/client";
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
@@ -201,7 +201,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="nodeCfgTitle"
-  use:istyle={`--ox: ${ui.open.nodeCfg?.ox ?? '50%'}; --oy: ${ui.open.nodeCfg?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.nodeCfg?.ox ?? '50%'}; --oy: ${ui.open.nodeCfg?.oy ?? '50%'}; z-index: ${sheetZ("nodeCfg")}`}
   use:sheetFocus
 >
   <div class="depth-head">

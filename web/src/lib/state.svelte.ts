@@ -48,6 +48,16 @@ export const ui = $state({
   // sheets — one of each; open set + per-sheet origin
   open: {} as Partial<Record<SheetId, Origin>>,
 
+  // z-order of the sheets, bottom → top. Every sheet element sits at the same
+  // CSS z-index, so DOM order — fixed at authoring time — used to decide which
+  // of two open sheets was visible: a spec editor opened FROM the new-server
+  // sheet rendered underneath it. Opening a sheet moves it to the top of this
+  // stack and sheetZ() turns the position into an inline z-index. Closed
+  // sheets keep their slot (they are visibility:hidden, and holding the slot
+  // keeps the z stable through the closing wipe) — opening dedupes, so the
+  // stack never grows past the number of sheet ids.
+  stack: [] as SheetId[],
+
   // typed-confirmation dialog
   confirm: null as null | { name: string; noun: string; body: string | null },
 
@@ -68,7 +78,20 @@ const sheetReturn = new Map<SheetId, HTMLElement | null>();
 
 export function openSheet(id: SheetId, x: number, y: number, returnTo?: HTMLElement | null) {
   ui.open[id] = originOf(x, y);
+  const at = ui.stack.indexOf(id);
+  if (at >= 0) ui.stack.splice(at, 1);
+  ui.stack.push(id);
   sheetReturn.set(id, returnTo ?? null);
+}
+
+// SHEET_Z matches the .sheet z-index in house.css. The stack is capped at one
+// entry per sheet id, so the topmost sheet stays below the typed-confirm
+// dialog and the sftp overlay (z 50+).
+const SHEET_Z = 35;
+
+export function sheetZ(id: SheetId): number {
+  const at = ui.stack.indexOf(id);
+  return at < 0 ? SHEET_Z : SHEET_Z + at;
 }
 
 export function closeSheet(id: SheetId) {

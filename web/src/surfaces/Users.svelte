@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, closeSheet } from "@/lib/state.svelte";
+  import { ui, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { auth } from "@/lib/auth.svelte";
   import { api } from "@/api/client";
@@ -177,7 +177,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="usersTitle"
-  use:istyle={`--ox: ${ui.open.users?.ox ?? '50%'}; --oy: ${ui.open.users?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.users?.ox ?? '50%'}; --oy: ${ui.open.users?.oy ?? '50%'}; z-index: ${sheetZ("users")}`}
   use:sheetFocus
 >
   <div class="depth-head">

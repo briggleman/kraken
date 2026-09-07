@@ -1,6 +1,6 @@
 <script lang="ts">
   import { istyle } from "@/lib/istyle";
-  import { ui, closeSheet } from "@/lib/state.svelte";
+  import { ui, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { fleet } from "@/lib/fleet.svelte";
   import type { AuditEntry } from "@/api/types";
@@ -56,7 +56,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="auditTitle"
-  use:istyle={`--ox: ${ui.open.auditLog?.ox ?? '50%'}; --oy: ${ui.open.auditLog?.oy ?? '50%'}`}
+  use:istyle={`--ox: ${ui.open.auditLog?.ox ?? '50%'}; --oy: ${ui.open.auditLog?.oy ?? '50%'}; z-index: ${sheetZ("auditLog")}`}
   use:sheetFocus
 >
   <div class="depth-head">

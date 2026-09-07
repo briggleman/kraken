@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.1](https://github.com/briggleman/kraken/compare/v0.37.0...v0.37.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **specs:** point the seed specs at the real steam images ([#209](https://github.com/briggleman/kraken/issues/209)) ([9cc5940](https://github.com/briggleman/kraken/commit/9cc594005dfc97c32d08aca236a64d9ea9a512ab))
+* **web:** stack sheets by open order and make the spec editor actually save ([#208](https://github.com/briggleman/kraken/issues/208)) ([8391cf3](https://github.com/briggleman/kraken/commit/8391cf357ca0054b7251d6d6932d6e6a39348082))
+
 ## [0.37.0](https://github.com/briggleman/kraken/compare/v0.36.0...v0.37.0) (2026-09-01)
 
 

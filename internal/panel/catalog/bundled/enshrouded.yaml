@@ -5,7 +5,9 @@ description: >-
   Windows build; it runs on a Windows node (steam-win image) or on a Linux node
   via Wine (steam-wine image, live-validated to Host_Online under Wine 10). All
   configuration lives in enshrouded_server.json, generated from the Settings
-  tab. Enshrouded is memory-hungry — 16 GB is recommended for a full 16-slot group.
+  tab. Joining is gated by per-role passwords (Admin/Friend/Guest/Visitor) —
+  the password a player enters selects their role. Enshrouded is memory-hungry —
+  16 GB is recommended for a full 16-slot group.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1203620/18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero_2x.jpg?t=1782800102
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1203620/b51ff4aa19722a1f3587b35f37f590a998f36a9a.jpg
 steam_app_ids:
@@ -36,9 +38,13 @@ startup:
   ready_regex: 'Host_Online'
   restart: { on_crash: true, max_retries: 3 }
   stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+# Current Enshrouded uses a SINGLE UDP port — the json calls it "queryPort" but
+# it is the port players join on (the separate gamePort was removed from the
+# server; see the official Dedicated Server Configuration article). Servers
+# deployed under the old two-port spec keep their extra allocation; the
+# template only reads .ports.game.
 ports:
-  - { name: game, protocol: udp, default: 15636, required: true }
-  - { name: query, protocol: udp, default: 15637, required: true }
+  - { name: game, protocol: udp, default: 15637, required: true }
 
 # The custom gameSettings block below is only APPLIED by the game when
 # gameSettingsPreset == "Custom". Any other preset (Default/Relaxed/Hard/Survival)
@@ -50,8 +56,20 @@ settings:
       label: Server
       fields:
         - { key: name, label: Server name, type: string, default: "Kraken Enshrouded" }
-        - { key: password, label: Server password, type: password, default: "" }
         - { key: slotCount, label: Player slots, type: int, default: "16", min: 1, max: 16 }
+    - id: access
+      label: Access — role passwords
+      description: >-
+        Enshrouded has no single server password: the password a player enters
+        when joining selects their role. A role with a blank password here is
+        left out of the server config entirely (nobody can join through it) —
+        set a password on every role you want usable, and at least one or the
+        server cannot be joined at all.
+      fields:
+        - { key: adminPassword, label: Admin password — kick/ban, chests, building, base extension, type: password, default: "" }
+        - { key: friendPassword, label: Friend password — chests, building; no base extension, type: password, default: "" }
+        - { key: guestPassword, label: Guest password — explore and fight; no chests or building, type: password, default: "" }
+        - { key: visitorPassword, label: Visitor password — look around only; no world changes, type: password, default: "" }
     - id: chat
       label: Chat
       fields:
@@ -121,11 +139,13 @@ settings:
         - { key: perkCostFactor, label: Perk cost, type: float, default: "1", min: 0.25, max: 2 }
         - { key: perkUpgradeRecyclingFactor, label: Perk upgrade recycling, type: float, default: "0.5", min: 0, max: 1 }
 
-# userGroups (Admin/Friend/Guest passwords + role permissions) is intentionally
-# omitted here — Enshrouded populates it with empty defaults on first write, and
-# leaving it out lets operators manage per-role passwords via the Files tab or
-# SFTP. Note: settings saves overwrite this file, so hand-edits to other keys
-# will not persist.
+# The document mirrors the official 0.9.0.0 default enshrouded_server.json.
+# The legacy top-level "password" is GONE — current server builds ignore it,
+# which read as "the password doesn't work"; access is per-role userGroups,
+# rendered below only for roles whose password is set. Permission flags per
+# role are the game's own defaults. Note: settings saves overwrite this file,
+# so hand-edits (including bans added while it ran) will not persist — the
+# "bans" list resets to empty on every save.
   # Logical /data root (not C:\data): safePath maps it to C:\data on a Windows
   # node and leaves it at /data on a Linux/Wine node, so one path is correct on
   # both — a literal C:\… path would land under /data/C:/… on Linux.
@@ -135,13 +155,12 @@ config_files:
     template: |
       {
         "name": "{{.settings.name}}",
-        "password": "{{.settings.password}}",
         "saveDirectory": "./savegame",
         "logDirectory": "./logs",
         "ip": "0.0.0.0",
-        "gamePort": {{.ports.game}},
-        "queryPort": {{.ports.query}},
+        "queryPort": {{.ports.game}},
         "slotCount": {{.settings.slotCount}},
+        "tags": [],
         "enableTextChat": {{.settings.enableTextChat}},
         "enableVoiceChat": {{.settings.enableVoiceChat}},
         "voiceChatMode": "{{.settings.voiceChatMode}}",
@@ -184,7 +203,65 @@ config_files:
           "experienceExplorationQuestsFactor": {{.settings.experienceExplorationQuestsFactor}},
           "perkCostFactor": {{.settings.perkCostFactor}},
           "perkUpgradeRecyclingFactor": {{.settings.perkUpgradeRecyclingFactor}}
-        }
+        },
+        "userGroups": [
+      {{- $prev := false}}
+      {{- if .settings.adminPassword}}
+          {
+            "name": "Admin",
+            "password": "{{.settings.adminPassword}}",
+            "canKickBan": true,
+            "canAccessInventories": true,
+            "canEditWorld": true,
+            "canEditBase": true,
+            "canExtendBase": true,
+            "reservedSlots": 0
+          }
+      {{- $prev = true}}
+      {{- end}}
+      {{- if .settings.friendPassword}}
+      {{- if $prev}},{{end}}
+          {
+            "name": "Friend",
+            "password": "{{.settings.friendPassword}}",
+            "canKickBan": false,
+            "canAccessInventories": true,
+            "canEditWorld": true,
+            "canEditBase": true,
+            "canExtendBase": false,
+            "reservedSlots": 0
+          }
+      {{- $prev = true}}
+      {{- end}}
+      {{- if .settings.guestPassword}}
+      {{- if $prev}},{{end}}
+          {
+            "name": "Guest",
+            "password": "{{.settings.guestPassword}}",
+            "canKickBan": false,
+            "canAccessInventories": false,
+            "canEditWorld": true,
+            "canEditBase": false,
+            "canExtendBase": false,
+            "reservedSlots": 0
+          }
+      {{- $prev = true}}
+      {{- end}}
+      {{- if .settings.visitorPassword}}
+      {{- if $prev}},{{end}}
+          {
+            "name": "Visitor",
+            "password": "{{.settings.visitorPassword}}",
+            "canKickBan": false,
+            "canAccessInventories": false,
+            "canEditWorld": false,
+            "canEditBase": false,
+            "canExtendBase": false,
+            "reservedSlots": 0
+          }
+      {{- end}}
+        ],
+        "bans": []
       }
 resources:
   min_memory_mb: 6144

@@ -149,6 +149,21 @@ jobs:
       - name: test
         run: go test -race ./...
 
+  # Every image a Game Spec references must be pullable with NO credentials —
+  # that is how the Agent pulls (internal/agent/docker.go), so an unpublished
+  # or private image means "install failed … denied" on any node that doesn't
+  # already hold it locally. Cheap (a handful of manifest HEADs), so it runs
+  # on every PR rather than being path-gated; a red here on an untouched spec
+  # means a GHCR package went missing or private, which is worth knowing too.
+  spec-images:
+    name: spec images (anonymously pullable)
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: every spec-referenced image resolves anonymously
+        run: ./scripts/check-spec-images.sh
+
   web:
     # Short and stable on purpose — see the go job above and
     # .github/required-checks.txt.

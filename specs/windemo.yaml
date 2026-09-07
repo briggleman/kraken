@@ -5,8 +5,9 @@ description: >-
   SteamCMD) — the same base every production Windows game runs on. The cmd
   loop keeps the demo fast so you can watch the Windows lifecycle end to end.
 # Windows-only game → single windows-native platform. The scheduler places it on
-# a Windows node (Docker in Windows-container mode). steam-win is built on the
-# node itself (see images/steam-win/Dockerfile) — it is not published to GHCR.
+# a Windows node (Docker in Windows-container mode). steam-win is published to
+# GHCR by .github/workflows/steam-win-image.yml (rebuilt only when the image
+# changes); a node without it locally pulls it anonymously.
 platforms:
   - { kind: windows-native, image: ghcr.io/briggleman/kraken-steam-win:ltsc2022 }
 install:

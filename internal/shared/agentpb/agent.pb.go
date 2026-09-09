@@ -2102,6 +2102,10 @@ type BackupInfo struct {
 	CreatedUnixMs int64                  `protobuf:"varint,4,opt,name=created_unix_ms,json=createdUnixMs,proto3" json:"created_unix_ms,omitempty"`
 	State         BackupState            `protobuf:"varint,5,opt,name=state,proto3,enum=kraken.agent.v1.BackupState" json:"state,omitempty"`
 	Replication   ReplicationState       `protobuf:"varint,6,opt,name=replication,proto3,enum=kraken.agent.v1.ReplicationState" json:"replication,omitempty"`
+	// Why the backup FAILED (or, for a READY archive, a degraded-capture note).
+	// Empty for a clean archive. Tracked in the Agent's in-memory job map, so it
+	// does not survive an Agent restart (#221).
+	Error         string `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2176,6 +2180,13 @@ func (x *BackupInfo) GetReplication() ReplicationState {
 		return x.Replication
 	}
 	return ReplicationState_REPLICATION_STATE_UNSPECIFIED
+}
+
+func (x *BackupInfo) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 type CreateBackupRequest struct {
@@ -4352,7 +4363,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x12DeletePathsRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
 	"\x05paths\x18\x02 \x03(\tR\x05paths\"\x15\n" +
-	"\x13DeletePathsResponse\"\xe5\x01\n" +
+	"\x13DeletePathsResponse\"\xfb\x01\n" +
 	"\n" +
 	"BackupInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -4360,7 +4371,8 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\x12&\n" +
 	"\x0fcreated_unix_ms\x18\x04 \x01(\x03R\rcreatedUnixMs\x122\n" +
 	"\x05state\x18\x05 \x01(\x0e2\x1c.kraken.agent.v1.BackupStateR\x05state\x12C\n" +
-	"\vreplication\x18\x06 \x01(\x0e2!.kraken.agent.v1.ReplicationStateR\vreplication\"Z\n" +
+	"\vreplication\x18\x06 \x01(\x0e2!.kraken.agent.v1.ReplicationStateR\vreplication\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"Z\n" +
 	"\x13CreateBackupRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +

@@ -188,6 +188,8 @@ export interface Backup {
   state: "pending" | "ready" | "failed";
   /** Off-node (SFTP) mirror status; "" when replication isn't configured. */
   replication: "" | "pending" | "done" | "failed";
+  /** Why the backup failed (state=failed), or a degraded-capture note; absent when clean. */
+  error?: string;
 }
 
 export interface AuditEntry {

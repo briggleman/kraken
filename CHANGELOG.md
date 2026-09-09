@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.5](https://github.com/briggleman/kraken/compare/v0.37.4...v0.37.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **panel:** track the node's LAN host; stop forwarding to a stale public_host ([#232](https://github.com/briggleman/kraken/issues/232)) ([79ed817](https://github.com/briggleman/kraken/commit/79ed817bc7ebc64089c70fab32eba7574fc68aa9))
+
 ## [0.37.4](https://github.com/briggleman/kraken/compare/v0.37.3...v0.37.4) (2026-09-09)
 
 

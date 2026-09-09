@@ -505,8 +505,9 @@ and every row is `display: contents`, so the numerals hold a real column, unit s
 pill, copy button, publish flip — stretches to fill the same fourth track and stays matched
 if a label’s wording changes. Port state is a real control with no script: a visually-hidden
 checkbox and a `label.net-state` pill (10px/0.18em caps, 3px 9px, 3px radius). Below an Edge
-hairline (`.dns-sep`), the DNS rows carry inline-editable values (see Form Field) with the
-record kind (`dns`, `srv`) in the unit track and the publish flip in the tail.
+hairline (`.dns-sep`), the DNS rows carry inline-editable values (see Form Field — borderless
+inputs that keep a clickable floor width when empty) with the record kind (`dns`, `srv`) in the
+unit track and the publish flip in the tail.
 
 **The Both-Faces Rule.** A flip control names both of its states in the DOM and stacks them in
 one grid cell (`grid-area: 1 / 1`), showing only the live face, so toggling can never resize
@@ -541,12 +542,16 @@ Tracked-caps chips that filter a list in place, with no script: a visually-hidde
 Mono 13px on a `rgba(5,13,20,0.6)` well — darker than the panel it sits on, so a field reads as cut into the surface rather than laid on it — with a 1px Edge hairline and 4px radius. Focus warms the border to `rgba(--lumen-rgb, 0.45)` and removes the UA outline. A disabled field drops to Sand Faint and switches its border to **dashed**: the house mark for "this value is real but not yours to change here", the same dashed edge an env-managed setting and a websocket route wear. A disabled `select` also dims its picker icon to 0.4 — the dashed border already says the value is fixed, and a chevron that still looks live argues with it. That is how a spec offering one option locks the control rather than hiding it: the choice stays visible and stays unavailable. A **read-only box** (`.cfg-ro`) wears the same dashed edge and is mono on the same well, but it is `nowrap` with `overflow-x: auto` because it exists to hold one opaque machine value — a DSN, an invite URL — at full measure. It is the wrong control for a value that is really *several facts* in a narrow slot: `nowrap` plus `overflow-x` hides the tail behind a sideways drag, and a summary you have to drag is not a summary. Either give that value a control it fits — the new-server sheet ended up making its OS fact a `select` — or let it wrap with each fact marked `nowrap`, so the separators are the only places a break can land.
 
 **Inline-editable value** (`.dns-ed`): a third answer for a value that is usually *read* and only
-occasionally *set* — the network box's hostname and srv service. It renders as plain mono text in
-the row; hovering washes it `--lumen-soft`; clicking focuses a `contenteditable="plaintext-only"`
-span that puts the house field well under it (`rgba(5,13,20,0.6)` ground, a 1px lumen-0.45 ring
-via box-shadow); blurring returns it to text. No pencil icon, no edit mode, no permanent input
-box — a fact you can touch, not a form you must operate. Reserve it for single mono facts inside
-composed rows; anything with validation, options, or consequence stays a real Form Field.
+occasionally *set* — the network box's hostname and srv service. It is a **borderless input**
+wearing the row's value voice (`.kv b`: mono, 500, Ink, casing undone): it reads as plain text in
+the row; hovering washes it `--lumen-soft`; focusing puts the house field well under it
+(`rgba(5,13,20,0.6)` ground, a 1px lumen-0.45 ring via box-shadow); blurring returns it to text.
+No pencil icon, no edit mode, no visible input box — a fact you can touch, not a form you must
+operate. It is a real `<input>` rather than a contenteditable because an empty fact must still be
+findable: the input keeps a floor width (`field-sizing: content` with an 11ch minimum; a 22ch
+fixed fallback) and shows a dim Ink-3 placeholder, where an empty contenteditable collapsed to a
+zero-width target nothing could click. Reserve it for single mono facts inside composed rows;
+anything with validation, options, or consequence stays a real Form Field.
 
 **The Head-Not-Edge Rule.** The chosen row in a picker is marked at its head, not its edge. With `appearance: base-select` the
 option list is ours, and selection there is a leading indicator column: every option reserves a

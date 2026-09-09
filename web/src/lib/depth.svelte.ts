@@ -1,7 +1,7 @@
 // Drill-in data: one server's live detail — stream, settings, files, backups,
 // schedules, DNS — fetched on open and kept fresh while the overlay is up.
 
-import { api, ApiError } from "@/api/client";
+import { api } from "@/api/client";
 import type {
   Backup,
   FileListing,
@@ -329,7 +329,13 @@ export async function settingsApply(
 // --- dns / forwards -----------------------------------------------------------
 
 export async function dnsPublish(name: string, service?: string) {
-  if (!depth.serverId || !name) return;
+  if (!depth.serverId) return;
+  if (!name) {
+    // never a silent no-op: the publish flip resyncs off depth.dns, so the
+    // caller sees the pill snap back and this message says why
+    depth.error = "enter a hostname before publishing";
+    return;
+  }
   try {
     await api.setServerDns(depth.serverId, { name, service: service || undefined });
     depth.dns = await api.getServerDns(depth.serverId);
@@ -414,10 +420,9 @@ export async function forwardSet(portName: string, open: boolean) {
     const r = await api.setServerForward(depth.serverId, portName, open);
     if (depth.dns) depth.dns.forwards = r.forwards;
   } catch (e) {
-    if (e instanceof ApiError && depth.dns) {
-      // flip back — the gateway refused or isn't configured
-      depth.dns = { ...depth.dns };
-    }
+    // the caller resyncs its toggle from depth.dns after this returns, which is
+    // what actually snaps a refused flip back (reassigning depth.dns here never
+    // did — the memoized checked attribute saw the same value and skipped)
     depth.error = e instanceof Error ? e.message : String(e);
   }
 }

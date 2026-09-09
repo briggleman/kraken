@@ -372,16 +372,33 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      relying on text-align (which .mini-act sets to left) */
   .net-table .mini-act { display: inline-flex; align-items: center; justify-content: center; }
   .net-table .ma-t { margin-right: -0.18em; }
-  /* the dns rows below the hairline: hostname and srv service are inline-editable - text
-     until you click them, the house field well while focused, text again on blur. a value
-     that is usually read and occasionally set does not earn a permanent input box. the
-     publish flip is the same checkbox+label mechanism as open/closed, and wears the same
-     readings: published is ok-gold, unpublished is the caution band. */
+  /* the dns rows below the hairline: hostname and srv service are borderless inputs that
+     wear the row's value voice (.kv b) - they read as text until you click in, take the
+     house field well while focused, and read as text again on blur. a value that is usually
+     read and occasionally set does not earn a permanent input box, but an EMPTY one must
+     still be findable: a real input keeps its width and shows a dim placeholder (the old
+     contenteditable collapsed to nothing when empty, leaving an unpublished hostname with
+     no click target at all). the publish flip is the same checkbox+label mechanism as
+     open/closed, and wears the same readings: published is ok-gold, unpublished is the
+     caution band. */
   .dns-sep { grid-column: 1 / -1; border-top: 1px solid var(--edge); margin: 2px 0; }
+  .net-table .net-kv > .dns-ed { grid-column: 2; justify-self: end; }
   .dns-ed {
     cursor: text; border-radius: 2px; padding: 1px 4px; margin: -1px -4px;
     transition: background 0.15s, box-shadow 0.15s;
+    /* an input carries no row voice of its own: re-state the .kv b value voice and undo
+       the label casing the row would otherwise hand down */
+    background: none; border: 0; font-size: inherit;
+    font-family: var(--mono); font-weight: 500; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+    text-align: right; width: 22ch;
   }
+  /* size to the value like the text it replaces, with a floor so empty stays clickable;
+     the fixed width above is the fallback for engines without field-sizing */
+  @supports (field-sizing: content) {
+    .dns-ed { field-sizing: content; width: auto; min-width: 11ch; max-width: 30ch; }
+  }
+  .dns-ed::placeholder { color: var(--ink-3); opacity: 1; }
   .dns-ed:hover { background: var(--lumen-soft); }
   .dns-ed:focus {
     outline: none; background: rgba(5, 13, 20, 0.6);
@@ -2682,8 +2699,8 @@ FINISH: mock for direction comparison; the chosen direction's production build e
                       <div class="kv net-kv"><span>rcon</span><b>25575</b><i class="nu">local</i><input type="checkbox" class="ns-r" id="nsRcon" aria-label="rcon"><label class="net-state" for="nsRcon"><span class="ns-stack"><span class="ns-w on">on</span><span class="ns-w off">off</span></span></label></div>
                       <div class="kv net-kv"><span>endpoint</span><b id="netPublic">72.14.201.88:8211</b><i class="nu" aria-hidden="true"></i><button class="mini-act res copy-act" data-copy="72.14.201.88:8211"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
                       <div class="dns-sep"></div>
-                      <div class="kv net-kv"><span>hostname</span><b class="dns-ed" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="hostname">palworld.zerooneone.io</b><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" checked aria-label="dns published"><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
-                      <div class="kv net-kv"><span>srv service</span><b class="dns-ed" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="srv service">_palworld._udp</b><i class="nu">srv</i></div>
+                      <div class="kv net-kv"><span>hostname</span><input class="dns-ed" value="palworld.zerooneone.io" placeholder="game.example.com" spellcheck="false" aria-label="hostname"><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" checked aria-label="dns published"><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
+                      <div class="kv net-kv"><span>srv service</span><input class="dns-ed" value="" placeholder="_game._udp" spellcheck="false" aria-label="srv service"><i class="nu">srv</i></div>
                                     </div>
 
       </section>

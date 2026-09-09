@@ -191,25 +191,47 @@
     return fmtWhen(new Date(t.next_run_at).getTime()).replace("today ", "");
   }
 
-  // dns
-  let dnsNameEl: HTMLElement | undefined = $state();
-  let dnsSvcEl: HTMLElement | undefined = $state();
-  const published = $derived(!!depth.dns?.dns);
-  function dnsFlip(e: Event) {
-    const checked = (e.currentTarget as HTMLInputElement).checked;
-    const nm = dnsNameEl?.textContent?.trim() ?? "";
-    const svc = dnsSvcEl?.textContent?.trim() ?? "";
-    if (checked) void dnsPublish(nm, svc || undefined);
-    else void dnsUnpublish();
-  }
-  function dnsBlur() {
-    // editing while published re-publishes with the new value on blur
-    if (!published) return;
-    const nm = dnsNameEl?.textContent?.trim() ?? "";
-    const svc = dnsSvcEl?.textContent?.trim() ?? "";
-    if (nm && (nm !== depth.dns?.dns?.name || svc !== (depth.dns?.dns?.service ?? ""))) {
-      void dnsPublish(nm, svc || undefined);
+  // dns + forwards — local field/toggle state, resynced from the server whenever
+  // depth.dns changes (publish/unpublish refetch it) and explicitly after every
+  // call: a one-way `checked={…}` attribute is memoized by the compiler, so a
+  // refused call would leave the DOM toggle stuck showing a state the server
+  // never reached.
+  let dnsName = $state("");
+  let dnsSvc = $state("");
+  let dnsPublished = $state(false);
+  let portOpen = $state<Record<string, boolean>>({});
+  $effect(() => {
+    dnsName = depth.dns?.dns?.name ?? "";
+    dnsSvc = depth.dns?.dns?.service ?? "";
+    dnsPublished = !!depth.dns?.dns;
+    const fwds = depth.dns?.forwards ?? {};
+    const next: Record<string, boolean> = {};
+    for (const name of Object.keys(depth.dns?.ports ?? {})) next[name] = fwds[name]?.enabled ?? false;
+    portOpen = next;
+  });
+  async function dnsFlip() {
+    if (dnsPublished && !dnsName.trim()) {
+      depth.error = "enter a hostname before publishing";
+      dnsPublished = false;
+      return;
     }
+    if (dnsPublished) await dnsPublish(dnsName.trim(), dnsSvc.trim() || undefined);
+    else await dnsUnpublish();
+    dnsPublished = !!depth.dns?.dns; // resync to reality — success or failure
+  }
+  async function dnsBlur() {
+    // editing while published re-publishes with the new value on blur
+    const cur = depth.dns?.dns;
+    if (!cur) return;
+    const nm = dnsName.trim();
+    if (nm && (nm !== cur.name || dnsSvc.trim() !== (cur.service ?? ""))) {
+      await dnsPublish(nm, dnsSvc.trim() || undefined);
+    }
+  }
+  async function portFlip(portName: string) {
+    await forwardSet(portName, portOpen[portName] ?? false);
+    // resync: success lands the new forwards map, a refusal snaps the pill back
+    portOpen[portName] = depth.dns?.forwards?.[portName]?.enabled ?? false;
   }
 
   // endpoint copy flip
@@ -490,7 +512,6 @@
         <h3 class="pane-label">network</h3>
         <div class="side-body net-table">
           {#each Object.entries(depth.dns?.ports ?? server?.ports ?? {}) as [portName, portNum] (portName)}
-            {@const fwd = depth.dns?.forwards?.[portName]}
             <div class="kv net-kv">
               <span>{portName} port</span><b><span>{portNum}</span></b><i class="nu">{depth.dns?.unifi_configured ? "fwd" : ""}</i>
               {#if depth.dns?.unifi_configured}
@@ -498,9 +519,9 @@
                   type="checkbox"
                   class="ns-r"
                   id="nsPort-{portName}"
-                  checked={fwd?.enabled ?? false}
+                  bind:checked={portOpen[portName]}
                   aria-label="{portName} port"
-                  onchange={(e) => void forwardSet(portName, e.currentTarget.checked)}
+                  onchange={() => void portFlip(portName)}
                 />
                 <label class="net-state" for="nsPort-{portName}"><span class="ns-stack"><span class="ns-w on">open</span><span class="ns-w off">closed</span></span></label>
               {:else}
@@ -511,8 +532,8 @@
           <div class="kv net-kv"><span>endpoint</span><b>{endpoint}</b><i class="nu" aria-hidden="true"></i><button class="mini-act res copy-act{copied ? ' did' : ''}" onclick={copyEndpoint}><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
           {#if depth.dns?.cloudflare_configured}
             <div class="dns-sep"></div>
-            <div class="kv net-kv"><span>hostname</span><b class="dns-ed" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="hostname" bind:this={dnsNameEl} onblur={dnsBlur}>{depth.dns?.dns?.name ?? ""}</b><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" checked={published} aria-label="dns published" onchange={dnsFlip} /><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
-            <div class="kv net-kv"><span>srv service</span><b class="dns-ed" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="srv service" bind:this={dnsSvcEl} onblur={dnsBlur}>{depth.dns?.dns?.service ?? ""}</b><i class="nu">srv</i></div>
+            <div class="kv net-kv"><span>hostname</span><input class="dns-ed" bind:value={dnsName} placeholder="game.example.com" spellcheck="false" aria-label="hostname" onblur={() => void dnsBlur()} /><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" bind:checked={dnsPublished} aria-label="dns published" onchange={() => void dnsFlip()} /><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
+            <div class="kv net-kv"><span>srv service</span><input class="dns-ed" bind:value={dnsSvc} placeholder="_game._udp" spellcheck="false" aria-label="srv service" onblur={() => void dnsBlur()} /><i class="nu">srv</i></div>
           {/if}
         </div>
       </section>

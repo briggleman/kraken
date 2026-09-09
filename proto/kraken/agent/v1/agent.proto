@@ -398,6 +398,17 @@ message NodeInfo {
   string arch = 13;                  // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
   string last_update_error = 14;     // most recent self-update failure ("" = none); cleared by the next successful update
   string binary_sha256 = 15;         // hex SHA-256 of the agent's own running binary ("" from older agents) — artifact-identity skew detection
+  // Every up, non-loopback IPv4 on the host with its interface name. `host`
+  // above is one UDP-route guess and can land on a virtual adapter (WSL/Hyper-V
+  // NAT, docker bridge); the full set lets the Panel adopt a LAN address only
+  // when the answer is unambiguous — and lets an operator pick when it is not.
+  repeated HostAddress host_addresses = 16;
+}
+
+// HostAddress is one interface/IPv4 pair on the agent host.
+message HostAddress {
+  string interface = 1;
+  string ip = 2;
 }
 
 message GetNodeTelemetryRequest {}

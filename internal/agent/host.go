@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // PrimaryIP returns the host's primary non-loopback IPv4 address — the address
@@ -33,6 +35,38 @@ func PrimaryIP() string {
 		}
 	}
 	return ""
+}
+
+// CandidateIPs returns every up, non-loopback IPv4 on the host with its
+// interface name. PrimaryIP is one UDP-route guess and can land on a virtual
+// adapter (a WSL/Hyper-V NAT, a docker bridge); reporting the full set lets the
+// Panel adopt a LAN address only when the answer is unambiguous, and gives an
+// operator the list to pick from when it is not.
+func CandidateIPs() []*agentpb.HostAddress {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []*agentpb.HostAddress
+	for _, ifc := range ifs {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok || ipnet.IP.IsLoopback() {
+				continue
+			}
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				out = append(out, &agentpb.HostAddress{Interface: ifc.Name, Ip: v4.String()})
+			}
+		}
+	}
+	return out
 }
 
 // externalIPTTL is how long a fetched WAN IP is cached before re-querying.

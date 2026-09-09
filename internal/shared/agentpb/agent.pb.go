@@ -2557,8 +2557,13 @@ type NodeInfo struct {
 	Arch             string                 `protobuf:"bytes,13,opt,name=arch,proto3" json:"arch,omitempty"`                                                                            // agent build architecture (GOARCH: "amd64" | "arm64") — selects the update binary
 	LastUpdateError  string                 `protobuf:"bytes,14,opt,name=last_update_error,json=lastUpdateError,proto3" json:"last_update_error,omitempty"`                             // most recent self-update failure ("" = none); cleared by the next successful update
 	BinarySha256     string                 `protobuf:"bytes,15,opt,name=binary_sha256,json=binarySha256,proto3" json:"binary_sha256,omitempty"`                                        // hex SHA-256 of the agent's own running binary ("" from older agents) — artifact-identity skew detection
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Every up, non-loopback IPv4 on the host with its interface name. `host`
+	// above is one UDP-route guess and can land on a virtual adapter (WSL/Hyper-V
+	// NAT, docker bridge); the full set lets the Panel adopt a LAN address only
+	// when the answer is unambiguous — and lets an operator pick when it is not.
+	HostAddresses []*HostAddress `protobuf:"bytes,16,rep,name=host_addresses,json=hostAddresses,proto3" json:"host_addresses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NodeInfo) Reset() {
@@ -2696,6 +2701,66 @@ func (x *NodeInfo) GetBinarySha256() string {
 	return ""
 }
 
+func (x *NodeInfo) GetHostAddresses() []*HostAddress {
+	if x != nil {
+		return x.HostAddresses
+	}
+	return nil
+}
+
+// HostAddress is one interface/IPv4 pair on the agent host.
+type HostAddress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Interface     string                 `protobuf:"bytes,1,opt,name=interface,proto3" json:"interface,omitempty"`
+	Ip            string                 `protobuf:"bytes,2,opt,name=ip,proto3" json:"ip,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostAddress) Reset() {
+	*x = HostAddress{}
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostAddress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostAddress) ProtoMessage() {}
+
+func (x *HostAddress) ProtoReflect() protoreflect.Message {
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostAddress.ProtoReflect.Descriptor instead.
+func (*HostAddress) Descriptor() ([]byte, []int) {
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *HostAddress) GetInterface() string {
+	if x != nil {
+		return x.Interface
+	}
+	return ""
+}
+
+func (x *HostAddress) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
 type GetNodeTelemetryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2704,7 +2769,7 @@ type GetNodeTelemetryRequest struct {
 
 func (x *GetNodeTelemetryRequest) Reset() {
 	*x = GetNodeTelemetryRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2716,7 +2781,7 @@ func (x *GetNodeTelemetryRequest) String() string {
 func (*GetNodeTelemetryRequest) ProtoMessage() {}
 
 func (x *GetNodeTelemetryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[43]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2729,7 +2794,7 @@ func (x *GetNodeTelemetryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeTelemetryRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeTelemetryRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{43}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 // NodeTelemetry is a snapshot of the host's live vitals, sampled by the Agent on
@@ -2779,7 +2844,7 @@ type NodeTelemetry struct {
 
 func (x *NodeTelemetry) Reset() {
 	*x = NodeTelemetry{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2791,7 +2856,7 @@ func (x *NodeTelemetry) String() string {
 func (*NodeTelemetry) ProtoMessage() {}
 
 func (x *NodeTelemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[44]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2804,7 +2869,7 @@ func (x *NodeTelemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeTelemetry.ProtoReflect.Descriptor instead.
 func (*NodeTelemetry) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{44}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *NodeTelemetry) GetTsUnixMs() int64 {
@@ -2941,7 +3006,7 @@ type UpdateAgentChunk struct {
 
 func (x *UpdateAgentChunk) Reset() {
 	*x = UpdateAgentChunk{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2953,7 +3018,7 @@ func (x *UpdateAgentChunk) String() string {
 func (*UpdateAgentChunk) ProtoMessage() {}
 
 func (x *UpdateAgentChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[45]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2966,7 +3031,7 @@ func (x *UpdateAgentChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAgentChunk.ProtoReflect.Descriptor instead.
 func (*UpdateAgentChunk) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{45}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UpdateAgentChunk) GetPayload() isUpdateAgentChunk_Payload {
@@ -3020,7 +3085,7 @@ type UpdateAgentResponse struct {
 
 func (x *UpdateAgentResponse) Reset() {
 	*x = UpdateAgentResponse{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3032,7 +3097,7 @@ func (x *UpdateAgentResponse) String() string {
 func (*UpdateAgentResponse) ProtoMessage() {}
 
 func (x *UpdateAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[46]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3045,7 +3110,7 @@ func (x *UpdateAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAgentResponse.ProtoReflect.Descriptor instead.
 func (*UpdateAgentResponse) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{46}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *UpdateAgentResponse) GetFromVersion() string {
@@ -3075,7 +3140,7 @@ type InstallServerRequest struct {
 
 func (x *InstallServerRequest) Reset() {
 	*x = InstallServerRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3087,7 +3152,7 @@ func (x *InstallServerRequest) String() string {
 func (*InstallServerRequest) ProtoMessage() {}
 
 func (x *InstallServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[47]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3100,7 +3165,7 @@ func (x *InstallServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallServerRequest.ProtoReflect.Descriptor instead.
 func (*InstallServerRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *InstallServerRequest) GetServerId() string {
@@ -3155,7 +3220,7 @@ type InstallEvent struct {
 
 func (x *InstallEvent) Reset() {
 	*x = InstallEvent{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3167,7 +3232,7 @@ func (x *InstallEvent) String() string {
 func (*InstallEvent) ProtoMessage() {}
 
 func (x *InstallEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[48]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3180,7 +3245,7 @@ func (x *InstallEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallEvent.ProtoReflect.Descriptor instead.
 func (*InstallEvent) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *InstallEvent) GetEvent() isInstallEvent_Event {
@@ -3264,7 +3329,7 @@ type PowerActionRequest struct {
 
 func (x *PowerActionRequest) Reset() {
 	*x = PowerActionRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3276,7 +3341,7 @@ func (x *PowerActionRequest) String() string {
 func (*PowerActionRequest) ProtoMessage() {}
 
 func (x *PowerActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[49]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3289,7 +3354,7 @@ func (x *PowerActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PowerActionRequest.ProtoReflect.Descriptor instead.
 func (*PowerActionRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *PowerActionRequest) GetServerId() string {
@@ -3315,7 +3380,7 @@ type PowerActionResponse struct {
 
 func (x *PowerActionResponse) Reset() {
 	*x = PowerActionResponse{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3327,7 +3392,7 @@ func (x *PowerActionResponse) String() string {
 func (*PowerActionResponse) ProtoMessage() {}
 
 func (x *PowerActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[50]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3340,7 +3405,7 @@ func (x *PowerActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PowerActionResponse.ProtoReflect.Descriptor instead.
 func (*PowerActionResponse) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *PowerActionResponse) GetState() ServerState {
@@ -3359,7 +3424,7 @@ type GetServerStatusRequest struct {
 
 func (x *GetServerStatusRequest) Reset() {
 	*x = GetServerStatusRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3371,7 +3436,7 @@ func (x *GetServerStatusRequest) String() string {
 func (*GetServerStatusRequest) ProtoMessage() {}
 
 func (x *GetServerStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[51]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3384,7 +3449,7 @@ func (x *GetServerStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServerStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetServerStatusRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{51}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *GetServerStatusRequest) GetServerId() string {
@@ -3405,7 +3470,7 @@ type ServerStatus struct {
 
 func (x *ServerStatus) Reset() {
 	*x = ServerStatus{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3417,7 +3482,7 @@ func (x *ServerStatus) String() string {
 func (*ServerStatus) ProtoMessage() {}
 
 func (x *ServerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[52]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3430,7 +3495,7 @@ func (x *ServerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerStatus.ProtoReflect.Descriptor instead.
 func (*ServerStatus) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{52}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ServerStatus) GetServerId() string {
@@ -3465,7 +3530,7 @@ type StreamConsoleRequest struct {
 
 func (x *StreamConsoleRequest) Reset() {
 	*x = StreamConsoleRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3477,7 +3542,7 @@ func (x *StreamConsoleRequest) String() string {
 func (*StreamConsoleRequest) ProtoMessage() {}
 
 func (x *StreamConsoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[53]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3490,7 +3555,7 @@ func (x *StreamConsoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamConsoleRequest.ProtoReflect.Descriptor instead.
 func (*StreamConsoleRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{53}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *StreamConsoleRequest) GetServerId() string {
@@ -3520,7 +3585,7 @@ type ConsoleLine struct {
 
 func (x *ConsoleLine) Reset() {
 	*x = ConsoleLine{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3532,7 +3597,7 @@ func (x *ConsoleLine) String() string {
 func (*ConsoleLine) ProtoMessage() {}
 
 func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[54]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3545,7 +3610,7 @@ func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleLine.ProtoReflect.Descriptor instead.
 func (*ConsoleLine) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{54}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ConsoleLine) GetServerId() string {
@@ -3586,7 +3651,7 @@ type SendCommandRequest struct {
 
 func (x *SendCommandRequest) Reset() {
 	*x = SendCommandRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3598,7 +3663,7 @@ func (x *SendCommandRequest) String() string {
 func (*SendCommandRequest) ProtoMessage() {}
 
 func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[55]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3611,7 +3676,7 @@ func (x *SendCommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandRequest.ProtoReflect.Descriptor instead.
 func (*SendCommandRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{55}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *SendCommandRequest) GetServerId() string {
@@ -3636,7 +3701,7 @@ type SendCommandResponse struct {
 
 func (x *SendCommandResponse) Reset() {
 	*x = SendCommandResponse{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[56]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3648,7 +3713,7 @@ func (x *SendCommandResponse) String() string {
 func (*SendCommandResponse) ProtoMessage() {}
 
 func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[56]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3661,7 +3726,7 @@ func (x *SendCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommandResponse.ProtoReflect.Descriptor instead.
 func (*SendCommandResponse) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{56}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{57}
 }
 
 type StreamStatsRequest struct {
@@ -3675,7 +3740,7 @@ type StreamStatsRequest struct {
 
 func (x *StreamStatsRequest) Reset() {
 	*x = StreamStatsRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[57]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3687,7 +3752,7 @@ func (x *StreamStatsRequest) String() string {
 func (*StreamStatsRequest) ProtoMessage() {}
 
 func (x *StreamStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[57]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3700,7 +3765,7 @@ func (x *StreamStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamStatsRequest.ProtoReflect.Descriptor instead.
 func (*StreamStatsRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{57}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *StreamStatsRequest) GetServerId() string {
@@ -3739,7 +3804,7 @@ type ResourceStats struct {
 
 func (x *ResourceStats) Reset() {
 	*x = ResourceStats{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[58]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3751,7 +3816,7 @@ func (x *ResourceStats) String() string {
 func (*ResourceStats) ProtoMessage() {}
 
 func (x *ResourceStats) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[58]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3764,7 +3829,7 @@ func (x *ResourceStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceStats.ProtoReflect.Descriptor instead.
 func (*ResourceStats) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{58}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ResourceStats) GetServerId() string {
@@ -3880,7 +3945,7 @@ type NodeConfig struct {
 
 func (x *NodeConfig) Reset() {
 	*x = NodeConfig{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[59]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3892,7 +3957,7 @@ func (x *NodeConfig) String() string {
 func (*NodeConfig) ProtoMessage() {}
 
 func (x *NodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[59]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3905,7 +3970,7 @@ func (x *NodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeConfig.ProtoReflect.Descriptor instead.
 func (*NodeConfig) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{59}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *NodeConfig) GetBackupTarget() string {
@@ -3980,7 +4045,7 @@ type ApplyNodeConfigRequest struct {
 
 func (x *ApplyNodeConfigRequest) Reset() {
 	*x = ApplyNodeConfigRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[60]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3992,7 +4057,7 @@ func (x *ApplyNodeConfigRequest) String() string {
 func (*ApplyNodeConfigRequest) ProtoMessage() {}
 
 func (x *ApplyNodeConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[60]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4005,7 +4070,7 @@ func (x *ApplyNodeConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyNodeConfigRequest.ProtoReflect.Descriptor instead.
 func (*ApplyNodeConfigRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{60}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ApplyNodeConfigRequest) GetConfig() *NodeConfig {
@@ -4025,7 +4090,7 @@ type ApplyNodeConfigResponse struct {
 
 func (x *ApplyNodeConfigResponse) Reset() {
 	*x = ApplyNodeConfigResponse{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[61]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4037,7 +4102,7 @@ func (x *ApplyNodeConfigResponse) String() string {
 func (*ApplyNodeConfigResponse) ProtoMessage() {}
 
 func (x *ApplyNodeConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[61]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4050,7 +4115,7 @@ func (x *ApplyNodeConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyNodeConfigResponse.ProtoReflect.Descriptor instead.
 func (*ApplyNodeConfigResponse) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{61}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ApplyNodeConfigResponse) GetOk() bool {
@@ -4077,7 +4142,7 @@ type ReplicateBackupsRequest struct {
 
 func (x *ReplicateBackupsRequest) Reset() {
 	*x = ReplicateBackupsRequest{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[62]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4089,7 +4154,7 @@ func (x *ReplicateBackupsRequest) String() string {
 func (*ReplicateBackupsRequest) ProtoMessage() {}
 
 func (x *ReplicateBackupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[62]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4102,7 +4167,7 @@ func (x *ReplicateBackupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateBackupsRequest.ProtoReflect.Descriptor instead.
 func (*ReplicateBackupsRequest) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{62}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ReplicateBackupsRequest) GetServerId() string {
@@ -4129,7 +4194,7 @@ type ReplicateBackupsResponse struct {
 
 func (x *ReplicateBackupsResponse) Reset() {
 	*x = ReplicateBackupsResponse{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[63]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4141,7 +4206,7 @@ func (x *ReplicateBackupsResponse) String() string {
 func (*ReplicateBackupsResponse) ProtoMessage() {}
 
 func (x *ReplicateBackupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[63]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4154,7 +4219,7 @@ func (x *ReplicateBackupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateBackupsResponse.ProtoReflect.Descriptor instead.
 func (*ReplicateBackupsResponse) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{63}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ReplicateBackupsResponse) GetMirrored() int32 {
@@ -4184,7 +4249,7 @@ type UpdateAgentChunk_Meta struct {
 
 func (x *UpdateAgentChunk_Meta) Reset() {
 	*x = UpdateAgentChunk_Meta{}
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[65]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4196,7 +4261,7 @@ func (x *UpdateAgentChunk_Meta) String() string {
 func (*UpdateAgentChunk_Meta) ProtoMessage() {}
 
 func (x *UpdateAgentChunk_Meta) ProtoReflect() protoreflect.Message {
-	mi := &file_kraken_agent_v1_agent_proto_msgTypes[65]
+	mi := &file_kraken_agent_v1_agent_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4209,7 +4274,7 @@ func (x *UpdateAgentChunk_Meta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAgentChunk_Meta.ProtoReflect.Descriptor instead.
 func (*UpdateAgentChunk_Meta) Descriptor() ([]byte, []int) {
-	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{45, 0}
+	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{46, 0}
 }
 
 func (x *UpdateAgentChunk_Meta) GetVersion() string {
@@ -4391,7 +4456,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\"\x16\n" +
-	"\x14DeleteBackupResponse\"\x9e\x04\n" +
+	"\x14DeleteBackupResponse\"\xe3\x04\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12!\n" +
@@ -4409,7 +4474,11 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\rruntime_error\x18\f \x01(\tR\fruntimeError\x12\x12\n" +
 	"\x04arch\x18\r \x01(\tR\x04arch\x12*\n" +
 	"\x11last_update_error\x18\x0e \x01(\tR\x0flastUpdateError\x12#\n" +
-	"\rbinary_sha256\x18\x0f \x01(\tR\fbinarySha256\"\x19\n" +
+	"\rbinary_sha256\x18\x0f \x01(\tR\fbinarySha256\x12C\n" +
+	"\x0ehost_addresses\x18\x10 \x03(\v2\x1c.kraken.agent.v1.HostAddressR\rhostAddresses\";\n" +
+	"\vHostAddress\x12\x1c\n" +
+	"\tinterface\x18\x01 \x01(\tR\tinterface\x12\x0e\n" +
+	"\x02ip\x18\x02 \x01(\tR\x02ip\"\x19\n" +
 	"\x17GetNodeTelemetryRequest\"\xab\x04\n" +
 	"\rNodeTelemetry\x12\x1c\n" +
 	"\n" +
@@ -4614,7 +4683,7 @@ func file_kraken_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_kraken_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_kraken_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
+var file_kraken_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
 var file_kraken_agent_v1_agent_proto_goTypes = []any{
 	(ServerState)(0),                     // 0: kraken.agent.v1.ServerState
 	(RuntimeStatus)(0),                   // 1: kraken.agent.v1.RuntimeStatus
@@ -4664,33 +4733,34 @@ var file_kraken_agent_v1_agent_proto_goTypes = []any{
 	(*DeleteBackupRequest)(nil),          // 45: kraken.agent.v1.DeleteBackupRequest
 	(*DeleteBackupResponse)(nil),         // 46: kraken.agent.v1.DeleteBackupResponse
 	(*NodeInfo)(nil),                     // 47: kraken.agent.v1.NodeInfo
-	(*GetNodeTelemetryRequest)(nil),      // 48: kraken.agent.v1.GetNodeTelemetryRequest
-	(*NodeTelemetry)(nil),                // 49: kraken.agent.v1.NodeTelemetry
-	(*UpdateAgentChunk)(nil),             // 50: kraken.agent.v1.UpdateAgentChunk
-	(*UpdateAgentResponse)(nil),          // 51: kraken.agent.v1.UpdateAgentResponse
-	(*InstallServerRequest)(nil),         // 52: kraken.agent.v1.InstallServerRequest
-	(*InstallEvent)(nil),                 // 53: kraken.agent.v1.InstallEvent
-	(*PowerActionRequest)(nil),           // 54: kraken.agent.v1.PowerActionRequest
-	(*PowerActionResponse)(nil),          // 55: kraken.agent.v1.PowerActionResponse
-	(*GetServerStatusRequest)(nil),       // 56: kraken.agent.v1.GetServerStatusRequest
-	(*ServerStatus)(nil),                 // 57: kraken.agent.v1.ServerStatus
-	(*StreamConsoleRequest)(nil),         // 58: kraken.agent.v1.StreamConsoleRequest
-	(*ConsoleLine)(nil),                  // 59: kraken.agent.v1.ConsoleLine
-	(*SendCommandRequest)(nil),           // 60: kraken.agent.v1.SendCommandRequest
-	(*SendCommandResponse)(nil),          // 61: kraken.agent.v1.SendCommandResponse
-	(*StreamStatsRequest)(nil),           // 62: kraken.agent.v1.StreamStatsRequest
-	(*ResourceStats)(nil),                // 63: kraken.agent.v1.ResourceStats
-	(*NodeConfig)(nil),                   // 64: kraken.agent.v1.NodeConfig
-	(*ApplyNodeConfigRequest)(nil),       // 65: kraken.agent.v1.ApplyNodeConfigRequest
-	(*ApplyNodeConfigResponse)(nil),      // 66: kraken.agent.v1.ApplyNodeConfigResponse
-	(*ReplicateBackupsRequest)(nil),      // 67: kraken.agent.v1.ReplicateBackupsRequest
-	(*ReplicateBackupsResponse)(nil),     // 68: kraken.agent.v1.ReplicateBackupsResponse
-	nil,                                  // 69: kraken.agent.v1.ServerSpec.EnvEntry
-	(*UpdateAgentChunk_Meta)(nil),        // 70: kraken.agent.v1.UpdateAgentChunk.Meta
-	nil,                                  // 71: kraken.agent.v1.InstallServerRequest.EnvEntry
+	(*HostAddress)(nil),                  // 48: kraken.agent.v1.HostAddress
+	(*GetNodeTelemetryRequest)(nil),      // 49: kraken.agent.v1.GetNodeTelemetryRequest
+	(*NodeTelemetry)(nil),                // 50: kraken.agent.v1.NodeTelemetry
+	(*UpdateAgentChunk)(nil),             // 51: kraken.agent.v1.UpdateAgentChunk
+	(*UpdateAgentResponse)(nil),          // 52: kraken.agent.v1.UpdateAgentResponse
+	(*InstallServerRequest)(nil),         // 53: kraken.agent.v1.InstallServerRequest
+	(*InstallEvent)(nil),                 // 54: kraken.agent.v1.InstallEvent
+	(*PowerActionRequest)(nil),           // 55: kraken.agent.v1.PowerActionRequest
+	(*PowerActionResponse)(nil),          // 56: kraken.agent.v1.PowerActionResponse
+	(*GetServerStatusRequest)(nil),       // 57: kraken.agent.v1.GetServerStatusRequest
+	(*ServerStatus)(nil),                 // 58: kraken.agent.v1.ServerStatus
+	(*StreamConsoleRequest)(nil),         // 59: kraken.agent.v1.StreamConsoleRequest
+	(*ConsoleLine)(nil),                  // 60: kraken.agent.v1.ConsoleLine
+	(*SendCommandRequest)(nil),           // 61: kraken.agent.v1.SendCommandRequest
+	(*SendCommandResponse)(nil),          // 62: kraken.agent.v1.SendCommandResponse
+	(*StreamStatsRequest)(nil),           // 63: kraken.agent.v1.StreamStatsRequest
+	(*ResourceStats)(nil),                // 64: kraken.agent.v1.ResourceStats
+	(*NodeConfig)(nil),                   // 65: kraken.agent.v1.NodeConfig
+	(*ApplyNodeConfigRequest)(nil),       // 66: kraken.agent.v1.ApplyNodeConfigRequest
+	(*ApplyNodeConfigResponse)(nil),      // 67: kraken.agent.v1.ApplyNodeConfigResponse
+	(*ReplicateBackupsRequest)(nil),      // 68: kraken.agent.v1.ReplicateBackupsRequest
+	(*ReplicateBackupsResponse)(nil),     // 69: kraken.agent.v1.ReplicateBackupsResponse
+	nil,                                  // 70: kraken.agent.v1.ServerSpec.EnvEntry
+	(*UpdateAgentChunk_Meta)(nil),        // 71: kraken.agent.v1.UpdateAgentChunk.Meta
+	nil,                                  // 72: kraken.agent.v1.InstallServerRequest.EnvEntry
 }
 var file_kraken_agent_v1_agent_proto_depIdxs = []int32{
-	69, // 0: kraken.agent.v1.ServerSpec.env:type_name -> kraken.agent.v1.ServerSpec.EnvEntry
+	70, // 0: kraken.agent.v1.ServerSpec.env:type_name -> kraken.agent.v1.ServerSpec.EnvEntry
 	10, // 1: kraken.agent.v1.ServerSpec.ports:type_name -> kraken.agent.v1.PortMapping
 	13, // 2: kraken.agent.v1.ServerSpec.player_query:type_name -> kraken.agent.v1.PlayerQuery
 	12, // 3: kraken.agent.v1.ServerSpec.sftp:type_name -> kraken.agent.v1.SftpAccess
@@ -4701,76 +4771,77 @@ var file_kraken_agent_v1_agent_proto_depIdxs = []int32{
 	4,  // 8: kraken.agent.v1.BackupInfo.replication:type_name -> kraken.agent.v1.ReplicationState
 	39, // 9: kraken.agent.v1.ListBackupsResponse.backups:type_name -> kraken.agent.v1.BackupInfo
 	1,  // 10: kraken.agent.v1.NodeInfo.runtime_status:type_name -> kraken.agent.v1.RuntimeStatus
-	70, // 11: kraken.agent.v1.UpdateAgentChunk.meta:type_name -> kraken.agent.v1.UpdateAgentChunk.Meta
-	71, // 12: kraken.agent.v1.InstallServerRequest.env:type_name -> kraken.agent.v1.InstallServerRequest.EnvEntry
-	2,  // 13: kraken.agent.v1.PowerActionRequest.action:type_name -> kraken.agent.v1.PowerAction
-	0,  // 14: kraken.agent.v1.PowerActionResponse.state:type_name -> kraken.agent.v1.ServerState
-	0,  // 15: kraken.agent.v1.ServerStatus.state:type_name -> kraken.agent.v1.ServerState
-	63, // 16: kraken.agent.v1.ServerStatus.last_stats:type_name -> kraken.agent.v1.ResourceStats
-	64, // 17: kraken.agent.v1.ApplyNodeConfigRequest.config:type_name -> kraken.agent.v1.NodeConfig
-	9,  // 18: kraken.agent.v1.NodeService.GetNodeInfo:input_type -> kraken.agent.v1.GetNodeInfoRequest
-	48, // 19: kraken.agent.v1.NodeService.GetNodeTelemetry:input_type -> kraken.agent.v1.GetNodeTelemetryRequest
-	50, // 20: kraken.agent.v1.NodeService.UpdateAgent:input_type -> kraken.agent.v1.UpdateAgentChunk
-	14, // 21: kraken.agent.v1.NodeService.CreateServer:input_type -> kraken.agent.v1.CreateServerRequest
-	16, // 22: kraken.agent.v1.NodeService.RemoveServer:input_type -> kraken.agent.v1.RemoveServerRequest
-	19, // 23: kraken.agent.v1.NodeService.ApplyConfig:input_type -> kraken.agent.v1.ApplyConfigRequest
-	22, // 24: kraken.agent.v1.NodeService.ListFiles:input_type -> kraken.agent.v1.ListFilesRequest
-	24, // 25: kraken.agent.v1.NodeService.DownloadFiles:input_type -> kraken.agent.v1.DownloadFilesRequest
-	27, // 26: kraken.agent.v1.NodeService.ReadFile:input_type -> kraken.agent.v1.ReadFileRequest
-	25, // 27: kraken.agent.v1.NodeService.DownloadFile:input_type -> kraken.agent.v1.DownloadFileRequest
-	29, // 28: kraken.agent.v1.NodeService.MakeDir:input_type -> kraken.agent.v1.MakeDirRequest
-	31, // 29: kraken.agent.v1.NodeService.MovePath:input_type -> kraken.agent.v1.MovePathRequest
-	33, // 30: kraken.agent.v1.NodeService.CopyPath:input_type -> kraken.agent.v1.CopyPathRequest
-	35, // 31: kraken.agent.v1.NodeService.WriteFile:input_type -> kraken.agent.v1.WriteFileRequest
-	37, // 32: kraken.agent.v1.NodeService.DeletePaths:input_type -> kraken.agent.v1.DeletePathsRequest
-	40, // 33: kraken.agent.v1.NodeService.CreateBackup:input_type -> kraken.agent.v1.CreateBackupRequest
-	41, // 34: kraken.agent.v1.NodeService.ListBackups:input_type -> kraken.agent.v1.ListBackupsRequest
-	43, // 35: kraken.agent.v1.NodeService.RestoreBackup:input_type -> kraken.agent.v1.RestoreBackupRequest
-	45, // 36: kraken.agent.v1.NodeService.DeleteBackup:input_type -> kraken.agent.v1.DeleteBackupRequest
-	52, // 37: kraken.agent.v1.NodeService.InstallServer:input_type -> kraken.agent.v1.InstallServerRequest
-	54, // 38: kraken.agent.v1.NodeService.PowerAction:input_type -> kraken.agent.v1.PowerActionRequest
-	56, // 39: kraken.agent.v1.NodeService.GetServerStatus:input_type -> kraken.agent.v1.GetServerStatusRequest
-	58, // 40: kraken.agent.v1.NodeService.StreamConsole:input_type -> kraken.agent.v1.StreamConsoleRequest
-	60, // 41: kraken.agent.v1.NodeService.SendCommand:input_type -> kraken.agent.v1.SendCommandRequest
-	62, // 42: kraken.agent.v1.NodeService.StreamStats:input_type -> kraken.agent.v1.StreamStatsRequest
-	65, // 43: kraken.agent.v1.NodeService.ApplyNodeConfig:input_type -> kraken.agent.v1.ApplyNodeConfigRequest
-	67, // 44: kraken.agent.v1.NodeService.ReplicateBackups:input_type -> kraken.agent.v1.ReplicateBackupsRequest
-	5,  // 45: kraken.agent.v1.NodeService.BeginCertRotation:input_type -> kraken.agent.v1.BeginCertRotationRequest
-	7,  // 46: kraken.agent.v1.NodeService.CompleteCertRotation:input_type -> kraken.agent.v1.CompleteCertRotationRequest
-	47, // 47: kraken.agent.v1.NodeService.GetNodeInfo:output_type -> kraken.agent.v1.NodeInfo
-	49, // 48: kraken.agent.v1.NodeService.GetNodeTelemetry:output_type -> kraken.agent.v1.NodeTelemetry
-	51, // 49: kraken.agent.v1.NodeService.UpdateAgent:output_type -> kraken.agent.v1.UpdateAgentResponse
-	15, // 50: kraken.agent.v1.NodeService.CreateServer:output_type -> kraken.agent.v1.CreateServerResponse
-	17, // 51: kraken.agent.v1.NodeService.RemoveServer:output_type -> kraken.agent.v1.RemoveServerResponse
-	20, // 52: kraken.agent.v1.NodeService.ApplyConfig:output_type -> kraken.agent.v1.ApplyConfigResponse
-	23, // 53: kraken.agent.v1.NodeService.ListFiles:output_type -> kraken.agent.v1.ListFilesResponse
-	26, // 54: kraken.agent.v1.NodeService.DownloadFiles:output_type -> kraken.agent.v1.FileChunk
-	28, // 55: kraken.agent.v1.NodeService.ReadFile:output_type -> kraken.agent.v1.ReadFileResponse
-	26, // 56: kraken.agent.v1.NodeService.DownloadFile:output_type -> kraken.agent.v1.FileChunk
-	30, // 57: kraken.agent.v1.NodeService.MakeDir:output_type -> kraken.agent.v1.MakeDirResponse
-	32, // 58: kraken.agent.v1.NodeService.MovePath:output_type -> kraken.agent.v1.MovePathResponse
-	34, // 59: kraken.agent.v1.NodeService.CopyPath:output_type -> kraken.agent.v1.CopyPathResponse
-	36, // 60: kraken.agent.v1.NodeService.WriteFile:output_type -> kraken.agent.v1.WriteFileResponse
-	38, // 61: kraken.agent.v1.NodeService.DeletePaths:output_type -> kraken.agent.v1.DeletePathsResponse
-	39, // 62: kraken.agent.v1.NodeService.CreateBackup:output_type -> kraken.agent.v1.BackupInfo
-	42, // 63: kraken.agent.v1.NodeService.ListBackups:output_type -> kraken.agent.v1.ListBackupsResponse
-	44, // 64: kraken.agent.v1.NodeService.RestoreBackup:output_type -> kraken.agent.v1.RestoreBackupResponse
-	46, // 65: kraken.agent.v1.NodeService.DeleteBackup:output_type -> kraken.agent.v1.DeleteBackupResponse
-	53, // 66: kraken.agent.v1.NodeService.InstallServer:output_type -> kraken.agent.v1.InstallEvent
-	55, // 67: kraken.agent.v1.NodeService.PowerAction:output_type -> kraken.agent.v1.PowerActionResponse
-	57, // 68: kraken.agent.v1.NodeService.GetServerStatus:output_type -> kraken.agent.v1.ServerStatus
-	59, // 69: kraken.agent.v1.NodeService.StreamConsole:output_type -> kraken.agent.v1.ConsoleLine
-	61, // 70: kraken.agent.v1.NodeService.SendCommand:output_type -> kraken.agent.v1.SendCommandResponse
-	63, // 71: kraken.agent.v1.NodeService.StreamStats:output_type -> kraken.agent.v1.ResourceStats
-	66, // 72: kraken.agent.v1.NodeService.ApplyNodeConfig:output_type -> kraken.agent.v1.ApplyNodeConfigResponse
-	68, // 73: kraken.agent.v1.NodeService.ReplicateBackups:output_type -> kraken.agent.v1.ReplicateBackupsResponse
-	6,  // 74: kraken.agent.v1.NodeService.BeginCertRotation:output_type -> kraken.agent.v1.BeginCertRotationResponse
-	8,  // 75: kraken.agent.v1.NodeService.CompleteCertRotation:output_type -> kraken.agent.v1.CompleteCertRotationResponse
-	47, // [47:76] is the sub-list for method output_type
-	18, // [18:47] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	48, // 11: kraken.agent.v1.NodeInfo.host_addresses:type_name -> kraken.agent.v1.HostAddress
+	71, // 12: kraken.agent.v1.UpdateAgentChunk.meta:type_name -> kraken.agent.v1.UpdateAgentChunk.Meta
+	72, // 13: kraken.agent.v1.InstallServerRequest.env:type_name -> kraken.agent.v1.InstallServerRequest.EnvEntry
+	2,  // 14: kraken.agent.v1.PowerActionRequest.action:type_name -> kraken.agent.v1.PowerAction
+	0,  // 15: kraken.agent.v1.PowerActionResponse.state:type_name -> kraken.agent.v1.ServerState
+	0,  // 16: kraken.agent.v1.ServerStatus.state:type_name -> kraken.agent.v1.ServerState
+	64, // 17: kraken.agent.v1.ServerStatus.last_stats:type_name -> kraken.agent.v1.ResourceStats
+	65, // 18: kraken.agent.v1.ApplyNodeConfigRequest.config:type_name -> kraken.agent.v1.NodeConfig
+	9,  // 19: kraken.agent.v1.NodeService.GetNodeInfo:input_type -> kraken.agent.v1.GetNodeInfoRequest
+	49, // 20: kraken.agent.v1.NodeService.GetNodeTelemetry:input_type -> kraken.agent.v1.GetNodeTelemetryRequest
+	51, // 21: kraken.agent.v1.NodeService.UpdateAgent:input_type -> kraken.agent.v1.UpdateAgentChunk
+	14, // 22: kraken.agent.v1.NodeService.CreateServer:input_type -> kraken.agent.v1.CreateServerRequest
+	16, // 23: kraken.agent.v1.NodeService.RemoveServer:input_type -> kraken.agent.v1.RemoveServerRequest
+	19, // 24: kraken.agent.v1.NodeService.ApplyConfig:input_type -> kraken.agent.v1.ApplyConfigRequest
+	22, // 25: kraken.agent.v1.NodeService.ListFiles:input_type -> kraken.agent.v1.ListFilesRequest
+	24, // 26: kraken.agent.v1.NodeService.DownloadFiles:input_type -> kraken.agent.v1.DownloadFilesRequest
+	27, // 27: kraken.agent.v1.NodeService.ReadFile:input_type -> kraken.agent.v1.ReadFileRequest
+	25, // 28: kraken.agent.v1.NodeService.DownloadFile:input_type -> kraken.agent.v1.DownloadFileRequest
+	29, // 29: kraken.agent.v1.NodeService.MakeDir:input_type -> kraken.agent.v1.MakeDirRequest
+	31, // 30: kraken.agent.v1.NodeService.MovePath:input_type -> kraken.agent.v1.MovePathRequest
+	33, // 31: kraken.agent.v1.NodeService.CopyPath:input_type -> kraken.agent.v1.CopyPathRequest
+	35, // 32: kraken.agent.v1.NodeService.WriteFile:input_type -> kraken.agent.v1.WriteFileRequest
+	37, // 33: kraken.agent.v1.NodeService.DeletePaths:input_type -> kraken.agent.v1.DeletePathsRequest
+	40, // 34: kraken.agent.v1.NodeService.CreateBackup:input_type -> kraken.agent.v1.CreateBackupRequest
+	41, // 35: kraken.agent.v1.NodeService.ListBackups:input_type -> kraken.agent.v1.ListBackupsRequest
+	43, // 36: kraken.agent.v1.NodeService.RestoreBackup:input_type -> kraken.agent.v1.RestoreBackupRequest
+	45, // 37: kraken.agent.v1.NodeService.DeleteBackup:input_type -> kraken.agent.v1.DeleteBackupRequest
+	53, // 38: kraken.agent.v1.NodeService.InstallServer:input_type -> kraken.agent.v1.InstallServerRequest
+	55, // 39: kraken.agent.v1.NodeService.PowerAction:input_type -> kraken.agent.v1.PowerActionRequest
+	57, // 40: kraken.agent.v1.NodeService.GetServerStatus:input_type -> kraken.agent.v1.GetServerStatusRequest
+	59, // 41: kraken.agent.v1.NodeService.StreamConsole:input_type -> kraken.agent.v1.StreamConsoleRequest
+	61, // 42: kraken.agent.v1.NodeService.SendCommand:input_type -> kraken.agent.v1.SendCommandRequest
+	63, // 43: kraken.agent.v1.NodeService.StreamStats:input_type -> kraken.agent.v1.StreamStatsRequest
+	66, // 44: kraken.agent.v1.NodeService.ApplyNodeConfig:input_type -> kraken.agent.v1.ApplyNodeConfigRequest
+	68, // 45: kraken.agent.v1.NodeService.ReplicateBackups:input_type -> kraken.agent.v1.ReplicateBackupsRequest
+	5,  // 46: kraken.agent.v1.NodeService.BeginCertRotation:input_type -> kraken.agent.v1.BeginCertRotationRequest
+	7,  // 47: kraken.agent.v1.NodeService.CompleteCertRotation:input_type -> kraken.agent.v1.CompleteCertRotationRequest
+	47, // 48: kraken.agent.v1.NodeService.GetNodeInfo:output_type -> kraken.agent.v1.NodeInfo
+	50, // 49: kraken.agent.v1.NodeService.GetNodeTelemetry:output_type -> kraken.agent.v1.NodeTelemetry
+	52, // 50: kraken.agent.v1.NodeService.UpdateAgent:output_type -> kraken.agent.v1.UpdateAgentResponse
+	15, // 51: kraken.agent.v1.NodeService.CreateServer:output_type -> kraken.agent.v1.CreateServerResponse
+	17, // 52: kraken.agent.v1.NodeService.RemoveServer:output_type -> kraken.agent.v1.RemoveServerResponse
+	20, // 53: kraken.agent.v1.NodeService.ApplyConfig:output_type -> kraken.agent.v1.ApplyConfigResponse
+	23, // 54: kraken.agent.v1.NodeService.ListFiles:output_type -> kraken.agent.v1.ListFilesResponse
+	26, // 55: kraken.agent.v1.NodeService.DownloadFiles:output_type -> kraken.agent.v1.FileChunk
+	28, // 56: kraken.agent.v1.NodeService.ReadFile:output_type -> kraken.agent.v1.ReadFileResponse
+	26, // 57: kraken.agent.v1.NodeService.DownloadFile:output_type -> kraken.agent.v1.FileChunk
+	30, // 58: kraken.agent.v1.NodeService.MakeDir:output_type -> kraken.agent.v1.MakeDirResponse
+	32, // 59: kraken.agent.v1.NodeService.MovePath:output_type -> kraken.agent.v1.MovePathResponse
+	34, // 60: kraken.agent.v1.NodeService.CopyPath:output_type -> kraken.agent.v1.CopyPathResponse
+	36, // 61: kraken.agent.v1.NodeService.WriteFile:output_type -> kraken.agent.v1.WriteFileResponse
+	38, // 62: kraken.agent.v1.NodeService.DeletePaths:output_type -> kraken.agent.v1.DeletePathsResponse
+	39, // 63: kraken.agent.v1.NodeService.CreateBackup:output_type -> kraken.agent.v1.BackupInfo
+	42, // 64: kraken.agent.v1.NodeService.ListBackups:output_type -> kraken.agent.v1.ListBackupsResponse
+	44, // 65: kraken.agent.v1.NodeService.RestoreBackup:output_type -> kraken.agent.v1.RestoreBackupResponse
+	46, // 66: kraken.agent.v1.NodeService.DeleteBackup:output_type -> kraken.agent.v1.DeleteBackupResponse
+	54, // 67: kraken.agent.v1.NodeService.InstallServer:output_type -> kraken.agent.v1.InstallEvent
+	56, // 68: kraken.agent.v1.NodeService.PowerAction:output_type -> kraken.agent.v1.PowerActionResponse
+	58, // 69: kraken.agent.v1.NodeService.GetServerStatus:output_type -> kraken.agent.v1.ServerStatus
+	60, // 70: kraken.agent.v1.NodeService.StreamConsole:output_type -> kraken.agent.v1.ConsoleLine
+	62, // 71: kraken.agent.v1.NodeService.SendCommand:output_type -> kraken.agent.v1.SendCommandResponse
+	64, // 72: kraken.agent.v1.NodeService.StreamStats:output_type -> kraken.agent.v1.ResourceStats
+	67, // 73: kraken.agent.v1.NodeService.ApplyNodeConfig:output_type -> kraken.agent.v1.ApplyNodeConfigResponse
+	69, // 74: kraken.agent.v1.NodeService.ReplicateBackups:output_type -> kraken.agent.v1.ReplicateBackupsResponse
+	6,  // 75: kraken.agent.v1.NodeService.BeginCertRotation:output_type -> kraken.agent.v1.BeginCertRotationResponse
+	8,  // 76: kraken.agent.v1.NodeService.CompleteCertRotation:output_type -> kraken.agent.v1.CompleteCertRotationResponse
+	48, // [48:77] is the sub-list for method output_type
+	19, // [19:48] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_kraken_agent_v1_agent_proto_init() }
@@ -4778,11 +4849,11 @@ func file_kraken_agent_v1_agent_proto_init() {
 	if File_kraken_agent_v1_agent_proto != nil {
 		return
 	}
-	file_kraken_agent_v1_agent_proto_msgTypes[45].OneofWrappers = []any{
+	file_kraken_agent_v1_agent_proto_msgTypes[46].OneofWrappers = []any{
 		(*UpdateAgentChunk_Meta_)(nil),
 		(*UpdateAgentChunk_Data)(nil),
 	}
-	file_kraken_agent_v1_agent_proto_msgTypes[48].OneofWrappers = []any{
+	file_kraken_agent_v1_agent_proto_msgTypes[49].OneofWrappers = []any{
 		(*InstallEvent_LogLine)(nil),
 		(*InstallEvent_Progress)(nil),
 		(*InstallEvent_Completed)(nil),
@@ -4794,7 +4865,7 @@ func file_kraken_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kraken_agent_v1_agent_proto_rawDesc), len(file_kraken_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   67,
+			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

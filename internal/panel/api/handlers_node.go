@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,6 +23,35 @@ import (
 	"github.com/briggleman/kraken/internal/shared/mtls"
 	"github.com/briggleman/kraken/internal/shared/version"
 )
+
+// adoptLANHost records a newly observed LAN host on the node. PublicHost moves
+// with it only when it was tracking the previous observation (the first-contact
+// auto-fill), so an operator-set public name is never touched; the first-ever
+// observation only seeds. Reports whether anything changed.
+func adoptLANHost(n *cluster.Node, observed string) bool {
+	if observed == "" || observed == n.LANHost {
+		return false
+	}
+	if n.LANHost != "" && n.PublicHost == n.LANHost {
+		n.PublicHost = observed
+	}
+	n.LANHost = observed
+	return true
+}
+
+// hostAddressStrings renders the Agent's interface/IP pairs as "iface ip" lines
+// for the node record (display + a future operator picker). Nil when empty so
+// the JSON field stays omitted.
+func hostAddressStrings(in []*agentpb.HostAddress) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(in))
+	for _, a := range in {
+		out = append(out, strings.TrimSpace(a.GetInterface()+" "+a.GetIp()))
+	}
+	return out
+}
 
 // agentIdentityFromPeer extracts the Panel-minted agent identity from the TLS
 // serving cert observed on a gRPC call. Empty for plaintext (dev) and
@@ -533,8 +563,39 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.IdentityPending = false
 		changed = true
 	}
-	if n.PublicHost == "" && info.Host != "" {
-		n.PublicHost = info.Host
+	// LANHost: the node's address on its own network, refreshed every reconcile
+	// in trust order — the live tunnel session's source IP (the socket the Panel
+	// is talking to right now), the operator-set dial address (the Panel dials
+	// it), the Agent's candidate list when it names exactly one address, and
+	// last the Agent's primary-IP guess (which can land on a virtual adapter).
+	// The old behavior froze the first-contact guess in PublicHost forever, so
+	// a DHCP move left forwards and SFTP pointing at a stale IP (#224).
+	lan := ""
+	if n.Tunneled() && s.tunnel != nil {
+		lan = s.tunnel.RemoteIP(n.ID)
+	}
+	if lan == "" {
+		if host, _, err := net.SplitHostPort(n.Address); err == nil {
+			lan = host
+		}
+	}
+	if lan == "" {
+		if cands := info.GetHostAddresses(); len(cands) == 1 {
+			lan = cands[0].GetIp()
+		} else {
+			lan = info.Host
+		}
+	}
+	if old := n.LANHost; adoptLANHost(n, lan) {
+		s.logger.Info("node LAN host changed", "node", n.ID, "name", n.Name, "from", old, "to", n.LANHost)
+		changed = true
+	}
+	if cands := hostAddressStrings(info.GetHostAddresses()); !slices.Equal(cands, n.LANCandidates) {
+		n.LANCandidates = cands
+		changed = true
+	}
+	if n.PublicHost == "" && n.LANHost != "" {
+		n.PublicHost = n.LANHost
 		changed = true
 	}
 	// The Agent is authoritative about its own OS; correct a stale/guessed value.

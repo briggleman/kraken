@@ -91,6 +91,7 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 		TotalMemoryMb:  16384,
 		RunningServers: int32(running),
 		Host:           PrimaryIP(),
+		HostAddresses:  CandidateIPs(),
 		ExternalIp:     "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
 		RuntimeStatus:  agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
 	}, nil

@@ -1357,9 +1357,14 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 	defer func() { _ = os.Remove(tmp.Name()) }()
 	defer tmp.Close()
 
-	if err := d.archiveDataDir(serverID, tmp); err != nil {
+	stats, err := d.archiveDataDir(serverID, tmp)
+	if err != nil {
 		d.failBackup(serverID, id, err)
 		return
+	}
+	degraded := stats.summary()
+	if degraded != "" {
+		slog.Warn("backup captured with degradations", "server", serverID, "id", id, "detail", degraded)
 	}
 	size, err := tmp.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -1379,6 +1384,7 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 	d.updateBackupJob(serverID, id, func(b *agentpb.BackupInfo) {
 		b.Size = size
 		b.State = agentpb.BackupState_BACKUP_STATE_READY
+		b.Error = degraded
 	})
 
 	// Off-node mirror of the finished archive — a separate, best-effort step.
@@ -1398,52 +1404,18 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 	d.setReplication(serverID, id, agentpb.ReplicationState_REPLICATION_STATE_DONE)
 }
 
-// archiveDataDir tar+gzips a server's data dir into w.
-func (d *DockerRuntime) archiveDataDir(serverID string, w io.Writer) error {
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
-	root := d.localDir(serverID)
-	walkErr := filepath.WalkDir(root, func(fp string, e os.DirEntry, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		rel, rerr := filepath.Rel(root, fp)
-		if rerr != nil || rel == "." {
-			return rerr
-		}
-		info, ierr := e.Info()
-		if ierr != nil {
-			return ierr
-		}
-		hdr, herr := tar.FileInfoHeader(info, "")
-		if herr != nil {
-			return herr
-		}
-		hdr.Name = filepath.ToSlash(rel)
-		if e.IsDir() {
-			hdr.Name += "/"
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		if e.IsDir() {
-			return nil
-		}
-		f, oerr := os.Open(fp)
-		if oerr != nil {
-			return oerr
-		}
-		_, cerr := io.Copy(tw, f)
-		f.Close()
-		return cerr
-	})
-	if walkErr != nil {
-		return fmt.Errorf("docker: archive data dir: %w", walkErr)
+// archiveDataDir tar+gzips a server's data dir into w, tolerating a live tree
+// (see archive.go). A capture with zero regular files is an error — an archive
+// of nothing would restore to nothing.
+func (d *DockerRuntime) archiveDataDir(serverID string, w io.Writer) (archiveStats, error) {
+	st, err := archiveTree(d.localDir(serverID), w)
+	if err != nil {
+		return st, fmt.Errorf("docker: archive data dir: %w", err)
 	}
-	if err := tw.Close(); err != nil {
-		return err
+	if st.files == 0 {
+		return st, fmt.Errorf("docker: archive data dir: no files under the data dir")
 	}
-	return gz.Close()
+	return st, nil
 }
 
 // ---- async backup job tracker (guarded by bjMu) ----

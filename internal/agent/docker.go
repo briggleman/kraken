@@ -1453,7 +1453,7 @@ func backupJobKey(serverID, id string) string { return serverID + "/" + id }
 func cloneBackup(b *agentpb.BackupInfo) *agentpb.BackupInfo {
 	return &agentpb.BackupInfo{
 		Id: b.Id, Name: b.Name, Size: b.Size, CreatedUnixMs: b.CreatedUnixMs,
-		State: b.State, Replication: b.Replication,
+		State: b.State, Replication: b.Replication, Error: b.Error,
 	}
 }
 
@@ -1482,6 +1482,7 @@ func (d *DockerRuntime) failBackup(serverID, id string, err error) {
 	slog.Warn("backup failed", "server", serverID, "id", id, "err", err)
 	d.updateBackupJob(serverID, id, func(b *agentpb.BackupInfo) {
 		b.State = agentpb.BackupState_BACKUP_STATE_FAILED
+		b.Error = err.Error()
 		if b.Replication == agentpb.ReplicationState_REPLICATION_STATE_PENDING {
 			b.Replication = agentpb.ReplicationState_REPLICATION_STATE_UNSPECIFIED
 		}
@@ -1516,8 +1517,9 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 		}
 		if onDisk := byID[job.Id]; onDisk != nil {
 			// Completed archive: keep its real size, but carry the tracked
-			// replication state (and any terminal archive state).
+			// replication state (and any terminal archive state / reason).
 			onDisk.Replication = job.Replication
+			onDisk.Error = job.Error
 			if job.State != agentpb.BackupState_BACKUP_STATE_UNSPECIFIED {
 				onDisk.State = job.State
 			}

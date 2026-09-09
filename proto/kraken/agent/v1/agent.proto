@@ -345,6 +345,10 @@ message BackupInfo {
   int64 created_unix_ms = 4;
   BackupState state = 5;
   ReplicationState replication = 6;
+  // Why the backup FAILED (or, for a READY archive, a degraded-capture note).
+  // Empty for a clean archive. Tracked in the Agent's in-memory job map, so it
+  // does not survive an Agent restart (#221).
+  string error = 7;
 }
 
 message CreateBackupRequest {

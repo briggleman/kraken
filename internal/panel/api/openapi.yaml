@@ -1165,6 +1165,9 @@ components:
         name: { type: string }
         size: { type: integer }
         created_ms: { type: integer, format: int64 }
+        state: { type: string, enum: [pending, ready, failed], description: archive lifecycle — backups run asynchronously }
+        replication: { type: string, enum: ['', pending, done, failed], description: off-node (SFTP) mirror status; empty when replication isn't configured }
+        error: { type: string, description: why the backup failed (state=failed), or a degraded-capture note on a ready archive; omitted when clean }
     ScheduleInput:
       type: object
       required: [action, cron]

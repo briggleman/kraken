@@ -15,14 +15,16 @@ type backupView struct {
 	Name        string `json:"name"`
 	Size        int64  `json:"size"`
 	Created     int64  `json:"created_ms"`
-	State       string `json:"state"`       // "pending" | "ready" | "failed"
-	Replication string `json:"replication"` // "" (none) | "pending" | "done" | "failed"
+	State       string `json:"state"`           // "pending" | "ready" | "failed"
+	Replication string `json:"replication"`     // "" (none) | "pending" | "done" | "failed"
+	Error       string `json:"error,omitempty"` // why it failed (or a degraded-capture note)
 }
 
 func toBackupView(b *agentpb.BackupInfo) backupView {
 	return backupView{
 		ID: b.Id, Name: b.Name, Size: b.Size, Created: b.CreatedUnixMs,
 		State: backupStateString(b.State), Replication: replicationStateString(b.Replication),
+		Error: b.Error,
 	}
 }
 

@@ -526,7 +526,7 @@
               <div class="backup-row">
                 <span>{fmtWhen(b.created_ms)} · {b.name} · {fmtSize(b.size)}</span>
                 <span class="bk-acts">
-                  {#if b.state === "failed"}<span class="warn">failed</span>{:else}<span class="good">{b.replication === "pending" ? "mirroring" : "ok"}</span>{/if}
+                  {#if b.state === "failed"}<span class="warn" title={b.error || "backup failed — no reason reported (agent may predate error reporting)"}>failed</span>{:else}<span class="good" title={b.error}>{b.replication === "pending" ? "mirroring" : "ok"}</span>{/if}
                   <button class="mini-act res" disabled={depth.restoringBackup === b.id || b.state === "failed"} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
                   <button class="mini-act del" onclick={() => void backupDelete(b)}>delete</button>
                 </span>

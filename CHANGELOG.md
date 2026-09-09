@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.3](https://github.com/briggleman/kraken/compare/v0.37.2...v0.37.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **agent:** archive live and symlinked data dirs without failing ([#228](https://github.com/briggleman/kraken/issues/228)) ([bc37245](https://github.com/briggleman/kraken/commit/bc372456120bf9dc969d36e2a9b94b63d8754ba5))
+* **agent:** report why a backup failed ([#227](https://github.com/briggleman/kraken/issues/227)) ([a648b27](https://github.com/briggleman/kraken/commit/a648b270831df5963208b9fdeb2534f71898c9af))
+
 ## [0.37.2](https://github.com/briggleman/kraken/compare/v0.37.1...v0.37.2) (2026-09-07)
 
 

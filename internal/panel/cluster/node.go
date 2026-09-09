@@ -61,6 +61,18 @@ type Node struct {
 	// egress echo, or a UniFi gateway override). Used for DNS records + the
 	// player-facing connect address; empty when undetermined.
 	ExternalIP string `json:"external_ip,omitempty"`
+	// LANHost is the node's address on its own network as the Panel best
+	// observes it, refreshed on every reconcile: a tunnel node's live session
+	// source IP (ground truth — the socket the Panel actually talks to), else
+	// the host part of the dial Address, else the Agent's report. This is the
+	// destination for UniFi port forwards and the LAN-facing SFTP host —
+	// PublicHost stays the player-facing name and is never a forward target.
+	LANHost string `json:"lan_host,omitempty"`
+	// LANCandidates is the Agent's full list of up, non-loopback IPv4s with
+	// their interface names ("eth0 192.168.0.88"), kept for display and for an
+	// operator override picker: the Agent's own primary-IP guess can land on a
+	// virtual adapter (WSL/Hyper-V NAT, docker bridge).
+	LANCandidates []string `json:"lan_candidates,omitempty"`
 
 	TotalMemoryMB     int `json:"total_memory_mb"`
 	AllocatedMemoryMB int `json:"allocated_memory_mb"`

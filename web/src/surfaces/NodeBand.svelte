@@ -229,7 +229,7 @@
     <span class="node-meta">{num} · {node.os}{node.wine_enabled ? " · wine" : ""} · {statusWord}</span>
     <!-- the agent version rides the address line while it is merely a fact; once the
          panel has outrun it, it moves to the drift line below rather than printing twice -->
-    <span class="node-meta">{node.address || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
+    <span class="node-meta">{node.address || node.lan_host || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
     {#if drift}
       <!-- the fill's width is read off this line, the way the mock's CSS reads it -->
       <span

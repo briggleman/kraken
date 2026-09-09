@@ -410,6 +410,11 @@ export interface Node {
   last_update_error?: string;
   address: string;
   public_host: string;
+  /** The node's LAN address as the Panel last observed it (tunnel source IP /
+   *  dial address / agent report) — what forwards and LAN SFTP actually target. */
+  lan_host?: string;
+  /** Agent-reported interface/IP pairs ("eth0 192.168.0.88") for display. */
+  lan_candidates?: string[];
   external_ip?: string;
   /**
    * How the Panel reaches this node's agent: "direct" (Panel dials address;

@@ -249,6 +249,25 @@ func (s *Server) Connected(nodeID string) bool {
 	return s.sessions[nodeID] != nil
 }
 
+// RemoteIP returns the source IP of the node's live tunnel session, or "" when
+// the node has no session or the address can't be split. This is the node's
+// address as the Panel actually reaches it — ground truth for the LAN host of
+// a tunnel node on the same network, where the agent's own primary-IP guess
+// can land on a virtual adapter.
+func (s *Server) RemoteIP(nodeID string) string {
+	s.mu.Lock()
+	sess := s.sessions[nodeID]
+	s.mu.Unlock()
+	if sess == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(sess.remote)
+	if err != nil {
+		return ""
+	}
+	return host
+}
+
 // Close tears down the listener and every live session.
 func (s *Server) Close() error {
 	s.mu.Lock()

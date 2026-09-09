@@ -580,6 +580,7 @@ func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error)
 		WineEnabled:   d.wineEnabled,
 		AgentVersion:  d.version,
 		Host:          PrimaryIP(),
+		HostAddresses: CandidateIPs(),
 		ExternalIp:    ExternalIP(ctx),
 		SftpPort:      sftpPort,
 		RuntimeStatus: agentpb.RuntimeStatus_RUNTIME_STATUS_OK,

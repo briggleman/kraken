@@ -204,6 +204,20 @@ func nodeHost(n *cluster.Node) string {
 	return ""
 }
 
+// nodeLANHost returns the node's LAN-facing address — the destination a UniFi
+// port forward targets and the host the LAN SFTP card shows: the tracked
+// LANHost (refreshed every reconcile), else nodeHost for records that predate
+// the field. Never a public DNS name by preference — that's PublicHost's job.
+func nodeLANHost(n *cluster.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.LANHost != "" {
+		return n.LANHost
+	}
+	return nodeHost(n)
+}
+
 // serverExternalHost returns the player-facing host used for DNS records and the
 // connect address: the node's detected external/WAN IP, else its operator-set
 // public host, else its LAN host. (UniFi-gateway override is layered in later.)
@@ -283,7 +297,7 @@ func (s *Server) handleGetServerDNS(w http.ResponseWriter, r *http.Request) {
 		"cloudflare_configured": s.cloudflareToken(ctx) != "",
 		"unifi_configured":      s.unifiClient(ctx) != nil,
 		"target_host":           serverExternalHost(node),
-		"lan_host":              nodeHost(node),
+		"lan_host":              nodeLANHost(node),
 		"ports":                 sv.Ports,
 		"dns":                   sv.DNS,
 		"forwards":              sv.Forwards,

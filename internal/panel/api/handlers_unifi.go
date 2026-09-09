@@ -86,7 +86,7 @@ func (s *Server) handleSetServerForward(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	node, _ := s.store.GetNode(ctx, sv.NodeID)
-	lanIP := nodeHost(node)
+	lanIP := nodeLANHost(node)
 	if lanIP == "" {
 		writeError(w, http.StatusBadRequest, "the server's node has no LAN address yet")
 		return

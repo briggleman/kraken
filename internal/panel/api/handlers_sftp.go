@@ -49,7 +49,9 @@ func (s *Server) sftpStatus(r *http.Request, sv *store.Server, node *cluster.Nod
 		}
 	}
 	if node != nil {
-		v.Host = node.PublicHost
+		// The LAN-facing address: SFTP on a non-proxied node is reachable from
+		// the node's own network, not necessarily at its player-facing name.
+		v.Host = nodeLANHost(node)
 		v.Port = node.SFTPPort
 		v.Tunneled = node.Tunneled()
 		// A tunnel node fronted by the proxy advertises the proxy endpoint,

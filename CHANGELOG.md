@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.4](https://github.com/briggleman/kraken/compare/v0.37.3...v0.37.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **web:** make dns hostname/srv fields editable and resync toggles on failure ([#230](https://github.com/briggleman/kraken/issues/230)) ([8e7a1c8](https://github.com/briggleman/kraken/commit/8e7a1c8ee23c1cced1729abc971c7e650bf7a040))
+
 ## [0.37.3](https://github.com/briggleman/kraken/compare/v0.37.2...v0.37.3) (2026-09-09)
 
 

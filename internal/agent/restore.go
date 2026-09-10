@@ -164,6 +164,13 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 		if rel == "" {
 			continue
 		}
+		// filepath.IsLocal is the stdlib's own "safe to join under a root" verdict
+		// (no traversal, not absolute, no Windows device names) and the sanitizer
+		// shape taint analysis recognizes on the entry name itself. It admits
+		// legal names like world..bak that a substring ".." scan would refuse.
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			return nil, fmt.Errorf("docker: backup entry %q escapes data dir", hdr.Name)
+		}
 		// filepath.Join cleans its result, so a prefix check on dest itself is the
 		// containment proof static analysis models for archive extraction
 		// (go/zipslip — the check must guard the exact value used, not a Clean()

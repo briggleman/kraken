@@ -86,6 +86,9 @@ type DockerRuntime struct {
 	// can't. Cleared on restart (on-disk archives then list as READY).
 	bjMu       sync.Mutex
 	backupJobs map[string]*agentpb.BackupInfo
+	// failures persists FAILED records across restarts (#221); nil in tests
+	// that assemble a DockerRuntime by hand — every use is nil-guarded.
+	failures *failureLog
 
 	// pcMu guards playerSamples: the last online-player count per server, TTL-cached
 	// so StreamStats (live) and Status (reconcile poll) share one query rather than
@@ -144,8 +147,12 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if stateDir == "" {
 		stateDir = "."
 	}
-	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}}
+	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir)}
 	d.backups = selectBackupTarget(backupDir)
+	// Failed backups outlive the process: without this an agent restart erased
+	// every FAILED row from ListBackups and the operator saw a backup that
+	// simply never appeared (#221).
+	d.failures.loadInto(d.backupJobs)
 	// Rehydrate what this node was managing before the restart, then re-arm the
 	// watchdogs for whatever is still running. Order matters: adoption reads the
 	// spec map for each server's restart policy and ready regex.
@@ -678,6 +685,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 	delete(d.specs, serverID)
 	d.mu.Unlock()
 	d.forgetSpec(serverID)
+	d.forgetServerBackupJobs(serverID)
 	return nil
 }
 
@@ -1507,19 +1515,46 @@ func (d *DockerRuntime) setReplication(serverID, id string, st agentpb.Replicati
 
 func (d *DockerRuntime) failBackup(serverID, id string, err error) {
 	slog.Warn("backup failed", "server", serverID, "id", id, "err", err)
-	d.updateBackupJob(serverID, id, func(b *agentpb.BackupInfo) {
+	var rec *failureRecord
+	d.bjMu.Lock()
+	if b := d.backupJobs[backupJobKey(serverID, id)]; b != nil {
 		b.State = agentpb.BackupState_BACKUP_STATE_FAILED
 		b.Error = err.Error()
 		if b.Replication == agentpb.ReplicationState_REPLICATION_STATE_PENDING {
 			b.Replication = agentpb.ReplicationState_REPLICATION_STATE_UNSPECIFIED
 		}
-	})
+		rec = &failureRecord{ID: b.Id, Name: b.Name, CreatedUnixMs: b.CreatedUnixMs, Error: b.Error}
+	}
+	d.bjMu.Unlock()
+	// Persisted outside bjMu — file IO must not sit inside the tracker lock.
+	if rec != nil && d.failures != nil {
+		d.failures.record(serverID, *rec)
+	}
 }
 
 func (d *DockerRuntime) forgetBackupJob(serverID, id string) {
 	d.bjMu.Lock()
-	defer d.bjMu.Unlock()
 	delete(d.backupJobs, backupJobKey(serverID, id))
+	d.bjMu.Unlock()
+	if d.failures != nil {
+		d.failures.forget(serverID, id)
+	}
+}
+
+// forgetServerBackupJobs clears a removed server's tracked jobs and its
+// persisted failure history — the records are tied to the server's existence.
+func (d *DockerRuntime) forgetServerBackupJobs(serverID string) {
+	prefix := serverID + "/"
+	d.bjMu.Lock()
+	for key := range d.backupJobs {
+		if strings.HasPrefix(key, prefix) {
+			delete(d.backupJobs, key)
+		}
+	}
+	d.bjMu.Unlock()
+	if d.failures != nil {
+		d.failures.forgetServer(serverID)
+	}
 }
 
 // ListBackups merges the on-disk archives (the source of truth for completed

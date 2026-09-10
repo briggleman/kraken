@@ -685,6 +685,43 @@ paths:
       responses:
         '200': { description: Live node info }
         '502': { description: Agent unreachable }
+  /nodes/{id}/config:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [Nodes]
+      summary: Get a node's backup/credential config (stored secrets are never echoed)
+      responses:
+        '200':
+          description: Node config
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/NodeConfigView' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Nodes]
+      summary: Update a node's backup/credential config and push it to the Agent
+      description: >
+        Omitted fields keep their stored value; "" clears one. Saving pushes the
+        config to an online Agent, which verifies the configured remote — the
+        apply_* fields report that outcome, and a failure there is not a save
+        failure.
+      requestBody:
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/NodeConfigUpdate' } }
+      responses:
+        '200':
+          description: Saved config plus the Agent apply result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/NodeConfigView'
+                  - type: object
+                    properties:
+                      applied: { type: boolean, description: the config reached the Agent }
+                      apply_ok: { type: boolean, description: the configured target(s) verified }
+                      apply_detail: { type: string }
+        '400': { description: "Unknown backup_target, an unrecognized path token, or both replication mirrors enabled" }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /agents/bootstrap-tokens:
     post:
@@ -1158,6 +1195,53 @@ components:
         total_memory_mb: { type: integer }
         port_start: { type: integer }
         port_end: { type: integer }
+    NodeConfigView:
+      type: object
+      description: >-
+        Where a node stores backups, plus the credentials the Panel injects into
+        installs. Secrets are write-only: a stored one surfaces as a
+        *_configured flag, never as its value.
+      properties:
+        backup_target: { type: string, enum: [local, share, sftp, smb], description: "share = a network share mounted on the host; smb = an SMB server the Agent dials itself with the credentials below (no host mount, so it works from a service account)" }
+        backup_dir: { type: string, description: "node-local (or mounted-share) archive directory; supports {{SLUG}}" }
+        sftp_host: { type: string, description: "host:port (default port 22)" }
+        sftp_user: { type: string }
+        sftp_password_configured: { type: boolean }
+        sftp_key_configured: { type: boolean }
+        sftp_base_path: { type: string, description: "remote archive directory; supports {{SLUG}}" }
+        sftp_known_host_key: { type: string, description: pinned SSH host key in authorized_keys format; blank = trust-on-use }
+        replicate_to_sftp: { type: boolean }
+        smb_host: { type: string, description: "host[:port] (default port 445)" }
+        smb_share: { type: string, description: share name only, e.g. games }
+        smb_user: { type: string }
+        smb_password_configured: { type: boolean }
+        smb_domain: { type: string, description: optional NTLM domain; blank for a NAS or standalone server }
+        smb_base_path: { type: string, description: "directory inside the share, share-relative; supports {{SLUG}}" }
+        replicate_to_smb: { type: boolean, description: mutually exclusive with replicate_to_sftp }
+        steam_username: { type: string }
+        steam_configured: { type: boolean }
+    NodeConfigUpdate:
+      type: object
+      description: Writable node config. Omit a field to leave it unchanged, send "" to clear it.
+      properties:
+        backup_target: { type: string, enum: ['', local, share, sftp, smb] }
+        backup_dir: { type: string }
+        sftp_host: { type: string }
+        sftp_user: { type: string }
+        sftp_password: { type: string, format: password }
+        sftp_private_key: { type: string, format: password, description: full PEM, newlines included }
+        sftp_base_path: { type: string }
+        sftp_known_host_key: { type: string }
+        replicate_to_sftp: { type: boolean }
+        smb_host: { type: string }
+        smb_share: { type: string }
+        smb_user: { type: string }
+        smb_password: { type: string, format: password }
+        smb_domain: { type: string }
+        smb_base_path: { type: string }
+        replicate_to_smb: { type: boolean }
+        steam_username: { type: string }
+        steam_password: { type: string, format: password }
     Backup:
       type: object
       properties:

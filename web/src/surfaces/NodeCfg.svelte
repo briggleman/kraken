@@ -66,8 +66,27 @@
   let sftpBase = $state("");
   let sftpKnownHost = $state("");
   let replicate = $state(false);
+  let smbHost = $state("");
+  let smbShare = $state("");
+  let smbUser = $state("");
+  let smbPassword = $state("");
+  let smbDomain = $state("");
+  let smbBase = $state("");
+  let replicateSmb = $state(false);
   let steamUser = $state("");
   let steamPass = $state("");
+
+  // One mirror destination per node — the panel rejects both flags, so the two
+  // toggles are exclusive here rather than letting the operator hit a 400.
+  function setMirror(kind: "sftp" | "smb", on: boolean) {
+    if (kind === "sftp") {
+      replicate = on;
+      if (on) replicateSmb = false;
+    } else {
+      replicateSmb = on;
+      if (on) replicate = false;
+    }
+  }
 
   let busy = $state(false);
   let res = $state<Res>(null);
@@ -81,6 +100,12 @@
     sftpBase = c.sftp_base_path ?? "";
     sftpKnownHost = c.sftp_known_host_key ?? "";
     replicate = c.replicate_to_sftp;
+    smbHost = c.smb_host ?? "";
+    smbShare = c.smb_share ?? "";
+    smbUser = c.smb_user ?? "";
+    smbDomain = c.smb_domain ?? "";
+    smbBase = c.smb_base_path ?? "";
+    replicateSmb = c.replicate_to_smb;
     steamUser = c.steam_username ?? "";
   }
 
@@ -103,6 +128,7 @@
       loadErr = null;
       sftpPassword = "";
       sftpKey = "";
+      smbPassword = "";
       steamPass = "";
       const n = fleet.nodes.find((x) => x.id === id) ?? null;
       memMB = n && n.total_memory_mb ? String(n.total_memory_mb) : "";
@@ -116,6 +142,7 @@
   });
 
   const showSftp = $derived(target === "sftp" || replicate);
+  const showSmb = $derived(target === "smb" || replicateSmb);
 
   async function save() {
     const id = ui.nodeCfgId;
@@ -169,9 +196,16 @@
     if (sftpBase !== (cfg?.sftp_base_path ?? "")) input.sftp_base_path = sftpBase;
     if (sftpKnownHost !== (cfg?.sftp_known_host_key ?? "")) input.sftp_known_host_key = sftpKnownHost;
     if (replicate !== (cfg?.replicate_to_sftp ?? false)) input.replicate_to_sftp = replicate;
+    if (smbHost !== (cfg?.smb_host ?? "")) input.smb_host = smbHost;
+    if (smbShare !== (cfg?.smb_share ?? "")) input.smb_share = smbShare;
+    if (smbUser !== (cfg?.smb_user ?? "")) input.smb_user = smbUser;
+    if (smbDomain !== (cfg?.smb_domain ?? "")) input.smb_domain = smbDomain;
+    if (smbBase !== (cfg?.smb_base_path ?? "")) input.smb_base_path = smbBase;
+    if (replicateSmb !== (cfg?.replicate_to_smb ?? false)) input.replicate_to_smb = replicateSmb;
     if (steamUser !== (cfg?.steam_username ?? "")) input.steam_username = steamUser;
     if (sftpPassword) input.sftp_password = sftpPassword;
     if (sftpKey) input.sftp_private_key = sftpKey;
+    if (smbPassword) input.smb_password = smbPassword;
     if (steamPass) input.steam_password = steamPass;
     if (!Object.keys(input).length) {
       res = { cls: "ok", text: capacitySaved ? "capacity saved." : "nothing changed." };
@@ -183,6 +217,7 @@
       seed(r);
       sftpPassword = "";
       sftpKey = "";
+      smbPassword = "";
       steamPass = "";
       if (!r.applied) res = { cls: "ok", text: r.apply_detail || "saved — applies when the node next checks in." };
       else if (r.apply_ok) res = { cls: "ok", text: `saved and applied.${r.apply_detail ? " " + r.apply_detail : ""}` };
@@ -249,14 +284,16 @@
       <div class="cfg">
         <label class="cfg-row">
           <span>backup target</span>
-          <select class="cfg-in" bind:value={target}><option value="local">local disk</option><option value="sftp">sftp remote</option></select>
+          <select class="cfg-in" bind:value={target}><option value="local">local disk</option><option value="sftp">sftp remote</option><option value="smb">smb share</option></select>
+          <p class="cfg-help">smb dials the nas with the credentials stored below — no drive mappings or host mounts, so it works from the agent service account.</p>
         </label>
         <label class="cfg-row">
           <span>backup dir (optional)</span>
           <input class="cfg-in" type="text" placeholder="leave blank for the node default" bind:value={backupDir} />
           <p class="cfg-help">supports {"{{SLUG}}"} (the game's slug) for per-game folders, e.g. /var/backups/{"{{SLUG}}"}.</p>
         </label>
-        <label class="tgl"><input type="checkbox" bind:checked={replicate} /><i></i>mirror backups to an sftp remote</label>
+        <label class="tgl"><input type="checkbox" checked={replicate} onchange={(e) => setMirror("sftp", e.currentTarget.checked)} /><i></i>mirror backups to an sftp remote</label>
+        <label class="tgl"><input type="checkbox" checked={replicateSmb} onchange={(e) => setMirror("smb", e.currentTarget.checked)} /><i></i>mirror backups to an smb share</label>
       </div>
     </section>
 
@@ -281,6 +318,32 @@
             <span>known host key</span>
             <input class="cfg-in" type="text" placeholder="ssh-ed25519 AAAAC3Nz…" autocomplete="off" bind:value={sftpKnownHost} />
             <p class="cfg-help">pin the sftp host's ssh public key to defeat mitm — authorized_keys format, grab it with <code>ssh-keyscan -t ed25519 &lt;host&gt;</code>. leave blank to trust-on-use (a warning is logged on every connect).</p>
+          </label>
+        </div>
+      </section>
+    {/if}
+
+    {#if showSmb}
+      <section class="prefs-group" aria-label="SMB share">
+        <div class="cfg-head"><h3 class="pane-label">smb share</h3><span class="cfg-badge enc">encrypted</span>{#if cfg?.smb_password_configured}<span class="cfg-badge ok">credential stored</span>{/if}</div>
+        <div class="cfg">
+          <label class="cfg-row"><span>host</span><input class="cfg-in" type="text" placeholder="host:port (default 445)" autocomplete="off" bind:value={smbHost} /></label>
+          <label class="cfg-row">
+            <span>share</span>
+            <input class="cfg-in" type="text" placeholder="games" autocomplete="off" bind:value={smbShare} />
+            <p class="cfg-help">the share name only — the host above already picks the server.</p>
+          </label>
+          <label class="cfg-row"><span>username</span><input class="cfg-in" type="text" autocomplete="off" bind:value={smbUser} /></label>
+          <label class="cfg-row"><span>{cfg?.smb_password_configured ? "replace password" : "password"}</span><input class="cfg-in" type="password" autocomplete="off" placeholder={cfg?.smb_password_configured ? "•••••••• (leave blank to keep)" : ""} bind:value={smbPassword} /></label>
+          <label class="cfg-row">
+            <span>domain (optional)</span>
+            <input class="cfg-in" type="text" autocomplete="off" bind:value={smbDomain} />
+            <p class="cfg-help">ntlm domain — leave blank for a nas or a standalone server.</p>
+          </label>
+          <label class="cfg-row">
+            <span>base path</span>
+            <input class="cfg-in" type="text" placeholder="kraken/backups" bind:value={smbBase} />
+            <p class="cfg-help">a directory inside the share, not a full unc path. supports {"{{SLUG}}"} (the game's slug), e.g. kraken/{"{{SLUG}}"}.</p>
           </label>
         </div>
       </section>

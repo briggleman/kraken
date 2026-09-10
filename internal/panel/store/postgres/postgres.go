@@ -735,6 +735,7 @@ func (s *Store) GetNodeConfig(ctx context.Context, nodeID string) (*store.NodeCo
 	if s.cipher != nil {
 		c.SftpPassword = s.cipher.DecryptString(c.SftpPassword)
 		c.SftpPrivateKey = s.cipher.DecryptString(c.SftpPrivateKey)
+		c.SmbPassword = s.cipher.DecryptString(c.SmbPassword)
 		c.SteamPassword = s.cipher.DecryptString(c.SteamPassword)
 	}
 	return &c, nil
@@ -745,6 +746,7 @@ func (s *Store) SaveNodeConfig(ctx context.Context, nodeID string, c *store.Node
 	if s.cipher != nil {
 		enc.SftpPassword = s.cipher.EncryptString(c.SftpPassword)
 		enc.SftpPrivateKey = s.cipher.EncryptString(c.SftpPrivateKey)
+		enc.SmbPassword = s.cipher.EncryptString(c.SmbPassword)
 		enc.SteamPassword = s.cipher.EncryptString(c.SteamPassword)
 	}
 	data, err := json.Marshal(&enc)

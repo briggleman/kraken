@@ -301,6 +301,7 @@ func TestPostgresNodeConfigEncryptionAtRest(t *testing.T) {
 	const (
 		sftpPass  = "sftp-password-plaintext"
 		sftpKey   = "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret-pem-material\n-----END OPENSSH PRIVATE KEY-----\n"
+		smbPass   = "smb-password-plaintext"
 		steamPass = "steam-password-plaintext"
 	)
 	nodeID := uuid.NewString()
@@ -308,7 +309,9 @@ func TestPostgresNodeConfigEncryptionAtRest(t *testing.T) {
 		BackupTarget: "sftp", SftpHost: "backup.example.com:22", SftpUser: "kraken",
 		SftpPassword: sftpPass, SftpPrivateKey: sftpKey, SftpBasePath: "/backups",
 		ReplicateToSftp: true,
-		SteamUsername:   "kraken-steam", SteamPassword: steamPass,
+		SmbHost:         "nas.example.com", SmbShare: "games", SmbUser: "kraken",
+		SmbPassword:   smbPass,
+		SteamUsername: "kraken-steam", SteamPassword: steamPass,
 	}
 	if err := st.SaveNodeConfig(ctx, nodeID, in); err != nil {
 		t.Fatalf("SaveNodeConfig: %v", err)
@@ -319,7 +322,7 @@ func TestPostgresNodeConfigEncryptionAtRest(t *testing.T) {
 	if err := raw.QueryRow(ctx, `SELECT data::text FROM node_config WHERE node_id=$1`, nodeID).Scan(&rawData); err != nil {
 		t.Fatalf("read raw node_config: %v", err)
 	}
-	for _, secret := range []string{sftpPass, "secret-pem-material", steamPass} {
+	for _, secret := range []string{sftpPass, "secret-pem-material", smbPass, steamPass} {
 		if strings.Contains(rawData, secret) {
 			t.Fatalf("plaintext secret %q found in node_config.data: %s", secret, rawData)
 		}
@@ -339,7 +342,7 @@ func TestPostgresNodeConfigEncryptionAtRest(t *testing.T) {
 	if out.SteamPassword != steamPass || out.SteamUsername != "kraken-steam" {
 		t.Fatalf("steam creds did not round-trip: %+v", out)
 	}
-	if out.SftpPassword != sftpPass || out.SftpPrivateKey != sftpKey {
+	if out.SftpPassword != sftpPass || out.SftpPrivateKey != sftpKey || out.SmbPassword != smbPass {
 		t.Fatalf("node config secrets did not decrypt on read: %+v", out)
 	}
 	if out.BackupTarget != "sftp" || out.SftpHost != "backup.example.com:22" || !out.ReplicateToSftp {

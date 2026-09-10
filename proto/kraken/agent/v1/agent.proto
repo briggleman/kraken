@@ -566,7 +566,7 @@ message ResourceStats {
 // select where backups are stored and (optionally) mirrored. It supersedes the
 // Agent's KRAKEN_* backup env vars, which become pre-reconcile defaults only.
 message NodeConfig {
-  string backup_target = 1;   // "local" | "sftp" (empty → keep env default)
+  string backup_target = 1;   // "local" | "share" | "sftp" | "smb" (empty → keep env default)
   string backup_dir = 2;      // node-local archive directory (for the "local" target)
 
   // Fields 3-8 were an S3-compatible object-store target, removed in favor of SFTP.
@@ -591,6 +591,23 @@ message NodeConfig {
   // Empty means the Agent accepts whatever key the host presents on connect
   // (trust-on-use) and logs a warning — pin this for real MITM protection.
   string sftp_known_host_key = 15;
+
+  // SMB remote: the primary store when backup_target == "smb", and the mirror
+  // destination when replicate_to_smb is set. The Agent dials the server as an
+  // SMB2/3 client with these credentials, so nothing is mounted on the host —
+  // which is what makes it work from a service account (a mapped drive is
+  // invisible to LocalSystem, a bare UNC path authenticates as the machine).
+  string smb_host = 16;       // "host[:port]" (default port 445)
+  string smb_share = 17;      // share name, e.g. "games"
+  string smb_user = 18;
+  string smb_password = 19;
+  string smb_domain = 20;     // optional NTLM domain ("" is correct for most NAS devices)
+  string smb_base_path = 21;  // directory inside the share for archives (share-relative)
+
+  // replicate_to_smb mirrors every new backup (and the ReplicateBackups action)
+  // to the SMB remote, regardless of the primary target. Mutually exclusive with
+  // replicate_to_sftp — one mirror destination per node.
+  bool replicate_to_smb = 22;
 }
 
 message ApplyNodeConfigRequest {

@@ -185,7 +185,8 @@ func (f *FakeRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig
 	if target == "" {
 		target = "local"
 	}
-	return true, fmt.Sprintf("fake: primary=%s replication=%t", target, cfg.GetReplicateToSftp())
+	return true, fmt.Sprintf("fake: primary=%s replication=%t", target,
+		cfg.GetReplicateToSftp() || cfg.GetReplicateToSmb())
 }
 
 func (f *FakeRuntime) ReplicateBackups(_ context.Context, serverID, _ string) (int32, int32, error) {

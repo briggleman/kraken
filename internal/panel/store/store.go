@@ -82,9 +82,9 @@ type Settings struct {
 // node stores backups (delivered to the Agent via ApplyNodeConfig) and holds the
 // Steam credentials the Panel injects into authenticated installs (these are
 // Panel-only — never pushed to the Agent). Persisted as one JSONB row per node;
-// the SFTP and Steam credential fields are encrypted at rest.
+// the SFTP, SMB and Steam credential fields are encrypted at rest.
 type NodeConfig struct {
-	BackupTarget string `json:"backup_target,omitempty"` // "local" | "sftp" (empty → local)
+	BackupTarget string `json:"backup_target,omitempty"` // "local" | "share" | "sftp" | "smb" (empty → local)
 	BackupDir    string `json:"backup_dir,omitempty"`    // node-local archive dir (local target)
 
 	SftpHost       string `json:"sftp_host,omitempty"` // "host:port" (default port 22)
@@ -101,6 +101,20 @@ type NodeConfig struct {
 	// ReplicateToSftp mirrors every new backup (and the scheduled replicate
 	// action) to the SFTP remote, regardless of the primary target.
 	ReplicateToSftp bool `json:"replicate_to_sftp,omitempty"`
+
+	// SMB remote: the Agent dials it as an SMB2/3 client with these credentials,
+	// so the destination needs no host-side mount — the cross-OS target for a NAS
+	// that speaks SMB but not SFTP.
+	SmbHost     string `json:"smb_host,omitempty"`  // "host[:port]" (default port 445)
+	SmbShare    string `json:"smb_share,omitempty"` // share name, e.g. "games"
+	SmbUser     string `json:"smb_user,omitempty"`
+	SmbPassword string `json:"smb_password,omitempty"` // encrypted at rest
+	SmbDomain   string `json:"smb_domain,omitempty"`   // optional NTLM domain
+	SmbBasePath string `json:"smb_base_path,omitempty"`
+
+	// ReplicateToSmb mirrors every new backup (and the scheduled replicate action)
+	// to the SMB remote. Mutually exclusive with ReplicateToSftp.
+	ReplicateToSmb bool `json:"replicate_to_smb,omitempty"`
 
 	// Steam account used to install games whose dedicated server is not
 	// anonymous-downloadable (spec Install.RequiresSteamLogin). The Panel injects

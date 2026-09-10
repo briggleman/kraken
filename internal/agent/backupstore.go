@@ -126,6 +126,28 @@ func (t *localBackupTarget) path(serverID, id string) (string, error) {
 	return fp, nil
 }
 
+// verify confirms the configured directory is creatable and writable, so a path
+// the service session cannot reach — a per-logon mapped drive letter invisible
+// to LocalSystem, a permissions hole — fails at save time instead of at the
+// first backup (#226). Unlike share's verify it MkdirAlls: a local dir that
+// doesn't exist yet is legitimate (Put would create it); what must fail is a
+// dir that CANNOT be created. Templated paths probe their static prefix.
+func (t *localBackupTarget) verify() error {
+	if strings.TrimSpace(t.dir) == "" {
+		return fmt.Errorf("backup dir is required")
+	}
+	dir := staticPrefix(t.dir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("backup dir %q cannot be created: %w", dir, err)
+	}
+	probe := filepath.Join(dir, ".kraken-write-test")
+	if err := os.WriteFile(probe, []byte("ok"), 0o640); err != nil {
+		return fmt.Errorf("backup dir %q is not writable: %w", dir, err)
+	}
+	_ = os.Remove(probe)
+	return nil
+}
+
 func (t *localBackupTarget) Put(_ context.Context, serverID, id string, r io.Reader, _ int64) error {
 	dir := t.serverDir(serverID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {

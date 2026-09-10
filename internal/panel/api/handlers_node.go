@@ -667,8 +667,10 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	}
 	// Deliver the node's Panel-managed config (backup target + replication). The
 	// Agent keeps this only in memory, so re-pushing on each reconcile restores it
-	// after an Agent restart. Best-effort: failures don't fail reconcile.
-	if _, _, perr := s.pushNodeConfig(ctx, n); perr != nil {
+	// after an Agent restart. Best-effort, and WITHOUT target verification — this
+	// runs every 20s per node, and write-probing the backup target on that
+	// cadence is noise (verification belongs to the operator-save path).
+	if _, _, perr := s.pushNodeConfig(ctx, n, false); perr != nil {
 		s.logger.Warn("could not push node config", "node", n.ID, "err", perr)
 	}
 	// Rotate the agent's mTLS cert when it nears expiry (best-effort, throttled).

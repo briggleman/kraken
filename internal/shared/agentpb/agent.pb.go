@@ -4114,8 +4114,17 @@ func (x *NodeConfig) GetReplicateToSmb() bool {
 }
 
 type ApplyNodeConfigRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Config        *NodeConfig            `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Config *NodeConfig            `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	// verify probes the configured target(s) for reachability/writability after
+	// the swap. The operator-save path sets it so a bad path fails loudly in the
+	// save response; the Panel's periodic reconcile re-push leaves it false —
+	// write-probing every backup target three times a minute per node is noise,
+	// not verification. Agents that predate the field ignore it and keep their
+	// old always-verify behavior; an old Panel driving a new agent skips the
+	// probes until it updates (the fleet self-updates to the Panel's version, so
+	// the skew window is minutes).
+	Verify        bool `protobuf:"varint,2,opt,name=verify,proto3" json:"verify,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4155,6 +4164,13 @@ func (x *ApplyNodeConfigRequest) GetConfig() *NodeConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *ApplyNodeConfigRequest) GetVerify() bool {
+	if x != nil {
+		return x.Verify
+	}
+	return false
 }
 
 type ApplyNodeConfigResponse struct {
@@ -4685,9 +4701,10 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"smb_domain\x18\x14 \x01(\tR\tsmbDomain\x12\"\n" +
 	"\rsmb_base_path\x18\x15 \x01(\tR\vsmbBasePath\x12(\n" +
-	"\x10replicate_to_smb\x18\x16 \x01(\bR\x0ereplicateToSmbJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"M\n" +
+	"\x10replicate_to_smb\x18\x16 \x01(\bR\x0ereplicateToSmbJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"e\n" +
 	"\x16ApplyNodeConfigRequest\x123\n" +
-	"\x06config\x18\x01 \x01(\v2\x1b.kraken.agent.v1.NodeConfigR\x06config\"A\n" +
+	"\x06config\x18\x01 \x01(\v2\x1b.kraken.agent.v1.NodeConfigR\x06config\x12\x16\n" +
+	"\x06verify\x18\x02 \x01(\bR\x06verify\"A\n" +
 	"\x17ApplyNodeConfigResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06detail\x18\x02 \x01(\tR\x06detail\"J\n" +

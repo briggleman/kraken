@@ -270,12 +270,14 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	s.recordAudit(r, http.StatusOK, "node-config:"+id)
 
-	// Push to the Agent so the change takes effect now (and acts as a connectivity
-	// test). A push failure isn't fatal — the config is saved and re-pushed on the
-	// next reconcile.
+	// Push to the Agent so the change takes effect now, with verification: this
+	// is the one path where an operator is looking at the response, so a target
+	// the agent can't reach or write fails loudly here instead of at the first
+	// backup. A push failure isn't fatal — the config is saved and re-pushed
+	// (without probes) on the next reconcile.
 	resp := nodeConfigUpdateResponse{nodeConfigView: toNodeConfigView(c)}
 	if node.Status == cluster.NodeOnline {
-		ok, detail, perr := s.pushNodeConfig(ctx, node)
+		ok, detail, perr := s.pushNodeConfig(ctx, node, true)
 		resp.Applied = perr == nil
 		resp.ApplyOK = ok
 		if perr != nil {
@@ -291,7 +293,10 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 
 // pushNodeConfig delivers a node's stored config to its Agent via ApplyNodeConfig.
 // It returns (true, "", nil) when there's nothing to push (no stored config).
-func (s *Server) pushNodeConfig(ctx context.Context, n *cluster.Node) (ok bool, detail string, err error) {
+// verify asks the agent to probe the configured target(s): true from the
+// operator-save path (someone is watching the response), false from the
+// reconcile re-push (write-probing every target three times a minute is noise).
+func (s *Server) pushNodeConfig(ctx context.Context, n *cluster.Node, verify bool) (ok bool, detail string, err error) {
 	cfg, gerr := s.store.GetNodeConfig(ctx, n.ID)
 	if errors.Is(gerr, store.ErrNotFound) {
 		return true, "", nil
@@ -305,7 +310,7 @@ func (s *Server) pushNodeConfig(ctx context.Context, n *cluster.Node) (ok bool, 
 	}
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	resp, aerr := client.ApplyNodeConfig(cctx, &agentpb.ApplyNodeConfigRequest{Config: nodeConfigToProto(cfg)})
+	resp, aerr := client.ApplyNodeConfig(cctx, &agentpb.ApplyNodeConfigRequest{Config: nodeConfigToProto(cfg), Verify: verify})
 	if aerr != nil {
 		return false, "", aerr
 	}

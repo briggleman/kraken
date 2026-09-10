@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -53,5 +54,44 @@ func TestStaticPrefix(t *testing.T) {
 		if got := staticPrefix(c.in); got != c.want {
 			t.Fatalf("staticPrefix(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestLocalVerifyCreatesAndProbes(t *testing.T) {
+	// A dir that doesn't exist yet is legitimate — verify creates it (Put would).
+	dir := filepath.Join(t.TempDir(), "backups", "sub")
+	tgt := &localBackupTarget{dir: dir, flat: true}
+	if err := tgt.verify(); err != nil {
+		t.Fatalf("verify on creatable dir: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("verify did not create the dir: %v", err)
+	}
+	// A templated path probes only its static prefix — the {{SLUG}} part doesn't
+	// exist until a backup runs and must not be created here.
+	root := t.TempDir()
+	tgt = &localBackupTarget{dir: filepath.Join(root, "games", "{{SLUG}}"), flat: true}
+	if err := tgt.verify(); err != nil {
+		t.Fatalf("verify on templated path: %v", err)
+	}
+	if ents, _ := os.ReadDir(filepath.Join(root, "games")); len(ents) != 0 {
+		t.Fatalf("verify created past the static prefix: %v", ents)
+	}
+}
+
+func TestLocalVerifyFailsOnUncreatableDir(t *testing.T) {
+	// A path whose parent is a regular FILE cannot be created on any OS — the
+	// cross-platform stand-in for a mapped drive letter the service can't see.
+	root := t.TempDir()
+	blocker := filepath.Join(root, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	tgt := &localBackupTarget{dir: filepath.Join(blocker, "backups"), flat: true}
+	if err := tgt.verify(); err == nil {
+		t.Fatal("verify succeeded on an uncreatable dir")
+	}
+	if (&localBackupTarget{}).verify() == nil {
+		t.Fatal("verify succeeded on an empty dir")
 	}
 }

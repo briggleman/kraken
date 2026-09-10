@@ -165,6 +165,12 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 			continue
 		}
 		dest := filepath.Join(staged, filepath.FromSlash(rel))
+		// The Clean+HasPrefix shape is the containment proof static analysis
+		// models for archive extraction (go/zipslip); restoreEntryPath above and
+		// withinHostDir below each enforce the same jail independently.
+		if dest != staged && !strings.HasPrefix(filepath.Clean(dest), staged+string(os.PathSeparator)) {
+			return nil, fmt.Errorf("docker: backup entry %q escapes data dir", hdr.Name)
+		}
 		if !d.withinHostDir(serverID, dest) {
 			return nil, fmt.Errorf("docker: backup entry %q escapes data dir", hdr.Name)
 		}

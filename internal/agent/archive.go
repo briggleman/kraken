@@ -38,7 +38,7 @@ type archiveStats struct {
 	files          int // regular files captured
 	grew           int // grew mid-copy; the header-size prefix was captured
 	truncated      int // shrank mid-copy; the tail was zero-filled
-	symlinks       int // symlinks/junctions skipped (see #220 for restore support)
+	symlinks       int // symlinks/junctions skipped (restore skips link entries too)
 	irregular      int // sockets, fifos, unknown reparse tags skipped
 	unreadableDirs int // subdirectories the walk could not read
 	filtered       int // entries the backup globs excluded (intended, not damage)
@@ -110,6 +110,16 @@ func archiveTreeFiltered(root string, w io.Writer, filter *backupFilter) (archiv
 			return rerr
 		}
 		name := filepath.ToSlash(rel)
+		// A scheduled backup can fire while a restore is staging or swapping.
+		// The scratch copies are never archived — whatever the spec's globs say,
+		// so the skip holds for every spec — because capturing them would store
+		// the same saves twice and, worse, could capture a half-swapped tree.
+		if isRestoreScratch(filepath.Base(rel)) {
+			if e.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 		if e.IsDir() {
 			// Pruning before the ReadDir is the whole point: a 30 GB steamapps/
 			// must be skipped, not walked and filtered entry by entry.
@@ -138,9 +148,9 @@ func archiveTreeFiltered(root string, w io.Writer, filter *backupFilter) (archiv
 		}
 		switch {
 		case e.Type()&fs.ModeSymlink != 0:
-			// Restore materializes symlink entries as empty files, and a Windows
-			// junction's target is an absolute host path that means nothing on a
-			// restore host — skipping is the honest capture until #220.
+			// A Windows junction's target is an absolute host path that means
+			// nothing on a restore host, and restore skips link entries rather
+			// than materialize them — so skipping here is the honest capture.
 			st.note(&st.symlinks, name)
 			return nil
 		case !e.Type().IsRegular():

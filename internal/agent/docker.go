@@ -1613,6 +1613,14 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 	return out, nil
 }
 
+// RestoreBackup reproduces the archived state for everything the archive
+// covers, leaving the rest of the data dir (the install tree) untouched. The
+// mechanism — stage into a scratch dir inside the server's data dir, then swap
+// the covered paths in — lives in restore.go, which documents why.
+//
+// The caller is expected to have stopped the server: the Panel refuses a
+// restore otherwise (a running game holds the very files a save-set restore
+// replaces), and the Agent cannot see the Panel's view of that state.
 func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id string) error {
 	root := d.localDir(serverID)
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -1629,47 +1637,27 @@ func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id st
 	}
 	defer gz.Close()
 
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("docker: read backup: %w", err)
-		}
-		// Reject archive entries with path traversal or absolute-path prefixes
-		// BEFORE joining them into a filesystem path — protects against Zip Slip
-		// even if the downstream withinHostDir() check ever regresses. The check
-		// below is the real second-line defense; this one is the CodeQL-visible
-		// first line.
-		if strings.Contains(hdr.Name, "..") || strings.HasPrefix(hdr.Name, "/") || strings.HasPrefix(hdr.Name, `\`) {
-			return fmt.Errorf("docker: backup entry %q has illegal path", hdr.Name)
-		}
-		dest := filepath.Join(root, filepath.FromSlash(hdr.Name))
-		if !d.withinHostDir(serverID, dest) {
-			return fmt.Errorf("docker: backup entry %q escapes data dir", hdr.Name)
-		}
-		if hdr.FileInfo().IsDir() {
-			if err := os.MkdirAll(dest, 0o755); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return err
-		}
-		out, oerr := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if oerr != nil {
-			return oerr
-		}
-		if _, cerr := io.Copy(out, tr); cerr != nil {
-			out.Close()
-			return cerr
-		}
-		out.Close()
+	staged, err := os.MkdirTemp(root, restoreScratchPrefix+"*")
+	if err != nil {
+		return fmt.Errorf("docker: restore staging dir: %w", err)
 	}
-	return nil
+	// The staging dir never outlives the restore, success or failure: what is
+	// left in it is whatever the swap did not move into the live tree.
+	defer func() {
+		if rerr := os.RemoveAll(staged); rerr != nil {
+			slog.Warn("could not remove restore staging dir", "server", serverID, "dir", staged, "err", rerr)
+		}
+	}()
+
+	st, err := d.extractArchive(tar.NewReader(gz), serverID, staged)
+	if err != nil {
+		return err
+	}
+	if st.links+st.irregular > 0 {
+		slog.Warn("restore skipped archive entries it cannot materialize",
+			"server", serverID, "id", id, "links", st.links, "irregular", st.irregular)
+	}
+	return d.applyRestore(serverID, root, staged, st)
 }
 
 func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id string) error {

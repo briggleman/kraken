@@ -552,6 +552,14 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.LastUpdateError = info.LastUpdateError
 		changed = true
 	}
+	// Adopted but deliberately not folded into Status: a tunnel-mode node whose
+	// inbound listener lost a port race still runs everything it hosts and still
+	// answers the Panel over its tunnel. Downgrading it would misreport a healthy
+	// node; leaving it silent is what made #235 an 11-hour outage.
+	if n.ListenError != info.GetListenError() {
+		n.ListenError = info.GetListenError()
+		changed = true
+	}
 	// Capture the agent's Panel-minted identity from its serving cert (the
 	// URI SAN). This is what lets a direct-mode node flip to tunnel mode later
 	// without re-enrolling: the binding already exists. Only ever filled in,
@@ -730,6 +738,9 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		// whose container runtime is down (see reconcileNode).
 		"status":        string(n.Status),
 		"runtime_error": n.RuntimeError,
+		// Not part of status — see reconcileNode — but this endpoint is where an
+		// operator looks when a node behaves oddly, so the reason belongs here.
+		"listen_error": n.ListenError,
 	})
 }
 

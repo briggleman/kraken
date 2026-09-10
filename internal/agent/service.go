@@ -19,9 +19,10 @@ import (
 type Service struct {
 	agentpb.UnimplementedNodeServiceServer
 	rt      Runtime
-	certs   *CertManager // nil when the agent serves without TLS
-	updater *SelfUpdater // nil when self-update is unavailable (e.g. fake runtime tests)
-	host    *HostSampler // nil when host telemetry is unavailable (e.g. fake runtime tests)
+	certs   *CertManager  // nil when the agent serves without TLS
+	updater *SelfUpdater  // nil when self-update is unavailable (e.g. fake runtime tests)
+	host    *HostSampler  // nil when host telemetry is unavailable (e.g. fake runtime tests)
+	listen  func() string // nil when nobody owns the inbound listeners (tests, tunnel-only harnesses)
 }
 
 // ServiceOption customizes a Service at construction time.
@@ -47,6 +48,15 @@ func WithHostSampler(h *HostSampler) ServiceOption {
 	return func(s *Service) { s.host = h }
 }
 
+// WithListenStatus wires a probe for the state of the agent's inbound
+// listeners, reported in NodeInfo. It is a func rather than a value because the
+// answer changes while the agent runs: a tunnel-mode agent whose gRPC or SFTP
+// bind lost a port race keeps serving over the tunnel and retries the bind, so
+// the status has to be read at poll time, not at construction.
+func WithListenStatus(probe func() string) ServiceOption {
+	return func(s *Service) { s.listen = probe }
+}
+
 // NewService wraps a Runtime as a gRPC NodeService implementation.
 func NewService(rt Runtime, opts ...ServiceOption) *Service {
 	s := &Service{rt: rt}
@@ -65,6 +75,9 @@ func (s *Service) GetNodeInfo(ctx context.Context, _ *agentpb.GetNodeInfoRequest
 		info.CertNotAfterUnix = s.certs.NotAfter().Unix()
 	}
 	info.Arch = runtime.GOARCH
+	if s.listen != nil {
+		info.ListenError = s.listen()
+	}
 	if s.updater != nil {
 		info.BinarySha256 = s.updater.BinarySHA()
 		info.LastUpdateError = s.updater.LastFailure()

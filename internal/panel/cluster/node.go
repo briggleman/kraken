@@ -135,6 +135,14 @@ type Node struct {
 	// last update succeeded or none was attempted.
 	LastUpdateError string `json:"last_update_error,omitempty"`
 
+	// ListenError is why the Agent's inbound listeners are down, verbatim from
+	// NodeInfo ("grpc :9090: bind: …; sftp :2022: bind: …"). A warning, never a
+	// health state: a tunnel-mode node whose inbound gRPC port lost a race is
+	// fully operable over its reverse tunnel, so Status stays online — but
+	// without this the conflict is invisible outside the node's own agent.log
+	// (#235). Empty when every configured listener is up.
+	ListenError string `json:"listen_error,omitempty"`
+
 	// ConnectionMode is how the Panel reaches this node's Agent: "direct"
 	// (default; the Panel dials Address) or "tunnel" (the Agent dials out and
 	// keeps a reverse tunnel open — no inbound port on the node). Empty means

@@ -2562,6 +2562,12 @@ type NodeInfo struct {
 	// NAT, docker bridge); the full set lets the Panel adopt a LAN address only
 	// when the answer is unambiguous — and lets an operator pick when it is not.
 	HostAddresses []*HostAddress `protobuf:"bytes,16,rep,name=host_addresses,json=hostAddresses,proto3" json:"host_addresses,omitempty"`
+	// Human-readable summary of inbound listeners that are down, aggregated over
+	// the gRPC and SFTP listeners ("grpc :9090: bind: …; sftp :2022: bind: …");
+	// "" when every configured listener is up. A tunnel-mode agent serves the
+	// Panel over its reverse tunnel and therefore survives a failed bind, so
+	// without this the conflict is invisible outside the node's own agent.log.
+	ListenError   string `protobuf:"bytes,17,opt,name=listen_error,json=listenError,proto3" json:"listen_error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2706,6 +2712,13 @@ func (x *NodeInfo) GetHostAddresses() []*HostAddress {
 		return x.HostAddresses
 	}
 	return nil
+}
+
+func (x *NodeInfo) GetListenError() string {
+	if x != nil {
+		return x.ListenError
+	}
+	return ""
 }
 
 // HostAddress is one interface/IPv4 pair on the agent host.
@@ -4520,7 +4533,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\"\x16\n" +
-	"\x14DeleteBackupResponse\"\xe3\x04\n" +
+	"\x14DeleteBackupResponse\"\x86\x05\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12!\n" +
@@ -4539,7 +4552,8 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x04arch\x18\r \x01(\tR\x04arch\x12*\n" +
 	"\x11last_update_error\x18\x0e \x01(\tR\x0flastUpdateError\x12#\n" +
 	"\rbinary_sha256\x18\x0f \x01(\tR\fbinarySha256\x12C\n" +
-	"\x0ehost_addresses\x18\x10 \x03(\v2\x1c.kraken.agent.v1.HostAddressR\rhostAddresses\";\n" +
+	"\x0ehost_addresses\x18\x10 \x03(\v2\x1c.kraken.agent.v1.HostAddressR\rhostAddresses\x12!\n" +
+	"\flisten_error\x18\x11 \x01(\tR\vlistenError\";\n" +
 	"\vHostAddress\x12\x1c\n" +
 	"\tinterface\x18\x01 \x01(\tR\tinterface\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\"\x19\n" +

@@ -403,6 +403,12 @@ message NodeInfo {
   // NAT, docker bridge); the full set lets the Panel adopt a LAN address only
   // when the answer is unambiguous — and lets an operator pick when it is not.
   repeated HostAddress host_addresses = 16;
+  // Human-readable summary of inbound listeners that are down, aggregated over
+  // the gRPC and SFTP listeners ("grpc :9090: bind: …; sftp :2022: bind: …");
+  // "" when every configured listener is up. A tunnel-mode agent serves the
+  // Panel over its reverse tunnel and therefore survives a failed bind, so
+  // without this the conflict is invisible outside the node's own agent.log.
+  string listen_error = 17;
 }
 
 // HostAddress is one interface/IPv4 pair on the agent host.

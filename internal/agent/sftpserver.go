@@ -39,10 +39,38 @@ type SFTPServer struct {
 	lis    net.Listener
 }
 
+// SFTPSupported reports whether the runtime can back an SFTP server — i.e. it
+// serves per-server credentials (DockerRuntime does; the fake runtime used in
+// tests/dev does not). Callers that own the listener themselves check this
+// first, so a runtime that would be a no-op never costs a bound port.
+func SFTPSupported(rt Runtime) bool {
+	_, ok := rt.(sftpAuthorizer)
+	return ok
+}
+
 // StartSFTP starts the SFTP server in the background when the runtime supports
 // per-server credentials (DockerRuntime). It returns nil (no server, no error)
 // for runtimes that don't — e.g. the fake runtime in tests/dev.
 func StartSFTP(rt Runtime, addr, hostKeyPath string, logger *slog.Logger) (*SFTPServer, error) {
+	if !SFTPSupported(rt) {
+		return nil, nil
+	}
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("sftp: listen %s: %w", addr, err)
+	}
+	srv, err := StartSFTPOn(rt, lis, hostKeyPath, logger)
+	if err != nil {
+		_ = lis.Close()
+		return nil, err
+	}
+	return srv, nil
+}
+
+// StartSFTPOn is StartSFTP over a listener the caller already bound, for callers
+// that own the bind so they can retry it (see cmd/agent's listenGuard). It takes
+// ownership of lis on success; on error the caller still owns it.
+func StartSFTPOn(rt Runtime, lis net.Listener, hostKeyPath string, logger *slog.Logger) (*SFTPServer, error) {
 	auth, ok := rt.(sftpAuthorizer)
 	if !ok {
 		return nil, nil
@@ -50,10 +78,6 @@ func StartSFTP(rt Runtime, addr, hostKeyPath string, logger *slog.Logger) (*SFTP
 	signer, err := loadOrCreateHostKey(hostKeyPath)
 	if err != nil {
 		return nil, err
-	}
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("sftp: listen %s: %w", addr, err)
 	}
 	// Record the bound port so NodeInfo can advertise it to the Panel (for the
 	// connection details shown on the Files tab).

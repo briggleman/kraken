@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -48,14 +49,15 @@ func (s *Server) handleGetSpec(w http.ResponseWriter, r *http.Request) {
 // persistNewSpec assigns server-owned identity + version, validates, and stores a
 // new spec. It returns the HTTP status to surface and an error message on failure
 // (validation → 400, duplicate slug → 409, otherwise 500). Shared by direct spec
-// creation and one-click catalog import so both follow the same rules.
-func (s *Server) persistNewSpec(r *http.Request, sp *spec.Spec) (int, error) {
+// creation, one-click catalog import, and the first-boot catalog seed, so all
+// three follow the same rules.
+func (s *Server) persistNewSpec(ctx context.Context, sp *spec.Spec) (int, error) {
 	sp.ID = uuid.NewString()
 	sp.Version = 1
 	if err := sp.Validate(); err != nil {
 		return http.StatusBadRequest, err
 	}
-	if err := s.store.CreateSpec(r.Context(), sp); err != nil {
+	if err := s.store.CreateSpec(ctx, sp); err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			return http.StatusConflict, errors.New("a spec with that slug already exists")
 		}
@@ -70,7 +72,7 @@ func (s *Server) handleCreateSpec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid spec body (expected JSON or YAML): "+err.Error())
 		return
 	}
-	if status, err := s.persistNewSpec(r, &sp); err != nil {
+	if status, err := s.persistNewSpec(r.Context(), &sp); err != nil {
 		writeError(w, status, err.Error())
 		return
 	}

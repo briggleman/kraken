@@ -76,6 +76,12 @@ type Settings struct {
 	// shortcut out of the nav permanently — without it the computed state
 	// regresses (and the wizard resurfaces) whenever a node dips offline.
 	SetupDismissed bool `json:"setup_dismissed,omitempty"`
+
+	// CatalogSeeded latches once the boot-time catalog seed has run (or been
+	// deliberately skipped because specs already existed — an upgraded
+	// deployment must never have the bundled catalog injected into it). The
+	// wizard's per-spec import remains available either way.
+	CatalogSeeded bool `json:"catalog_seeded,omitempty"`
 }
 
 // NodeConfig is the Panel-managed per-node configuration. It selects where a

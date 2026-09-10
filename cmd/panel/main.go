@@ -179,6 +179,11 @@ func run(logger *slog.Logger) error {
 	// disabled or when a fleet already exists.
 	srv.AutoRegisterLocalNode(ctx)
 
+	// First boot only: import the bundled game specs so headless and API-first
+	// installs get a catalog without opening the setup wizard (#203). Latched,
+	// and never seeds into a store that already has specs.
+	srv.SeedCatalog(ctx)
+
 	// Background reconciler: keeps stored server state in sync with what the
 	// Agents' crash watchdogs report (crash / auto-restart / ready transitions).
 	reconcileCtx, stopReconcile := context.WithCancel(ctx)

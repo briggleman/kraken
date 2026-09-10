@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -50,6 +51,49 @@ func (s *Server) handleListCatalog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"catalog": items})
 }
 
+// SeedCatalog imports the whole bundled catalog on a FIRST boot (#203): the
+// setup wizard's per-spec import only covers operators who open the wizard, so
+// headless and API-first installs started with an empty spec table. It runs
+// once ever, latched by settings.catalog_seeded — and it seeds only into an
+// EMPTY spec table: on an upgraded deployment's first post-flag boot the latch
+// is set without importing anything, because injecting new bundled entries into
+// a curated fleet would be a surprise, not a convenience.
+func (s *Server) SeedCatalog(ctx context.Context) {
+	st := s.panelSettings(ctx)
+	if st.CatalogSeeded {
+		return
+	}
+	specs, err := s.store.ListSpecs(ctx)
+	if err != nil {
+		// Transient store trouble: leave the latch unset so a later boot retries.
+		s.logger.Warn("catalog seed skipped — could not list specs", "err", err)
+		return
+	}
+	seeded := 0
+	if len(specs) == 0 {
+		entries, lerr := catalog.Load()
+		if lerr != nil {
+			s.logger.Warn("catalog seed skipped — could not load bundled catalog", "err", lerr)
+			return
+		}
+		for _, e := range entries {
+			sp := *e.Spec // copy: persistNewSpec assigns a fresh ID/version
+			if _, perr := s.persistNewSpec(ctx, &sp); perr != nil {
+				s.logger.Warn("catalog seed: spec failed to import", "slug", e.Spec.Slug, "err", perr)
+				continue
+			}
+			seeded++
+		}
+		s.logger.Info("catalog seeded", "specs", seeded)
+	} else {
+		s.logger.Info("catalog seed skipped — specs already exist", "existing", len(specs))
+	}
+	st.CatalogSeeded = true
+	if serr := s.store.SaveSettings(ctx, st); serr != nil {
+		s.logger.Warn("could not persist catalog_seeded — the seed will re-evaluate next boot", "err", serr)
+	}
+}
+
 // handleImportCatalogSpec imports a bundled catalog spec into the live catalog,
 // reusing the same validation + versioning path as direct spec creation.
 func (s *Server) handleImportCatalogSpec(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +103,7 @@ func (s *Server) handleImportCatalogSpec(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	sp := *entry.Spec // copy: persistNewSpec assigns a fresh ID/version
-	if status, err := s.persistNewSpec(r, &sp); err != nil {
+	if status, err := s.persistNewSpec(r.Context(), &sp); err != nil {
 		writeError(w, status, err.Error())
 		return
 	}

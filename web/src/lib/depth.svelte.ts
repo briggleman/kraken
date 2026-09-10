@@ -89,6 +89,7 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.open = true;
   stream.set(id, streamModeFor(depth.server?.state));
   void refreshDetail();
+  pushRoute(id);
 }
 
 export function surface() {
@@ -96,6 +97,59 @@ export function surface() {
   stream.set("", "off");
   stopBackupPoll();
   if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+  pushRoute(null);
+}
+
+// --- deep links -----------------------------------------------------------
+// The panel has no router by design (sheets navigate), but a server's drill-in
+// is a real destination people bookmark and paste — the old React panel had
+// /servers/{id} routes, and its stale bookmarks were landing on the fleet grid
+// with no explanation (#223). The URL contract stays deliberately small:
+// /servers/{id} is the ONLY routable path; every sheet remains unrouted.
+
+const serverPathRE = /^\/servers\/([0-9a-fA-F-]+)\/?$/;
+
+// pushRoute reflects an open/close into the address bar. It no-ops when the
+// bar already matches, which is what keeps a popstate-driven open/close from
+// pushing a duplicate entry back onto the history it was driven by.
+function pushRoute(id: string | null) {
+  const want = id ? `/servers/${id}` : "/";
+  if (location.pathname !== want) history.pushState(null, "", want);
+}
+
+// applyRoute opens or closes the drill-in to match the address bar. An id the
+// fleet doesn't know (a stale bookmark, a deleted server) is rewritten to "/"
+// rather than left in the bar to fail again on the next reload.
+function applyRoute() {
+  const m = serverPathRE.exec(location.pathname);
+  if (!m) {
+    if (depth.open) surface();
+    return;
+  }
+  const sv = fleet.servers.find((s) => s.id === m[1]);
+  if (!sv) {
+    history.replaceState(null, "", "/");
+    if (depth.open) surface();
+    return;
+  }
+  if (depth.open && depth.serverId === sv.id) return;
+  // No originating click to grow the sheet out of — open from center frame.
+  openDepth(sv.id, innerWidth / 2, innerHeight / 2, null);
+}
+
+let routed = false;
+
+// bootDeepLinks wires back/forward navigation and resolves the path the app
+// was loaded on. Called from the authed boot path — the fleet must be loaded
+// before an id can be resolved, and one extra refresh beats racing the poll.
+export async function bootDeepLinks() {
+  if (routed) return;
+  routed = true;
+  window.addEventListener("popstate", applyRoute);
+  if (serverPathRE.test(location.pathname)) {
+    await refreshFleet();
+    applyRoute();
+  }
 }
 
 async function refreshDetail() {

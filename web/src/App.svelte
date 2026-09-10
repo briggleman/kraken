@@ -21,7 +21,7 @@
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
-  import { depth, surface, syncDepthFromFleet, sftpHide } from "@/lib/depth.svelte";
+  import { depth, surface, syncDepthFromFleet, sftpHide, bootDeepLinks } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
   startSim();
@@ -35,6 +35,8 @@
       startFleetPolling();
       // node vitals on their own faster cadence — see lib/telemetry.svelte.ts
       startTelemetryPolling();
+      // resolve a /servers/{id} deep link once the session is live (#223)
+      void bootDeepLinks();
       void api
         .version()
         .then((v) => {

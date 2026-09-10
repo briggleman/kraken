@@ -457,7 +457,13 @@ paths:
     parameters:
       - { $ref: '#/components/parameters/ServerId' }
       - { name: backupId, in: path, required: true, schema: { type: string } }
-    post: { tags: [Backups], summary: Restore a backup, responses: { '200': { description: Restored } } }
+    post:
+      tags: [Backups]
+      summary: Restore a backup
+      description: Only valid while the server is stopped (state offline, crashed or install_failed).
+      responses:
+        '200': { description: Restored }
+        '409': { description: Server is not stopped }
   /servers/{id}/backups/{backupId}:
     parameters:
       - { $ref: '#/components/parameters/ServerId' }

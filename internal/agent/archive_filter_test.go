@@ -12,6 +12,13 @@ import (
 func plantTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
+	layTree(t, root, files)
+	return root
+}
+
+// layTree writes each rel→content pair under an existing root.
+func layTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
 	for rel, content := range files {
 		fp := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
@@ -21,7 +28,6 @@ func plantTree(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
-	return root
 }
 
 // capturedFiles round-trips an archive and returns just the file entries (tar

@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
@@ -97,9 +98,24 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, toBackupView(b))
 }
 
+// restorableStates are the states a restore is allowed from. A save-set restore
+// replaces exactly the files a running game holds open: on Windows the swap hits
+// a sharing violation partway, and on Linux it succeeds only to be overwritten
+// by the running process's next save. installing is excluded too — the install
+// is still writing the tree the restore would swap out from under it.
+var restorableStates = map[store.ServerState]bool{
+	store.StateOffline:       true,
+	store.StateCrashed:       true,
+	store.StateInstallFailed: true,
+}
+
 func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	if !restorableStates[sv.State] {
+		writeError(w, http.StatusConflict, "stop the server before restoring a backup (current state: "+string(sv.State)+")")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)

@@ -34,6 +34,14 @@
   const installing = $derived(
     server?.state === "installing" || server?.state === "install_failed",
   );
+  // The Panel refuses a restore unless the server is stopped — the agent swaps
+  // out the very files a running game holds open — so the button carries the
+  // reason instead of offering a click that comes back 409.
+  const restoreBlocked = $derived.by(() => {
+    const st = server?.state;
+    if (st === "offline" || st === "crashed" || st === "install_failed") return "";
+    return `stop the server before restoring (state: ${st ?? "unknown"})`;
+  });
   // The stored reason usually already opens with "install failed:", which the
   // notice's own heading says — strip it so the sentence reads once, and close
   // it so the pointer to the log that follows is a separate sentence.
@@ -548,7 +556,7 @@
                 <span>{fmtWhen(b.created_ms)} · {b.name} · {fmtSize(b.size)}</span>
                 <span class="bk-acts">
                   {#if b.state === "failed"}<span class="warn" title={b.error || "backup failed — no reason reported (agent may predate error reporting)"}>failed</span>{:else}<span class="good" title={b.error}>{b.replication === "pending" ? "mirroring" : "ok"}</span>{/if}
-                  <button class="mini-act res" disabled={depth.restoringBackup === b.id || b.state === "failed"} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
+                  <button class="mini-act res" disabled={depth.restoringBackup === b.id || b.state === "failed" || restoreBlocked !== ""} title={restoreBlocked || undefined} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
                   <button class="mini-act del" onclick={() => void backupDelete(b)}>delete</button>
                 </span>
               </div>

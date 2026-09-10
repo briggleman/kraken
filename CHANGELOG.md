@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.40.0](https://github.com/briggleman/kraken/compare/v0.39.1...v0.40.0) (2026-09-10)
+
+
+### Features
+
+* **panel:** seed the bundled catalog on first boot ([#251](https://github.com/briggleman/kraken/issues/251)) ([f326e84](https://github.com/briggleman/kraken/commit/f326e8428ac4431cf69398480da1992d4fd0929e))
+
+
+### Bug Fixes
+
+* **agent:** restore reproduces the archived state — stop-guarded, staged, mode-preserving ([#252](https://github.com/briggleman/kraken/issues/252)) ([500e9e1](https://github.com/briggleman/kraken/commit/500e9e12ee3ce7c869d71feadf39218233b592a6))
+
 ## [0.39.1](https://github.com/briggleman/kraken/compare/v0.39.0...v0.39.1) (2026-09-10)
 
 

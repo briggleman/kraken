@@ -401,7 +401,7 @@ func (s *Service) StreamStats(req *agentpb.StreamStatsRequest, stream agentpb.No
 }
 
 func (s *Service) ApplyNodeConfig(ctx context.Context, req *agentpb.ApplyNodeConfigRequest) (*agentpb.ApplyNodeConfigResponse, error) {
-	ok, detail := s.rt.ApplyNodeConfig(ctx, req.Config)
+	ok, detail := s.rt.ApplyNodeConfig(ctx, req.Config, req.GetVerify())
 	return &agentpb.ApplyNodeConfigResponse{Ok: ok, Detail: detail}, nil
 }
 

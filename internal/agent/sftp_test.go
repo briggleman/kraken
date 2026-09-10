@@ -162,3 +162,21 @@ func TestSFTPBackupTargetJail(t *testing.T) {
 		t.Fatalf("traversal escaped the jail to %s", escaped)
 	}
 }
+
+// A templated base path must not mint a literal "{{SLUG}}" directory at
+// verify time — the token expands per-server when a backup actually runs
+// (observed live: the UNAS drill grew a {{SLUG}} folder from one save click).
+func TestSFTPVerifyProbesOnlyStaticPrefix(t *testing.T) {
+	root := t.TempDir()
+	addr := startTestSFTPServer(t, root)
+	tgt := &sftpBackupTarget{cfg: sftpConfig{Host: addr, User: "kraken", Password: "hunter2", BasePath: "backups/{{SLUG}}"}}
+	if err := tgt.verify(); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "backups")); err != nil {
+		t.Fatalf("static prefix not created: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "backups", "{{SLUG}}")); err == nil {
+		t.Fatal("verify minted a literal {{SLUG}} directory")
+	}
+}

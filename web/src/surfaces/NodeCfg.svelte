@@ -221,7 +221,11 @@
       steamPass = "";
       if (!r.applied) res = { cls: "ok", text: r.apply_detail || "saved — applies when the node next checks in." };
       else if (r.apply_ok) res = { cls: "ok", text: `saved and applied.${r.apply_detail ? " " + r.apply_detail : ""}` };
-      else res = { cls: "bad", text: `saved, but the node is unreachable: ${r.apply_detail}` };
+      // applied && !ok means the agent took the config but its verification of
+      // the backup target failed — a path/credentials problem, not a network one.
+      // The old wording blamed "node unreachable" and sent operators to check
+      // the wrong thing entirely (#226).
+      else res = { cls: "bad", text: `saved, but the backup target failed verification: ${r.apply_detail}` };
     } catch (e) {
       res = { cls: "bad", text: errMsg(e) };
     }
@@ -290,7 +294,7 @@
         <label class="cfg-row">
           <span>backup dir (optional)</span>
           <input class="cfg-in" type="text" placeholder="leave blank for the node default" bind:value={backupDir} />
-          <p class="cfg-help">supports {"{{SLUG}}"} (the game's slug) for per-game folders, e.g. /var/backups/{"{{SLUG}}"}.</p>
+          <p class="cfg-help">supports {"{{SLUG}}"} (the game's slug) for per-game folders, e.g. /var/backups/{"{{SLUG}}"}. on windows the agent runs as a service: mapped drive letters (z:) don't exist there — use a local fixed disk, or the sftp/smb targets for a nas. the path is write-tested when you save.</p>
         </label>
         <label class="tgl"><input type="checkbox" checked={replicate} onchange={(e) => setMirror("sftp", e.currentTarget.checked)} /><i></i>mirror backups to an sftp remote</label>
         <label class="tgl"><input type="checkbox" checked={replicateSmb} onchange={(e) => setMirror("smb", e.currentTarget.checked)} /><i></i>mirror backups to an smb share</label>

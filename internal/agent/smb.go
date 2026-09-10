@@ -284,9 +284,13 @@ func (t *smbBackupTarget) verify() error {
 		return err
 	}
 	defer func() { _ = closeAll() }()
-	base := t.remoteDir()
+	// Only the static prefix of a templated path is created: {{SLUG}} expands
+	// per-server at backup time, and probing the raw path minted a literal
+	// "{{SLUG}}" directory on the NAS (observed live on the UNAS drill).
+	base := smbRelPath(verifyPrefix(t.remoteDir()))
 	if base == "" {
-		// The share root always exists; mounting it was the reachability test.
+		// The share root always exists (or nothing static to create) — mounting
+		// the share was the reachability test.
 		return nil
 	}
 	if err := share.MkdirAll(base, 0o750); err != nil {

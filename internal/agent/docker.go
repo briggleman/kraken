@@ -446,10 +446,11 @@ func verifyTarget(t backupTarget) error {
 	return nil
 }
 
-// ApplyNodeConfig hot-swaps the backup target(s) from Panel-managed config and
-// reports whether the configured remote endpoint(s) are reachable. The swap takes
-// effect even when verification fails, so the operator's intent persists.
-func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig) (bool, string) {
+// ApplyNodeConfig hot-swaps the backup target(s) from Panel-managed config and,
+// when verify is set (the operator-save path), reports whether the configured
+// target(s) are reachable and writable. The swap takes effect even when
+// verification fails, so the operator's intent persists.
+func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig, verify bool) (bool, string) {
 	if cfg == nil {
 		return true, "no config"
 	}
@@ -464,13 +465,15 @@ func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConf
 
 	ok := true
 	var msgs []string
-	if err := verifyTarget(primary); err != nil {
-		ok = false
-		msgs = append(msgs, err.Error())
-	}
-	if err := verifyTarget(replicate); err != nil {
-		ok = false
-		msgs = append(msgs, "replication: "+err.Error())
+	if verify {
+		if err := verifyTarget(primary); err != nil {
+			ok = false
+			msgs = append(msgs, err.Error())
+		}
+		if err := verifyTarget(replicate); err != nil {
+			ok = false
+			msgs = append(msgs, "replication: "+err.Error())
+		}
 	}
 	detail := fmt.Sprintf("primary=%s replication=%t", primary.Kind(), replicate != nil)
 	if replicate != nil && cfg.GetReplicateToSftp() && cfg.GetReplicateToSmb() {

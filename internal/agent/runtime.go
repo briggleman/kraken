@@ -89,10 +89,13 @@ type Runtime interface {
 	StreamStats(ctx context.Context, serverID string, intervalMs int32, emit func(*agentpb.ResourceStats) error) error
 
 	// ApplyNodeConfig applies Panel-managed per-node config (backup target +
-	// replication), hot-swapping the backup target. It returns whether the
-	// configured target(s) are reachable and a human-readable status detail; it
+	// replication), hot-swapping the backup target. When verify is set it also
+	// probes the configured target(s) for reachability/writability — the
+	// operator-save path wants a bad path to fail loudly in the save response,
+	// while the periodic reconcile re-push must not write-probe every target
+	// three times a minute. It returns ok + a human-readable status detail; it
 	// does not error at the RPC level so the Panel can surface the detail.
-	ApplyNodeConfig(ctx context.Context, cfg *agentpb.NodeConfig) (ok bool, detail string)
+	ApplyNodeConfig(ctx context.Context, cfg *agentpb.NodeConfig, verify bool) (ok bool, detail string)
 
 	// ReplicateBackups mirrors a server's existing archives from the primary
 	// target to the configured SFTP remote, returning the counts copied/skipped.

@@ -62,6 +62,24 @@ func sanitizePathToken(v string) string {
 	return s
 }
 
+// verifyPrefix reduces a possibly-templated path to the static portion a
+// verify probe may CREATE. Tokens expand per-server at backup time, so a probe
+// that MkdirAlls the raw path mints a literal "{{SLUG}}" directory on the
+// target (observed live on the UNAS). Unlike staticPrefix it returns "" (not
+// the filesystem root) for a path with no static directory — a probe that
+// would create nothing meaningful should create nothing at all.
+func verifyPrefix(p string) string {
+	i := strings.Index(p, "{{")
+	if i < 0 {
+		return p
+	}
+	p = p[:i]
+	if j := strings.LastIndexAny(p, `/\`); j >= 0 {
+		return p[:j]
+	}
+	return ""
+}
+
 // staticPrefix returns the leading directory of a (possibly templated) path that
 // contains no tokens — e.g. "/media/games/{{SLUG}}/backup" → "/media/games".
 // Used to verify a templated share path: the per-server subdir doesn't exist
@@ -124,6 +142,33 @@ func (t *localBackupTarget) path(serverID, id string) (string, error) {
 		return "", fmt.Errorf("backup: invalid id")
 	}
 	return fp, nil
+}
+
+// verify confirms the configured directory is creatable and writable, so a path
+// the service session cannot reach — a per-logon mapped drive letter invisible
+// to LocalSystem, a permissions hole — fails at save time instead of at the
+// first backup (#226). Unlike share's verify it MkdirAlls: a local dir that
+// doesn't exist yet is legitimate (Put would create it); what must fail is a
+// dir that CANNOT be created. Templated paths probe their static prefix.
+func (t *localBackupTarget) verify() error {
+	if strings.TrimSpace(t.dir) == "" {
+		return fmt.Errorf("backup dir is required")
+	}
+	dir := verifyPrefix(t.dir)
+	if dir == "" {
+		// A path with no static directory (a bare "{{SLUG}}") — nothing a probe
+		// could meaningfully create or write-test.
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("backup dir %q cannot be created: %w", dir, err)
+	}
+	probe := filepath.Join(dir, ".kraken-write-test")
+	if err := os.WriteFile(probe, []byte("ok"), 0o640); err != nil {
+		return fmt.Errorf("backup dir %q is not writable: %w", dir, err)
+	}
+	_ = os.Remove(probe)
+	return nil
 }
 
 func (t *localBackupTarget) Put(_ context.Context, serverID, id string, r io.Reader, _ int64) error {

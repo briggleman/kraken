@@ -177,7 +177,7 @@ func (f *FakeRuntime) ListBackups(_ context.Context, serverID, _ string) ([]*age
 
 func (f *FakeRuntime) RestoreBackup(_ context.Context, _, _, _ string) error { return nil }
 
-func (f *FakeRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig) (bool, string) {
+func (f *FakeRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig, verify bool) (bool, string) {
 	if cfg == nil {
 		return true, "no config"
 	}
@@ -185,8 +185,9 @@ func (f *FakeRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig
 	if target == "" {
 		target = "local"
 	}
-	return true, fmt.Sprintf("fake: primary=%s replication=%t", target,
-		cfg.GetReplicateToSftp() || cfg.GetReplicateToSmb())
+	// The verify flag is echoed so handler tests can assert which path set it.
+	return true, fmt.Sprintf("fake: primary=%s replication=%t verify=%t", target,
+		cfg.GetReplicateToSftp() || cfg.GetReplicateToSmb(), verify)
 }
 
 func (f *FakeRuntime) ReplicateBackups(_ context.Context, serverID, _ string) (int32, int32, error) {

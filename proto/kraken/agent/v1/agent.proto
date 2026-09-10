@@ -618,6 +618,15 @@ message NodeConfig {
 
 message ApplyNodeConfigRequest {
   NodeConfig config = 1;
+  // verify probes the configured target(s) for reachability/writability after
+  // the swap. The operator-save path sets it so a bad path fails loudly in the
+  // save response; the Panel's periodic reconcile re-push leaves it false —
+  // write-probing every backup target three times a minute per node is noise,
+  // not verification. Agents that predate the field ignore it and keep their
+  // old always-verify behavior; an old Panel driving a new agent skips the
+  // probes until it updates (the fleet self-updates to the Panel's version, so
+  // the skew window is minutes).
+  bool verify = 2;
 }
 
 message ApplyNodeConfigResponse {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/briggleman/kraken/compare/v0.37.6...v0.38.0) (2026-09-10)
+
+
+### Features
+
+* **agent:** smb backup target and replication mirror ([#238](https://github.com/briggleman/kraken/issues/238)) ([863d774](https://github.com/briggleman/kraken/commit/863d7744c63a4db28ae864a6aa27bde2b51d8697))
+
 ## [0.37.6](https://github.com/briggleman/kraken/compare/v0.37.5...v0.37.6) (2026-09-10)
 
 

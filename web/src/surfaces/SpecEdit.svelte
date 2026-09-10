@@ -5,6 +5,7 @@
   import { api } from "@/api/client";
   import { sheetFocus } from "@/lib/sheetFocus";
   import type { Spec } from "@/api/types";
+  import YAML from "yaml";
 
   // the mock's data-confirm-body, passed through to the typed-confirm dialog
   const DELETE_BODY =
@@ -20,6 +21,25 @@
   let note = $state<string | null>(null);
   let saving = $state(false);
   let view = $state<"form" | "code">("form");
+  // The code view's serialisation (the mock's json|yaml switch). The document
+  // is one buffer; the switch CONVERTS it rather than swapping views, so
+  // whatever was typed survives the flip — provided it parses.
+  let fmt = $state<"json" | "yaml">("json");
+
+  // lineWidth 0 keeps long values (a startup command) on one line instead of
+  // YAML's folded wrapping, which reads as edits nobody made.
+  const serialize = (doc: unknown) =>
+    fmt === "yaml" ? YAML.stringify(doc, { lineWidth: 0 }) : JSON.stringify(doc, null, 2);
+
+  // Tolerant on purpose: the buffer may hold either serialisation mid-edit
+  // (JSON is valid YAML, but JSON.parse gives the better error for json mode).
+  function parseDoc(text: string): SpecDoc {
+    try {
+      return JSON.parse(text) as SpecDoc;
+    } catch {
+      return YAML.parse(text) as SpecDoc;
+    }
+  }
 
   // load the spec the editor is about whenever the sheet opens (or is retargeted)
   $effect(() => {
@@ -29,13 +49,14 @@
     codeText = "";
     note = null;
     view = "form";
+    fmt = "json";
     if (!id) return;
     api
       .getSpec(id)
       .then((sp) => {
         if (ui.specEditId !== id || !ui.open.specEdit) return; // retargeted meanwhile
         spec = sp as SpecDoc;
-        codeText = JSON.stringify(sp, null, 2);
+        codeText = serialize(sp);
       })
       .catch((e) => {
         if (ui.specEditId !== id) return;
@@ -56,16 +77,30 @@
   function setView(v: "form" | "code") {
     if (v === view) return;
     if (v === "code") {
-      if (spec) codeText = JSON.stringify(spec, null, 2);
+      if (spec) codeText = serialize(spec);
       view = "code";
       return;
     }
     try {
-      spec = JSON.parse(codeText) as SpecDoc;
+      spec = parseDoc(codeText);
       note = null;
       view = "form";
     } catch {
-      note = "the code view is not valid json — fix it here, or save it verbatim (yaml saves fine)";
+      note = "the code view does not parse as json or yaml — fix it here before switching to the form";
+    }
+  }
+
+  // Switching serialisation converts the live buffer — a buffer that doesn't
+  // parse stays in the format it was typed in rather than being discarded.
+  function setFmt(f: "json" | "yaml") {
+    if (f === fmt) return;
+    try {
+      const doc = parseDoc(codeText);
+      fmt = f;
+      codeText = serialize(doc);
+      note = null;
+    } catch {
+      note = "the code view does not parse — fix it before switching formats";
     }
   }
 
@@ -82,7 +117,7 @@
       const updated = await api.updateSpecRaw(spec.id, body);
       await refreshFleet();
       spec = updated as SpecDoc;
-      codeText = JSON.stringify(updated, null, 2);
+      codeText = serialize(updated);
       closeSheet("specEdit");
     } catch (e) {
       note = e instanceof Error ? e.message : String(e);
@@ -175,6 +210,24 @@
     const v = view;
     if (formTab) formTab.checked = v === "form";
     if (codeTab) codeTab.checked = v === "code";
+  });
+
+  // The json|yaml switch is the same radios-the-browser-flips-first mechanism
+  // as the view tabs: setFmt can refuse (unparseable buffer), so the pair is
+  // re-asserted from state after every toggle.
+  let jsonFmt = $state<HTMLInputElement | null>(null);
+  let yamlFmt = $state<HTMLInputElement | null>(null);
+
+  function onFmt(f: "json" | "yaml") {
+    setFmt(f);
+    if (jsonFmt) jsonFmt.checked = fmt === "json";
+    if (yamlFmt) yamlFmt.checked = fmt === "yaml";
+  }
+
+  $effect(() => {
+    const f = fmt;
+    if (jsonFmt) jsonFmt.checked = f === "json";
+    if (yamlFmt) yamlFmt.checked = f === "yaml";
   });
 </script>
 
@@ -297,8 +350,12 @@
     </div>
 
     <div class="spec-code-wrap">
-      <textarea class="spec-code" spellcheck="false" aria-label="Spec document (json)" bind:value={codeText}></textarea>
-      <p class="cfg-help">{note ?? "the document is the source of truth; the form above is a view onto it. config file bindings and templates only appear here. saving posts this json verbatim."}</p>
+      <span class="cd-sw">
+        <label class="cd-opt"><input class="cd-r" type="radio" name="specfmt" bind:this={jsonFmt} checked onchange={() => onFmt("json")} />json</label>
+        <label class="cd-opt"><input class="cd-r r-y" type="radio" name="specfmt" bind:this={yamlFmt} onchange={() => onFmt("yaml")} />yaml</label>
+      </span>
+      <textarea class="spec-code" spellcheck="false" aria-label="Spec document" bind:value={codeText}></textarea>
+      <p class="cfg-help">{note ?? "the document is the source of truth; the form above is a view onto it. config file bindings and templates only appear here. saving posts this document verbatim — json and yaml both save."}</p>
     </div>
   </div>
 </div>

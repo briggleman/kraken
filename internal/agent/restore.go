@@ -164,11 +164,13 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 		if rel == "" {
 			continue
 		}
+		// filepath.Join cleans its result, so a prefix check on dest itself is the
+		// containment proof static analysis models for archive extraction
+		// (go/zipslip — the check must guard the exact value used, not a Clean()
+		// copy of it); restoreEntryPath above and withinHostDir below each enforce
+		// the same jail independently.
 		dest := filepath.Join(staged, filepath.FromSlash(rel))
-		// The Clean+HasPrefix shape is the containment proof static analysis
-		// models for archive extraction (go/zipslip); restoreEntryPath above and
-		// withinHostDir below each enforce the same jail independently.
-		if dest != staged && !strings.HasPrefix(filepath.Clean(dest), staged+string(os.PathSeparator)) {
+		if dest != staged && !strings.HasPrefix(dest, staged+string(os.PathSeparator)) {
 			return nil, fmt.Errorf("docker: backup entry %q escapes data dir", hdr.Name)
 		}
 		if !d.withinHostDir(serverID, dest) {

@@ -266,16 +266,24 @@ func (t *sftpBackupTarget) Delete(_ context.Context, serverID, id string) error 
 }
 
 // verify dials the remote and ensures the base path exists (creating it when
-// absent), so the Panel can surface reachability when config is applied.
+// absent), so the Panel can surface reachability when config is applied. Only
+// the static prefix of a templated path is created: {{SLUG}} expands per-server
+// at backup time, and probing the raw path minted a literal "{{SLUG}}"
+// directory on the remote.
 func (t *sftpBackupTarget) verify() error {
 	client, closeConn, err := t.dial()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = closeConn() }()
-	base := t.cfg.BasePath
+	base := verifyPrefix(t.cfg.BasePath)
 	if base == "" {
-		base = "."
+		// Nothing static to create — the dial itself proved reachability.
+		if t.cfg.BasePath == "" {
+			base = "."
+		} else {
+			return nil
+		}
 	}
 	if err := client.MkdirAll(base); err != nil {
 		return fmt.Errorf("sftp: ensure base path %q: %w", base, err)

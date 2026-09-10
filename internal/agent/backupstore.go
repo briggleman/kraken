@@ -62,6 +62,24 @@ func sanitizePathToken(v string) string {
 	return s
 }
 
+// verifyPrefix reduces a possibly-templated path to the static portion a
+// verify probe may CREATE. Tokens expand per-server at backup time, so a probe
+// that MkdirAlls the raw path mints a literal "{{SLUG}}" directory on the
+// target (observed live on the UNAS). Unlike staticPrefix it returns "" (not
+// the filesystem root) for a path with no static directory — a probe that
+// would create nothing meaningful should create nothing at all.
+func verifyPrefix(p string) string {
+	i := strings.Index(p, "{{")
+	if i < 0 {
+		return p
+	}
+	p = p[:i]
+	if j := strings.LastIndexAny(p, `/\`); j >= 0 {
+		return p[:j]
+	}
+	return ""
+}
+
 // staticPrefix returns the leading directory of a (possibly templated) path that
 // contains no tokens — e.g. "/media/games/{{SLUG}}/backup" → "/media/games".
 // Used to verify a templated share path: the per-server subdir doesn't exist
@@ -136,7 +154,12 @@ func (t *localBackupTarget) verify() error {
 	if strings.TrimSpace(t.dir) == "" {
 		return fmt.Errorf("backup dir is required")
 	}
-	dir := staticPrefix(t.dir)
+	dir := verifyPrefix(t.dir)
+	if dir == "" {
+		// A path with no static directory (a bare "{{SLUG}}") — nothing a probe
+		// could meaningfully create or write-test.
+		return nil
+	}
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("backup dir %q cannot be created: %w", dir, err)
 	}

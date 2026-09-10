@@ -95,3 +95,19 @@ func TestLocalVerifyFailsOnUncreatableDir(t *testing.T) {
 		t.Fatal("verify succeeded on an empty dir")
 	}
 }
+
+func TestVerifyPrefix(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"/games/backups/{{SLUG}}", "/games/backups"},
+		{`Z:\games\{{SLUG}}`, `Z:\games`},
+		{"/mnt/nas/backups", "/mnt/nas/backups"}, // no token: unchanged
+		{"{{SLUG}}", ""},                         // nothing static — probe nothing
+		{"{{SLUG}}/backup", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := verifyPrefix(c.in); got != c.want {
+			t.Fatalf("verifyPrefix(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

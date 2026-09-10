@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.39.0](https://github.com/briggleman/kraken/compare/v0.38.2...v0.39.0) (2026-09-10)
+
+
+### Features
+
+* **specs:** per-spec backup globs — capture saves, not the install tree ([#247](https://github.com/briggleman/kraken/issues/247)) ([6dad11d](https://github.com/briggleman/kraken/commit/6dad11d301f867a8c4429b76e5790f87860e1a73))
+
+
+### Bug Fixes
+
+* **agent:** persist backup-failure records across agent restarts ([#246](https://github.com/briggleman/kraken/issues/246)) ([cc608ce](https://github.com/briggleman/kraken/commit/cc608ce3f4585eec1bfb89fa72f7210b0ce63021))
+* **agent:** verify backup targets on operator save, not on every reconcile ([#244](https://github.com/briggleman/kraken/issues/244)) ([5c509ef](https://github.com/briggleman/kraken/commit/5c509ef6cbd9d224c6e4c647abdb3f5b7667e7fb))
+
 ## [0.38.2](https://github.com/briggleman/kraken/compare/v0.38.1...v0.38.2) (2026-09-10)
 
 

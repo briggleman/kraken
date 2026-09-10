@@ -39,6 +39,16 @@ func adoptLANHost(n *cluster.Node, observed string) bool {
 	return true
 }
 
+// hasHostAddress reports whether ip is one of the Agent's own addresses.
+func hasHostAddress(cands []*agentpb.HostAddress, ip string) bool {
+	for _, a := range cands {
+		if a.GetIp() == ip {
+			return true
+		}
+	}
+	return false
+}
+
 // hostAddressStrings renders the Agent's interface/IP pairs as "iface ip" lines
 // for the node record (display + a future operator picker). Nil when empty so
 // the JSON field stays omitted.
@@ -564,15 +574,24 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		changed = true
 	}
 	// LANHost: the node's address on its own network, refreshed every reconcile
-	// in trust order — the live tunnel session's source IP (the socket the Panel
-	// is talking to right now), the operator-set dial address (the Panel dials
-	// it), the Agent's candidate list when it names exactly one address, and
-	// last the Agent's primary-IP guess (which can land on a virtual adapter).
-	// The old behavior froze the first-contact guess in PublicHost forever, so
-	// a DHCP move left forwards and SFTP pointing at a stale IP (#224).
+	// in trust order — the live tunnel session's source IP when the Agent itself
+	// owns that address, the operator-set dial address (the Panel dials it), the
+	// Agent's candidate list when it names exactly one address, and last the
+	// Agent's primary-IP guess (which can land on a virtual adapter). The old
+	// behavior froze the first-contact guess in PublicHost forever, so a DHCP
+	// move left forwards and SFTP pointing at a stale IP (#224).
+	cands := info.GetHostAddresses()
 	lan := ""
 	if n.Tunneled() && s.tunnel != nil {
-		lan = s.tunnel.RemoteIP(n.ID)
+		// The source IP is ground truth only when the Panel sees the node
+		// directly. A containerized or NATed Panel sees its own gateway instead
+		// (observed live: Docker Desktop's 192.168.65.1 on every tunnel node),
+		// so the source counts only when it appears in the Agent's own address
+		// list. An Agent too old to report candidates keeps the direct trust.
+		src := s.tunnel.RemoteIP(n.ID)
+		if src != "" && (len(cands) == 0 || hasHostAddress(cands, src)) {
+			lan = src
+		}
 	}
 	if lan == "" {
 		if host, _, err := net.SplitHostPort(n.Address); err == nil {
@@ -580,7 +599,7 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		}
 	}
 	if lan == "" {
-		if cands := info.GetHostAddresses(); len(cands) == 1 {
+		if len(cands) == 1 {
 			lan = cands[0].GetIp()
 		} else {
 			lan = info.Host
@@ -590,8 +609,8 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		s.logger.Info("node LAN host changed", "node", n.ID, "name", n.Name, "from", old, "to", n.LANHost)
 		changed = true
 	}
-	if cands := hostAddressStrings(info.GetHostAddresses()); !slices.Equal(cands, n.LANCandidates) {
-		n.LANCandidates = cands
+	if lines := hostAddressStrings(cands); !slices.Equal(lines, n.LANCandidates) {
+		n.LANCandidates = lines
 		changed = true
 	}
 	if n.PublicHost == "" && n.LANHost != "" {

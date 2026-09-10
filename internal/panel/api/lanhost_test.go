@@ -74,6 +74,24 @@ func TestNodeLANHostPrecedence(t *testing.T) {
 	}
 }
 
+func TestHasHostAddress(t *testing.T) {
+	cands := []*agentpb.HostAddress{
+		{Interface: "eth1", Ip: "192.168.0.88"},
+		{Interface: "docker0", Ip: "172.17.0.1"},
+	}
+	if !hasHostAddress(cands, "192.168.0.88") {
+		t.Fatal("owned address not recognized")
+	}
+	// The panel's own NAT gateway (a containerized panel sees this as every
+	// tunnel session's source) is NOT one of the agent's addresses.
+	if hasHostAddress(cands, "192.168.65.1") {
+		t.Fatal("foreign address accepted")
+	}
+	if hasHostAddress(nil, "192.168.0.88") {
+		t.Fatal("empty candidate list must not match")
+	}
+}
+
 func TestHostAddressStrings(t *testing.T) {
 	if got := hostAddressStrings(nil); got != nil {
 		t.Fatalf("empty input must stay nil, got %v", got)

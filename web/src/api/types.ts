@@ -422,6 +422,11 @@ export interface Node {
   arch?: string;
   /** Most recent self-update failure, verbatim from the agent ("" / absent = none). */
   last_update_error?: string;
+  /** Why the agent's inbound listeners are down ("grpc :9090: bind: …"), verbatim.
+   *  NOT a health state: a tunnel-mode node answers over its reverse tunnel and
+   *  keeps hosting everything, so it stays "online" — this is the only place the
+   *  port conflict is visible outside the node's own agent.log. */
+  listen_error?: string;
   address: string;
   public_host: string;
   /** The node's LAN address as the Panel last observed it (tunnel source IP /

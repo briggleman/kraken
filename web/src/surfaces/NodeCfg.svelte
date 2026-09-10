@@ -274,7 +274,7 @@
         <label class="cfg-row">
           <span>port end</span>
           <input class="cfg-in" type="text" placeholder="28999" bind:value={portEnd} />
-          <p class="cfg-help">game ports the scheduler allocates from. changing the range never touches running servers — their ports stay reserved. nodes sharing one ip need non-overlapping ranges.</p>
+          <p class="cfg-help">game ports the scheduler allocates from. changing the range never touches running servers — their ports stay reserved. nodes sharing one ip need non-overlapping ranges — including a host and a wsl distro on it, which share one port space under mirrored networking.</p>
         </label>
       </div>
     </section>

@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -132,9 +133,22 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 			"or opt in explicitly with --allow-insecure-grpc", addr)
 	}
 
-	lis, err := net.Listen("tcp", addr)
+	// The inbound gRPC listener. In tunnel mode the Panel reaches this agent over
+	// the reverse tunnel the agent dials out, so the local bind is a convenience:
+	// losing a port race (a co-located agent under WSL mirrored networking holds
+	// the same port — #235) degrades to a warning, gets reported in NodeInfo, and
+	// is retried in the background. In direct mode the listener IS the control
+	// plane, so a failed bind stays fatal.
+	tunneled := cfg.TunnelEnabled()
+	grpcGuard := newListenGuard("grpc", addr, logger)
+	lis, err := grpcGuard.listen()
 	if err != nil {
-		return fmt.Errorf("listen %s: %w", addr, err)
+		if !tunneled {
+			return fmt.Errorf("listen %s: %w", addr, err)
+		}
+		logger.Error("inbound gRPC listener unavailable — serving over the reverse tunnel only; "+
+			"the Panel will show this node's listener as down, and the bind is retried in the background",
+			"addr", addr, "err", err, "retry_in", retryInterval)
 	}
 
 	// Self-update wiring. The boot check runs before anything serves: if a
@@ -153,6 +167,15 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	rt := selectRuntime(logger, cfg)
 	if closer, ok := rt.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
+	}
+
+	// The SFTP guard is built here — before the Service, which reports both
+	// listeners' state — but binds further down, once the gRPC side is wired.
+	// nil for a runtime that can't back SFTP at all (the fake one), so its
+	// listener is not merely down but absent, and nothing is reported for it.
+	var sftpGuard *listenGuard
+	if agent.SFTPSupported(rt) {
+		sftpGuard = newListenGuard("sftp", cfg.SFTPAddr, logger)
 	}
 
 	// Build the gRPC server per the resolution above. Under TLS the serving
@@ -212,6 +235,9 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	hostSampler := agent.NewHostSampler(cfg.DataDir)
 	hostSampler.Start(ctx)
 	svcOpts = append(svcOpts, agent.WithHostSampler(hostSampler))
+	svcOpts = append(svcOpts, agent.WithListenStatus(func() string {
+		return listenStatus(grpcGuard, sftpGuard)
+	}))
 
 	svc := agent.NewService(rt, svcOpts...)
 	agentpb.RegisterNodeServiceServer(grpcServer, svc)
@@ -221,7 +247,7 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	// listener stays up alongside it — direct and tunnel are not exclusive, and
 	// keeping it means an operator can flip a node between modes without
 	// touching the agent.
-	if cfg.TunnelEnabled() {
+	if tunneled {
 		if !secure {
 			return fmt.Errorf("agent: tunnel mode requires an mTLS bundle — enroll with the Panel first (--panel-url, or --enroll-token from the Add Node dialog)")
 		}
@@ -238,14 +264,43 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	}
 
 	// SFTP server for power-user file access — a separate SSH listener that
-	// chroots each per-server login to that server's data dir. No-op on the
-	// fake runtime. The host key persists so the server's identity is stable.
-	sftpAddr := cfg.SFTPAddr
-	if sftpSrv, serr := agent.StartSFTP(rt, sftpAddr, cfg.SFTPHostKey, logger); serr != nil {
-		logger.Warn("SFTP server not started", "err", serr)
-	} else if sftpSrv != nil {
-		logger.Info("SFTP server listening", "addr", sftpAddr)
-		defer func() { _ = sftpSrv.Close() }()
+	// chroots each per-server login to that server's data dir. Absent on the
+	// fake runtime (no sftpGuard). The host key persists so the server's identity
+	// is stable. Never fatal — file access is not the control plane — but the
+	// bind is retried and reported rather than warned about once and forgotten,
+	// which is how the #235 collision on :2022 stayed invisible.
+	if sftpGuard != nil {
+		sftpAddr := cfg.SFTPAddr
+		var sftpSrv atomic.Pointer[agent.SFTPServer]
+		defer func() {
+			if srv := sftpSrv.Load(); srv != nil {
+				_ = srv.Close()
+			}
+		}()
+		startSFTP := func(l net.Listener) error {
+			srv, serr := agent.StartSFTPOn(rt, l, cfg.SFTPHostKey, logger)
+			if serr != nil {
+				_ = l.Close()
+				return serr
+			}
+			logger.Info("SFTP server listening", "addr", sftpAddr)
+			sftpSrv.Store(srv)
+			return nil
+		}
+		sftpLis, serr := sftpGuard.listen()
+		if serr != nil {
+			logger.Error("SFTP listener unavailable — file access is down on this node; retrying the bind",
+				"addr", sftpAddr, "err", serr, "retry_in", retryInterval)
+		}
+		go func() {
+			if err := sftpGuard.serveWithRetry(ctx, sftpLis, startSFTP); err != nil {
+				// The bind landed but the server refused to start (an unreadable
+				// or unusable host key): a standing condition, not a race, so
+				// report it and stop retrying.
+				logger.Warn("SFTP server not started", "err", err)
+				sftpGuard.setStatus(err)
+			}
+		}()
 	}
 
 	// Uptime-based fallback for the update health milestone (the primary
@@ -255,13 +310,18 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	}
 
 	errCh := make(chan error, 1)
-	go func() {
+	serveGRPC := func(l net.Listener) error {
 		if secure {
 			logger.Info("agent serving with mutual TLS", "addr", addr, "node", nodeID, "os", nodeOS)
 		} else {
 			logger.Warn("agent serving WITHOUT mTLS (dev mode)", "addr", addr, "node", nodeID, "os", nodeOS)
 		}
-		if err := grpcServer.Serve(lis); err != nil {
+		return grpcServer.Serve(l)
+	}
+	go func() {
+		// lis is nil only in tunnel mode with a lost bind (direct mode returned
+		// above): Serve starts the moment a retry lands a listener.
+		if err := grpcGuard.serveWithRetry(ctx, lis, serveGRPC); err != nil {
 			errCh <- err
 		}
 	}()

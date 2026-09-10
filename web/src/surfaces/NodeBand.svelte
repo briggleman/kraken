@@ -257,6 +257,15 @@
         {/if}
       </span>
     {/if}
+    {#if node.listen_error}
+      <!-- A warning, not a health state: the node is online and hosting, but an
+           inbound listener lost its port — the failure mode that made #235 an
+           11-hour outage while the node card said nothing at all. `act` is the
+           house's caution colour, the same one the drift line borrows. -->
+      <span class="node-meta node-cond" title={node.listen_error}>
+        <span class="nc-k">inbound</span><b class="nc-v act">{node.listen_error}</b>
+      </span>
+    {/if}
     {#if containers}
       <!-- The one comparison that runs from the agent's own count inward. A
            surplus is holding memory and ports the scheduler believes are free. -->

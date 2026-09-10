@@ -61,6 +61,15 @@ register the node.
 Useful switches: `-Version v0.17.0` pins a release, `-Root D:\kraken`
 relocates everything, `-NoFirewall` / `-NoService` skip those steps.
 
+> **Running a second agent in WSL on this host?** WSL's
+> `networkingMode=mirrored` makes the distro and the Windows host share one
+> port space, so both agents cannot have `:9090`/`:2022`. Give each its own
+> `addr` and `sftp_addr` in `agent.yaml` (e.g. `:9091` / `:2023` on the
+> Windows side) and split the game-port pools into non-overlapping ranges in
+> the Panel's node settings. A tunnel-mode agent survives losing this race —
+> it serves the Panel over its reverse tunnel and reports the conflict on the
+> node card — but a direct-mode agent will not start.
+
 ### Token expired?
 
 Tokens are single-use and expire in 15 minutes (a Panel restart also

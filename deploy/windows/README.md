@@ -100,19 +100,20 @@ C:\kraken\bin\kraken-agent.exe --service uninstall
 
 ### Existing installs: bring the service's recovery config current
 
-Self-update relies on **SCM recovery actions** to restart the service after it
-swaps its binary and exits. Those actions used to be written once, when the
-service was first registered — a service registered by an older agent kept its
-original (legacy) recovery config through every upgrade, since an upgrade only
-replaces the `.exe`. The symptom is a node that goes **offline after the Nth
-agent update of a busy day**: the old config restarts the service a few times,
-then stops trying, and the new binary sits on disk with nothing to start it
-(#184).
+Since 0.38.1, a self-update restarts itself: the agent schedules an explicit
+`Start-Service` and stops cleanly, so the restart no longer draws on the SCM's
+**failure-recovery budget** (three restarts, counter reset only after a day
+without failures — a budget one bad crash-loop can exhaust, stranding every
+later update STOPPED with a healthy new binary on disk; that bit abyss-win
+twice on 2026-09-10, and before #184 the same node died to a legacy config
+that upgrades never rewrote).
 
-`--service install` is idempotent now, so one elevated command re-asserts the
-current policy (restart after 5s / 30s / 60s, counter reset after a day,
-**including non-crash failures** — self-update's clean exit is one). Check
-first, heal, then check again:
+The recovery actions still matter: they are what restarts a **failing** agent —
+a bad config, a bind conflict, and above all the boot-attempt/rollback loop of
+an updated binary that can't start. `--service install` is idempotent, so one
+elevated command re-asserts the current policy (restart after 5s / 30s / 60s,
+counter reset after a day, **including non-crash failures**). Check first,
+heal, then check again:
 
 ```powershell
 # 1. What is the SCM actually holding? Prints actual vs expected per field.

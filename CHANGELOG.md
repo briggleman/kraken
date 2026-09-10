@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.2](https://github.com/briggleman/kraken/compare/v0.38.1...v0.38.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **agent:** tunnel-mode agents survive inbound-port conflicts and report them ([#241](https://github.com/briggleman/kraken/issues/241)) ([1b8d1b7](https://github.com/briggleman/kraken/commit/1b8d1b7ac708aedf7e18cbb1cb518b9f0d5423bd))
+
 ## [0.38.1](https://github.com/briggleman/kraken/compare/v0.38.0...v0.38.1) (2026-09-10)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/briggleman/kraken/compare/v0.38.0...v0.38.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **agent:** self-update restart no longer depends on the SCM failure budget ([#240](https://github.com/briggleman/kraken/issues/240)) ([3ee34bb](https://github.com/briggleman/kraken/commit/3ee34bb090e64f7dc40edac6b0c5ad08c28be1e9))
+
 ## [0.38.0](https://github.com/briggleman/kraken/compare/v0.37.6...v0.38.0) (2026-09-10)
 
 

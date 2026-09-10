@@ -2196,7 +2196,18 @@ type CreateBackupRequest struct {
 	// slug is the server's game-spec slug, used to expand path tokens (e.g.
 	// {{SLUG}}) in the node's backup_dir / sftp_base_path. It is stable for the
 	// life of a server, so the resolved path is identical across all backup ops.
-	Slug          string `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
+	Slug string `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
+	// backup_include / backup_exclude are the ALREADY-RESOLVED doublestar globs
+	// that select what the archive captures, matched against data-dir-relative
+	// POSIX paths ("savegame/world.db", "Pal/Saved/SaveGames/x.sav"). The Panel
+	// resolves them from the server's spec — from its `backup:` block, or from the
+	// Panel's built-in ephemeral-exclude list when the spec declares none — so the
+	// Agent never needs the spec. An empty include list captures everything not
+	// excluded; excludes filter what the includes selected. Both empty reproduces
+	// the historical whole-data-dir backup. Restore/list/delete take no globs: an
+	// archive only ever contains what was included.
+	BackupInclude []string `protobuf:"bytes,4,rep,name=backup_include,json=backupInclude,proto3" json:"backup_include,omitempty"`
+	BackupExclude []string `protobuf:"bytes,5,rep,name=backup_exclude,json=backupExclude,proto3" json:"backup_exclude,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2250,6 +2261,20 @@ func (x *CreateBackupRequest) GetSlug() string {
 		return x.Slug
 	}
 	return ""
+}
+
+func (x *CreateBackupRequest) GetBackupInclude() []string {
+	if x != nil {
+		return x.BackupInclude
+	}
+	return nil
+}
+
+func (x *CreateBackupRequest) GetBackupExclude() []string {
+	if x != nil {
+		return x.BackupExclude
+	}
+	return nil
 }
 
 type ListBackupsRequest struct {
@@ -4530,11 +4555,13 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fcreated_unix_ms\x18\x04 \x01(\x03R\rcreatedUnixMs\x122\n" +
 	"\x05state\x18\x05 \x01(\x0e2\x1c.kraken.agent.v1.BackupStateR\x05state\x12C\n" +
 	"\vreplication\x18\x06 \x01(\x0e2!.kraken.agent.v1.ReplicationStateR\vreplication\x12\x14\n" +
-	"\x05error\x18\a \x01(\tR\x05error\"Z\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"\xa8\x01\n" +
 	"\x13CreateBackupRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
-	"\x04slug\x18\x03 \x01(\tR\x04slug\"E\n" +
+	"\x04slug\x18\x03 \x01(\tR\x04slug\x12%\n" +
+	"\x0ebackup_include\x18\x04 \x03(\tR\rbackupInclude\x12%\n" +
+	"\x0ebackup_exclude\x18\x05 \x03(\tR\rbackupExclude\"E\n" +
 	"\x12ListBackupsRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
 	"\x04slug\x18\x02 \x01(\tR\x04slug\"L\n" +

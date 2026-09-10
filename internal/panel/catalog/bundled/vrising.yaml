@@ -72,6 +72,18 @@ config_files:
         "AutoSaveInterval": {{.settings.AutoSaveInterval}},
         "GameSettingsPreset": "{{.settings.GameSettingsPreset}}"
       }
+# A backup is the save data, not the reinstallable install tree. Source: the
+# `-persistentDataPath C:\data\save` argument in startup.command above — the
+# whole save tree, including the ServerHostSettings.json written by the
+# config_files entry above (C:\data\save\Settings\…). `-logFile C:\data\logs\…`
+# points the noisy, mid-archive-growing files elsewhere, so they stay out.
+# BepInEx rides along because plugins are operator-uploaded, not reinstallable.
+backup:
+  include:
+    - save/**
+    - BepInEx/**
+  exclude:
+    - "**/*.log"
 resources:
   min_memory_mb: 4096
   recommended_memory_mb: 8192

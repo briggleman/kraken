@@ -105,6 +105,18 @@ config_files:
         "autosave_only_on_server": {{.settings.autosave_only_on_server}},
         "non_blocking_saving": {{.settings.non_blocking_saving}}
       }
+# A backup is the save data, not the reinstallable install tree (the headless
+# build is a 100 MB HTTP fetch away — see install.script). Sources: the install
+# script creates /data/saves and startup.command loads /data/saves/world.zip;
+# server-settings.json is the config_files path above, and the headless server
+# reads its sibling server-adminlist / banlist / whitelist and map-gen JSONs
+# from the same write dir (all top-level, hence *.json). mods/ is that write
+# dir's mod folder — operator-uploaded and required for a modded save to load.
+backup:
+  include:
+    - saves/**
+    - "*.json"
+    - mods/**
 resources:
   min_memory_mb: 1024
   recommended_memory_mb: 2048

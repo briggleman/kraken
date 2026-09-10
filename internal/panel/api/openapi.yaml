@@ -1137,6 +1137,24 @@ components:
               protocol: { type: string, enum: [tcp, udp] }
               default: { type: integer }
               required: { type: boolean }
+        backup:
+          type: object
+          description: >-
+            What a backup of this game captures — a backup is the SAVE DATA, not
+            the reinstallable install tree. Patterns are doublestar globs (`**`
+            spans any number of path segments) matched against data-dir-relative
+            POSIX paths ("savegame/world.db"). include selects (omit for
+            everything); exclude then filters, so an exclude wins on a conflict.
+            Omit the whole block and the Panel applies its built-in policy: the
+            whole data dir minus an ephemeral-only exclude list. Rejected at save
+            time if a pattern does not compile.
+          properties:
+            include:
+              type: array
+              items: { type: string }
+            exclude:
+              type: array
+              items: { type: string }
     Node:
       type: object
       properties:

@@ -5,7 +5,12 @@
 // templates. Specs are stored in Postgres and authored/edited through the UI.
 package spec
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
+)
 
 // PlatformKind identifies how a game server is executed. The scheduler considers
 // candidate kinds in the priority order declared on a Spec; native Linux is
@@ -74,6 +79,46 @@ type Spec struct {
 	// Query, when set, tells the Agent how to read the live online-player count
 	// (shown on the server detail + fleet). Omit for games with no query support.
 	Query *PlayerQuery `json:"query,omitempty"`
+
+	// Backup, when set, declares WHAT a backup of this game captures. Omit it and
+	// the Panel falls back to its built-in policy (whole data dir minus a
+	// conservative ephemeral-only exclude list); declaring the block replaces that
+	// policy wholesale — see Backup.
+	Backup *Backup `json:"backup,omitempty"`
+}
+
+// Backup declares which parts of a server's data dir a backup captures.
+//
+// A backup is the game's SAVE DATA, not the reinstallable install tree: the
+// 10–30 GB SteamCMD tree is recreatable with a reinstall, the saves are not, and
+// tarring the whole tree is what drives the multi-hour backups, the mirror
+// bandwidth, and the "write too long" archive race (live logs inside the install
+// tree grow mid-capture). A spec that knows where its saves live says so here.
+//
+// Because a wrong include silently drops saves — the worst failure this system
+// has — only declare a block when the save location is derivable from the spec
+// itself (its config-file paths, startup args, env) or from authoritative game
+// documentation. When in doubt, omit the block: the Panel's built-in policy
+// captures everything except what is unambiguously ephemeral.
+type Backup struct {
+	// Include lists the paths to capture as doublestar globs (`**` spans any
+	// number of path segments), matched against data-dir-relative POSIX paths:
+	// "savegame/world.db", "Pal/Saved/SaveGames/0/Level.sav". An empty/omitted
+	// list means "everything" — the excludes then carry the whole policy.
+	Include []string `json:"include,omitempty"`
+	// Exclude filters what Include selected, so it wins on a conflict. A pattern
+	// that matches a directory prunes the walk there, which is how a game whose
+	// saves sit inside a noisy tree (UE's `Saved/Logs`) stays cheap to archive.
+	Exclude []string `json:"exclude,omitempty"`
+}
+
+// Patterns returns the block's include and exclude lists (nil-receiver safe, so
+// callers can hand a spec's optional block straight through).
+func (b *Backup) Patterns() (include, exclude []string) {
+	if b == nil {
+		return nil, nil
+	}
+	return b.Include, b.Exclude
 }
 
 // Platform binds a PlatformKind to the Docker image used to run it, with
@@ -346,5 +391,39 @@ func (s *Spec) Validate() error {
 	if err := s.validateSettings(); err != nil {
 		return err
 	}
+	if err := s.validateBackup(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateBackup rejects a backup block whose globs cannot compile or cannot
+// possibly match. A pattern that never matches is not a cosmetic problem: an
+// include list of only-broken patterns captures nothing, so a green backup would
+// hold no saves at all. Better to refuse the spec at save time.
+func (s *Spec) validateBackup() error {
+	if s.Backup == nil {
+		return nil
+	}
+	check := func(field string, pats []string) error {
+		for i, p := range pats {
+			switch {
+			case strings.TrimSpace(p) == "":
+				return fmt.Errorf("spec %q: backup.%s[%d]: pattern is empty", s.Slug, field, i)
+			case strings.HasPrefix(p, "/"):
+				return fmt.Errorf("spec %q: backup.%s[%d] (%q): patterns are data-dir-relative — drop the leading %q", s.Slug, field, i, p, "/")
+			case strings.Contains(p, `\`):
+				// Backslash is doublestar's escape character, so a Windows-style
+				// path compiles fine and then silently matches nothing.
+				return fmt.Errorf("spec %q: backup.%s[%d] (%q): use POSIX separators — a backslash never matches a data-dir path", s.Slug, field, i, p)
+			case !doublestar.ValidatePattern(p):
+				return fmt.Errorf("spec %q: backup.%s[%d] (%q): not a valid glob pattern", s.Slug, field, i, p)
+			}
+		}
+		return nil
+	}
+	if err := check("include", s.Backup.Include); err != nil {
+		return err
+	}
+	return check("exclude", s.Backup.Exclude)
 }

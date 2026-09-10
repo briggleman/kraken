@@ -123,7 +123,7 @@ func TestNativeBackupRoundTrip(t *testing.T) {
 	if err := d.WriteFile(ctx, sid, "world/level.dat", []byte("savedata")); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	bi, err := d.CreateBackup(ctx, sid, "", "snap")
+	bi, err := d.CreateBackup(ctx, sid, "", "snap", nil, nil)
 	if err != nil {
 		t.Fatalf("CreateBackup: %v", err)
 	}

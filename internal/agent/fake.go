@@ -155,7 +155,10 @@ func (f *FakeRuntime) ZipFiles(_ context.Context, _ string, paths []string, w io
 	return zw.Close()
 }
 
-func (f *FakeRuntime) CreateBackup(_ context.Context, serverID, _, name string) (*agentpb.BackupInfo, error) {
+// CreateBackup ignores the backup globs: the fake stores no data dir, so there
+// is nothing to filter. Tests that care about the resolved globs assert on the
+// request the Panel sends.
+func (f *FakeRuntime) CreateBackup(_ context.Context, serverID, _, name string, _, _ []string) (*agentpb.BackupInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.backups == nil {

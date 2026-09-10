@@ -64,6 +64,49 @@ Abiotic Factor, Windrose, Dragonwilds) have TWO Steam appids:
 
 Never point the image URLs at the server appid — it has no store CDN entry.
 
+## The `backup:` block — where the saves live
+
+**A backup is the game's SAVE DATA, not the reinstallable install tree.** The
+10–30 GB SteamCMD tree comes back with a reinstall; the world does not. Tarring
+the whole data dir is what drove the multi-hour backups, the mirror bandwidth,
+and the `archive/tar: write too long` failures (live logs inside the install tree
+grow mid-capture).
+
+An optional `backup:` block tells the platform what to capture. Patterns are
+[doublestar](https://github.com/bmatcuk/doublestar) globs (`**` spans any number
+of path segments) matched against **data-dir-relative POSIX paths** —
+`savegame/world.db`, `Pal/Saved/SaveGames/0/Level.sav` — never `C:\data\…` and
+never a leading `/`. `include` selects (omit it and everything is selected);
+`exclude` then filters, so an exclude wins on a conflict.
+
+```yaml
+backup:
+  include:
+    - Pal/Saved/**
+  exclude:
+    - Pal/Saved/Logs/**
+```
+
+- **Omit the block when you are not sure.** A spec with no block gets the
+  Panel's built-in policy: the whole data dir minus a conservative
+  ephemeral-only exclude list (SteamCMD staging dirs, logs, crash dumps) —
+  see `builtinBackupExcludes` in
+  [`internal/panel/api/backupglobs.go`](../../api/backupglobs.go). An include
+  list that misses the saves produces a **green backup with no save in it**,
+  which is the worst outcome this system has; capturing too much is only slow.
+- **Declaring the block replaces that policy wholesale** — the built-in excludes
+  are NOT merged underneath it. Add your own `**/*.log` / `Logs/**` excludes for
+  a save tree that carries logs (every Unreal game does).
+- **Derive the paths, don't guess them.** The spec usually proves them itself: a
+  `config_files` path under the save tree, a `-savedir` / `-persistentDataPath`
+  startup argument, a rendered `saveDirectory` in the game's own config. Leave a
+  one-line comment above the block naming that source.
+- Include operator-uploaded content that a reinstall would *not* restore (a
+  BepInEx `plugins/` tree, a Factorio `mods/` folder) — mods are not install tree.
+- The globs are spec-level only (no per-server override) and are resolved by the
+  Panel on every backup, manual or scheduled. Restore is unaffected: an archive
+  only ever contains what was included.
+
 ## Related
 
 - Spec schema: [`internal/shared/spec/spec.go`](../../../shared/spec/spec.go)

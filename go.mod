@@ -11,6 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/yamux v0.1.2
+	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pkg/sftp v1.13.10
 	github.com/pressly/goose/v3 v3.26.0
@@ -30,6 +31,7 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

@@ -101,10 +101,10 @@ export interface PanelSettings {
 }
 
 // NodeConfig is a node's System settings: where backups are stored and whether
-// they are mirrored to an SFTP remote. Secret fields are never returned — only
-// a "*_configured" flag.
+// they are mirrored to an off-node remote. Secret fields are never returned —
+// only a "*_configured" flag.
 export interface NodeConfig {
-  backup_target: string; // "local" | "sftp"
+  backup_target: string; // "local" | "share" | "sftp" | "smb"
   backup_dir?: string;
   sftp_host?: string;
   sftp_user?: string;
@@ -113,6 +113,13 @@ export interface NodeConfig {
   sftp_base_path?: string;
   sftp_known_host_key?: string;
   replicate_to_sftp: boolean;
+  smb_host?: string;
+  smb_share?: string;
+  smb_user?: string;
+  smb_password_configured: boolean;
+  smb_domain?: string;
+  smb_base_path?: string;
+  replicate_to_smb: boolean;
   steam_username?: string;
   steam_configured: boolean; // a Steam password is stored
 }
@@ -137,6 +144,13 @@ export interface NodeConfigUpdate {
   sftp_base_path?: string;
   sftp_known_host_key?: string;
   replicate_to_sftp?: boolean;
+  smb_host?: string;
+  smb_share?: string;
+  smb_user?: string;
+  smb_password?: string;
+  smb_domain?: string;
+  smb_base_path?: string;
+  replicate_to_smb?: boolean;
   steam_username?: string;
   steam_password?: string;
 }

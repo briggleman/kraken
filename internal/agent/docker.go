@@ -67,10 +67,10 @@ type DockerRuntime struct {
 
 	// bmu guards the backup targets, which the Panel can hot-swap at runtime via
 	// ApplyNodeConfig. backups is the primary store; replicate, when non-nil, is
-	// an SFTP remote every new backup is also mirrored to.
+	// the off-node remote every new backup is also mirrored to.
 	bmu       sync.RWMutex
-	backups   backupTarget        // primary store (local fs or SFTP)
-	replicate backupTarget        // optional SFTP mirror (nil when replication is off)
+	backups   backupTarget        // primary store (local fs, mounted share, SFTP or SMB)
+	replicate backupTarget        // optional off-node mirror (nil when replication is off)
 	nodeCfg   *agentpb.NodeConfig // last-applied config; source for per-server path templating (nil = defaults)
 	sftpPort  int32               // port the Agent's SFTP server bound (0 = SFTP off); reported in NodeInfo
 
@@ -286,31 +286,42 @@ func (d *DockerRuntime) applyIsolation(host *container.HostConfig) {
 }
 
 // selectBackupTarget returns the default node-local filesystem target rooted at
-// backupDir. The Panel can later hot-swap this for an SFTP remote via ApplyNodeConfig.
+// backupDir. The Panel can later hot-swap this for a remote (share/SFTP/SMB)
+// via ApplyNodeConfig.
 func selectBackupTarget(backupDir string) backupTarget {
 	return &localBackupTarget{dir: backupDir}
 }
 
-// replicateTarget returns the current SFTP mirror (nil when replication is off).
+// replicateTarget returns the current off-node mirror (nil when replication is off).
 func (d *DockerRuntime) replicateTarget() backupTarget {
 	d.bmu.RLock()
 	defer d.bmu.RUnlock()
 	return d.replicate
 }
 
-// expandCfgPaths returns a NodeConfig copy with backup_dir and sftp_base_path
-// expanded for slug. Fields are copied by name (not *cfg) so the proto's
-// internal lock isn't copied (go vet copylocks).
+// expandCfgPaths returns a NodeConfig copy with backup_dir, sftp_base_path and
+// smb_base_path expanded for slug. Fields are copied by name (not *cfg) so the
+// proto's internal lock isn't copied (go vet copylocks) — every field a target
+// builder reads must be listed here, or it is silently lost for per-server
+// operations.
 func expandCfgPaths(cfg *agentpb.NodeConfig, slug string) *agentpb.NodeConfig {
 	return &agentpb.NodeConfig{
-		BackupTarget:    cfg.GetBackupTarget(),
-		BackupDir:       expandBackupPath(cfg.GetBackupDir(), slug),
-		SftpHost:        cfg.GetSftpHost(),
-		SftpUser:        cfg.GetSftpUser(),
-		SftpPassword:    cfg.GetSftpPassword(),
-		SftpPrivateKey:  cfg.GetSftpPrivateKey(),
-		SftpBasePath:    expandBackupPath(cfg.GetSftpBasePath(), slug),
-		ReplicateToSftp: cfg.GetReplicateToSftp(),
+		BackupTarget:     cfg.GetBackupTarget(),
+		BackupDir:        expandBackupPath(cfg.GetBackupDir(), slug),
+		SftpHost:         cfg.GetSftpHost(),
+		SftpUser:         cfg.GetSftpUser(),
+		SftpPassword:     cfg.GetSftpPassword(),
+		SftpPrivateKey:   cfg.GetSftpPrivateKey(),
+		SftpBasePath:     expandBackupPath(cfg.GetSftpBasePath(), slug),
+		SftpKnownHostKey: cfg.GetSftpKnownHostKey(),
+		ReplicateToSftp:  cfg.GetReplicateToSftp(),
+		SmbHost:          cfg.GetSmbHost(),
+		SmbShare:         cfg.GetSmbShare(),
+		SmbUser:          cfg.GetSmbUser(),
+		SmbPassword:      cfg.GetSmbPassword(),
+		SmbDomain:        cfg.GetSmbDomain(),
+		SmbBasePath:      expandBackupPath(cfg.GetSmbBasePath(), slug),
+		ReplicateToSmb:   cfg.GetReplicateToSmb(),
 	}
 }
 
@@ -328,16 +339,35 @@ func (d *DockerRuntime) backupTargetFor(slug string) backupTarget {
 	return d.buildTarget(expandCfgPaths(cfg, slug))
 }
 
-// replicateTargetFor returns the SFTP mirror with path tokens expanded for slug
-// (nil when replication is off).
+// replicateTargetFor returns the off-node mirror with path tokens expanded for
+// slug (nil when replication is off).
 func (d *DockerRuntime) replicateTargetFor(slug string) backupTarget {
 	d.bmu.RLock()
 	cfg := d.nodeCfg
 	d.bmu.RUnlock()
-	if cfg == nil || !cfg.GetReplicateToSftp() {
+	if cfg == nil {
 		return d.replicateTarget()
 	}
-	return buildSFTPTarget(expandCfgPaths(cfg, slug))
+	mirror := buildReplicateTarget(expandCfgPaths(cfg, slug))
+	if mirror == nil {
+		return d.replicateTarget()
+	}
+	return mirror
+}
+
+// buildReplicateTarget constructs the mirror destination described by cfg, or
+// nil when no replication is enabled. SFTP wins if both flags are set — the
+// Panel rejects that combination, so it only happens with a hand-edited config,
+// and one mirror is always better than an arbitrary one.
+func buildReplicateTarget(cfg *agentpb.NodeConfig) backupTarget {
+	switch {
+	case cfg.GetReplicateToSftp():
+		return buildSFTPTarget(cfg)
+	case cfg.GetReplicateToSmb():
+		return buildSMBTarget(cfg)
+	default:
+		return nil
+	}
 }
 
 // buildTarget constructs the primary backup target described by cfg. An empty
@@ -347,6 +377,10 @@ func (d *DockerRuntime) buildTarget(cfg *agentpb.NodeConfig) backupTarget {
 	switch cfg.GetBackupTarget() {
 	case "sftp":
 		return buildSFTPTarget(cfg)
+	case "smb":
+		// An SMB server dialed with explicit credentials — no host mount, so it
+		// works from a service account on either OS.
+		return buildSMBTarget(cfg)
 	case "share":
 		// A mounted network share (SMB/NFS). The dir must point at the mount; it
 		// is not defaulted (an empty/missing path must fail verify, not silently
@@ -377,18 +411,43 @@ func buildSFTPTarget(cfg *agentpb.NodeConfig) *sftpBackupTarget {
 	}}
 }
 
+// buildSMBTarget constructs an SMB target from cfg's smb_* fields.
+func buildSMBTarget(cfg *agentpb.NodeConfig) *smbBackupTarget {
+	return &smbBackupTarget{cfg: smbConfig{
+		Host:     cfg.GetSmbHost(),
+		Share:    cfg.GetSmbShare(),
+		User:     cfg.GetSmbUser(),
+		Password: cfg.GetSmbPassword(),
+		Domain:   cfg.GetSmbDomain(),
+		BasePath: cfg.GetSmbBasePath(),
+	}}
+}
+
+// verifiableTarget is a backup target that can be probed for reachability at
+// config-apply time (a remote endpoint, or a mount that must already exist).
+// The node-local target has nothing to prove, so it doesn't implement it.
+type verifiableTarget interface {
+	verify() error
+}
+
+// verifyTarget probes t when it supports verification; anything else (nil, or
+// the node-local target) verifies trivially.
+func verifyTarget(t backupTarget) error {
+	if vt, ok := t.(verifiableTarget); ok {
+		return vt.verify()
+	}
+	return nil
+}
+
 // ApplyNodeConfig hot-swaps the backup target(s) from Panel-managed config and
-// reports whether the configured SFTP endpoint(s) are reachable. The swap takes
+// reports whether the configured remote endpoint(s) are reachable. The swap takes
 // effect even when verification fails, so the operator's intent persists.
 func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig) (bool, string) {
 	if cfg == nil {
 		return true, "no config"
 	}
 	primary := d.buildTarget(cfg)
-	var replicate backupTarget
-	if cfg.GetReplicateToSftp() {
-		replicate = buildSFTPTarget(cfg)
-	}
+	replicate := buildReplicateTarget(cfg)
 
 	d.bmu.Lock()
 	d.backups = primary
@@ -398,25 +457,20 @@ func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConf
 
 	ok := true
 	var msgs []string
-	if st, isSFTP := primary.(*sftpBackupTarget); isSFTP {
-		if err := st.verify(); err != nil {
-			ok = false
-			msgs = append(msgs, err.Error())
-		}
+	if err := verifyTarget(primary); err != nil {
+		ok = false
+		msgs = append(msgs, err.Error())
 	}
-	if st, isShare := primary.(*shareBackupTarget); isShare {
-		if err := st.verify(); err != nil {
-			ok = false
-			msgs = append(msgs, err.Error())
-		}
-	}
-	if st, isSFTP := replicate.(*sftpBackupTarget); isSFTP {
-		if err := st.verify(); err != nil {
-			ok = false
-			msgs = append(msgs, "replication: "+err.Error())
-		}
+	if err := verifyTarget(replicate); err != nil {
+		ok = false
+		msgs = append(msgs, "replication: "+err.Error())
 	}
 	detail := fmt.Sprintf("primary=%s replication=%t", primary.Kind(), replicate != nil)
+	if replicate != nil && cfg.GetReplicateToSftp() && cfg.GetReplicateToSmb() {
+		// The Panel refuses this combination; a hand-edited config still reaches
+		// here, so say which mirror won rather than silently picking one.
+		detail += " (both sftp and smb mirrors set — using " + replicate.Kind() + ")"
+	}
 	if len(msgs) > 0 {
 		detail = strings.Join(msgs, "; ")
 	}

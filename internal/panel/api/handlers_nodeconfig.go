@@ -18,13 +18,15 @@ import (
 
 // validBackupTargets is the set of accepted backup_target values ("" → local).
 // "share" is a mounted network share (SMB/NFS) the Agent writes to via native
-// file ops — the cross-OS backup destination for NAS devices without SFTP.
-var validBackupTargets = map[string]bool{"": true, "local": true, "share": true, "sftp": true}
+// file ops; "smb" is an SMB server the Agent dials itself with stored
+// credentials — no host mount, so it works from a service account.
+var validBackupTargets = map[string]bool{"": true, "local": true, "share": true, "sftp": true, "smb": true}
 
 // allowedBackupTokens are the dynamic-naming substitutions the Agent expands in
-// a node's backup path (backup_dir / sftp_base_path). {{SLUG}} is the server's
-// game-spec slug, so e.g. /media/games/{{SLUG}}/backup gives each game its own
-// directory while servers stay isolated by their per-server subdir.
+// a node's backup path (backup_dir / sftp_base_path / smb_base_path). {{SLUG}}
+// is the server's game-spec slug, so e.g. /media/games/{{SLUG}}/backup gives
+// each game its own directory while servers stay isolated by their per-server
+// subdir.
 var allowedBackupTokens = map[string]bool{"{{SLUG}}": true}
 
 var backupTokenRE = regexp.MustCompile(`{{[^}]*}}`)
@@ -56,6 +58,15 @@ type nodeConfigView struct {
 
 	ReplicateToSftp bool `json:"replicate_to_sftp"`
 
+	SmbHost               string `json:"smb_host,omitempty"`
+	SmbShare              string `json:"smb_share,omitempty"`
+	SmbUser               string `json:"smb_user,omitempty"`
+	SmbPasswordConfigured bool   `json:"smb_password_configured"`
+	SmbDomain             string `json:"smb_domain,omitempty"`
+	SmbBasePath           string `json:"smb_base_path,omitempty"`
+
+	ReplicateToSmb bool `json:"replicate_to_smb"`
+
 	SteamUsername   string `json:"steam_username,omitempty"`
 	SteamConfigured bool   `json:"steam_configured"` // a Steam password is stored
 }
@@ -75,6 +86,13 @@ func toNodeConfigView(c *store.NodeConfig) nodeConfigView {
 		SftpBasePath:           c.SftpBasePath,
 		SftpKnownHostKey:       c.SftpKnownHostKey,
 		ReplicateToSftp:        c.ReplicateToSftp,
+		SmbHost:                c.SmbHost,
+		SmbShare:               c.SmbShare,
+		SmbUser:                c.SmbUser,
+		SmbPasswordConfigured:  c.SmbPassword != "",
+		SmbDomain:              c.SmbDomain,
+		SmbBasePath:            c.SmbBasePath,
+		ReplicateToSmb:         c.ReplicateToSmb,
 		SteamUsername:          c.SteamUsername,
 		SteamConfigured:        c.SteamPassword != "",
 	}
@@ -93,6 +111,13 @@ func nodeConfigToProto(c *store.NodeConfig) *agentpb.NodeConfig {
 		SftpBasePath:     c.SftpBasePath,
 		SftpKnownHostKey: c.SftpKnownHostKey,
 		ReplicateToSftp:  c.ReplicateToSftp,
+		SmbHost:          c.SmbHost,
+		SmbShare:         c.SmbShare,
+		SmbUser:          c.SmbUser,
+		SmbPassword:      c.SmbPassword,
+		SmbDomain:        c.SmbDomain,
+		SmbBasePath:      c.SmbBasePath,
+		ReplicateToSmb:   c.ReplicateToSmb,
 	}
 }
 
@@ -140,6 +165,15 @@ type updateNodeConfigRequest struct {
 
 	ReplicateToSftp *bool `json:"replicate_to_sftp"`
 
+	SmbHost     *string `json:"smb_host"`
+	SmbShare    *string `json:"smb_share"`
+	SmbUser     *string `json:"smb_user"`
+	SmbPassword *string `json:"smb_password"`
+	SmbDomain   *string `json:"smb_domain"`
+	SmbBasePath *string `json:"smb_base_path"`
+
+	ReplicateToSmb *bool `json:"replicate_to_smb"`
+
 	SteamUsername *string `json:"steam_username"`
 	SteamPassword *string `json:"steam_password"`
 }
@@ -172,7 +206,7 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	if req.BackupTarget != nil {
 		t := strings.TrimSpace(*req.BackupTarget)
 		if !validBackupTargets[t] {
-			writeError(w, http.StatusBadRequest, "backup_target must be one of local|share|sftp")
+			writeError(w, http.StatusBadRequest, "backup_target must be one of local|share|sftp|smb")
 			return
 		}
 	}
@@ -184,7 +218,7 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Trim non-secret fields; leave the SFTP password / PEM verbatim.
+	// Trim non-secret fields; leave the SFTP/SMB passwords and the PEM verbatim.
 	setTrim(&c.BackupTarget, req.BackupTarget)
 	setTrim(&c.BackupDir, req.BackupDir)
 	setTrim(&c.SftpHost, req.SftpHost)
@@ -196,8 +230,24 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	if req.ReplicateToSftp != nil {
 		c.ReplicateToSftp = *req.ReplicateToSftp
 	}
+	setTrim(&c.SmbHost, req.SmbHost)
+	setTrim(&c.SmbShare, req.SmbShare)
+	setTrim(&c.SmbUser, req.SmbUser)
+	setRaw(&c.SmbPassword, req.SmbPassword)
+	setTrim(&c.SmbDomain, req.SmbDomain)
+	setTrim(&c.SmbBasePath, req.SmbBasePath)
+	if req.ReplicateToSmb != nil {
+		c.ReplicateToSmb = *req.ReplicateToSmb
+	}
 	setTrim(&c.SteamUsername, req.SteamUsername)
 	setRaw(&c.SteamPassword, req.SteamPassword)
+
+	// One mirror destination per node: the Agent would have to pick one anyway,
+	// and a silent pick hides half the operator's intent.
+	if c.ReplicateToSftp && c.ReplicateToSmb {
+		writeError(w, http.StatusBadRequest, "choose one replication mirror: replicate_to_sftp or replicate_to_smb, not both")
+		return
+	}
 
 	// Reject unknown dynamic-naming tokens before persisting (the Agent only
 	// expands {{SLUG}}); a bad token would otherwise become a literal directory.
@@ -207,6 +257,10 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := validateBackupPathTokens(c.SftpBasePath); err != nil {
 		writeError(w, http.StatusBadRequest, "sftp_base_path: "+err.Error())
+		return
+	}
+	if err := validateBackupPathTokens(c.SmbBasePath); err != nil {
+		writeError(w, http.StatusBadRequest, "smb_base_path: "+err.Error())
 		return
 	}
 

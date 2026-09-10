@@ -14,7 +14,8 @@ import (
 )
 
 // backupTarget abstracts where a server's backup archives live. The Agent uses
-// a node-local filesystem target by default, or an SFTP remote when configured.
+// a node-local filesystem target by default, or a mounted share / SFTP / SMB
+// remote when configured.
 // Archives are gzipped tarballs keyed by an opaque id that encodes the creation
 // time and name.
 type backupTarget interface {
@@ -26,11 +27,11 @@ type backupTarget interface {
 }
 
 // expandBackupPath substitutes dynamic-naming tokens in a node's backup path
-// (backup_dir or sftp_base_path) for a specific server. Today the only token is
-// {{SLUG}}, the server's game-spec slug — stable for the life of a server, so
-// the resolved path is identical across create/list/restore/delete and backups
-// don't go missing. A path with no tokens is returned unchanged. The slug is
-// sanitized to a safe path segment so a hostile spec can't escape the root.
+// (backup_dir, sftp_base_path or smb_base_path) for a specific server. Today the
+// only token is {{SLUG}}, the server's game-spec slug — stable for the life of a
+// server, so the resolved path is identical across create/list/restore/delete
+// and backups don't go missing. A path with no tokens is returned unchanged. The
+// slug is sanitized to a safe path segment so a hostile spec can't escape the root.
 func expandBackupPath(p, slug string) string {
 	if p == "" {
 		return p

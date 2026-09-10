@@ -3921,7 +3921,7 @@ func (x *ResourceStats) GetPlayersKnown() bool {
 // Agent's KRAKEN_* backup env vars, which become pre-reconcile defaults only.
 type NodeConfig struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
-	BackupTarget string                 `protobuf:"bytes,1,opt,name=backup_target,json=backupTarget,proto3" json:"backup_target,omitempty"` // "local" | "sftp" (empty → keep env default)
+	BackupTarget string                 `protobuf:"bytes,1,opt,name=backup_target,json=backupTarget,proto3" json:"backup_target,omitempty"` // "local" | "share" | "sftp" | "smb" (empty → keep env default)
 	BackupDir    string                 `protobuf:"bytes,2,opt,name=backup_dir,json=backupDir,proto3" json:"backup_dir,omitempty"`          // node-local archive directory (for the "local" target)
 	// SFTP remote: the primary store when backup_target == "sftp", and the mirror
 	// destination when replicate_to_sftp is set. Exactly one of sftp_password /
@@ -3939,8 +3939,23 @@ type NodeConfig struct {
 	// Empty means the Agent accepts whatever key the host presents on connect
 	// (trust-on-use) and logs a warning — pin this for real MITM protection.
 	SftpKnownHostKey string `protobuf:"bytes,15,opt,name=sftp_known_host_key,json=sftpKnownHostKey,proto3" json:"sftp_known_host_key,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// SMB remote: the primary store when backup_target == "smb", and the mirror
+	// destination when replicate_to_smb is set. The Agent dials the server as an
+	// SMB2/3 client with these credentials, so nothing is mounted on the host —
+	// which is what makes it work from a service account (a mapped drive is
+	// invisible to LocalSystem, a bare UNC path authenticates as the machine).
+	SmbHost     string `protobuf:"bytes,16,opt,name=smb_host,json=smbHost,proto3" json:"smb_host,omitempty"`    // "host[:port]" (default port 445)
+	SmbShare    string `protobuf:"bytes,17,opt,name=smb_share,json=smbShare,proto3" json:"smb_share,omitempty"` // share name, e.g. "games"
+	SmbUser     string `protobuf:"bytes,18,opt,name=smb_user,json=smbUser,proto3" json:"smb_user,omitempty"`
+	SmbPassword string `protobuf:"bytes,19,opt,name=smb_password,json=smbPassword,proto3" json:"smb_password,omitempty"`
+	SmbDomain   string `protobuf:"bytes,20,opt,name=smb_domain,json=smbDomain,proto3" json:"smb_domain,omitempty"`         // optional NTLM domain ("" is correct for most NAS devices)
+	SmbBasePath string `protobuf:"bytes,21,opt,name=smb_base_path,json=smbBasePath,proto3" json:"smb_base_path,omitempty"` // directory inside the share for archives (share-relative)
+	// replicate_to_smb mirrors every new backup (and the ReplicateBackups action)
+	// to the SMB remote, regardless of the primary target. Mutually exclusive with
+	// replicate_to_sftp — one mirror destination per node.
+	ReplicateToSmb bool `protobuf:"varint,22,opt,name=replicate_to_smb,json=replicateToSmb,proto3" json:"replicate_to_smb,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *NodeConfig) Reset() {
@@ -4034,6 +4049,55 @@ func (x *NodeConfig) GetSftpKnownHostKey() string {
 		return x.SftpKnownHostKey
 	}
 	return ""
+}
+
+func (x *NodeConfig) GetSmbHost() string {
+	if x != nil {
+		return x.SmbHost
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetSmbShare() string {
+	if x != nil {
+		return x.SmbShare
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetSmbUser() string {
+	if x != nil {
+		return x.SmbUser
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetSmbPassword() string {
+	if x != nil {
+		return x.SmbPassword
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetSmbDomain() string {
+	if x != nil {
+		return x.SmbDomain
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetSmbBasePath() string {
+	if x != nil {
+		return x.SmbBasePath
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetReplicateToSmb() bool {
+	if x != nil {
+		return x.ReplicateToSmb
+	}
+	return false
 }
 
 type ApplyNodeConfigRequest struct {
@@ -4586,7 +4650,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	" \x01(\x05R\aplayers\x12\x1f\n" +
 	"\vmax_players\x18\v \x01(\x05R\n" +
 	"maxPlayers\x12#\n" +
-	"\rplayers_known\x18\f \x01(\bR\fplayersKnown\"\xca\x03\n" +
+	"\rplayers_known\x18\f \x01(\bR\fplayersKnown\"\xad\x05\n" +
 	"\n" +
 	"NodeConfig\x12#\n" +
 	"\rbackup_target\x18\x01 \x01(\tR\fbackupTarget\x12\x1d\n" +
@@ -4599,7 +4663,15 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x10sftp_private_key\x18\f \x01(\tR\x0esftpPrivateKey\x12$\n" +
 	"\x0esftp_base_path\x18\r \x01(\tR\fsftpBasePath\x12*\n" +
 	"\x11replicate_to_sftp\x18\x0e \x01(\bR\x0freplicateToSftp\x12-\n" +
-	"\x13sftp_known_host_key\x18\x0f \x01(\tR\x10sftpKnownHostKeyJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"M\n" +
+	"\x13sftp_known_host_key\x18\x0f \x01(\tR\x10sftpKnownHostKey\x12\x19\n" +
+	"\bsmb_host\x18\x10 \x01(\tR\asmbHost\x12\x1b\n" +
+	"\tsmb_share\x18\x11 \x01(\tR\bsmbShare\x12\x19\n" +
+	"\bsmb_user\x18\x12 \x01(\tR\asmbUser\x12!\n" +
+	"\fsmb_password\x18\x13 \x01(\tR\vsmbPassword\x12\x1d\n" +
+	"\n" +
+	"smb_domain\x18\x14 \x01(\tR\tsmbDomain\x12\"\n" +
+	"\rsmb_base_path\x18\x15 \x01(\tR\vsmbBasePath\x12(\n" +
+	"\x10replicate_to_smb\x18\x16 \x01(\bR\x0ereplicateToSmbJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"M\n" +
 	"\x16ApplyNodeConfigRequest\x123\n" +
 	"\x06config\x18\x01 \x01(\v2\x1b.kraken.agent.v1.NodeConfigR\x06config\"A\n" +
 	"\x17ApplyNodeConfigResponse\x12\x0e\n" +

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.6](https://github.com/briggleman/kraken/compare/v0.37.5...v0.37.6) (2026-09-10)
+
+
+### Bug Fixes
+
+* **panel:** don't adopt the panel's own NAT gateway as a node's LAN host ([#234](https://github.com/briggleman/kraken/issues/234)) ([92aa5a3](https://github.com/briggleman/kraken/commit/92aa5a362c789569696efb3b76dc409bd6dfa259))
+
 ## [0.37.5](https://github.com/briggleman/kraken/compare/v0.37.4...v0.37.5) (2026-09-09)
 
 

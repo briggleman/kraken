@@ -333,7 +333,7 @@ func (s *Service) DeletePaths(ctx context.Context, req *agentpb.DeletePathsReque
 }
 
 func (s *Service) CreateBackup(ctx context.Context, req *agentpb.CreateBackupRequest) (*agentpb.BackupInfo, error) {
-	return s.rt.CreateBackup(ctx, req.ServerId, req.Slug, req.Name)
+	return s.rt.CreateBackup(ctx, req.ServerId, req.Slug, req.Name, req.BackupInclude, req.BackupExclude)
 }
 
 func (s *Service) ListBackups(ctx context.Context, req *agentpb.ListBackupsRequest) (*agentpb.ListBackupsResponse, error) {

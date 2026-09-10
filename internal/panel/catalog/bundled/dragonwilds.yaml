@@ -80,6 +80,17 @@ config_files:
       WorldPassword={{.settings.WorldPassword}}
       {{if .settings.ServerGuid}}ServerGuid={{.settings.ServerGuid}}
       {{end}}
+# A backup is the save data, not the reinstallable install tree. Source: the
+# config_files path above — /data/RSDragonwilds/Saved/… — which pins the UE
+# project dir and its Saved tree (worlds, config, server GUID) inside /data.
+# UE's own Logs/Crashes live in that same tree and are the files that grow
+# mid-archive, so they are filtered back out.
+backup:
+  include:
+    - RSDragonwilds/Saved/**
+  exclude:
+    - RSDragonwilds/Saved/Logs/**
+    - RSDragonwilds/Saved/Crashes/**
 resources:
   # 2 GB base + 1 GB per player; game caps players at 6, so 8 GB is a full house.
   min_memory_mb: 3072

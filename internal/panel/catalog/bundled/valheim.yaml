@@ -70,6 +70,17 @@ ports:
   - { name: query, protocol: udp, default: 2457, required: true }
 # Valheim answers the Steam A2S_INFO query on its query port → live player count.
 query: { method: a2s, port: query }
+# A backup is the save data, not the reinstallable install tree. Source: the
+# `-savedir /data/save` argument in startup.command above (worlds, characters,
+# and the game's own rolling -backups copies all live there). BepInEx rides
+# along because plugins are uploaded by the operator, not by bepinex_script —
+# a reinstall would not bring them back — minus its own log file.
+backup:
+  include:
+    - save/**
+    - BepInEx/**
+  exclude:
+    - "**/*.log"
 resources:
   min_memory_mb: 2048
   recommended_memory_mb: 4096

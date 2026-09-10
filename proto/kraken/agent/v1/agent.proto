@@ -358,6 +358,17 @@ message CreateBackupRequest {
   // {{SLUG}}) in the node's backup_dir / sftp_base_path. It is stable for the
   // life of a server, so the resolved path is identical across all backup ops.
   string slug = 3;
+  // backup_include / backup_exclude are the ALREADY-RESOLVED doublestar globs
+  // that select what the archive captures, matched against data-dir-relative
+  // POSIX paths ("savegame/world.db", "Pal/Saved/SaveGames/x.sav"). The Panel
+  // resolves them from the server's spec — from its `backup:` block, or from the
+  // Panel's built-in ephemeral-exclude list when the spec declares none — so the
+  // Agent never needs the spec. An empty include list captures everything not
+  // excluded; excludes filter what the includes selected. Both empty reproduces
+  // the historical whole-data-dir backup. Restore/list/delete take no globs: an
+  // archive only ever contains what was included.
+  repeated string backup_include = 4;
+  repeated string backup_exclude = 5;
 }
 
 message ListBackupsRequest {

@@ -1387,7 +1387,7 @@ var backupNameRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // background (runBackup) and then mirrored off-node when replication is
 // configured. Callers poll ListBackups for the state transitions — this keeps a
 // multi-GB game server from blocking (and timing out) the Panel→Agent RPC.
-func (d *DockerRuntime) CreateBackup(_ context.Context, serverID, slug, name string) (*agentpb.BackupInfo, error) {
+func (d *DockerRuntime) CreateBackup(_ context.Context, serverID, slug, name string, include, exclude []string) (*agentpb.BackupInfo, error) {
 	if name == "" {
 		name = "backup"
 	}
@@ -1404,14 +1404,14 @@ func (d *DockerRuntime) CreateBackup(_ context.Context, serverID, slug, name str
 		Replication: rep,
 	}
 	d.putBackupJob(serverID, info)
-	go d.runBackup(serverID, slug, id)
+	go d.runBackup(serverID, slug, id, newBackupFilter(include, exclude))
 	return cloneBackup(info), nil
 }
 
 // runBackup archives the data dir to the local store, then mirrors the finished
 // archive off-node — each step a tracked state transition. Runs on its own
 // long-lived context, independent of the request that triggered it.
-func (d *DockerRuntime) runBackup(serverID, slug, id string) {
+func (d *DockerRuntime) runBackup(serverID, slug, id string, filter *backupFilter) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 
@@ -1423,10 +1423,16 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 	defer func() { _ = os.Remove(tmp.Name()) }()
 	defer tmp.Close()
 
-	stats, err := d.archiveDataDir(serverID, tmp)
+	stats, err := d.archiveDataDir(serverID, tmp, filter)
 	if err != nil {
 		d.failBackup(serverID, id, err)
 		return
+	}
+	if stats.filtered > 0 || stats.prunedDirs > 0 {
+		// Not a degradation — the whole point of #218 is that the install tree
+		// stays out. Logged so an operator can see the globs took effect.
+		slog.Info("backup filtered by spec globs", "server", serverID, "id", id,
+			"captured", stats.files, "filtered", stats.filtered, "pruned_dirs", stats.prunedDirs)
 	}
 	degraded := stats.summary()
 	if degraded != "" {
@@ -1470,15 +1476,20 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string) {
 	d.setReplication(serverID, id, agentpb.ReplicationState_REPLICATION_STATE_DONE)
 }
 
-// archiveDataDir tar+gzips a server's data dir into w, tolerating a live tree
-// (see archive.go). A capture with zero regular files is an error — an archive
-// of nothing would restore to nothing.
-func (d *DockerRuntime) archiveDataDir(serverID string, w io.Writer) (archiveStats, error) {
-	st, err := archiveTree(d.localDir(serverID), w)
+// archiveDataDir tar+gzips the filter-selected parts of a server's data dir into
+// w, tolerating a live tree (see archive.go). A capture with zero regular files
+// is an error — an archive of nothing would restore to nothing, and with globs in
+// play that most likely means the spec's include list is wrong, which is exactly
+// the failure that must never come back green.
+func (d *DockerRuntime) archiveDataDir(serverID string, w io.Writer, filter *backupFilter) (archiveStats, error) {
+	st, err := archiveTreeFiltered(d.localDir(serverID), w, filter)
 	if err != nil {
 		return st, fmt.Errorf("docker: archive data dir: %w", err)
 	}
 	if st.files == 0 {
+		if st.filtered > 0 || st.prunedDirs > 0 {
+			return st, fmt.Errorf("docker: archive data dir: the spec's backup globs matched no files (%d filtered, %d dir(s) pruned)", st.filtered, st.prunedDirs)
+		}
 		return st, fmt.Errorf("docker: archive data dir: no files under the data dir")
 	}
 	return st, nil

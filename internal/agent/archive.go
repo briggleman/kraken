@@ -30,6 +30,10 @@ var smallFileMax int64 = 8 << 20
 const maxSamplePaths = 8
 
 // archiveStats tallies what a live-tree archive had to tolerate.
+//
+// filtered and prunedDirs are deliberately NOT degradations: leaving the install
+// tree out is the point of a backup, not damage to it, so they stay out of
+// clean()/summary() and never reach the BackupInfo.error field.
 type archiveStats struct {
 	files          int // regular files captured
 	grew           int // grew mid-copy; the header-size prefix was captured
@@ -37,6 +41,8 @@ type archiveStats struct {
 	symlinks       int // symlinks/junctions skipped (see #220 for restore support)
 	irregular      int // sockets, fifos, unknown reparse tags skipped
 	unreadableDirs int // subdirectories the walk could not read
+	filtered       int // entries the backup globs excluded (intended, not damage)
+	prunedDirs     int // directories the globs let the walk skip entirely
 	samples        []string
 }
 
@@ -71,9 +77,21 @@ func (s *archiveStats) summary() string {
 	return "degraded capture: " + strings.Join(parts, ", ") + " — e.g. " + strings.Join(s.samples, ", ")
 }
 
-// archiveTree tar+gzips the tree rooted at root into w. Entry names are
+// archiveTree tar+gzips the whole tree rooted at root into w. Entry names are
 // root-relative POSIX paths, so restore is a straight extraction.
 func archiveTree(root string, w io.Writer) (archiveStats, error) {
+	return archiveTreeFiltered(root, w, nil)
+}
+
+// archiveTreeFiltered is archiveTree restricted to the paths filter captures
+// (see backupfilter.go); a nil filter captures the whole tree.
+//
+// Directory headers are emitted for every directory the walk descends into,
+// whether or not it ends up holding a captured file. Pruned subtrees are absent
+// entirely, so the archive is small; the handful of empty directories that
+// survive cost ~1 KB each and keep this walk single-pass (deciding "does this
+// dir contain a keeper?" up front would mean reading every subtree twice).
+func archiveTreeFiltered(root string, w io.Writer, filter *backupFilter) (archiveStats, error) {
 	var st archiveStats
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
@@ -92,8 +110,13 @@ func archiveTree(root string, w io.Writer) (archiveStats, error) {
 			return rerr
 		}
 		name := filepath.ToSlash(rel)
-		switch {
-		case e.IsDir():
+		if e.IsDir() {
+			// Pruning before the ReadDir is the whole point: a 30 GB steamapps/
+			// must be skipped, not walked and filtered entry by entry.
+			if filter.pruneDir(name) {
+				st.prunedDirs++
+				return fs.SkipDir
+			}
 			info, ierr := e.Info()
 			if ierr != nil {
 				st.note(&st.unreadableDirs, name)
@@ -106,6 +129,14 @@ func archiveTree(root string, w io.Writer) (archiveStats, error) {
 			}
 			hdr.Name = name + "/"
 			return tw.WriteHeader(hdr)
+		}
+		if !filter.keepFile(name) {
+			// Checked ahead of the type switch so an excluded symlink or device
+			// node reads as "filtered", not as a degraded capture.
+			st.filtered++
+			return nil
+		}
+		switch {
 		case e.Type()&fs.ModeSymlink != 0:
 			// Restore materializes symlink entries as empty files, and a Windows
 			// junction's target is an absolute host path that means nothing on a

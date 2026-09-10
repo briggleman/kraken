@@ -88,7 +88,7 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	// immediately and archives in the background, so a short deadline is fine.
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	b, err := client.CreateBackup(ctx, &agentpb.CreateBackupRequest{ServerId: sv.ID, Name: req.Name, Slug: s.serverSlug(ctx, sv)})
+	b, err := client.CreateBackup(ctx, s.backupRequestFor(ctx, sv, req.Name))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
 		return

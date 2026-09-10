@@ -62,7 +62,11 @@ type Runtime interface {
 	// CreateBackup snapshots the data volume into a node-local archive. slug is
 	// the server's game-spec slug, used to expand path tokens (e.g. {{SLUG}}) in
 	// the node's backup path; it is stable for the life of a server.
-	CreateBackup(ctx context.Context, serverID, slug, name string) (*agentpb.BackupInfo, error)
+	//
+	// include/exclude are the Panel-resolved doublestar globs selecting what the
+	// archive captures, matched against data-dir-relative POSIX paths. Both empty
+	// captures the whole data dir. See backupfilter.go.
+	CreateBackup(ctx context.Context, serverID, slug, name string, include, exclude []string) (*agentpb.BackupInfo, error)
 	// ListBackups lists a server's backups.
 	ListBackups(ctx context.Context, serverID, slug string) ([]*agentpb.BackupInfo, error)
 	// RestoreBackup extracts a backup back into the data volume.

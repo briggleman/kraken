@@ -74,6 +74,12 @@ the web UI, so there is no separate static host.
   **Cloudflare** DNS integrations automate that when present.
 - **Backups land somewhere the operator already owns** — a local dir, an
   SMB/NFS-mounted NAS share, or an SFTP remote — with optional replication.
+- **A backup is the game's save data, not the reinstallable install tree.** The
+  10–30 GB SteamCMD tree comes back with a reinstall; the world does not. Specs
+  declare where their saves live (a `backup:` block of include/exclude globs);
+  a spec that declares nothing gets the whole data dir minus what is
+  unambiguously ephemeral. Capturing too much is slow — capturing too little
+  is a green backup with no world in it, so the default errs toward too much.
 - **Server data is reachable outside the UI** over per-server SFTP, chrooted to
   that server's data dir.
 - **The Panel is a service, not a session.** systemd on Linux, nssm on Windows,
@@ -90,8 +96,9 @@ config-file templates) · cross-OS placement with Wine fallback · Steam auth
 (anonymous by default; per-node encrypted credentials + deploy-time Steam Guard)
 · BepInEx mod support for Unity titles · live console and CPU/memory/player-count
 stats over WebSocket · in-browser file manager and editor · per-server SFTP ·
-on-demand and scheduled `tar.gz` backups with `{{SLUG}}` destination templating
-and off-node replication · cron schedules for power actions and backups ·
+on-demand and scheduled `tar.gz` backups with `{{SLUG}}` destination templating,
+per-spec save-data include/exclude globs, and off-node replication · cron
+schedules for power actions and backups ·
 tri-state node health with watchdog re-adoption · crash watchdog with
 auto-restart · optional Cloudflare DNS and UniFi port forwarding · argon2id auth,
 RBAC, per-server ownership · AES-256-GCM encryption at rest for all

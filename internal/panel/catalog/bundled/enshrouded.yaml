@@ -263,6 +263,15 @@ config_files:
         ],
         "bans": []
       }
+# A backup is the save data, not the 20 GB reinstallable install tree. Source:
+# the enshrouded_server.json rendered above — "saveDirectory": "./savegame",
+# resolved against the server's working directory (/data). The server config
+# itself rides along so a restore comes back joinable; logDirectory ("./logs")
+# is deliberately left out — those files grow mid-archive.
+backup:
+  include:
+    - savegame/**
+    - enshrouded_server.json
 resources:
   min_memory_mb: 6144
   recommended_memory_mb: 16384

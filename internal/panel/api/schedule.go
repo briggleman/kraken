@@ -116,7 +116,9 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
 		name := "scheduled-" + time.Now().UTC().Format("2006-01-02-150405")
-		if _, err := client.CreateBackup(cctx, &agentpb.CreateBackupRequest{ServerId: sv.ID, Name: name, Slug: s.serverSlug(ctx, sv)}); err != nil {
+		// Same glob resolution as the manual path — the Panel drives every
+		// backup, so there is exactly one place the policy is applied.
+		if _, err := client.CreateBackup(cctx, s.backupRequestFor(ctx, sv, name)); err != nil {
 			return fmt.Errorf("backup: %w", err)
 		}
 		return nil

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/briggleman/kraken/compare/v0.39.0...v0.39.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **web:** restore the json|yaml switch in the spec code editor ([#249](https://github.com/briggleman/kraken/issues/249)) ([8302be3](https://github.com/briggleman/kraken/commit/8302be33af7a80296669392064429aecefb980bd))
+
 ## [0.39.0](https://github.com/briggleman/kraken/compare/v0.38.2...v0.39.0) (2026-09-10)
 
 

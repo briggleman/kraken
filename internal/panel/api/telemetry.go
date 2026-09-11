@@ -32,7 +32,12 @@ const nodeTelemetryStaleFactor = 3
 
 // nodeVitals is one node's cached host telemetry plus when it arrived.
 type nodeVitals struct {
-	tel         *agentpb.NodeTelemetry
+	tel *agentpb.NodeTelemetry
+	// rttMs is the Panel's own measurement of the telemetry round trip that
+	// produced tel — the node band's "link" instrument. Measured here rather
+	// than reported by the Agent, because the wire is exactly the thing being
+	// measured; an Agent cannot time its own reachability.
+	rttMs       float64
 	fetched     time.Time
 	unsupported bool // agent predates GetNodeTelemetry; stop logging about it
 }
@@ -57,11 +62,11 @@ func newTelemetryCache() *telemetryCache {
 	}
 }
 
-func (c *telemetryCache) put(nodeID string, tel *agentpb.NodeTelemetry, now time.Time) {
+func (c *telemetryCache) put(nodeID string, tel *agentpb.NodeTelemetry, rttMs float64, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v := c.byID[nodeID]
-	v.tel, v.fetched = tel, now
+	v.tel, v.rttMs, v.fetched = tel, rttMs, now
 	c.byID[nodeID] = v
 }
 
@@ -97,16 +102,17 @@ func (c *telemetryCache) forget(nodeID string) {
 	delete(c.byID, nodeID)
 }
 
-// fresh returns the cached telemetry for a node, or nil when there is none or
-// it has aged out.
-func (c *telemetryCache) fresh(nodeID string, now time.Time) *agentpb.NodeTelemetry {
+// fresh returns the cached telemetry for a node and the round-trip time that
+// fetched it, or nil when there is none or it has aged out. The RTT shares the
+// reading's freshness by construction: both came from the same poll.
+func (c *telemetryCache) fresh(nodeID string, now time.Time) (*agentpb.NodeTelemetry, float64) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	v, ok := c.byID[nodeID]
 	if !ok || v.tel == nil || now.Sub(v.fetched) > c.ttl {
-		return nil
+		return nil, 0
 	}
-	return v.tel
+	return v.tel, v.rttMs
 }
 
 // StartNodeTelemetryPoller launches a background loop that reads every reachable
@@ -177,7 +183,9 @@ func (s *Server) pollOneNode(ctx context.Context, n *cluster.Node) {
 	}
 	cctx, cancel := context.WithTimeout(ctx, nodeTelemetryTimeout)
 	defer cancel()
+	start := time.Now()
 	tel, err := client.GetNodeTelemetry(cctx, &agentpb.GetNodeTelemetryRequest{})
+	rtt := time.Since(start)
 	if err != nil {
 		// An Agent older than this RPC is a normal state in a fleet mid-upgrade,
 		// not a fault: report no telemetry, leave the node's health alone, and
@@ -192,7 +200,7 @@ func (s *Server) pollOneNode(ctx context.Context, n *cluster.Node) {
 		s.telemetry.drop(n.ID)
 		return
 	}
-	s.telemetry.put(n.ID, tel, time.Now())
+	s.telemetry.put(n.ID, tel, float64(rtt)/float64(time.Millisecond), time.Now())
 }
 
 // nodeTelemetryBody is one node's vitals as the browser sees them. Every group
@@ -220,11 +228,14 @@ type nodeTelemetryBody struct {
 	NetTxBps float64 `json:"net_tx_bps"`
 	NetKnown bool    `json:"net_known"`
 
-	TempCelsius float64 `json:"temp_celsius"`
-	TempKnown   bool    `json:"temp_known"`
+	// LinkRttMs is the Panel's measurement of the gRPC round trip that fetched
+	// this reading. It carries no *_known flag deliberately: unlike the host
+	// groups above it is not reported by the Agent — it exists whenever the
+	// entry exists, because the entry is the proof of the round trip.
+	LinkRttMs float64 `json:"link_rtt_ms"`
 }
 
-func telemetryBody(t *agentpb.NodeTelemetry) nodeTelemetryBody {
+func telemetryBody(t *agentpb.NodeTelemetry, rttMs float64) nodeTelemetryBody {
 	return nodeTelemetryBody{
 		TsUnixMs:      t.GetTsUnixMs(),
 		UptimeSeconds: t.GetUptimeSeconds(),
@@ -241,8 +252,7 @@ func telemetryBody(t *agentpb.NodeTelemetry) nodeTelemetryBody {
 		NetRxBps:      t.GetNetRxBps(),
 		NetTxBps:      t.GetNetTxBps(),
 		NetKnown:      t.GetNetKnown(),
-		TempCelsius:   t.GetTempCelsius(),
-		TempKnown:     t.GetTempKnown(),
+		LinkRttMs:     rttMs,
 	}
 }
 
@@ -259,8 +269,8 @@ func (s *Server) handleNodeTelemetry(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	out := make(map[string]nodeTelemetryBody, len(nodes))
 	for _, n := range nodes {
-		if tel := s.telemetry.fresh(n.ID, now); tel != nil {
-			out[n.ID] = telemetryBody(tel)
+		if tel, rtt := s.telemetry.fresh(n.ID, now); tel != nil {
+			out[n.ID] = telemetryBody(tel, rtt)
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"nodes": out})

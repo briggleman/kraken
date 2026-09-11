@@ -88,7 +88,7 @@ type telemetryResponse struct {
 		MemUsedMB  int64   `json:"mem_used_mb"`
 		MemKnown   bool    `json:"mem_known"`
 		DiskKnown  bool    `json:"disk_known"`
-		TempKnown  bool    `json:"temp_known"`
+		LinkRttMs  float64 `json:"link_rtt_ms"`
 	} `json:"nodes"`
 }
 
@@ -148,6 +148,15 @@ func TestNodeTelemetryReachesTheAPI(t *testing.T) {
 	}
 	if got.CPUKnown && (got.CPUPercent < 0 || got.CPUPercent > 100) {
 		t.Errorf("cpu percent %.2f outside 0..100", got.CPUPercent)
+	}
+	// The link RTT is the Panel's own timing of the poll that produced this
+	// entry. Non-negative, not positive: a loopback gRPC call can finish
+	// inside the Windows monotonic clock's granularity and honestly time as
+	// zero, so > 0 here would be a flaky assertion about the OS timer, not
+	// about the plumbing. Value flow-through is covered by the cache and
+	// telemetryBody unit tests.
+	if got.LinkRttMs < 0 {
+		t.Errorf("link rtt = %.3fms, want >= 0", got.LinkRttMs)
 	}
 }
 

@@ -147,9 +147,9 @@ A two-family palette: abyssal blue-green grounds and a single living sodium gold
 
 ### Semantic (reserved)
 - **Status Gold** (#d8b46a): healthy-zone data (e.g. RAM under 50%); pairs with position/pattern, never color alone. Also 2xx in the audit log.
-- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, temp warm band, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading. Also an **agent whose version has fallen behind the panel's**: the node runs, but the panel is holding fixes it cannot execute yet, so something *is* prevented and the test comes out the same way.
-- **Crisis Magenta** (#ff4d9d): critical zone only (75%+ RAM, hot band). Never decorative. Also 5xx in the audit log, and the `DELETE` method in the api reference — the same colour the house already spends on destroying a server.
-- **Spectrum Deep Teal** (#1a7a6d): the cool end of the heat-spectrum strip (`.heat-ghost` / `.heat-fill`), and the only green on the page. **It is the last survivor of the pre-Kraken teal palette** - every other cool accent migrated to Caution Violet, and this one was missed. It is documented here as what the code actually renders, not as what the palette intends; retiring it is an open decision, because the spectrum strip is the one place a fourth hue earns its keep (it reads left-to-right as a scale, not as a status).
+- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading. Also an **agent whose version has fallen behind the panel's**: the node runs, but the panel is holding fixes it cannot execute yet, so something *is* prevented and the test comes out the same way.
+- **Crisis Magenta** (#ff4d9d): critical zone only (75%+ RAM). Never decorative. Also 5xx in the audit log, and the `DELETE` method in the api reference — the same colour the house already spends on destroying a server.
+- **Spectrum Deep Teal** (#1a7a6d): the cool end of the heat-spectrum gradient (`.occ-ghost` / `.occ-fill` on the server cards' occupancy rail, and the drill-in's cpu/mem `.heat-rail` rows), and the only green on the page. **It is the last survivor of the pre-Kraken teal palette** - every other cool accent migrated to Caution Violet, and this one was missed. Its retirement question got an answer this round: the temp gauge that first carried the spectrum left the node band, and instead of dying with it the gradient moved to the players readout — where the left-to-right scale reading is the whole point (an empty server sits at the cool end; a filling one climbs into the light and past it). The fourth hue keeps its keep.
 
 ### Named Rules
 **The One Light Rule.** Sodium gold is the surface's only light source and always means "alive". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what "done" looks like, and it is what lets one glow on the rail mean *here*. And a **resting** reading is the same statement spent on a number rather than an object: a metric whose fresh sample is exactly zero gives up its ink, because an all-zero board of lit numerals reads as a dead fleet when it is only an idle one — see Metric for the three boundaries that keep that honest.
@@ -362,7 +362,7 @@ show a padlock beside its name — the same fact twice in one cell. The glyph wi
 glanceable one; the meta line keeps `online`.
 
 ### Metric (vital readout)
-Label (tracked caps, Sand Faint) + huge mono value with a gold glow. Unit suffixes (`%`, `/64G`, `Mb/s`, `°C`) render in Status Gold at 0.5em. The chart zone beneath is one of the signature meters below (disk still carries the legacy gold area sparkline).
+Label (tracked caps, Sand Faint) + huge mono value with a gold glow. Unit suffixes (`%`, `/64G`, `Mb/s`, `ms`) render in Status Gold at 0.5em. The chart zone beneath is one of the signature meters below (disk still carries the legacy gold area sparkline).
 
 **A resting metric gives up its ink.** A value whose *fresh* sample is exactly zero takes
 `.resting` — Sand Faint (`--ink-3`) with `text-shadow: none` — instead of full Sand plus the bloom.
@@ -397,8 +397,10 @@ The house chart: a row of dot columns (`--cell: 6px`, `--dot: 2.4px`), each colu
 
 `--lvl` drives both the column's fill height *and* its zone color, which is why the sample band matters as much as the styling: a track whose values never leave one zone renders as a single-color block at a single height, and the chart stops being a chart. Both the seeded history and the live walk must span a threshold, and a walk with hard clamping will not do it — it piles up against whichever bound it drifts into. Mean-revert toward the middle of the band instead. The last column carries `.now` permanently, because the tick shifts values *between* columns rather than moving elements.
 
-### Heat spectrum fill (temp)
-A 12px rail carrying the full thermal gradient (Spectrum Deep Violet → violet → gold → magenta) as a faint ghost (0.22), with a solid fill clipping to the live value (20–90°C scale) and a glowing edge line; cool/warm/hot labels beneath. The gradient is anchored to the scale, so warming expands the fill into violet/magenta territory.
+A metric that is not naturally a percentage joins the zone track by declaring a full scale and mapping into it: the node band's **link** readout (the Panel→Agent telemetry round trip) walks in track units on a 0–20ms scale, so the standing 50/75 guides land at 10ms and 15ms — the point where a LAN link stops being boring — and only the numeral converts back to milliseconds. A healthy link renders as a low quiet ridge, and that is the reading, not a dead meter; on an idle node it is the one readout that keeps ticking, because the Panel polling is exactly what distinguishes a node at rest from a node that is gone.
+
+### Occupancy heat rail (players)
+An 8px rail under each server card's player count carrying the full heat spectrum (Spectrum Deep Teal → Sodium Lumen at 45% → Caution Violet at 76% → Crisis Magenta at 95%) as a faint ghost (0.18), with a solid fill clip-pathed to players/capacity (`--pct`) and a 2px Sand edge line glowing at the reading; fill and edge both ease on the house `1.2s cubic-bezier(0.22, 1, 0.36, 1)`. The gradient is anchored to the scale, so a filling server expands out of the cool end, through the light, and into violet/magenta territory — occupancy is the one level where "hot" is something the operator can feel, which is why the spectrum keeps its keep here after the temp gauge left the node band. An **offline card keeps the bare track** — no ghost, no fill, no edge — because no players is not a temperature. It replaced the plain gold capacity bar, and that bar's doctrine carries over: the rail means quantity-of-capacity, a scale being read, never health.
 
 ### Packet channel (network)
 A bordered lane between `wan` and `lan` endpoint tags; gold packet dots animate across (translateX keyframes over container-query width), bigger dots = bigger packets and slower travel; return traffic dimmed. Whole-channel rate (`--rate`) scales with live Mb/s.
@@ -408,9 +410,6 @@ Each server card carries its game's key art as `.srv-art` — an absolute paint 
 
 ### Drill-in overlay (server depth)
 Full-screen fixed overlay opening with a circular clip-path plunge from the click point; SURFACE button and Esc return. Layout: live console (left, streaming mono log with severity colors) + side column of press-travel controls (stop/restart, or start when stopped), player roster with kick, vitals, the network ledger, backups, schedules, and the danger block. Per-server data; a stopped server shows a dark room.
-
-### Capacity Bars
-6px track in rgba(255,194,102,0.11); fill is a gold gradient with glow. Bars mean quantity-of-capacity, never health.
 
 ### Solid Button (the one lit control)
 The house's only filled control, and the only place the palette inverts: Abyss Floor text on a

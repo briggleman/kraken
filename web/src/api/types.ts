@@ -359,8 +359,12 @@ export interface NodeTelemetry {
   net_tx_bps: number;
   net_known: boolean;
 
-  temp_celsius: number;
-  temp_known: boolean;
+  /**
+   * The Panel's own timing of the gRPC round trip that fetched this reading,
+   * in milliseconds. No *_known flag: unlike the host groups it is not
+   * reported by the agent — if this entry exists, the round trip happened.
+   */
+  link_rtt_ms: number;
 }
 
 /**

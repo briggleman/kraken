@@ -364,7 +364,7 @@ export const api = {
   },
 
   // --- backups ---
-  listBackups(id: string): Promise<{ backups: Backup[] | null }> {
+  listBackups(id: string): Promise<{ backups: Backup[] | null; mirror?: string }> {
     return request("GET", `/servers/${id}/backups`);
   },
   createBackup(id: string, name: string): Promise<Backup> {

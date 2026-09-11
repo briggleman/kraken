@@ -282,20 +282,40 @@
         return { word: "ok", cls: "", failed: false }; // replication not configured
     }
   }
-  // the mirror line in a backup's detail — a phrase for its off-node copy, or null
-  // when replication isn't configured for this node
-  function bkMirror(rep: string): string | null {
+  // the mirror line in a backup's detail — the node's off-node target plus this
+  // archive's replication state, or null when this archive was never mirrored
+  function bkMirror(rep: string, target: string): string | null {
+    if (rep === "") return null;
+    const dest = target || "off-node copy";
     switch (rep) {
       case "pending":
-        return "off-node copy · in progress";
+        return `${dest} · in progress`;
       case "done":
-        return "off-node copy · done";
+        return `${dest} · done`;
       case "failed":
-        return "off-node copy · failed";
+        return `${dest} · failed`;
       default:
         return null;
     }
   }
+
+  // What a backup of this game captures, from the spec's current backup globs.
+  // No block means the whole data dir. Excludes are shown by their distinguishing
+  // tail segment ("Pal/Saved/Logs/**" → "Logs") so the line reads at a glance.
+  function fmtCaptured(bk?: { include?: string[]; exclude?: string[] }): string {
+    if (!bk || !bk.include?.length) return "whole data dir";
+    const inc = bk.include.join(", ");
+    if (!bk.exclude?.length) return inc;
+    const tail = (g: string) => {
+      const seg = g
+        .replace(/\/\*+$/, "")
+        .split("/")
+        .filter(Boolean);
+      return seg[seg.length - 1] || g;
+    };
+    return `${inc} − ${bk.exclude.map(tail).join(", ")}`;
+  }
+  const capturedGlobs = $derived(server ? fmtCaptured(specOf(server)?.backup) : "whole data dir");
 
   // Retention is a fact about the list, derived — never written down twice. Only
   // archives that kept data (state !== failed) hold a slot; a failed attempt
@@ -303,7 +323,7 @@
   const keptBackups = $derived(depth.backups.filter((b) => b.state !== "failed"));
   const backupDiskBytes = $derived(keptBackups.reduce((n, b) => n + (b.size || 0), 0));
   const backupsAtCap = $derived(keptBackups.length >= BACKUP_KEEP);
-  const replicationOn = $derived(depth.backups.some((b) => b.replication !== ""));
+  const replicationOn = $derived(depth.backupMirror !== "");
   // the archive the next backup will evict — the oldest slot-holder
   const oldestKept = $derived.by(() =>
     keptBackups.length
@@ -616,7 +636,7 @@
               <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:60"}><i></i></span></div>
             {:else}
               {@const s = bkState(b)}
-              {@const mirror = bkMirror(b.replication)}
+              {@const mirror = bkMirror(b.replication, depth.backupMirror)}
               {@const open = isBackupOpen(b.id, i)}
               <div class="bk">
                 <div class="backup-row">
@@ -637,6 +657,7 @@
                   </span>
                 </div>
                 <div class="bk-detail" id="bkd-{b.id}" hidden={!open}>
+                  {#if !s.failed}<div class="kv"><span>captured</span><b>{capturedGlobs}</b></div>{/if}
                   <div class="kv"><span>archive</span><b>{b.name}</b></div>
                   {#if mirror}<div class="kv"><span>mirror</span><b class={b.replication === "failed" ? "warn" : ""}>{mirror}</b></div>{/if}
                   {#if b.error}<div class="kv"><span>note</span><b class={s.failed ? "crisis" : "warn"}>{b.error}</b></div>{/if}
@@ -652,7 +673,7 @@
             {/if}
             <div class="bk-foot">
               <span>keep <b>{BACKUP_KEEP}</b> · <b class={backupsAtCap ? "at-cap" : ""}>{keptBackups.length} of {BACKUP_KEEP}</b> · <b>{fmtSize(backupDiskBytes)}</b> on disk</span>
-              {#if replicationOn}<span>mirror <b>off-node</b></span>{/if}
+              {#if replicationOn}<span>mirror <b>{depth.backupMirror}</b></span>{/if}
             </div>
           {/if}
           <button class="bk-big" disabled={depth.creatingBackup || backupsBusy} onclick={() => void backupCreate()}>create backup now</button>

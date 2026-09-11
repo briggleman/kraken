@@ -27,6 +27,9 @@ export const depth = $state({
   serverId: null as string | null,
   server: null as Server | null,
   backups: [] as Backup[],
+  // The node's off-node mirror destination for display (e.g. "sftp nas.local"),
+  // or "" when replication is off. Node config, not per-archive.
+  backupMirror: "",
   schedules: [] as ScheduledTask[],
   dns: null as ServerDnsState | null,
   settings: null as ServerSettings | null,
@@ -75,6 +78,7 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.serverId = id;
   depth.server = fleet.servers.find((s) => s.id === id) ?? null;
   depth.backups = [];
+  depth.backupMirror = "";
   depth.schedules = [];
   depth.dns = null;
   depth.settings = null;
@@ -170,7 +174,10 @@ async function refreshDetail() {
     depth.server = srv.value;
     stream.set(id, streamModeFor(srv.value.state));
   }
-  if (bk.status === "fulfilled") depth.backups = bk.value.backups ?? [];
+  if (bk.status === "fulfilled") {
+    depth.backups = bk.value.backups ?? [];
+    depth.backupMirror = bk.value.mirror ?? "";
+  }
   if (sch.status === "fulfilled") depth.schedules = sch.value.schedules ?? [];
   if (dns.status === "fulfilled") depth.dns = dns.value;
   if (settings.status === "fulfilled") depth.settings = settings.value;

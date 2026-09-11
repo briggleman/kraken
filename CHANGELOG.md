@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.43.0](https://github.com/briggleman/kraken/compare/v0.42.0...v0.43.0) (2026-09-11)
+
+
+### Features
+
+* **web:** denser node-band meters (72 cols) + spec-editor syntax palette ([#265](https://github.com/briggleman/kraken/issues/265)) ([a71db4b](https://github.com/briggleman/kraken/commit/a71db4bdd5c4886ff3195a4471b8a3aa5b3642a7))
+* **web:** render the abyssal syntax highlight in the spec code editor ([#267](https://github.com/briggleman/kraken/issues/267)) ([8558c99](https://github.com/briggleman/kraken/commit/8558c99473e13788634a6e2ef814d69e8f2c93c1))
+
 ## [0.42.0](https://github.com/briggleman/kraken/compare/v0.41.0...v0.42.0) (2026-09-11)
 
 

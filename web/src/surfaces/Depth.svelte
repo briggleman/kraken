@@ -255,6 +255,69 @@
   }
 
   const backupsBusy = $derived(depth.backups.some((b) => b.state === "pending"));
+
+  // Mirrors the agent's fixed retention cap (internal/agent/docker.go
+  // backupRetentionKeep). The agent enforces it — the UI only reads it to state
+  // the policy and warn before the create button. There is no per-server knob yet.
+  const BACKUP_KEEP = 5;
+
+  // The word at a backup's right edge is the state of its OFF-NODE copy, not a
+  // verdict on the archive — each state the agent reports gets its own word and
+  // colour, so a failed mirror can never read as a green "ok" (The Spoken Mirror
+  // Rule). A capture that failed outright shows "failed" and cannot be restored.
+  function bkState(b: { state: string; replication: string }): {
+    word: string;
+    cls: string;
+    failed: boolean;
+  } {
+    if (b.state === "failed") return { word: "failed", cls: "failed", failed: true };
+    switch (b.replication) {
+      case "pending":
+        return { word: "mirroring", cls: "mirroring", failed: false };
+      case "done":
+        return { word: "mirrored", cls: "", failed: false };
+      case "failed":
+        return { word: "mirror failed", cls: "mirror-failed", failed: false };
+      default:
+        return { word: "ok", cls: "", failed: false }; // replication not configured
+    }
+  }
+  // the mirror line in a backup's detail — a phrase for its off-node copy, or null
+  // when replication isn't configured for this node
+  function bkMirror(rep: string): string | null {
+    switch (rep) {
+      case "pending":
+        return "off-node copy · in progress";
+      case "done":
+        return "off-node copy · done";
+      case "failed":
+        return "off-node copy · failed";
+      default:
+        return null;
+    }
+  }
+
+  // Retention is a fact about the list, derived — never written down twice. Only
+  // archives that kept data (state !== failed) hold a slot; a failed attempt
+  // captured nothing, so it neither counts toward the cap nor is ever evicted.
+  const keptBackups = $derived(depth.backups.filter((b) => b.state !== "failed"));
+  const backupDiskBytes = $derived(keptBackups.reduce((n, b) => n + (b.size || 0), 0));
+  const backupsAtCap = $derived(keptBackups.length >= BACKUP_KEEP);
+  const replicationOn = $derived(depth.backups.some((b) => b.replication !== ""));
+  // the archive the next backup will evict — the oldest slot-holder
+  const oldestKept = $derived.by(() =>
+    keptBackups.length
+      ? keptBackups.reduce((a, b) => (a.created_ms <= b.created_ms ? a : b))
+      : null,
+  );
+
+  // Per-row disclosure: undefined means "use the default" — the newest row (index
+  // 0) opens so the detail pattern is discoverable, the rest stay collapsed.
+  let backupOpen = $state<Record<string, boolean>>({});
+  const isBackupOpen = (id: string, i: number): boolean => backupOpen[id] ?? i === 0;
+  function toggleBackup(id: string, i: number) {
+    backupOpen = { ...backupOpen, [id]: !isBackupOpen(id, i) };
+  }
 </script>
 
 <div
@@ -548,22 +611,50 @@
       <section class="side-block" aria-label="Backups">
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
-          {#each depth.backups as b (b.id)}
+          {#each depth.backups as b, i (b.id)}
             {#if b.state === "pending"}
               <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:60"}><i></i></span></div>
             {:else}
-              <div class="backup-row">
-                <span>{fmtWhen(b.created_ms)} · {b.name} · {fmtSize(b.size)}</span>
-                <span class="bk-acts">
-                  {#if b.state === "failed"}<span class="warn" title={b.error || "backup failed — no reason reported (agent may predate error reporting)"}>failed</span>{:else}<span class="good" title={b.error}>{b.replication === "pending" ? "mirroring" : "ok"}</span>{/if}
-                  <button class="mini-act res" disabled={depth.restoringBackup === b.id || b.state === "failed" || restoreBlocked !== ""} title={restoreBlocked || undefined} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
-                  <button class="mini-act del" onclick={() => void backupDelete(b)}>delete</button>
-                </span>
+              {@const s = bkState(b)}
+              {@const mirror = bkMirror(b.replication)}
+              {@const open = isBackupOpen(b.id, i)}
+              <div class="bk">
+                <div class="backup-row">
+                  <span class="bk-sum">
+                    <button
+                      class="bk-more"
+                      aria-expanded={open}
+                      aria-controls="bkd-{b.id}"
+                      aria-label="{open ? 'Hide' : 'Show'} details for the {b.name} backup"
+                      onclick={() => toggleBackup(b.id, i)}
+                    ><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button>
+                    <span>{fmtWhen(b.created_ms)} · {b.name}{b.size ? " · " + fmtSize(b.size) : ""}</span>
+                  </span>
+                  <span class="bk-acts">
+                    <span class="bk-state {s.cls}">{s.word}</span>
+                    <button class="mini-act res" disabled={depth.restoringBackup === b.id || s.failed || restoreBlocked !== ""} title={s.failed ? "nothing was captured — there is no archive to restore" : restoreBlocked || undefined} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
+                    <button class="mini-act del" onclick={() => void backupDelete(b)}>delete</button>
+                  </span>
+                </div>
+                <div class="bk-detail" id="bkd-{b.id}" hidden={!open}>
+                  <div class="kv"><span>archive</span><b>{b.name}</b></div>
+                  {#if mirror}<div class="kv"><span>mirror</span><b class={b.replication === "failed" ? "warn" : ""}>{mirror}</b></div>{/if}
+                  {#if b.error}<div class="kv"><span>note</span><b class={s.failed ? "crisis" : "warn"}>{b.error}</b></div>{/if}
+                </div>
               </div>
             {/if}
           {:else}
             <div class="backup-row"><span>no backups yet</span><span class="good"></span></div>
           {/each}
+          {#if keptBackups.length > 0}
+            {#if backupsAtCap && oldestKept}
+              <p class="bk-evict">at capacity — the next backup removes <b>{fmtWhen(oldestKept.created_ms)} · {oldestKept.name}</b>{replicationOn ? ", on this node and its mirror" : ""}</p>
+            {/if}
+            <div class="bk-foot">
+              <span>keep <b>{BACKUP_KEEP}</b> · <b class={backupsAtCap ? "at-cap" : ""}>{keptBackups.length} of {BACKUP_KEEP}</b> · <b>{fmtSize(backupDiskBytes)}</b> on disk</span>
+              {#if replicationOn}<span>mirror <b>off-node</b></span>{/if}
+            </div>
+          {/if}
           <button class="bk-big" disabled={depth.creatingBackup || backupsBusy} onclick={() => void backupCreate()}>create backup now</button>
         </div>
       </section>

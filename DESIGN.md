@@ -393,7 +393,7 @@ finding its own right edge. Three readouts, one ladder: this row for one fact, *
 vital worth a glow, the **dot-matrix meter** for a fact with a history.
 
 ### Dot-matrix history meter (signature)
-The house chart: a row of dot columns (`--cell: 6px`, `--dot: 2.4px`), each column one sample, scrolling left as new samples arrive; the newest column glows (`.now`). History fades toward the left via mask. Track length is set by the surface, not by a global: **48 columns** on a node band, **72** on a server card, so the wider card buys more history rather than fatter dots. **Zone-coded variant** (`.zone-track`): columns recompute their color live — Status Gold below 50%, Caution Violet 50–75%, Crisis Magenta above 75% — with faint threshold guide lines at 50/75.
+The house chart: a row of dot columns (`--cell: 6px`, `--dot: 2.4px`), each column one sample, scrolling left as new samples arrive; the newest column glows (`.now`). History fades toward the left via mask. Track length is **72 columns** on both node bands and server cards: at `flex: 1` the columns stretch to fill the cell, so a count near the cell's own pixel width is what makes the ridge read *dense* — 48 stretched across a wide band cell left the dots widely spaced and sparse. 72 fills the width as a near-solid ridge that still shows its per-sample grain (raising it further, ~96, closes the grain into a solid bar; lower, ~48, spaces the dots out again). **Zone-coded variant** (`.zone-track`): columns recompute their color live — Status Gold below 50%, Caution Violet 50–75%, Crisis Magenta above 75% — with faint threshold guide lines at 50/75.
 
 `--lvl` drives both the column's fill height *and* its zone color, which is why the sample band matters as much as the styling: a track whose values never leave one zone renders as a single-color block at a single height, and the chart stops being a chart. Both the seeded history and the live walk must span a threshold, and a walk with hard clamping will not do it — it piles up against whichever bound it drifts into. Mean-revert toward the middle of the band instead. The last column carries `.now` permanently, because the tick shifts values *between* columns rather than moving elements.
 
@@ -440,6 +440,30 @@ The two-stage form has a specificity trap: `.row:hover .btn` is (0,3,0) and `.bt
 
 ### Brand Lockup
 The glyph and the wordmark on one line, in both places the name appears (`.kr-lock`). The glyph is sized in `em` off the wordmark (`width: 1.095em`, `aspect-ratio: 398 / 429`) rather than in pixels, so the 26px header and the 49px login mark get the same lockup instead of two tunings; the gap is `0.43em` for the same reason. `align-items: baseline`, so the **word** gives the lockup its baseline — an inline-flex box takes its baseline from the first item that has one, and an empty block's baseline is its bottom edge, which rides the wordmark high above anything it should sit level with. The glyph then re-centres against the word with `align-self: center`. It arrives as a `background-image` under a filter chain that starts at `brightness(0)`, so the gold is built from black and does not depend on what color the source file happens to be, plus a `drop-shadow(0 0 14px)` in lumen at 0.4. A `mask-image` would be the exact answer and cannot be used cross-origin: masks are CORS-gated and a blocked mask paints nothing at all, silently.
+
+### Spec code editor (syntax highlight)
+The Game Spec sheet reads a spec as a form or as **itself** — a JSON/YAML document in a mono
+`<pre>` (`.spec-code`), each source line its own `.l` block so a wrapping line hangs under its own
+key rather than restarting at the margin. A JSON⇄YAML segmented control pins to the block's frame.
+
+Its highlighting is a **deliberate editor-only exception to the One Light Rule.** Everywhere else
+the light means "alive" and violet/magenta are reserved for warning and danger; the code view has
+no server state, so those hues carry no meaning here and are freed to do colour work. The result is
+a full-colour key/value read, with punctuation receding to the faintest ink so the eye rides the
+pairs:
+
+- **key** (`<b>`) — **Caution Violet** (`var(--caution)`): the property you scan.
+- **string** (`<i>`) — **Spectrum Teal**, lightened to `#3fb69b` for legibility on the code ground.
+- **number** (`.n`) — **Status Gold** (`var(--ok)`).
+- **literal** (`.k`, `true`/`false`/`null`) — **Crisis Magenta** (`var(--crisis)`): a keyword, not data.
+- **template** (`.t`, `{{SLOT}}`) — **Sodium Lumen** with a dotted underline: a value filled at
+  deploy time, the one place the light appears here, marking the fillable slots.
+- **comment** (`<em>`) — Sand Faint; **punctuation** (untagged base) — faintest ink.
+
+**The Editor-Palette Exception Rule.** These colour roles live only in the spec code view. Do not
+carry them back into the app chrome, where Caution Violet and Crisis Magenta are semantics — a
+string painted violet in a node band would read as a warning. The exception is sound precisely
+because a code editor is stateless; it is not licence to loosen the semantics anywhere a state exists.
 
 ### Sheet (full-screen overlay family)
 The house's one navigation mechanism, since there are no routes. A sheet is `position: fixed; inset: 0` at `z-index: 35`, opening with the same circular `clip-path` plunge from the click point that a drill-in uses (`circle(0%)` → `circle(150%)` at `--ox/--oy`, 0.65s), over a ground of its own: a violet-tinted radial rising from below the fold on the abyssal gradient, so a sheet reads as *deeper* than the pane rather than stacked on it. Two rows, `auto 1fr`: a title bar that stays, and a `.sheet-body` scroller with the house thin gold scrollbar. The body reads a `--measure` token set on the sheet — 1040px by default, 1240 for the spec sheets, 1280 for new server, 1640 for the audit log, and 2000 while the spec code view is open — and is centred in it with `margin-inline: auto`. **The title bar is not capped.** It keeps the full width it has on `.prefs`, the one multi-column sheet, so `surface` and the sheet name land in the same place on every page no matter how wide that page’s content column is: the bar is page chrome, and chrome does not move because the content beneath it got narrower. Centring uses auto margins and never `justify-self: center`, which would size the column shrink-to-fit and let its content decide the measure. `.prefs` takes no measure at all: a two-column split is not a single-column view. Escape dismisses, focus lands only once the plunge finishes, and each sheet remembers what opened it so closing returns there rather than to the pane. Membership in this family *is* the Escape behavior — the login screen is deliberately not a member.

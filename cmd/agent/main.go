@@ -155,7 +155,8 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	// freshly-updated binary has burned through its start attempts without
 	// reaching the health milestone, the updater swaps the previous binary
 	// back and we restart straight into it.
-	updater, uerr := agent.NewSelfUpdater(version.Version, cfg.StateDir, restartAgent, logger)
+	restart := func(exe string) { restartAgent(exe, cfg.StateDir) }
+	updater, uerr := agent.NewSelfUpdater(version.Version, cfg.StateDir, restart, logger)
 	if uerr != nil {
 		logger.Warn("self-update unavailable", "err", uerr)
 	} else if updater.CheckBoot() {

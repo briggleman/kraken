@@ -90,8 +90,8 @@ func TestTelemetryCounterResetReportsUnknown(t *testing.T) {
 }
 
 // A metric group whose source failed stays unknown; the groups that did read
-// are unaffected. This is what keeps a Windows node (no temperature sensor)
-// from reporting 0°C alongside its perfectly good CPU number.
+// are unaffected. This is what keeps a host with one broken source from
+// reporting a confident zero alongside its perfectly good CPU number.
 func TestTelemetryUnknownGroupsAreIndependent(t *testing.T) {
 	t0 := time.Now()
 	prev := hostSnapshot{at: t0, cpuBusy: 100, cpuTotal: 1000, cpuOK: true}
@@ -100,7 +100,6 @@ func TestTelemetryUnknownGroupsAreIndependent(t *testing.T) {
 		memOK:  false, // /proc/meminfo unreadable
 		diskOK: false, // statfs failed
 		netOK:  false, // no interfaces
-		tempOK: false, // no sensor
 	}
 	tel := telemetryFrom(prev, cur)
 
@@ -108,13 +107,13 @@ func TestTelemetryUnknownGroupsAreIndependent(t *testing.T) {
 		t.Error("cpu should still be known when other sources fail")
 	}
 	for name, known := range map[string]bool{
-		"mem": tel.MemKnown, "disk": tel.DiskKnown, "net": tel.NetKnown, "temp": tel.TempKnown,
+		"mem": tel.MemKnown, "disk": tel.DiskKnown, "net": tel.NetKnown,
 	} {
 		if known {
 			t.Errorf("%s should be unknown", name)
 		}
 	}
-	if tel.TempCelsius != 0 || tel.MemTotalMb != 0 {
+	if tel.MemTotalMb != 0 {
 		t.Error("unknown groups must not carry values")
 	}
 }

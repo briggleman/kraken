@@ -21,9 +21,9 @@ const hostSampleInterval = 2 * time.Second
 
 // hostSnapshot is one raw reading of the host's counters. CPU and network are
 // cumulative (monotonic since boot) and only become rates once differenced
-// against the previous snapshot; memory, disk and temperature are already
-// instantaneous. Each group carries its own ok flag because these come from
-// different sources that fail independently.
+// against the previous snapshot; memory and disk are already instantaneous.
+// Each group carries its own ok flag because these come from different sources
+// that fail independently.
 type hostSnapshot struct {
 	at     time.Time
 	uptime time.Duration
@@ -47,9 +47,6 @@ type hostSnapshot struct {
 	netRxBytes uint64
 	netTxBytes uint64
 	netOK      bool
-
-	tempC  float64
-	tempOK bool
 }
 
 // HostSampler reads host vitals on a fixed tick and holds the most recent
@@ -76,9 +73,9 @@ func NewHostSampler(dataDir string) *HostSampler {
 }
 
 // Start samples once immediately, then on every tick until ctx is cancelled.
-// The immediate sample means memory, disk and temperature are available right
-// away; CPU and network stay unknown until the second sample gives them an
-// interval to be a rate over.
+// The immediate sample means memory and disk are available right away; CPU and
+// network stay unknown until the second sample gives them an interval to be a
+// rate over.
 func (h *HostSampler) Start(ctx context.Context) {
 	h.sample()
 	go func() {
@@ -131,9 +128,6 @@ func telemetryFrom(prev, cur hostSnapshot) *agentpb.NodeTelemetry {
 		DiskTotalMb: cur.diskTotalMB,
 		DiskUsedMb:  cur.diskUsedMB,
 		DiskKnown:   cur.diskOK,
-
-		TempCelsius: cur.tempC,
-		TempKnown:   cur.tempOK,
 
 		CpuCores: int32(cur.cpuCores),
 	}

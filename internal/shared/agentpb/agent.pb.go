@@ -2839,10 +2839,10 @@ func (*GetNodeTelemetryRequest) Descriptor() ([]byte, []int) {
 // its own fixed tick and read (not computed) when the Panel polls.
 //
 // Every metric group carries a *_known flag. A host that cannot supply a metric
-// — no thermal zone, a Windows host with no WMI temperature source, a /proc that
-// isn't readable — reports known=false rather than zero, because a zero here is
-// indistinguishable from a real reading and would render as a confident lie on
-// the node band. Consumers must render unknown groups as "no data", not as 0.
+// — a /proc that isn't readable, a restricted container with no /sys — reports
+// known=false rather than zero, because a zero here is indistinguishable from a
+// real reading and would render as a confident lie on the node band. Consumers
+// must render unknown groups as "no data", not as 0.
 type NodeTelemetry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TsUnixMs      int64                  `protobuf:"varint,1,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`              // when this snapshot was sampled
@@ -2868,14 +2868,9 @@ type NodeTelemetry struct {
 	// Aggregate throughput over the host's physical interfaces, in bytes per
 	// second, as a rate over the sampler's tick (loopback, veth, docker and
 	// bridge interfaces are excluded — they double-count container traffic).
-	NetRxBps float64 `protobuf:"fixed64,13,opt,name=net_rx_bps,json=netRxBps,proto3" json:"net_rx_bps,omitempty"`
-	NetTxBps float64 `protobuf:"fixed64,14,opt,name=net_tx_bps,json=netTxBps,proto3" json:"net_tx_bps,omitempty"`
-	NetKnown bool    `protobuf:"varint,15,opt,name=net_known,json=netKnown,proto3" json:"net_known,omitempty"`
-	// Hottest CPU/package temperature in degrees Celsius. Frequently unavailable:
-	// no thermal zone in a VM, no WMI provider on Windows, no /sys in a
-	// restricted container.
-	TempCelsius   float64 `protobuf:"fixed64,16,opt,name=temp_celsius,json=tempCelsius,proto3" json:"temp_celsius,omitempty"`
-	TempKnown     bool    `protobuf:"varint,17,opt,name=temp_known,json=tempKnown,proto3" json:"temp_known,omitempty"`
+	NetRxBps      float64 `protobuf:"fixed64,13,opt,name=net_rx_bps,json=netRxBps,proto3" json:"net_rx_bps,omitempty"`
+	NetTxBps      float64 `protobuf:"fixed64,14,opt,name=net_tx_bps,json=netTxBps,proto3" json:"net_tx_bps,omitempty"`
+	NetKnown      bool    `protobuf:"varint,15,opt,name=net_known,json=netKnown,proto3" json:"net_known,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3011,20 +3006,6 @@ func (x *NodeTelemetry) GetNetTxBps() float64 {
 func (x *NodeTelemetry) GetNetKnown() bool {
 	if x != nil {
 		return x.NetKnown
-	}
-	return false
-}
-
-func (x *NodeTelemetry) GetTempCelsius() float64 {
-	if x != nil {
-		return x.TempCelsius
-	}
-	return 0
-}
-
-func (x *NodeTelemetry) GetTempKnown() bool {
-	if x != nil {
-		return x.TempKnown
 	}
 	return false
 }
@@ -4600,7 +4581,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\vHostAddress\x12\x1c\n" +
 	"\tinterface\x18\x01 \x01(\tR\tinterface\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\"\x19\n" +
-	"\x17GetNodeTelemetryRequest\"\xab\x04\n" +
+	"\x17GetNodeTelemetryRequest\"\x8f\x04\n" +
 	"\rNodeTelemetry\x12\x1c\n" +
 	"\n" +
 	"ts_unix_ms\x18\x01 \x01(\x03R\btsUnixMs\x12%\n" +
@@ -4624,10 +4605,8 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"net_rx_bps\x18\r \x01(\x01R\bnetRxBps\x12\x1c\n" +
 	"\n" +
 	"net_tx_bps\x18\x0e \x01(\x01R\bnetTxBps\x12\x1b\n" +
-	"\tnet_known\x18\x0f \x01(\bR\bnetKnown\x12!\n" +
-	"\ftemp_celsius\x18\x10 \x01(\x01R\vtempCelsius\x12\x1d\n" +
-	"\n" +
-	"temp_known\x18\x11 \x01(\bR\ttempKnown\"\xee\x01\n" +
+	"\tnet_known\x18\x0f \x01(\bR\bnetKnownJ\x04\b\x10\x10\x11J\x04\b\x11\x10\x12R\ftemp_celsiusR\n" +
+	"temp_known\"\xee\x01\n" +
 	"\x10UpdateAgentChunk\x12<\n" +
 	"\x04meta\x18\x01 \x01(\v2&.kraken.agent.v1.UpdateAgentChunk.MetaH\x00R\x04meta\x12\x14\n" +
 	"\x04data\x18\x02 \x01(\fH\x00R\x04data\x1a{\n" +

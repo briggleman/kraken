@@ -4,6 +4,7 @@
   import { refreshFleet } from "@/lib/fleet.svelte";
   import { api } from "@/api/client";
   import { sheetFocus } from "@/lib/sheetFocus";
+  import { highlight } from "@/lib/spechl";
   import type { Spec } from "@/api/types";
   import YAML from "yaml";
 
@@ -25,6 +26,21 @@
   // is one buffer; the switch CONVERTS it rather than swapping views, so
   // whatever was typed survives the flip — provided it parses.
   let fmt = $state<"json" | "yaml">("json");
+
+  // Syntax highlight for the code view. The <textarea> can't colour its own text,
+  // so a highlighted <pre> renders behind it and the textarea sits on top with
+  // transparent text (a live overlay — DESIGN.md's Spec code editor). The trailing
+  // newline keeps the pre's height in step with the textarea's final blank line.
+  const hl = $derived(highlight(codeText, fmt) + "\n");
+  let taEl = $state<HTMLTextAreaElement | null>(null);
+  let hlEl = $state<HTMLElement | null>(null);
+  // Mirror the textarea's scroll onto the highlight layer so the two never drift.
+  function syncScroll() {
+    if (taEl && hlEl) {
+      hlEl.scrollTop = taEl.scrollTop;
+      hlEl.scrollLeft = taEl.scrollLeft;
+    }
+  }
 
   // lineWidth 0 keeps long values (a startup command) on one line instead of
   // YAML's folded wrapping, which reads as edits nobody made.
@@ -354,8 +370,55 @@
         <label class="cd-opt"><input class="cd-r" type="radio" name="specfmt" bind:this={jsonFmt} checked onchange={() => onFmt("json")} />json</label>
         <label class="cd-opt"><input class="cd-r r-y" type="radio" name="specfmt" bind:this={yamlFmt} onchange={() => onFmt("yaml")} />yaml</label>
       </span>
-      <textarea class="spec-code" spellcheck="false" aria-label="Spec document" bind:value={codeText}></textarea>
+      <div class="spec-code-stack">
+        <pre class="spec-code spec-code-hl" aria-hidden="true" bind:this={hlEl}>{@html hl}</pre>
+        <textarea
+          class="spec-code spec-code-input"
+          spellcheck="false"
+          aria-label="Spec document"
+          bind:value={codeText}
+          bind:this={taEl}
+          onscroll={syncScroll}
+        ></textarea>
+      </div>
       <p class="cfg-help">{note ?? "the document is the source of truth; the form above is a view onto it. config file bindings and templates only appear here. saving posts this document verbatim — json and yaml both save."}</p>
     </div>
   </div>
 </div>
+
+<style>
+  /* Syntax-highlight overlay: a highlighted <pre> under an editable <textarea>
+     with transparent text. Both carry .spec-code (from house.css) so they share
+     font, padding, border and box model exactly — that parity is what keeps the
+     caret sitting on the glyphs. The token COLOURS live in house.css
+     (.spec-code b/i/.n/.k/.t/em); only the stacking mechanics are here, because
+     the mock is a static <pre> and never modelled an editable overlay.
+     scrollbar-gutter: stable on both reserves the same right gutter whether or
+     not the textarea's scrollbar is showing, so the two wrap at the same width. */
+  .spec-code-stack {
+    position: relative;
+  }
+  .spec-code-stack :global(.spec-code) {
+    scrollbar-gutter: stable;
+  }
+  .spec-code-hl {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    z-index: 0;
+  }
+  .spec-code-input {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--ink);
+    resize: none;
+  }
+</style>

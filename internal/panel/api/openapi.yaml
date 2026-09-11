@@ -1205,8 +1205,7 @@ components:
         net_rx_bps: { type: number, format: double, description: bytes per second across the host's physical interfaces }
         net_tx_bps: { type: number, format: double }
         net_known: { type: boolean }
-        temp_celsius: { type: number, format: double }
-        temp_known: { type: boolean, description: commonly false — no thermal sensor in a VM, and no WMI source on Windows }
+        link_rtt_ms: { type: number, format: double, description: the Panel's own timing of the gRPC round trip that fetched this reading — no *_known flag, because the entry existing is the proof of the round trip }
     NodeRegister:
       type: object
       required: [address]

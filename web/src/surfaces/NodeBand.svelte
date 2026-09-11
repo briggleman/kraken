@@ -2,7 +2,6 @@
   import DotTrack from "@/components/DotTrack.svelte";
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
-  import TempSpec from "@/components/TempSpec.svelte";
   import { onDestroy } from "svelte";
   import { api } from "@/api/client";
   import { hasPerm } from "@/lib/auth.svelte";
@@ -13,18 +12,23 @@
   import { agentDrift, containerDrift, nodeMemLabel } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
-  // cpu, disk, network and temp are live host readings from the node's agent
-  // (see lib/telemetry); memory is the scheduler's commitment from the node
-  // record. A metric the host can't report — no thermal sensor, an agent too
-  // old for the telemetry RPC, a node the panel can't reach — reads as an
-  // em-dash with its chart blanked, never as a zero.
+  // cpu, disk and network are live host readings from the node's agent (see
+  // lib/telemetry); link is the Panel's own timing of the round trip that
+  // fetched them; memory is the scheduler's commitment from the node record.
+  // A metric the host can't report — an agent too old for the telemetry RPC,
+  // a node the panel can't reach — reads as an em-dash with its chart
+  // blanked, never as a zero.
   let { node, index }: { node: Node; index: number } = $props();
 
   const vitals = $derived(vitalsFor(node.id));
   const now = $derived(vitals?.now);
 
   const cpu = $derived(now?.cpu_known ? now.cpu_percent : undefined);
-  const temp = $derived(now?.temp_known ? now.temp_celsius : undefined);
+  // No _known gate: the reading exists whenever the telemetry entry does,
+  // because the entry is the proof of the round trip. On an idle node this is
+  // the one instrument that keeps ticking — the Panel polling is what
+  // distinguishes a node at rest from a node that is gone — so it never rests.
+  const rtt = $derived(now?.link_rtt_ms);
   const mbps = $derived(netMbps(now));
 
   // Memory is the scheduler's commitment, not host usage: it answers "will the
@@ -341,12 +345,16 @@
   </div>
   <div class="metric">
     <div class="metric-head">
-      <span class="metric-label">temp</span><span class="metric-val"
-        >{#if temp === undefined}—<small></small>{:else}<span>{Math.round(temp)}</span><small
-            >°C</small
+      <span class="metric-label">link</span><span class="metric-val"
+        >{#if rtt === undefined}—<small></small>{:else}<span>{rtt.toFixed(1)}</span><small
+            >ms</small
           >{/if}</span
       >
     </div>
-    <TempSpec deg={temp ?? 0} unknown={temp === undefined} />
+    <div class="zone-track">
+      <DotTrack history={vitals?.link ?? []} />
+      <span class="th t50" aria-hidden="true"></span>
+      <span class="th t75" aria-hidden="true"></span>
+    </div>
   </div>
 </section>

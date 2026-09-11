@@ -49,7 +49,15 @@
       <span class="players-num"
         >{players.num}{#if players.max}<small> / {players.max}</small>{/if}</span
       >
-      <span class="cap">{#if players.pct}<i use:istyle={`width: ${players.pct}%`}></i>{/if}</span>
+      <!-- A known count gets the full instrument, edge marker included, even at
+           zero players — measured-empty is a reading. An unknown count keeps the
+           bare track, same as offline: no players figure is not a temperature. -->
+      <span class="occ-rail" aria-hidden="true"
+        >{#if players.num !== "—"}<i class="occ-ghost"></i><i
+            class="occ-fill"
+            use:istyle={`--pct: ${players.pct}%`}
+          ></i><i class="occ-edge" use:istyle={`--pct: ${players.pct}%`}></i>{/if}</span
+      >
       <span class="players-label">{players.num === "—" ? "players unknown" : "players online"}</span>
     </span>
     <span class="srv-chart"

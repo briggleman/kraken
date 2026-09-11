@@ -1195,7 +1195,6 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .th { position: absolute; left: 0; right: 0; height: 1px; pointer-events: none; }
   .th.t50 { bottom: calc(4px + 50% * 0.82); background: rgba(var(--caution-rgb), 0.35); }
   .th.t75 { bottom: calc(4px + 75% * 0.82); background: rgba(var(--crisis-rgb), 0.35); }
-  .spec-wrap { position: relative; height: clamp(30px, 4.5vh, 62px); padding: 12px 0 16px; }
   .heat-rail { position: relative; height: 12px; border-radius: 3px; overflow: hidden; background: rgba(var(--lumen-rgb), 0.06); }
   .heat-ghost {
     position: absolute; inset: 0;
@@ -1208,14 +1207,6 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     clip-path: inset(0 calc(100% - var(--pct, 39%)) 0 0);
     transition: clip-path 1.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
-  .heat-edge {
-    position: absolute; top: 0; bottom: 0; left: var(--pct, 39%); width: 2px;
-    transform: translateX(-50%);
-    background: var(--ink); box-shadow: 0 0 10px rgba(217,237,234,0.9);
-    transition: left 1.2s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .spec-zones { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; }
-  .spec-zones b { position: absolute; font: 600 clamp(9px, 0.58vw, 11px) var(--ui); letter-spacing: 0.2em; color: var(--ink-3); text-transform: uppercase; }
   @keyframes pkFlowR { from { transform: translate(0, -50%); } to { transform: translate(calc(100cqw + 14px), -50%); } }
   @keyframes pkFlowL { from { transform: translate(0, -50%); } to { transform: translate(calc(-100cqw - 14px), -50%); } }
   .chan {
@@ -1318,8 +1309,27 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .players { display: grid; gap: 7px; align-content: center; }
   .players-num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: clamp(17px, 1.35vw, 30px); }
   .players-num small { color: var(--ink-2); font-size: 0.62em; font-weight: 300; }
-  .cap { height: 6px; border-radius: 3px; background: rgba(var(--lumen-rgb), 0.1); overflow: hidden; }
-  .cap i { display: block; height: 100%; background: linear-gradient(90deg, rgba(var(--lumen-rgb), 0.5), var(--lumen)); box-shadow: 0 0 10px rgba(var(--lumen-rgb), 0.5); border-radius: 3px; }
+  /* players-online occupancy: the heat-gauge language, spent on the one level
+     where "hot" is something an operator can feel — a server filling up. The
+     full spectrum sits ghosted as the scale, the fill reveals it up to the
+     head count, and the lit edge is the reading. An offline card keeps the
+     bare track: no players is not a temperature. */
+  .occ-rail { position: relative; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(var(--lumen-rgb), 0.06); }
+  .occ-ghost, .occ-fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, #1a7a6d 0%, var(--lumen) 45%, var(--caution) 76%, var(--crisis) 95%);
+  }
+  .occ-ghost { opacity: 0.18; }
+  .occ-fill {
+    clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0);
+    transition: clip-path 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .occ-edge {
+    position: absolute; top: 0; bottom: 0; left: var(--pct, 0%); width: 2px;
+    transform: translateX(-50%);
+    background: var(--ink); box-shadow: 0 0 8px rgba(245, 223, 193, 0.9);
+    transition: left 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
   .players-label { font-size: clamp(10px, 0.66vw, 13px); letter-spacing: 0.2em; color: var(--ink-3); text-transform: uppercase; }
 
   .srv-chart { display: grid; gap: 3px; min-width: 0; }
@@ -1332,7 +1342,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   /* Below the wide desk the band cannot hold six columns and the card cannot hold
      five: a metric's value is display-scale type, so a track that narrows past it
      spills into the next label rather than wrapping (memory ran into disk, network
-     into temp). Identity takes a row of its own - it is the heading, and headings
+     into its neighbour). Identity takes a row of its own - it is the heading, and headings
      do not compete with instruments - and the instruments wrap as a rail with a
      real floor, so a narrow desk gets fewer per row instead of five broken ones. */
   @media (max-width: 1100px) {
@@ -2227,7 +2237,13 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .specs-body:has(.sp-linux :checked) .spec-row:not(.p-linux),
   .specs-body:has(.sp-win :checked) .spec-row:not(.p-win),
   .specs-body:has(.sp-wine :checked) .spec-row:not(.p-wine) { display: none; }
-  .specs-foot { display: flex; align-items: flex-start; gap: clamp(14px, 1.8vw, 34px); flex-wrap: wrap; }
+  /* The explainer runs the full width of the table it explains — the audit log's
+     62ch note cap is that surface's idiom, not this one's, and inherited here it
+     folded one sentence into a five-line sliver. The count keeps the far end,
+     mirroring "8 specs" in the header row above. */
+  .specs-foot { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: clamp(14px, 1.8vw, 34px); align-items: start; }
+  .specs-foot .audit-note { max-width: none; }
+  .specs-foot .audit-note:last-child { white-space: nowrap; }
 
   /* ---------- the spec editor: a spec is a document, so it reads as a form or as itself ---------- */
   .spec-edit-body { align-content: start; gap: clamp(12px, 1.3vh, 20px); }
@@ -2394,18 +2410,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </div>
     </div>
     <div class="metric">
-      <div class="metric-head"><span class="metric-label">temp</span><span class="metric-val"><span id="vTemp">47</span><small>°C</small></span></div>
-      <div class="spec-wrap" id="tempWrap" aria-hidden="true" style="--pct: 39%">
-        <div class="heat-rail">
-          <span class="heat-ghost"></span>
-          <span class="heat-fill"></span>
-          <span class="heat-edge"></span>
-        </div>
-        <span class="spec-zones">
-          <b style="left:2%">cool</b>
-          <b style="left:66%">warm</b>
-          <b style="right:0">hot</b>
-        </span>
+      <!-- Panel->Agent telemetry round trip, on the same 0-100 zone track the other
+           meters use: full scale is 20ms, so the standing warn/crisis lines land at
+           10ms and 15ms - the point where a LAN link stops being boring. A healthy
+           link is a low quiet ridge; that is the reading, not a dead meter. -->
+      <div class="metric-head"><span class="metric-label">link</span><span class="metric-val"><span id="vLink">6.3</span><small>ms</small></span></div>
+      <div class="zone-track">
+        <div class="seg-track" id="linkSegs" aria-hidden="true"><i class="dotcol" style="--lvl:10.5%"></i><i class="dotcol" style="--lvl:13.4%"></i><i class="dotcol" style="--lvl:15.6%"></i><i class="dotcol" style="--lvl:17.1%"></i><i class="dotcol" style="--lvl:14.5%"></i><i class="dotcol" style="--lvl:17.1%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:18%"></i><i class="dotcol" style="--lvl:16.6%"></i><i class="dotcol" style="--lvl:19.2%"></i><i class="dotcol" style="--lvl:20.6%"></i><i class="dotcol" style="--lvl:20.6%"></i><i class="dotcol" style="--lvl:18.4%"></i><i class="dotcol" style="--lvl:16.4%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:18.6%"></i><i class="dotcol" style="--lvl:17.4%"></i><i class="dotcol" style="--lvl:19.5%"></i><i class="dotcol" style="--lvl:18.1%"></i><i class="dotcol" style="--lvl:20.5%"></i><i class="dotcol" style="--lvl:22.1%"></i><i class="dotcol" style="--lvl:24%"></i><i class="dotcol" style="--lvl:24.2%"></i><i class="dotcol" style="--lvl:25%"></i><i class="dotcol" style="--lvl:24.3%"></i><i class="dotcol" style="--lvl:26.4%"></i><i class="dotcol" style="--lvl:44%"></i><i class="dotcol" style="--lvl:48.3%"></i><i class="dotcol w" style="--lvl:57.9%"></i><i class="dotcol w" style="--lvl:55.2%"></i><i class="dotcol w" style="--lvl:50.1%"></i><i class="dotcol" style="--lvl:26.3%"></i><i class="dotcol" style="--lvl:26.3%"></i><i class="dotcol" style="--lvl:27.4%"></i><i class="dotcol" style="--lvl:25.4%"></i><i class="dotcol" style="--lvl:27.3%"></i><i class="dotcol" style="--lvl:25.9%"></i><i class="dotcol" style="--lvl:24%"></i><i class="dotcol" style="--lvl:21.4%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:24.1%"></i><i class="dotcol" style="--lvl:24.2%"></i><i class="dotcol" style="--lvl:26.8%"></i><i class="dotcol" style="--lvl:26%"></i><i class="dotcol" style="--lvl:28.6%"></i><i class="dotcol" style="--lvl:31.4%"></i><i class="dotcol" style="--lvl:29.1%"></i><i class="dotcol now" style="--lvl:31.7%"></i></div>
+        <span class="th t50" aria-hidden="true"></span>
+        <span class="th t75" aria-hidden="true"></span>
       </div>
     </div>
   </section>
@@ -2430,8 +2443,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
            history beside them still holds the load it was carrying a minute ago.
            Both numerals are static here — dropping the id is what takes them out
            of the live walk, and the walk still pushes samples into the meter, so
-           the chart stays a chart. The temp readout still follows that same walk,
-           which is honest: a host that stopped working is not instantly cold. -->
+           the chart stays a chart. The link readout keeps ticking, which is
+           honest: the Panel is still polling this host, and a live round trip is
+           exactly what distinguishes a node at rest from a node that is gone. -->
       <div class="metric-head"><span class="metric-label">cpu</span><span class="metric-val resting"><span>0</span><small>%</small></span></div>
       <div class="zone-track">
         <div class="seg-track" id="cpuSegs2" aria-hidden="true"><i class="dotcol" style="--lvl:22.2%"></i><i class="dotcol" style="--lvl:22.7%"></i><i class="dotcol" style="--lvl:20.3%"></i><i class="dotcol" style="--lvl:23.4%"></i><i class="dotcol" style="--lvl:26.5%"></i><i class="dotcol" style="--lvl:26.7%"></i><i class="dotcol" style="--lvl:28.4%"></i><i class="dotcol" style="--lvl:29.2%"></i><i class="dotcol" style="--lvl:29.8%"></i><i class="dotcol" style="--lvl:29.6%"></i><i class="dotcol" style="--lvl:32.6%"></i><i class="dotcol" style="--lvl:29.8%"></i><i class="dotcol" style="--lvl:27.9%"></i><i class="dotcol" style="--lvl:25.1%"></i><i class="dotcol" style="--lvl:23.9%"></i><i class="dotcol" style="--lvl:24.4%"></i><i class="dotcol" style="--lvl:23.0%"></i><i class="dotcol" style="--lvl:23.7%"></i><i class="dotcol" style="--lvl:22.1%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:22.4%"></i><i class="dotcol" style="--lvl:23.9%"></i><i class="dotcol" style="--lvl:21.5%"></i><i class="dotcol" style="--lvl:25.2%"></i><i class="dotcol" style="--lvl:25.0%"></i><i class="dotcol" style="--lvl:22.9%"></i><i class="dotcol" style="--lvl:23.1%"></i><i class="dotcol" style="--lvl:26.5%"></i><i class="dotcol" style="--lvl:24.9%"></i><i class="dotcol" style="--lvl:28.4%"></i><i class="dotcol" style="--lvl:25.4%"></i><i class="dotcol" style="--lvl:23.4%"></i><i class="dotcol" style="--lvl:22.9%"></i><i class="dotcol" style="--lvl:20.9%"></i><i class="dotcol" style="--lvl:22.1%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:20.0%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:24.5%"></i><i class="dotcol" style="--lvl:24.6%"></i><i class="dotcol" style="--lvl:26.0%"></i><i class="dotcol" style="--lvl:28.1%"></i><i class="dotcol" style="--lvl:25.6%"></i><i class="dotcol" style="--lvl:25.6%"></i><i class="dotcol" style="--lvl:25.9%"></i><i class="dotcol" style="--lvl:28.9%"></i><i class="dotcol now" style="--lvl:26.6%"></i></div>
@@ -2464,18 +2478,11 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </div>
     </div>
     <div class="metric">
-      <div class="metric-head"><span class="metric-label">temp</span><span class="metric-val"><span id="vTemp2">41</span><small>&deg;C</small></span></div>
-      <div class="spec-wrap" id="tempWrap2" aria-hidden="true" style="--pct: 30%">
-        <div class="heat-rail">
-          <span class="heat-ghost"></span>
-          <span class="heat-fill"></span>
-          <span class="heat-edge"></span>
-        </div>
-        <span class="spec-zones">
-          <b style="left:2%">cool</b>
-          <b style="left:66%">warm</b>
-          <b style="right:0">hot</b>
-        </span>
+      <div class="metric-head"><span class="metric-label">link</span><span class="metric-val"><span id="vLink2">2.2</span><small>ms</small></span></div>
+      <div class="zone-track">
+        <div class="seg-track" id="linkSegs2" aria-hidden="true"><i class="dotcol" style="--lvl:6.8%"></i><i class="dotcol" style="--lvl:8.3%"></i><i class="dotcol" style="--lvl:7.9%"></i><i class="dotcol" style="--lvl:8.6%"></i><i class="dotcol" style="--lvl:7.3%"></i><i class="dotcol" style="--lvl:6.3%"></i><i class="dotcol" style="--lvl:8%"></i><i class="dotcol" style="--lvl:7.9%"></i><i class="dotcol" style="--lvl:7.7%"></i><i class="dotcol" style="--lvl:6.1%"></i><i class="dotcol" style="--lvl:6.6%"></i><i class="dotcol" style="--lvl:5.4%"></i><i class="dotcol" style="--lvl:4.6%"></i><i class="dotcol" style="--lvl:5.6%"></i><i class="dotcol" style="--lvl:4.6%"></i><i class="dotcol" style="--lvl:3.2%"></i><i class="dotcol" style="--lvl:3%"></i><i class="dotcol" style="--lvl:3%"></i><i class="dotcol" style="--lvl:3%"></i><i class="dotcol" style="--lvl:3%"></i><i class="dotcol" style="--lvl:3.3%"></i><i class="dotcol" style="--lvl:5.7%"></i><i class="dotcol" style="--lvl:6.7%"></i><i class="dotcol" style="--lvl:9%"></i><i class="dotcol" style="--lvl:7.7%"></i><i class="dotcol" style="--lvl:6.5%"></i><i class="dotcol" style="--lvl:8.1%"></i><i class="dotcol" style="--lvl:7.4%"></i><i class="dotcol" style="--lvl:9.9%"></i><i class="dotcol" style="--lvl:11.2%"></i><i class="dotcol" style="--lvl:12.5%"></i><i class="dotcol" style="--lvl:10.4%"></i><i class="dotcol" style="--lvl:12%"></i><i class="dotcol" style="--lvl:14%"></i><i class="dotcol" style="--lvl:11.6%"></i><i class="dotcol" style="--lvl:12.9%"></i><i class="dotcol" style="--lvl:10.6%"></i><i class="dotcol" style="--lvl:12.2%"></i><i class="dotcol" style="--lvl:13.3%"></i><i class="dotcol" style="--lvl:11%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:8.3%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:9.7%"></i><i class="dotcol" style="--lvl:9.1%"></i><i class="dotcol" style="--lvl:10.7%"></i><i class="dotcol" style="--lvl:12.1%"></i><i class="dotcol now" style="--lvl:11%"></i></div>
+        <span class="th t50" aria-hidden="true"></span>
+        <span class="th t75" aria-hidden="true"></span>
       </div>
     </div>
   </section>
@@ -2493,7 +2500,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
         <span class="players">
           <span class="players-num">7<small> / 32</small></span>
-          <span class="cap"><i style="width: 22%"></i></span>
+          <span class="occ-rail" style="--pct: 22%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span>
           <span class="players-label">players online</span>
         </span>
 
@@ -2514,7 +2521,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </span>
       <span class="players">
         <span class="players-num">3<small> / 16</small></span>
-        <span class="cap"><i style="width: 19%"></i></span>
+        <span class="occ-rail" style="--pct: 19%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span>
         <span class="players-label">players online</span>
       </span>
       <span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b id="s2cVal">9%</b></span><span class="zone-track"><span class="seg-track" id="s2cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:7%"></i><i class="dotcol" style="--lvl:7.3%"></i><i class="dotcol" style="--lvl:7.5%"></i><i class="dotcol" style="--lvl:7.8%"></i><i class="dotcol" style="--lvl:8.2%"></i><i class="dotcol" style="--lvl:8.6%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9.7%"></i><i class="dotcol" style="--lvl:9.9%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.1%"></i><i class="dotcol" style="--lvl:8.8%"></i><i class="dotcol" style="--lvl:8.6%"></i><i class="dotcol" style="--lvl:8.3%"></i><i class="dotcol" style="--lvl:8.1%"></i><i class="dotcol" style="--lvl:8.8%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:10.5%"></i><i class="dotcol" style="--lvl:11%"></i><i class="dotcol" style="--lvl:11.4%"></i><i class="dotcol" style="--lvl:11.7%"></i><i class="dotcol" style="--lvl:11.8%"></i><i class="dotcol" style="--lvl:11.7%"></i><i class="dotcol" style="--lvl:11.2%"></i><i class="dotcol" style="--lvl:10.7%"></i><i class="dotcol" style="--lvl:10.2%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.5%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.2%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:10.5%"></i><i class="dotcol" style="--lvl:11.3%"></i><i class="dotcol" style="--lvl:12.1%"></i><i class="dotcol" style="--lvl:12.7%"></i><i class="dotcol" style="--lvl:12.5%"></i><i class="dotcol" style="--lvl:12%"></i><i class="dotcol" style="--lvl:11.5%"></i><i class="dotcol" style="--lvl:10.9%"></i><i class="dotcol" style="--lvl:10.3%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol" style="--lvl:8.9%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.3%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.9%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.9%"></i><i class="dotcol" style="--lvl:9.7%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:10.1%"></i><i class="dotcol" style="--lvl:10.7%"></i><i class="dotcol" style="--lvl:10.9%"></i><i class="dotcol" style="--lvl:10.6%"></i><i class="dotcol" style="--lvl:10.3%"></i><i class="dotcol" style="--lvl:10.1%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.5%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol now" style="--lvl:9%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
@@ -2532,7 +2539,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </span>
       <span class="players">
         <span class="players-num">—</span>
-        <span class="cap"></span>
+        <span class="occ-rail" aria-hidden="true"></span>
         <span class="players-label">offline</span>
       </span>
       <span class="dead-note">last session 6d 01h · world saved · no errors on shutdown</span>
@@ -2546,7 +2553,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <span class="srv-meta">yggdrasil &middot; v0.220.5 &middot; :2456 &middot; up 9d 03h</span>
         <span class="chip run"><i></i>running</span>
       </span>
-      <span class="players"><span class="players-num">4<small> / 10</small></span><span class="cap"><i style="width: 40%"></i></span><span class="players-label">players online</span></span><span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b><span id="s3cVal">14%</span></b></span><span class="zone-track"><span class="seg-track" id="s3cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:16.3%"></i><i class="dotcol" style="--lvl:17.1%"></i><i class="dotcol" style="--lvl:15.9%"></i><i class="dotcol" style="--lvl:16.0%"></i><i class="dotcol" style="--lvl:16.8%"></i><i class="dotcol" style="--lvl:18.8%"></i><i class="dotcol" style="--lvl:18.1%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:18.0%"></i><i class="dotcol" style="--lvl:19.6%"></i><i class="dotcol" style="--lvl:21.2%"></i><i class="dotcol" style="--lvl:20.2%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:19.3%"></i><i class="dotcol" style="--lvl:20.9%"></i><i class="dotcol" style="--lvl:19.0%"></i><i class="dotcol" style="--lvl:19.2%"></i><i class="dotcol" style="--lvl:18.1%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:18.6%"></i><i class="dotcol" style="--lvl:18.4%"></i><i class="dotcol" style="--lvl:20.2%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:17.6%"></i><i class="dotcol" style="--lvl:16.8%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.0%"></i><i class="dotcol" style="--lvl:20.7%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.3%"></i><i class="dotcol" style="--lvl:21.5%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:20.5%"></i><i class="dotcol" style="--lvl:21.0%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:19.5%"></i><i class="dotcol" style="--lvl:18.8%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:17.0%"></i><i class="dotcol" style="--lvl:16.0%"></i><i class="dotcol" style="--lvl:15.1%"></i><i class="dotcol" style="--lvl:14.6%"></i><i class="dotcol" style="--lvl:13.8%"></i><i class="dotcol" style="--lvl:14.4%"></i><i class="dotcol" style="--lvl:16.6%"></i><i class="dotcol" style="--lvl:17.4%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:16.1%"></i><i class="dotcol" style="--lvl:17.4%"></i><i class="dotcol" style="--lvl:16.3%"></i><i class="dotcol" style="--lvl:18.2%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:21.3%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:22.8%"></i><i class="dotcol" style="--lvl:21.3%"></i><i class="dotcol" style="--lvl:20.4%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:22.3%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:20.4%"></i><i class="dotcol now" style="--lvl:18.7%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span><span class="srv-chart"><span class="srv-chart-label"><span>memory</span><b><span id="s3mVal">3.7</span> / 8G</b></span><span class="zone-track"><span class="seg-track" id="s3mSegs" aria-hidden="true"><i class="dotcol" style="--lvl:48.8%"></i><i class="dotcol" style="--lvl:47.2%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:47.6%"></i><i class="dotcol" style="--lvl:45.8%"></i><i class="dotcol" style="--lvl:48.2%"></i><i class="dotcol" style="--lvl:49.0%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol w" style="--lvl:51.9%"></i><i class="dotcol w" style="--lvl:51.0%"></i><i class="dotcol" style="--lvl:49.1%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol w" style="--lvl:51.5%"></i><i class="dotcol w" style="--lvl:51.9%"></i><i class="dotcol w" style="--lvl:50.8%"></i><i class="dotcol w" style="--lvl:51.8%"></i><i class="dotcol w" style="--lvl:52.3%"></i><i class="dotcol w" style="--lvl:53.4%"></i><i class="dotcol w" style="--lvl:54.7%"></i><i class="dotcol w" style="--lvl:54.6%"></i><i class="dotcol w" style="--lvl:55.9%"></i><i class="dotcol w" style="--lvl:55.2%"></i><i class="dotcol w" style="--lvl:53.2%"></i><i class="dotcol w" style="--lvl:52.2%"></i><i class="dotcol w" style="--lvl:53.0%"></i><i class="dotcol w" style="--lvl:53.5%"></i><i class="dotcol w" style="--lvl:52.2%"></i><i class="dotcol w" style="--lvl:51.7%"></i><i class="dotcol w" style="--lvl:53.3%"></i><i class="dotcol w" style="--lvl:53.7%"></i><i class="dotcol w" style="--lvl:51.3%"></i><i class="dotcol" style="--lvl:49.9%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:46.9%"></i><i class="dotcol" style="--lvl:45.9%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol" style="--lvl:49.2%"></i><i class="dotcol" style="--lvl:48.7%"></i><i class="dotcol" style="--lvl:49.3%"></i><i class="dotcol" style="--lvl:48.3%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:47.3%"></i><i class="dotcol" style="--lvl:45.6%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:46.2%"></i><i class="dotcol" style="--lvl:47.0%"></i><i class="dotcol" style="--lvl:46.3%"></i><i class="dotcol" style="--lvl:48.4%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol w" style="--lvl:50.4%"></i><i class="dotcol w" style="--lvl:52.1%"></i><i class="dotcol w" style="--lvl:53.2%"></i><i class="dotcol w" style="--lvl:52.6%"></i><i class="dotcol w" style="--lvl:53.8%"></i><i class="dotcol w" style="--lvl:53.1%"></i><i class="dotcol w" style="--lvl:50.9%"></i><i class="dotcol w" style="--lvl:51.1%"></i><i class="dotcol w" style="--lvl:50.8%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol" style="--lvl:48.7%"></i><i class="dotcol" style="--lvl:47.3%"></i><i class="dotcol" style="--lvl:46.6%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:48.8%"></i><i class="dotcol" style="--lvl:48.0%"></i><i class="dotcol" style="--lvl:49.8%"></i><i class="dotcol w" style="--lvl:51.1%"></i><i class="dotcol" style="--lvl:49.0%"></i><i class="dotcol" style="--lvl:49.1%"></i><i class="dotcol now" style="--lvl:49.3%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
+      <span class="players"><span class="players-num">4<small> / 10</small></span><span class="occ-rail" style="--pct: 40%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span><span class="players-label">players online</span></span><span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b><span id="s3cVal">14%</span></b></span><span class="zone-track"><span class="seg-track" id="s3cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:16.3%"></i><i class="dotcol" style="--lvl:17.1%"></i><i class="dotcol" style="--lvl:15.9%"></i><i class="dotcol" style="--lvl:16.0%"></i><i class="dotcol" style="--lvl:16.8%"></i><i class="dotcol" style="--lvl:18.8%"></i><i class="dotcol" style="--lvl:18.1%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:18.0%"></i><i class="dotcol" style="--lvl:19.6%"></i><i class="dotcol" style="--lvl:21.2%"></i><i class="dotcol" style="--lvl:20.2%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:19.3%"></i><i class="dotcol" style="--lvl:20.9%"></i><i class="dotcol" style="--lvl:19.0%"></i><i class="dotcol" style="--lvl:19.2%"></i><i class="dotcol" style="--lvl:18.1%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:18.6%"></i><i class="dotcol" style="--lvl:18.4%"></i><i class="dotcol" style="--lvl:20.2%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:18.9%"></i><i class="dotcol" style="--lvl:17.6%"></i><i class="dotcol" style="--lvl:16.8%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.0%"></i><i class="dotcol" style="--lvl:20.7%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:19.1%"></i><i class="dotcol" style="--lvl:20.3%"></i><i class="dotcol" style="--lvl:21.5%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:20.5%"></i><i class="dotcol" style="--lvl:21.0%"></i><i class="dotcol" style="--lvl:19.7%"></i><i class="dotcol" style="--lvl:19.5%"></i><i class="dotcol" style="--lvl:18.8%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:18.3%"></i><i class="dotcol" style="--lvl:17.0%"></i><i class="dotcol" style="--lvl:16.0%"></i><i class="dotcol" style="--lvl:15.1%"></i><i class="dotcol" style="--lvl:14.6%"></i><i class="dotcol" style="--lvl:13.8%"></i><i class="dotcol" style="--lvl:14.4%"></i><i class="dotcol" style="--lvl:16.6%"></i><i class="dotcol" style="--lvl:17.4%"></i><i class="dotcol" style="--lvl:17.2%"></i><i class="dotcol" style="--lvl:16.1%"></i><i class="dotcol" style="--lvl:17.4%"></i><i class="dotcol" style="--lvl:16.3%"></i><i class="dotcol" style="--lvl:18.2%"></i><i class="dotcol" style="--lvl:19.9%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:21.3%"></i><i class="dotcol" style="--lvl:20.8%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:22.8%"></i><i class="dotcol" style="--lvl:21.3%"></i><i class="dotcol" style="--lvl:20.4%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:22.3%"></i><i class="dotcol" style="--lvl:21.8%"></i><i class="dotcol" style="--lvl:20.4%"></i><i class="dotcol now" style="--lvl:18.7%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span><span class="srv-chart"><span class="srv-chart-label"><span>memory</span><b><span id="s3mVal">3.7</span> / 8G</b></span><span class="zone-track"><span class="seg-track" id="s3mSegs" aria-hidden="true"><i class="dotcol" style="--lvl:48.8%"></i><i class="dotcol" style="--lvl:47.2%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:47.6%"></i><i class="dotcol" style="--lvl:45.8%"></i><i class="dotcol" style="--lvl:48.2%"></i><i class="dotcol" style="--lvl:49.0%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol w" style="--lvl:51.9%"></i><i class="dotcol w" style="--lvl:51.0%"></i><i class="dotcol" style="--lvl:49.1%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol w" style="--lvl:51.5%"></i><i class="dotcol w" style="--lvl:51.9%"></i><i class="dotcol w" style="--lvl:50.8%"></i><i class="dotcol w" style="--lvl:51.8%"></i><i class="dotcol w" style="--lvl:52.3%"></i><i class="dotcol w" style="--lvl:53.4%"></i><i class="dotcol w" style="--lvl:54.7%"></i><i class="dotcol w" style="--lvl:54.6%"></i><i class="dotcol w" style="--lvl:55.9%"></i><i class="dotcol w" style="--lvl:55.2%"></i><i class="dotcol w" style="--lvl:53.2%"></i><i class="dotcol w" style="--lvl:52.2%"></i><i class="dotcol w" style="--lvl:53.0%"></i><i class="dotcol w" style="--lvl:53.5%"></i><i class="dotcol w" style="--lvl:52.2%"></i><i class="dotcol w" style="--lvl:51.7%"></i><i class="dotcol w" style="--lvl:53.3%"></i><i class="dotcol w" style="--lvl:53.7%"></i><i class="dotcol w" style="--lvl:51.3%"></i><i class="dotcol" style="--lvl:49.9%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:46.9%"></i><i class="dotcol" style="--lvl:45.9%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol" style="--lvl:49.2%"></i><i class="dotcol" style="--lvl:48.7%"></i><i class="dotcol" style="--lvl:49.3%"></i><i class="dotcol" style="--lvl:48.3%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:47.3%"></i><i class="dotcol" style="--lvl:45.6%"></i><i class="dotcol" style="--lvl:47.4%"></i><i class="dotcol" style="--lvl:46.2%"></i><i class="dotcol" style="--lvl:47.0%"></i><i class="dotcol" style="--lvl:46.3%"></i><i class="dotcol" style="--lvl:48.4%"></i><i class="dotcol" style="--lvl:49.4%"></i><i class="dotcol w" style="--lvl:50.4%"></i><i class="dotcol w" style="--lvl:52.1%"></i><i class="dotcol w" style="--lvl:53.2%"></i><i class="dotcol w" style="--lvl:52.6%"></i><i class="dotcol w" style="--lvl:53.8%"></i><i class="dotcol w" style="--lvl:53.1%"></i><i class="dotcol w" style="--lvl:50.9%"></i><i class="dotcol w" style="--lvl:51.1%"></i><i class="dotcol w" style="--lvl:50.8%"></i><i class="dotcol w" style="--lvl:50.6%"></i><i class="dotcol" style="--lvl:48.7%"></i><i class="dotcol" style="--lvl:47.3%"></i><i class="dotcol" style="--lvl:46.6%"></i><i class="dotcol" style="--lvl:47.9%"></i><i class="dotcol" style="--lvl:48.8%"></i><i class="dotcol" style="--lvl:48.0%"></i><i class="dotcol" style="--lvl:49.8%"></i><i class="dotcol w" style="--lvl:51.1%"></i><i class="dotcol" style="--lvl:49.0%"></i><i class="dotcol" style="--lvl:49.1%"></i><i class="dotcol now" style="--lvl:49.3%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
       <span class="descend"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 2 5 L 7 10 L 12 5"/></svg>open</span>
     </button>
 
@@ -2557,7 +2564,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <span class="srv-meta">megabase &middot; v2.0.28 &middot; :34197 &middot; up 21d 17h</span>
         <span class="chip run"><i></i>running</span>
       </span>
-      <span class="players"><span class="players-num">2<small> / 8</small></span><span class="cap"><i style="width: 25%"></i></span><span class="players-label">players online</span></span><span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b><span id="s4cVal">31%</span></b></span><span class="zone-track"><span class="seg-track" id="s4cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:32.1%"></i><i class="dotcol" style="--lvl:32.7%"></i><i class="dotcol" style="--lvl:33.6%"></i><i class="dotcol" style="--lvl:33.9%"></i><i class="dotcol" style="--lvl:32.5%"></i><i class="dotcol" style="--lvl:31.4%"></i><i class="dotcol" style="--lvl:31.7%"></i><i class="dotcol" style="--lvl:30.4%"></i><i class="dotcol" style="--lvl:31.2%"></i><i class="dotcol" style="--lvl:33.8%"></i><i class="dotcol" style="--lvl:33.9%"></i><i class="dotcol" style="--lvl:35.4%"></i><i class="dotcol" style="--lvl:34.6%"></i><i class="dotcol" style="--lvl:36.4%"></i><i class="dotcol" style="--lvl:36.8%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:36.9%"></i><i class="dotcol" style="--lvl:38.6%"></i><i class="dotcol" style="--lvl:40.2%"></i><i class="dotcol" style="--lvl:38.1%"></i><i class="dotcol" style="--lvl:35.7%"></i><i class="dotcol" style="--lvl:35.0%"></i><i class="dotcol" style="--lvl:36.6%"></i><i class="dotcol" style="--lvl:34.9%"></i><i class="dotcol" style="--lvl:34.4%"></i><i class="dotcol" style="--lvl:34.7%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:34.4%"></i><i class="dotcol" style="--lvl:32.9%"></i><i class="dotcol" style="--lvl:31.0%"></i><i class="dotcol" style="--lvl:33.2%"></i><i class="dotcol" style="--lvl:32.4%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:36.5%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:34.8%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:35.2%"></i><i class="dotcol" style="--lvl:36.5%"></i><i class="dotcol" style="--lvl:34.8%"></i><i class="dotcol" style="--lvl:33.3%"></i><i class="dotcol" style="--lvl:33.0%"></i><i class="dotcol" style="--lvl:34.7%"></i><i class="dotcol" style="--lvl:33.2%"></i><i class="dotcol" style="--lvl:34.9%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:34.6%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:37.4%"></i><i class="dotcol" style="--lvl:36.0%"></i><i class="dotcol" style="--lvl:36.7%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:36.9%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:35.0%"></i><i class="dotcol" style="--lvl:36.2%"></i><i class="dotcol" style="--lvl:34.1%"></i><i class="dotcol" style="--lvl:33.3%"></i><i class="dotcol" style="--lvl:34.2%"></i><i class="dotcol" style="--lvl:35.2%"></i><i class="dotcol" style="--lvl:35.1%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:37.5%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol now" style="--lvl:35.5%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span><span class="srv-chart"><span class="srv-chart-label"><span>memory</span><b><span id="s4mVal">3.7</span> / 6G</b></span><span class="zone-track"><span class="seg-track" id="s4mSegs" aria-hidden="true"><i class="dotcol w" style="--lvl:68.5%"></i><i class="dotcol w" style="--lvl:67.1%"></i><i class="dotcol w" style="--lvl:65.4%"></i><i class="dotcol w" style="--lvl:64.2%"></i><i class="dotcol w" style="--lvl:65.8%"></i><i class="dotcol w" style="--lvl:65.9%"></i><i class="dotcol w" style="--lvl:66.6%"></i><i class="dotcol w" style="--lvl:64.7%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:68.0%"></i><i class="dotcol w" style="--lvl:68.8%"></i><i class="dotcol w" style="--lvl:70.7%"></i><i class="dotcol w" style="--lvl:72.3%"></i><i class="dotcol w" style="--lvl:74.3%"></i><i class="dotcol r" style="--lvl:75.7%"></i><i class="dotcol r" style="--lvl:76.2%"></i><i class="dotcol r" style="--lvl:76.0%"></i><i class="dotcol w" style="--lvl:73.8%"></i><i class="dotcol w" style="--lvl:73.7%"></i><i class="dotcol w" style="--lvl:74.6%"></i><i class="dotcol w" style="--lvl:72.9%"></i><i class="dotcol w" style="--lvl:72.4%"></i><i class="dotcol w" style="--lvl:71.5%"></i><i class="dotcol w" style="--lvl:71.3%"></i><i class="dotcol w" style="--lvl:68.6%"></i><i class="dotcol w" style="--lvl:70.5%"></i><i class="dotcol w" style="--lvl:68.2%"></i><i class="dotcol w" style="--lvl:66.8%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:65.6%"></i><i class="dotcol w" style="--lvl:67.7%"></i><i class="dotcol w" style="--lvl:68.0%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:71.1%"></i><i class="dotcol w" style="--lvl:69.0%"></i><i class="dotcol w" style="--lvl:67.4%"></i><i class="dotcol w" style="--lvl:69.8%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:69.7%"></i><i class="dotcol w" style="--lvl:70.0%"></i><i class="dotcol w" style="--lvl:67.7%"></i><i class="dotcol w" style="--lvl:66.6%"></i><i class="dotcol w" style="--lvl:67.0%"></i><i class="dotcol w" style="--lvl:67.5%"></i><i class="dotcol w" style="--lvl:70.0%"></i><i class="dotcol w" style="--lvl:72.2%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:71.1%"></i><i class="dotcol w" style="--lvl:72.2%"></i><i class="dotcol w" style="--lvl:70.5%"></i><i class="dotcol w" style="--lvl:68.9%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:68.5%"></i><i class="dotcol w" style="--lvl:67.3%"></i><i class="dotcol w" style="--lvl:66.0%"></i><i class="dotcol w" style="--lvl:66.0%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:69.2%"></i><i class="dotcol w" style="--lvl:68.7%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:70.8%"></i><i class="dotcol w" style="--lvl:71.8%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:70.2%"></i><i class="dotcol w" style="--lvl:69.0%"></i><i class="dotcol w" style="--lvl:68.1%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:70.9%"></i><i class="dotcol w" style="--lvl:71.5%"></i><i class="dotcol w now" style="--lvl:69.8%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
+      <span class="players"><span class="players-num">2<small> / 8</small></span><span class="occ-rail" style="--pct: 25%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span><span class="players-label">players online</span></span><span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b><span id="s4cVal">31%</span></b></span><span class="zone-track"><span class="seg-track" id="s4cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:32.1%"></i><i class="dotcol" style="--lvl:32.7%"></i><i class="dotcol" style="--lvl:33.6%"></i><i class="dotcol" style="--lvl:33.9%"></i><i class="dotcol" style="--lvl:32.5%"></i><i class="dotcol" style="--lvl:31.4%"></i><i class="dotcol" style="--lvl:31.7%"></i><i class="dotcol" style="--lvl:30.4%"></i><i class="dotcol" style="--lvl:31.2%"></i><i class="dotcol" style="--lvl:33.8%"></i><i class="dotcol" style="--lvl:33.9%"></i><i class="dotcol" style="--lvl:35.4%"></i><i class="dotcol" style="--lvl:34.6%"></i><i class="dotcol" style="--lvl:36.4%"></i><i class="dotcol" style="--lvl:36.8%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:36.9%"></i><i class="dotcol" style="--lvl:38.6%"></i><i class="dotcol" style="--lvl:40.2%"></i><i class="dotcol" style="--lvl:38.1%"></i><i class="dotcol" style="--lvl:35.7%"></i><i class="dotcol" style="--lvl:35.0%"></i><i class="dotcol" style="--lvl:36.6%"></i><i class="dotcol" style="--lvl:34.9%"></i><i class="dotcol" style="--lvl:34.4%"></i><i class="dotcol" style="--lvl:34.7%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:34.4%"></i><i class="dotcol" style="--lvl:32.9%"></i><i class="dotcol" style="--lvl:31.0%"></i><i class="dotcol" style="--lvl:33.2%"></i><i class="dotcol" style="--lvl:32.4%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:36.5%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:34.8%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:35.2%"></i><i class="dotcol" style="--lvl:36.5%"></i><i class="dotcol" style="--lvl:34.8%"></i><i class="dotcol" style="--lvl:33.3%"></i><i class="dotcol" style="--lvl:33.0%"></i><i class="dotcol" style="--lvl:34.7%"></i><i class="dotcol" style="--lvl:33.2%"></i><i class="dotcol" style="--lvl:34.9%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:34.6%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:37.4%"></i><i class="dotcol" style="--lvl:36.0%"></i><i class="dotcol" style="--lvl:36.7%"></i><i class="dotcol" style="--lvl:38.0%"></i><i class="dotcol" style="--lvl:36.9%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:35.0%"></i><i class="dotcol" style="--lvl:36.2%"></i><i class="dotcol" style="--lvl:34.1%"></i><i class="dotcol" style="--lvl:33.3%"></i><i class="dotcol" style="--lvl:34.2%"></i><i class="dotcol" style="--lvl:35.2%"></i><i class="dotcol" style="--lvl:35.1%"></i><i class="dotcol" style="--lvl:35.9%"></i><i class="dotcol" style="--lvl:34.0%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol" style="--lvl:36.1%"></i><i class="dotcol" style="--lvl:37.5%"></i><i class="dotcol" style="--lvl:35.6%"></i><i class="dotcol now" style="--lvl:35.5%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span><span class="srv-chart"><span class="srv-chart-label"><span>memory</span><b><span id="s4mVal">3.7</span> / 6G</b></span><span class="zone-track"><span class="seg-track" id="s4mSegs" aria-hidden="true"><i class="dotcol w" style="--lvl:68.5%"></i><i class="dotcol w" style="--lvl:67.1%"></i><i class="dotcol w" style="--lvl:65.4%"></i><i class="dotcol w" style="--lvl:64.2%"></i><i class="dotcol w" style="--lvl:65.8%"></i><i class="dotcol w" style="--lvl:65.9%"></i><i class="dotcol w" style="--lvl:66.6%"></i><i class="dotcol w" style="--lvl:64.7%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:68.0%"></i><i class="dotcol w" style="--lvl:68.8%"></i><i class="dotcol w" style="--lvl:70.7%"></i><i class="dotcol w" style="--lvl:72.3%"></i><i class="dotcol w" style="--lvl:74.3%"></i><i class="dotcol r" style="--lvl:75.7%"></i><i class="dotcol r" style="--lvl:76.2%"></i><i class="dotcol r" style="--lvl:76.0%"></i><i class="dotcol w" style="--lvl:73.8%"></i><i class="dotcol w" style="--lvl:73.7%"></i><i class="dotcol w" style="--lvl:74.6%"></i><i class="dotcol w" style="--lvl:72.9%"></i><i class="dotcol w" style="--lvl:72.4%"></i><i class="dotcol w" style="--lvl:71.5%"></i><i class="dotcol w" style="--lvl:71.3%"></i><i class="dotcol w" style="--lvl:68.6%"></i><i class="dotcol w" style="--lvl:70.5%"></i><i class="dotcol w" style="--lvl:68.2%"></i><i class="dotcol w" style="--lvl:66.8%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:66.4%"></i><i class="dotcol w" style="--lvl:65.6%"></i><i class="dotcol w" style="--lvl:67.7%"></i><i class="dotcol w" style="--lvl:68.0%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:71.1%"></i><i class="dotcol w" style="--lvl:69.0%"></i><i class="dotcol w" style="--lvl:67.4%"></i><i class="dotcol w" style="--lvl:69.8%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:69.7%"></i><i class="dotcol w" style="--lvl:70.0%"></i><i class="dotcol w" style="--lvl:67.7%"></i><i class="dotcol w" style="--lvl:66.6%"></i><i class="dotcol w" style="--lvl:67.0%"></i><i class="dotcol w" style="--lvl:67.5%"></i><i class="dotcol w" style="--lvl:70.0%"></i><i class="dotcol w" style="--lvl:72.2%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:71.1%"></i><i class="dotcol w" style="--lvl:72.2%"></i><i class="dotcol w" style="--lvl:70.5%"></i><i class="dotcol w" style="--lvl:68.9%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:68.5%"></i><i class="dotcol w" style="--lvl:67.3%"></i><i class="dotcol w" style="--lvl:66.0%"></i><i class="dotcol w" style="--lvl:66.0%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:69.2%"></i><i class="dotcol w" style="--lvl:68.7%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:70.8%"></i><i class="dotcol w" style="--lvl:71.8%"></i><i class="dotcol w" style="--lvl:69.4%"></i><i class="dotcol w" style="--lvl:70.2%"></i><i class="dotcol w" style="--lvl:69.0%"></i><i class="dotcol w" style="--lvl:68.1%"></i><i class="dotcol w" style="--lvl:68.3%"></i><i class="dotcol w" style="--lvl:69.6%"></i><i class="dotcol w" style="--lvl:70.9%"></i><i class="dotcol w" style="--lvl:71.5%"></i><i class="dotcol w now" style="--lvl:69.8%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
       <span class="descend"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 2 5 L 7 10 L 12 5"/></svg>open</span>
     </button>
 
@@ -2568,7 +2575,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <span class="srv-meta">vardoran &middot; v1.1.4 &middot; :9876 &middot; stopped 19:41</span>
         <span class="chip stop"><i></i>stopped</span>
       </span>
-      <span class="players"><span class="players-num">&mdash;</span><span class="cap"></span><span class="players-label">offline</span></span><span class="dead-note">last session 2d 08h &middot; world saved &middot; stopped for a spec update</span>
+      <span class="players"><span class="players-num">&mdash;</span><span class="occ-rail" aria-hidden="true"></span><span class="players-label">offline</span></span><span class="dead-note">last session 2d 08h &middot; world saved &middot; stopped for a spec update</span>
       <span class="descend"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 4 2 L 11 7 L 4 12 Z"/></svg>start</span>
     </button>
   </div>
@@ -2933,7 +2940,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
     <div class="specs-foot">
       <span class="audit-note">a spec is the recipe for one game: which image runs it, how it installs, how it starts and stops, and which ports and variables a server may set. the new server sheet reads its game list from here.</span>
-      <span class="audit-note">showing 1–8 of 8</span>
+      <span class="audit-note" id="specShowing">showing 1–8 of 8</span>
     </div>
   </div>
 </div>
@@ -4172,7 +4179,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   // sparkline engine: area chart, faint grid, glowing line, emphasized endpoint
   const sparks = {};
   document.querySelectorAll('canvas[data-spark]').forEach((cv, i) => {
-    const named = { cpu: 34, mem: 33, disk: 39, net: 31, temp: 48, s1c: 22, s1m: 88 }[cv.dataset.spark];
+    const named = { cpu: 34, mem: 33, disk: 39, net: 31, s1c: 22, s1m: 88 }[cv.dataset.spark];
     const seed = Number(cv.dataset.seed) || named || 30;
     // keyed by position, not by name. Two nodes can legitimately chart the same metric, and
     // keying by name meant the second canvas replaced the first in this map - so the first
@@ -4247,10 +4254,14 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     { val: 'vCpu',   seg: 'cpuSegs',  v: 34, lo: 12, hi: 88, step: 8, fmt: v => Math.round(v) },
     { val: 'vMem',   seg: 'memSegs',  v: 33, lo: 24, hi: 62, step: 6, fmt: v => (v / 100 * 64).toFixed(1) },
     // TITAN's cpu numeral is the resting demonstration and carries no id, so the
-    // walk writes no text; the row stays because the meter still wants its samples
-    // and the temp readout still follows this walk by name (see TEMPS below).
+    // walk writes no text; the row stays because the meter still wants its samples.
     { val: 'vCpu2',  seg: 'cpuSegs2', v: 19, lo: 6,  hi: 52, step: 7, fmt: v => Math.round(v) },
     { val: 'vMem2',  seg: 'memSegs2', v: 44, lo: 30, hi: 68, step: 5, fmt: v => (v / 100 * 32).toFixed(1) },
+    // link walks in track units (percent of the 20ms scale) like every other row;
+    // only the numeral converts to milliseconds. BEHEMOTH is allowed to flirt with
+    // the 10ms warn line; TITAN idles low — an idle host answers faster, not slower.
+    { val: 'vLink',  seg: 'linkSegs',  v: 30, lo: 10, hi: 58, step: 10, fmt: v => (v / 100 * 20).toFixed(1) },
+    { val: 'vLink2', seg: 'linkSegs2', v: 11, lo: 4,  hi: 32, step: 6,  fmt: v => (v / 100 * 20).toFixed(1) },
     { val: 's1cVal', seg: 's1cSegs',  v: 22, lo: 12, hi: 45, step: 5, fmt: v => Math.round(v) + '%' },
     { val: 's1mVal', seg: 's1mSegs',  v: 50, lo: 40, hi: 62, step: 4, fmt: v => (v / 100 * 16).toFixed(1) },
     { val: 's2cVal', seg: 's2cSegs',  v: 9,  lo: 5,  hi: 22, step: 4, fmt: v => Math.round(v) + '%' },
@@ -4260,14 +4271,12 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     { val: 's4cVal', seg: 's4cSegs',  v: 31, lo: 18, hi: 52, step: 6, fmt: v => Math.round(v) + '%' },
     { val: 's4mVal', seg: 's4mSegs',  v: 69, lo: 58, hi: 80, step: 4, fmt: v => (v / 100 * 6).toFixed(1) }
   ];
-  // the two that are not random walks: a rate, and a temperature that follows its own cpu
-  // vNet2 has no numeral either, and here the missing element takes the whole row
+  // the one that is not a random walk: a rate that also sets its channel's tempo.
+  // vNet2 has no numeral, and here the missing element takes the whole row
   // out of the walk — lane tempo included, which is what leaves TITAN's channel
   // crawling at the --rate its markup declares instead of being re-driven each tick.
   const NETS = [{ val: 'vNet', chan: 'netChan', base: 10, span: 6, ref: 12.4 },
                 { val: 'vNet2', chan: 'netChan2', base: 3, span: 4, ref: 5.2 }];
-  const TEMPS = [{ val: 'vTemp', wrap: 'tempWrap', from: 'vCpu', floor: 44, div: 9 },
-                 { val: 'vTemp2', wrap: 'tempWrap2', from: 'vCpu2', floor: 39, div: 8 }];
   setInterval(() => {
     LIVE.forEach(m => {
       m.v = Math.max(m.lo, Math.min(m.hi, m.v + (Math.random() * m.step - m.step / 2)));
@@ -4281,14 +4290,6 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       if (!el) return;
       el.textContent = rate.toFixed(1);
       $(n.chan).style.setProperty('--rate', (rate / n.ref).toFixed(2));
-    });
-    TEMPS.forEach(t => {
-      const src = LIVE.find(m => m.val === t.from);
-      const el = document.getElementById(t.val);
-      if (!src || !el) return;
-      const deg = Math.round(t.floor + src.v / t.div);
-      el.textContent = deg;
-      $(t.wrap).style.setProperty('--pct', Math.max(0, Math.min(100, (deg - 20) / 70 * 100)).toFixed(1) + '%');
     });
   }, 2600);
   setInterval(() => { $('ping').textContent = (1 + Math.floor(Math.random() * 5)) + 's'; }, 3000);
@@ -4495,11 +4496,16 @@ FINISH: mock for direction comparison; the chosen direction's production build e
                 { noun: b.dataset.confirmOpen, body: b.dataset.confirmBody || undefined });
   });
 
-  // the spec count is printed twice, so it is derived rather than written down in two places
+  // the spec count is printed twice, so it is derived rather than written down
+  // in two places. The count note is addressed by id, never by
+  // '#specs .audit-note': querySelector's first match there is the EXPLAINER,
+  // and this function spent months silently overwriting that sentence with
+  // "showing 1–8 of 8" — which is why the footer read as two counts and the
+  // explainer only ever surfaced in the shipped panel.
   function syncSpecCount() {
     const n = document.querySelectorAll('#specs .spec-row').length;
     const badge = document.querySelector('#specs .audit-count');
-    const note = document.querySelector('#specs .audit-note');
+    const note = document.getElementById('specShowing');
     if (badge) badge.textContent = n + (n === 1 ? ' spec' : ' specs');
     if (note) note.textContent = n ? 'showing 1–' + n + ' of ' + n : 'no specs';
   }

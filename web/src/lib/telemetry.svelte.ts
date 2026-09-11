@@ -1,10 +1,11 @@
 // The histories behind the node band's instruments.
 //
-// cpu, disk, network and temperature are host readings polled from the Panel's
-// telemetry cache. Memory is the exception: the band shows the memory the
-// scheduler has committed to servers (from the node record), because that is
-// what decides whether the next server fits. The agent's host-memory reading is
-// still carried on the API for anything that wants it.
+// cpu, disk and network are host readings polled from the Panel's telemetry
+// cache; link is the Panel's own timing of the round trip that fetched them.
+// Memory is the exception: the band shows the memory the scheduler has
+// committed to servers (from the node record), because that is what decides
+// whether the next server fits. The agent's host-memory reading is still
+// carried on the API for anything that wants it.
 //
 // Polled separately from the 10s fleet sweep, and faster: vitals are the one
 // thing on the pane that is supposed to move. The Panel refreshes its own cache
@@ -25,6 +26,20 @@ const POLL_MS = 5_000;
 /** Samples kept per node — the dot-matrix track's column count. */
 export const TELEMETRY_HISTORY = 48;
 
+/**
+ * Full scale of the link instrument's zone track, in milliseconds. 0–20ms puts
+ * the track's standing 50/75 threshold guides at 10ms and 15ms — the point
+ * where a LAN link stops being boring. The track walks in scale units; only
+ * the numeral prints milliseconds. See DESIGN.md's dot-matrix meter section.
+ */
+export const LINK_SCALE_MS = 20;
+
+/** An RTT as track units: % of the 20ms scale, saturating at the top. */
+export function linkTrackPct(rttMs: number | undefined): number | undefined {
+  if (rttMs === undefined) return undefined;
+  return Math.min(100, (rttMs / LINK_SCALE_MS) * 100);
+}
+
 export interface NodeVitals {
   /** Latest reading, or undefined when the Panel has nothing fresh for this node. */
   now?: NodeTelemetry;
@@ -40,6 +55,8 @@ export interface NodeVitals {
   alloc: number[];
   /** disk used % per sample. */
   disk: number[];
+  /** Panel→Agent round trip per sample, in track units (% of LINK_SCALE_MS). */
+  link: number[];
   /**
    * Highest throughput seen on this node, in Mb/s — the reference the packet
    * channel scales its tempo against. Adaptive because there is no link speed
@@ -106,11 +123,13 @@ export async function refreshTelemetry(): Promise<void> {
         cpu: prev ? [...prev.cpu] : [],
         alloc: prev ? [...prev.alloc] : [],
         disk: prev ? [...prev.disk] : [],
+        link: prev ? [...prev.link] : [],
         netPeakMbps: prev?.netPeakMbps ?? 0,
       };
       push(v.cpu, t?.cpu_known ? t.cpu_percent : undefined);
       push(v.alloc, allocPct(fleet.nodes.find((n) => n.id === id)));
       push(v.disk, diskPct(t));
+      push(v.link, linkTrackPct(t?.link_rtt_ms));
       const mbps = netMbps(t);
       if (mbps !== undefined) v.netPeakMbps = Math.max(v.netPeakMbps, mbps);
       next[id] = v;

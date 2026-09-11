@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.42.0](https://github.com/briggleman/kraken/compare/v0.41.0...v0.42.0) (2026-09-11)
+
+
+### Features
+
+* backup retention (keep 5) and drill-in depth for [#126](https://github.com/briggleman/kraken/issues/126) ([#261](https://github.com/briggleman/kraken/issues/261)) ([d9cee43](https://github.com/briggleman/kraken/commit/d9cee4308fa599974e18dbcc09901f2751afc268))
+* node link metric, occupancy heat rails, full-width specs footer ([#256](https://github.com/briggleman/kraken/issues/256)) ([abd40a0](https://github.com/briggleman/kraken/commit/abd40a0c535fc61d6f6b794bab78299d07746e98))
+* **web:** backup detail shows captured globs and the mirror target ([#263](https://github.com/briggleman/kraken/issues/263)) ([4203073](https://github.com/briggleman/kraken/commit/4203073a76c3004a33c00fbcc5fb70997b391d03))
+
+
+### Bug Fixes
+
+* **deps:** bump x/crypto to v0.56.0 for two reachable SSH DoS advisories ([#260](https://github.com/briggleman/kraken/issues/260)) ([7615816](https://github.com/briggleman/kraken/commit/7615816a03d061dfd338f51ad848ba71bff13e63))
+
 ## [0.41.0](https://github.com/briggleman/kraken/compare/v0.40.0...v0.41.0) (2026-09-10)
 
 

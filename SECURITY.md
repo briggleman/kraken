@@ -432,3 +432,68 @@ are no longer accepted as *clients* by peer Agents at all.
   G120 unbounded-form is bounded by `ParseMultipartForm(maxUploadBytes)` +
   `io.LimitReader`; G404 is non-crypto reconnect jitter. No exploitable issue.
 - **Full `go test -race ./...`** — green.
+
+## Dependency sweep — SSH DoS in x/crypto (2026-09-11)
+
+Full pass on `main` at 0.41.0 (post the temp-retirement and node-`link`-metric
+work). `go vet` and `staticcheck` clean; the review focused on the file-handling
+surface added since the last audit — backup archive/restore (#228, #247, #252),
+SMB replication (#238), node delete/re-enroll (#165), the self-update stream
+(#172), and the new `link` telemetry (#256). No first-party finding: the restore
+extractor (`internal/agent/restore.go`) is hardened against Zip-Slip on every
+axis — per-**segment** `..` rejection, absolute/volume rejection, `filepath.IsLocal`,
+an explicit prefix check on the joined destination, and `withinHostDir`, with
+symlink/hardlink entries **skipped** rather than materialized.
+
+### Fixed this pass
+
+**SSH connection-deadlock DoS via the Agent's SFTP listener (CWE-400) — MEDIUM.**
+`govulncheck` flagged two advisories in `golang.org/x/crypto/ssh`, both reachable
+and both **fixed in v0.56.0**:
+
+- **`GO-2026-6354`** (CVE-2026-78662) — a peer floods an *undecided* channel's
+  incoming requests, deadlocking the whole SSH connection at the mux layer.
+- **`GO-2026-6355`** — after a channel is established, a peer sends messages the
+  mux buffered-and-blocked on, deadlocking the connection.
+
+Both are reached through `SFTPServer.handleConn` → `ssh.NewServerConn`
+(`internal/agent/sftpserver.go:135`) — the Agent's **inbound** SFTP listener
+(`:2022`) — and, less interestingly, through the outbound SFTP backup dial
+(`sftp.go` → `ssh.Dial`, remote is operator-configured). The realistic threat is
+the listener: a holder of any single server's per-server SFTP credentials (or a
+leaked/compromised one) can deadlock a connection handler; each runs in its own
+goroutine (`go s.handleConn`), so repeated malicious connections leak
+goroutines/FDs and take down the node's whole SFTP file service — a cross-tenant,
+auth-gated node DoS. The port is meant to be firewalled (see the SFTP note above),
+which bounds exposure but does not remove it.
+
+_Exploitability confirmation._ These are protocol-level deadlocks **inside**
+x/crypto's channel mux; the triggering sequences (requests on an unconfirmed
+channel; unrecognized channel messages) cannot be emitted through x/crypto's
+high-level client API, so a faithful trigger would mean porting upstream's
+raw-protocol regression harness against the pinned-vulnerable version. As with the
+2026-08-27 stdlib bump, exploitability was therefore confirmed by `govulncheck`'s
+reachability analysis rather than a bespoke packet-flood: before the bump it
+reports both advisories as **called** via `ssh.NewServerConn` on the
+externally-reachable SFTP server; after the bump both are gone.
+
+**Fix:** `golang.org/x/crypto` v0.55.0 → **v0.56.0** (`go.mod`), the version the
+advisories name. No code change; the SFTP server round-trip/jail tests
+(`internal/agent/sftpserver_test.go`) and `make check` stay green.
+
+### Accepted with monitoring (no upstream fix)
+
+`govulncheck` now reports only three `Fixed in: N/A` advisories, all reachable
+only from operator-configured/trusted inputs:
+
+- **`GO-2026-5051`** — out-of-bounds read / panic in `ReadDir` in
+  `github.com/hirochachacha/go-smb2`. Reached by the Agent's SMB backup **client**
+  (#238) listing a remote share; the SMB server is an operator-configured backup
+  target, not untrusted input. No upstream fix. Re-evaluate when one ships (or
+  wrap the client's directory reads in a panic recovery if the dependency stalls).
+- **`GO-2026-4887`, `GO-2026-4883`** — `github.com/docker/docker` (now v28.5.2)
+  Engine-SDK advisories, both `Fixed in: N/A`. The standing accepted class:
+  agent-only, daemon-side, and the vulnerable file-copy/archive functions are not
+  on any Kraken call path (all file ops + backups are native Go over bind mounts).
+
+`npm audit` (web) unchanged — 0 vulnerabilities.

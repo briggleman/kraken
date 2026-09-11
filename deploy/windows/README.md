@@ -109,13 +109,20 @@ C:\kraken\bin\kraken-agent.exe --service uninstall
 
 ### Existing installs: bring the service's recovery config current
 
-Since 0.38.1, a self-update restarts itself: the agent schedules an explicit
-`Start-Service` and stops cleanly, so the restart no longer draws on the SCM's
+Since 0.38.1, a self-update restarts itself rather than drawing on the SCM's
 **failure-recovery budget** (three restarts, counter reset only after a day
 without failures — a budget one bad crash-loop can exhaust, stranding every
 later update STOPPED with a healthy new binary on disk; that bit abyss-win
 twice on 2026-09-10, and before #184 the same node died to a legacy config
-that upgrades never rewrote).
+that upgrades never rewrote). The relaunch is done by the agent itself: the
+swapped binary is started as a hidden `--service restart-helper` process, which
+waits for the service to stop, starts it through the SCM API, confirms it is
+running, and logs every step to `C:\kraken\state\restart-helper.log`. (Before
+the fix for #271 a detached PowerShell `Start-Service` did this and could fail
+silently, leaving the service stopped with a healthy binary on disk.)
+
+**If a node does not come back after an update, read `restart-helper.log`
+first**; `kraken-agent.exe --service start` brings it up immediately meanwhile.
 
 The recovery actions still matter: they are what restarts a **failing** agent —
 a bad config, a bind conflict, and above all the boot-attempt/rollback loop of

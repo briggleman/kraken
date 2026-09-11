@@ -142,6 +142,10 @@ func Load(args []string) (*Config, Flags, error) {
 	}
 	switch modes.Service {
 	case "", "install", "uninstall", "start", "stop", "status":
+	case "restart-helper":
+		// Internal: the Windows self-update spawns the swapped binary in this
+		// mode to relaunch the service once the updating process has stopped.
+		// Accepted but not advertised — an operator never types it.
 	default:
 		return nil, modes, fmt.Errorf(`config: --service must be "install", "uninstall", "start", "stop", or "status" (got %q)`, modes.Service)
 	}

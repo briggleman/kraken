@@ -176,6 +176,10 @@ func serviceControl(action string, cfg *config.Config) error {
 		return statusService(m)
 	case "uninstall":
 		return uninstallService(m)
+	case "restart-helper":
+		// Internal: spawned by a self-update to relaunch the service after the
+		// updating process stops itself (restart_windows.go).
+		return restartHelperControl(m, cfg)
 	case "start":
 		s, err := m.OpenService(serviceName)
 		if err != nil {

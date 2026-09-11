@@ -2,7 +2,8 @@
 //
 // Returns HTML with the .spec-code token classes DESIGN.md documents — keys
 // violet, strings teal, numbers gold, literals magenta, {{templates}} lumen,
-// comments faint. It renders behind an editable <textarea> (a transparent-text
+// structural punctuation (.p) a step of teal under the strings, comments faint.
+// Only whitespace is left untagged. It renders behind an editable <textarea> (a transparent-text
 // overlay), so it must MATCH the textarea's plain wrapping: no per-line hanging
 // indent, tokens emitted inline with the source's own newlines.
 //
@@ -67,7 +68,8 @@ function highlightJSON(text: string): string {
       i += lit[0].length;
       continue;
     }
-    out += esc(c);
+    // structural punctuation is the green scaffold; whitespace is the only base text
+    out += "{}[]:,".includes(c) ? `<span class="p">${c}</span>` : esc(c);
     i++;
   }
   return out;
@@ -89,14 +91,18 @@ function highlightYAMLLine(line: string): string {
     comment = line.slice(cut);
   }
 
-  // leading indent and any "- " list markers are structure (base colour)
+  // leading indent stays base; the "- " list markers in it are structure (.p)
   const lead = (/^(\s*(?:-\s+)*)/.exec(code) as RegExpExecArray)[0];
   const rest = code.slice(lead.length);
-  let html = esc(lead);
+  let html = esc(lead).replace(/-/g, '<span class="p">-</span>');
 
   const kv = /^([^:\s#][^:]*?):(\s*)(.*)$/.exec(rest);
   if (kv) {
-    html += `<b>${esc(kv[1])}</b>:${esc(kv[2])}` + valueHTML(kv[3]);
+    // the comment peel leaves the value's trailing space behind — keep it as
+    // whitespace so `true # note` still classifies as a literal, not a string
+    const val = kv[3].trimEnd();
+    const tail = kv[3].slice(val.length);
+    html += `<b>${esc(kv[1])}</b><span class="p">:</span>${esc(kv[2])}` + valueHTML(val) + esc(tail);
   } else if (rest.length) {
     html += valueHTML(rest); // a bare scalar (e.g. a list item)
   }
@@ -108,6 +114,6 @@ function valueHTML(v: string): string {
   if (v === "") return "";
   if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(v)) return `<span class="n">${esc(v)}</span>`;
   if (/^(true|false|null|~)$/.test(v)) return `<span class="k">${esc(v)}</span>`;
-  if (v === "[]" || v === "{}") return esc(v); // empty flow collection = punctuation
+  if (v === "[]" || v === "{}") return `<span class="p">${esc(v)}</span>`; // empty flow collection = punctuation
   return `<i>${withTemplates(esc(v))}</i>`;
 }

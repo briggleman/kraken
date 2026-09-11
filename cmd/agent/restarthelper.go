@@ -24,10 +24,11 @@ import (
 //
 // The state machine below is OS-neutral so it is tested on every platform; only
 // the SCM adapter and the process spawn are Windows-only (restart_windows.go).
+//
+// The file names, the ready-marker wait, and the real clock live in
+// restart_windows.go: they are referenced only from the spawn/adapter side, and
+// a Linux build would otherwise carry them as dead code.
 const (
-	restartHelperLogName   = "restart-helper.log"
-	restartHelperReadyName = "restart-helper.ready"
-
 	// restartHelperPoll is how often the helper re-reads the service state.
 	restartHelperPoll = 2 * time.Second
 	// restartHelperStopWait bounds the wait for the old process to stop. The
@@ -36,10 +37,6 @@ const (
 	restartHelperStopWait = 3 * time.Minute
 	// restartHelperStartWait bounds start retries and the wait for Running.
 	restartHelperStartWait = 2 * time.Minute
-	// restartHelperReadyWait is how long the updating agent waits for the helper
-	// to write its ready marker before concluding the new binary cannot even
-	// run and falling back to the crash-exit → SCM recovery path.
-	restartHelperReadyWait = 5 * time.Second
 )
 
 // restartSCM is the slice of the SCM the helper needs, expressed in the same
@@ -63,10 +60,6 @@ var errServiceAlreadyRunning = errors.New("service is already running")
 type restartHelperClock struct {
 	now   func() time.Time
 	sleep func(time.Duration)
-}
-
-func realRestartHelperClock() restartHelperClock {
-	return restartHelperClock{now: time.Now, sleep: time.Sleep}
 }
 
 // runRestartHelper drives the SCM through stop → start → running, logging each

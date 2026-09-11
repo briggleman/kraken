@@ -21,6 +21,21 @@ import (
 	"github.com/briggleman/kraken/internal/shared/version"
 )
 
+// The Windows-only half of the restart helper's constants (the OS-neutral
+// state machine and its timings are in restarthelper.go).
+const (
+	restartHelperLogName   = "restart-helper.log"
+	restartHelperReadyName = "restart-helper.ready"
+	// restartHelperReadyWait is how long the updating agent waits for the helper
+	// to write its ready marker before concluding the new binary cannot even
+	// run and falling back to the crash-exit → SCM recovery path.
+	restartHelperReadyWait = 5 * time.Second
+)
+
+func realRestartHelperClock() restartHelperClock {
+	return restartHelperClock{now: time.Now, sleep: time.Sleep}
+}
+
 // restartAgent brings the process back up on the binary now at exePath.
 // Windows has no exec(2), so under the SCM the restart is a two-step handoff:
 // launch the restart helper, then stop this service gracefully. The service

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.44.0](https://github.com/briggleman/kraken/compare/v0.43.0...v0.44.0) (2026-09-11)
+
+
+### Features
+
+* **web:** colour the spec editor's punctuation as a green scaffold ([#270](https://github.com/briggleman/kraken/issues/270)) ([fd1aaa9](https://github.com/briggleman/kraken/commit/fd1aaa91c46599a99e8a5dd07080fa332d8b3f74))
+
+
+### Bug Fixes
+
+* **agent:** relaunch the windows service after self-update with our own helper ([#272](https://github.com/briggleman/kraken/issues/272)) ([73e9bc3](https://github.com/briggleman/kraken/commit/73e9bc36f3c27efe7f6138ac4eab3e777784bdb6))
+* **web:** keep the json|yaml switch above the spec editor overlay ([#268](https://github.com/briggleman/kraken/issues/268)) ([1bd7b2e](https://github.com/briggleman/kraken/commit/1bd7b2eca186ab7897db16c06041f536dd0137cd))
+
 ## [0.43.0](https://github.com/briggleman/kraken/compare/v0.42.0...v0.43.0) (2026-09-11)
 
 

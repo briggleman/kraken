@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.1](https://github.com/briggleman/kraken/compare/v0.44.0...v0.44.1) (2026-09-11)
+
+
+### Performance Improvements
+
+* **web:** take the per-frame blur and blend passes out of the ambient backdrop ([#274](https://github.com/briggleman/kraken/issues/274)) ([576f2ee](https://github.com/briggleman/kraken/commit/576f2eed745cbf856c02698ba008ec2188a7fbb8))
+
 ## [0.44.0](https://github.com/briggleman/kraken/compare/v0.43.0...v0.44.0) (2026-09-11)
 
 

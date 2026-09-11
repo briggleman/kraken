@@ -71,7 +71,36 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	for _, b := range resp.Backups {
 		views = append(views, toBackupView(b))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"backups": views})
+	// The off-node mirror destination, for the drill-in's detail and ledger. It is
+	// node config, not per-archive: the same target every current backup mirrors
+	// to (see The Spoken Mirror Rule in DESIGN.md). Empty when replication is off,
+	// which the UI reads as "no mirror line". A config the panel can't load is not
+	// fatal to listing backups — the mirror simply goes unnamed.
+	mirror := ""
+	if cfg, cerr := s.nodeConfigOrEmpty(ctx, sv.NodeID); cerr == nil {
+		mirror = mirrorTarget(cfg)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"backups": views, "mirror": mirror})
+}
+
+// mirrorTarget formats a node's off-node replication destination for display, or
+// "" when replication is off. It names the kind and host only — never a
+// credential — because it is shown in the UI. The host being absent while the
+// toggle is on means a half-configured mirror; naming it "sftp" without a host
+// would imply a working destination there is not, so that also reads as off.
+func mirrorTarget(c *store.NodeConfig) string {
+	switch {
+	case c.ReplicateToSftp && c.SftpHost != "":
+		return "sftp " + c.SftpHost
+	case c.ReplicateToSmb && c.SmbHost != "":
+		t := "smb " + c.SmbHost
+		if c.SmbShare != "" {
+			t += "/" + c.SmbShare
+		}
+		return t
+	default:
+		return ""
+	}
 }
 
 type createBackupRequest struct {

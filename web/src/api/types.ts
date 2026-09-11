@@ -310,6 +310,13 @@ export interface Spec {
   ports?: SpecPort[];
   resources: { min_memory_mb: number; recommended_memory_mb?: number };
   install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean };
+  /**
+   * What a backup of this game captures, as doublestar globs. Omitted means the
+   * whole data dir (minus what's unambiguously ephemeral). Drives the backup
+   * detail's "captured" line — the spec's CURRENT policy, so it describes new
+   * backups; an archive predating a glob change reflects the policy as it is now.
+   */
+  backup?: { include?: string[]; exclude?: string[] };
 }
 
 /** The Panel's build, from GET /version. */

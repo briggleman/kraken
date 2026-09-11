@@ -45,8 +45,8 @@ service NodeService {
   // and to reconcile the Panel's view of the node.
   rpc GetNodeInfo(GetNodeInfoRequest) returns (NodeInfo);
 
-  // GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
-  // temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+  // GetNodeTelemetry returns the host's live vitals (cpu, memory, disk,
+  // network). Deliberately separate from GetNodeInfo: identity/capacity is a
   // slow reconcile that writes to the Panel's database, while this is a cheap
   // read of an Agent-side sampler meant to be polled every few seconds. The
   // Agent samples on its own fixed tick, so rates don't skew with poll cadence.
@@ -434,10 +434,10 @@ message GetNodeTelemetryRequest {}
 // its own fixed tick and read (not computed) when the Panel polls.
 //
 // Every metric group carries a *_known flag. A host that cannot supply a metric
-// — no thermal zone, a Windows host with no WMI temperature source, a /proc that
-// isn't readable — reports known=false rather than zero, because a zero here is
-// indistinguishable from a real reading and would render as a confident lie on
-// the node band. Consumers must render unknown groups as "no data", not as 0.
+// — a /proc that isn't readable, a restricted container with no /sys — reports
+// known=false rather than zero, because a zero here is indistinguishable from a
+// real reading and would render as a confident lie on the node band. Consumers
+// must render unknown groups as "no data", not as 0.
 message NodeTelemetry {
   int64 ts_unix_ms = 1;      // when this snapshot was sampled
   int64 uptime_seconds = 2;  // host uptime (0 when unknown)
@@ -470,11 +470,13 @@ message NodeTelemetry {
   double net_tx_bps = 14;
   bool net_known = 15;
 
-  // Hottest CPU/package temperature in degrees Celsius. Frequently unavailable:
-  // no thermal zone in a VM, no WMI provider on Windows, no /sys in a
-  // restricted container.
-  double temp_celsius = 16;
-  bool temp_known = 17;
+  // Host temperature was field 16/17 (temp_celsius/temp_known). Retired: it was
+  // unavailable on most real hosts (no thermal zone in a VM, no WMI provider on
+  // Windows) and nothing consumes it since the node band's fifth instrument
+  // became the Panel-measured link round trip. Reserved so an old agent still
+  // sending the fields stays wire-compatible and the numbers are never reused.
+  reserved 16, 17;
+  reserved "temp_celsius", "temp_known";
 }
 
 // UpdateAgentChunk is one message of the Panel->Agent binary push. The first

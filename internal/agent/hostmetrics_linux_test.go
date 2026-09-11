@@ -179,118 +179,6 @@ func TestPhysicalIfaceUsesSysfsDeviceLink(t *testing.T) {
 	}
 }
 
-// A zone that names a CPU sensor wins over a hotter unrelated one — on a laptop
-// the hottest zone is often the battery or the wireless card.
-func TestTempPrefersNamedCPUZone(t *testing.T) {
-	sys := t.TempDir()
-	writeZone(t, sys, "thermal_zone0", "BAT0", "88000")
-	writeZone(t, sys, "thermal_zone1", "x86_pkg_temp", "54000")
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if !s.tempOK {
-		t.Fatal("expected a temperature")
-	}
-	if s.tempC != 54 {
-		t.Errorf("temp = %.1f°C, want 54 (the CPU zone, not the hotter battery)", s.tempC)
-	}
-}
-
-// The case this ordering exists for: a generic acpitz zone alongside a real
-// k10temp hwmon device. Taking the zone would report the chipset as the CPU —
-// wrong, but plausible enough that nobody would notice.
-func TestTempPrefersHwmonCPUOverGenericZone(t *testing.T) {
-	sys := t.TempDir()
-	writeZone(t, sys, "thermal_zone0", "acpitz", "38000")
-	writeHwmon(t, sys, "hwmon0", "k10temp", map[string]string{"temp1_input": "61000"})
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if !s.tempOK {
-		t.Fatal("expected a temperature")
-	}
-	if s.tempC != 61 {
-		t.Errorf("temp = %.1f°C, want 61 (the named CPU driver, not the generic zone)", s.tempC)
-	}
-}
-
-// Intel's coretemp exposes a per-core reading beside the package one; AMD's
-// k10temp exposes per-CCD beside Tdie. The package figure describes the chip.
-func TestTempPrefersPackageLabelOverPerCore(t *testing.T) {
-	sys := t.TempDir()
-	writeHwmon(t, sys, "hwmon0", "coretemp", map[string]string{
-		"temp1_input": "70000", "temp1_label": "Core 0",
-		"temp2_input": "58000", "temp2_label": "Package id 0",
-	})
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if s.tempC != 58 {
-		t.Errorf("temp = %.1f°C, want 58 (the package sensor, not the hotter core)", s.tempC)
-	}
-}
-
-// Most drivers expose a single unlabelled temperature, which is the package one.
-func TestTempUnlabelledHwmonFallsBackToTemp1(t *testing.T) {
-	sys := t.TempDir()
-	writeHwmon(t, sys, "hwmon0", "zenpower", map[string]string{"temp1_input": "49000"})
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if !s.tempOK || s.tempC != 49 {
-		t.Errorf("temp = %.1f°C ok=%v, want 49", s.tempC, s.tempOK)
-	}
-}
-
-// With nothing identifiable, the hottest zone stands in — a roughly right
-// number beats an empty instrument on a machine that clearly has sensors.
-func TestTempFallsBackToHottestZone(t *testing.T) {
-	sys := t.TempDir()
-	writeZone(t, sys, "thermal_zone0", "acpitz", "45000")
-	writeZone(t, sys, "thermal_zone1", "acpitz", "61000")
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if !s.tempOK || s.tempC != 61 {
-		t.Errorf("temp = %.1f°C ok=%v, want 61", s.tempC, s.tempOK)
-	}
-}
-
-// Sensors in VMs report nonsense. A 0°C or 3000°C node band is worse than one
-// that admits it has no sensor.
-func TestTempRejectsImplausibleReadings(t *testing.T) {
-	sys := t.TempDir()
-	writeZone(t, sys, "thermal_zone0", "acpitz", "0")
-	writeZone(t, sys, "thermal_zone1", "acpitz", "3000000")
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if s.tempOK {
-		t.Errorf("expected no temperature, got %.1f°C", s.tempC)
-	}
-}
-
-// The common VM case: no thermal hardware exposed at all.
-func TestTempAbsentEntirely(t *testing.T) {
-	var s hostSnapshot
-	(&hostReader{sys: t.TempDir()}).readTemp(&s)
-	if s.tempOK {
-		t.Error("expected no temperature when the host exposes no sensors")
-	}
-}
-
-// A non-CPU hwmon device (a drive, a super-I/O chip) is not a CPU reading.
-func TestTempIgnoresNonCPUHwmon(t *testing.T) {
-	sys := t.TempDir()
-	writeHwmon(t, sys, "hwmon0", "nvme", map[string]string{"temp1_input": "52000"})
-
-	var s hostSnapshot
-	(&hostReader{sys: sys}).readTemp(&s)
-	if s.tempOK {
-		t.Errorf("an nvme sensor is not a CPU temperature, got %.1f°C", s.tempC)
-	}
-}
-
 func TestReadDiskReportsRealFilesystem(t *testing.T) {
 	var s hostSnapshot
 	readDisk(t.TempDir(), &s)
@@ -326,7 +214,6 @@ func TestHostReaderAgainstFixtureTree(t *testing.T) {
 	mustWrite(t, filepath.Join(proc, "uptime"), "3600.50 7200.00\n")
 	mustMkdir(t, filepath.Join(sys, "class", "net", "eth0", "device"))
 	mustMkdir(t, filepath.Join(sys, "class", "net", "docker0"))
-	writeZone(t, sys, "thermal_zone0", "x86_pkg_temp", "47000")
 
 	r := &hostReader{proc: proc, sys: sys, dataDir: t.TempDir()}
 	s := r.read()
@@ -339,9 +226,6 @@ func TestHostReaderAgainstFixtureTree(t *testing.T) {
 	}
 	if !s.netOK || s.netRxBytes != 5000 {
 		t.Errorf("net: ok=%v rx=%d", s.netOK, s.netRxBytes)
-	}
-	if !s.tempOK || s.tempC != 47 {
-		t.Errorf("temp: ok=%v c=%.1f", s.tempOK, s.tempC)
 	}
 	if s.uptime.Seconds() != 3600.5 {
 		t.Errorf("uptime = %v, want 3600.5s", s.uptime)
@@ -356,7 +240,7 @@ func TestHostReaderAgainstFixtureTree(t *testing.T) {
 func TestHostReaderMissingProcfs(t *testing.T) {
 	r := &hostReader{proc: filepath.Join(t.TempDir(), "nope"), sys: filepath.Join(t.TempDir(), "nope"), dataDir: ""}
 	s := r.read()
-	if s.cpuOK || s.memOK || s.netOK || s.tempOK || s.diskOK {
+	if s.cpuOK || s.memOK || s.netOK || s.diskOK {
 		t.Errorf("expected everything unknown, got %+v", s)
 	}
 	if s.at.IsZero() {
@@ -376,24 +260,6 @@ func mustWrite(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
-}
-
-func writeHwmon(t *testing.T, sys, dev, name string, files map[string]string) {
-	t.Helper()
-	dir := filepath.Join(sys, "class", "hwmon", dev)
-	mustMkdir(t, dir)
-	mustWrite(t, filepath.Join(dir, "name"), name+"\n")
-	for f, v := range files {
-		mustWrite(t, filepath.Join(dir, f), v+"\n")
-	}
-}
-
-func writeZone(t *testing.T, sys, zone, zType, milli string) {
-	t.Helper()
-	dir := filepath.Join(sys, "class", "thermal", zone)
-	mustMkdir(t, dir)
-	mustWrite(t, filepath.Join(dir, "type"), zType+"\n")
-	mustWrite(t, filepath.Join(dir, "temp"), milli+"\n")
 }
 
 // The fixture tests above prove the parsers; this one proves they are pointed at
@@ -440,11 +306,10 @@ func TestLinuxHostReaderAgainstRealHost(t *testing.T) {
 	if tel.CpuPercent < 0 || tel.CpuPercent > 100 {
 		t.Errorf("cpu percent = %.2f, outside 0..100", tel.CpuPercent)
 	}
-	// Network and temperature are environment-dependent (a container without
-	// host networking, a VM with no thermal zone), so they are reported, not
-	// required.
-	t.Logf("host: cpu %.1f%% over %d cores, mem %d/%dMB, disk %d/%dMB, net known=%v, temp known=%v (%.1f°C), up %v",
+	// Network is environment-dependent (a container without host networking has
+	// no physical interfaces to count), so it is reported, not required.
+	t.Logf("host: cpu %.1f%% over %d cores, mem %d/%dMB, disk %d/%dMB, net known=%v, up %v",
 		tel.CpuPercent, tel.CpuCores, tel.MemUsedMb, tel.MemTotalMb,
-		tel.DiskUsedMb, tel.DiskTotalMb, tel.NetKnown, tel.TempKnown, tel.TempCelsius,
+		tel.DiskUsedMb, tel.DiskTotalMb, tel.NetKnown,
 		second.uptime.Truncate(time.Second))
 }

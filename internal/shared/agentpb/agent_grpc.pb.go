@@ -64,8 +64,8 @@ type NodeServiceClient interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(ctx context.Context, in *GetNodeInfoRequest, opts ...grpc.CallOption) (*NodeInfo, error)
-	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
-	// temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk,
+	// network). Deliberately separate from GetNodeInfo: identity/capacity is a
 	// slow reconcile that writes to the Panel's database, while this is a cheap
 	// read of an Agent-side sampler meant to be polled every few seconds. The
 	// Agent samples on its own fixed tick, so rates don't skew with poll cadence.
@@ -502,8 +502,8 @@ type NodeServiceServer interface {
 	// GetNodeInfo returns the node's identity and capacity. Used for health checks
 	// and to reconcile the Panel's view of the node.
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*NodeInfo, error)
-	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk, network,
-	// temperature). Deliberately separate from GetNodeInfo: identity/capacity is a
+	// GetNodeTelemetry returns the host's live vitals (cpu, memory, disk,
+	// network). Deliberately separate from GetNodeInfo: identity/capacity is a
 	// slow reconcile that writes to the Panel's database, while this is a cheap
 	// read of an Agent-side sampler meant to be polled every few seconds. The
 	// Agent samples on its own fixed tick, so rates don't skew with poll cadence.

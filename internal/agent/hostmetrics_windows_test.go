@@ -42,12 +42,6 @@ func TestWindowsHostReaderAgainstRealHost(t *testing.T) {
 		t.Errorf("uptime = %v, want positive", first.uptime)
 	}
 
-	// Temperature is expected to be unavailable on Windows; assert the contract
-	// rather than the value, so a future WMI source has to update this.
-	if first.tempOK {
-		t.Errorf("temperature unexpectedly reported (%.1f°C) — update the docs if a source was added", first.tempC)
-	}
-
 	// A second reading must advance the cumulative counters so rates work.
 	time.Sleep(50 * time.Millisecond)
 	second := r.read()

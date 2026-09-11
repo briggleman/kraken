@@ -48,10 +48,6 @@ func (r *hostReader) read() hostSnapshot {
 	readWindowsNet(&s)
 	readWindowsUptime(&s)
 	readDisk(r.dataDir, &s)
-	// Temperature is left unknown: the only general source on Windows is the
-	// WMI MSAcpi_ThermalZoneTemperature class, which most consumer boards do
-	// not implement and which needs a WMI client this Agent deliberately does
-	// not carry. The node band renders this as "no sensor", not as 0°C.
 	return s
 }
 

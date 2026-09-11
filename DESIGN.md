@@ -518,6 +518,54 @@ is reused wherever a word must swap in place: the endpoint’s copy button flips
 every face cancels it with `margin-right: -0.18em` so the glyphs sit on the pill’s true
 optical centre.
 
+### Backup Ledger
+The drill-in’s backups block, sitting above the schedules block it shares its voice with.
+Each archive is a `.bk` row — `when · schedule-name · size` in mono 300/13px — fronted by a
+`.bk-more` disclosure chevron (rotates 90° when open) and tailed by its state word plus the
+`.mini-act` restore/delete ghosts. A future run keeps its place at the top as the same
+`scheduled` marker in Status Gold the schedule block uses.
+
+**The word at the right edge is the state of the OFF-NODE copy, not a verdict on the archive.**
+The shipped panel folded a done and a failed mirror into one green `ok`, so a mirror that had
+been failing for a week read as fine. Each state the agent reports gets its own word, coloured
+by what it prevents:
+
+- **`mirrored`** (Status Gold) — archive kept and the off-node copy landed.
+- **`mirroring`** (Sodium Lumen, with a pulsing dot) — the mirror is in flight. This is the one
+  place a *work in progress* wears the light and moves: it is narration, not an errand asking
+  for action, so the dot only breathes opacity on a fixed silhouette (per the Violet Pulse
+  Rule’s geometry constraint) and holds steady under `prefers-reduced-motion`.
+- **`mirror failed`** (Caution Violet) — the save exists on this node but not off it. Something
+  *is* prevented (the off-node copy), so it takes Caution, exactly as a closed port does — see
+  the One Light Rule’s “is anything prevented” test.
+- **`failed`** (Crisis Magenta) — no world was captured at all. Its restore ghost is `disabled`,
+  because there is no archive to restore.
+
+The chevron reveals a `.bk-detail` block in place — never a modal — of house **Label-Value
+Rows** indented to the summary text: `captured` (the spec’s backup globs), `archive` (the file
+name), `mirror` (the node’s target plus the replication state in words), and `note` (the
+archive’s error string, or on a READY archive the degraded-capture note that used to live only
+in a tooltip). Every field is a fact the agent already reports or the spec makes derivable;
+nothing invents a timestamp or a progress figure.
+
+**Retention.** The block keeps the **5 most recent archives** (fixed; there is no per-server
+knob yet). A footer ledger line — the specs sheet’s footnote voice — states the policy and the
+live counts: `keep 5 · N of 5 · <size> on disk` with the target on the right, the count tinted
+Caution once it reaches the cap. All counts are derived from the list, never written twice. A
+**failed attempt holds no retention slot** — it captured nothing, so it neither counts toward
+the 5 nor is ever evicted; only archives that kept data (`.bk[data-slot]`) do.
+
+**The eviction is named before the button, not discovered after it.** At capacity, a Caution
+line above `create backup now` says which archive the next backup will remove *and that it goes
+from the node and its mirror both* — the one committing control is about to delete a save, and
+the One Committing Control Rule’s honesty extends to naming the cost. Eviction is Caution, not
+Crisis: an operator-configured rotation is expected, not an outage.
+
+**The Spoken Mirror Rule.** A backup’s status word is the state of its off-node copy, and
+`done` / `mirroring` / `failed` / none each get their own word — never folded into a single
+green `ok`. A mirror that failed is Caution, because the redundancy you asked for is the thing
+prevented; the local save is still safe, and the word says exactly that.
+
 ### Schedule Row
 A standing order in the drill-in’s schedules block: the order’s name in mono 300/13px over
 its `action · cron` in an 11px Sand Faint small, with the next firing at the right edge in

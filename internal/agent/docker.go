@@ -1471,9 +1471,45 @@ func (d *DockerRuntime) runBackup(serverID, slug, id string, filter *backupFilte
 	if err := rep.Put(ctx, serverID, id, tmp, size); err != nil {
 		slog.Warn("backup replication failed", "server", serverID, "id", id, "err", err)
 		d.setReplication(serverID, id, agentpb.ReplicationState_REPLICATION_STATE_FAILED)
+		d.pruneBackups(ctx, serverID, slug)
 		return
 	}
 	d.setReplication(serverID, id, agentpb.ReplicationState_REPLICATION_STATE_DONE)
+	d.pruneBackups(ctx, serverID, slug)
+}
+
+// backupRetentionKeep is how many of a server's most recent archives are kept.
+// Fixed for now — there is no per-server knob yet (see the retention issue). A
+// scheduled nightly plus manual backups otherwise grow the store without bound.
+const backupRetentionKeep = 5
+
+// pruneBackups enforces retention after a successful backup: it keeps the
+// backupRetentionKeep most recent archives and deletes the rest from the primary
+// store AND the off-node mirror both, so an evicted save is gone everywhere the
+// operator was told it would be (see The Spoken Mirror Rule in DESIGN.md). It is
+// best-effort — a prune failure never fails the backup that triggered it — and it
+// counts only real archives on disk (target.List), so a failed attempt, which
+// captured nothing, occupies no retention slot.
+func (d *DockerRuntime) pruneBackups(ctx context.Context, serverID, slug string) {
+	list, err := d.backupTargetFor(slug).List(ctx, serverID)
+	if err != nil {
+		slog.Warn("retention: could not list backups to prune", "server", serverID, "err", err)
+		return
+	}
+	if len(list) <= backupRetentionKeep {
+		return
+	}
+	sortBackups(list) // newest first; the tail past the keep count is evicted
+	for _, b := range list[backupRetentionKeep:] {
+		// DeleteBackup drops the local archive, its off-node mirror, and the
+		// tracked job — the same removal the operator's own delete performs.
+		if derr := d.DeleteBackup(ctx, serverID, slug, b.Id); derr != nil {
+			slog.Warn("retention: could not evict backup", "server", serverID, "id", b.Id, "err", derr)
+			continue
+		}
+		slog.Info("retention: evicted oldest backup from node and mirror",
+			"server", serverID, "id", b.Id, "keep", backupRetentionKeep)
+	}
 }
 
 // archiveDataDir tar+gzips the filter-selected parts of a server's data dir into

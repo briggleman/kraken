@@ -586,8 +586,61 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .kick:hover { color: var(--d0); background: var(--crisis); border-color: var(--crisis); font-weight: 600; }
   .kv { display: flex; justify-content: space-between; gap: 16px; font-size: clamp(12px, 0.8vw, 14px); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
   .kv b { font-family: var(--mono); font-weight: 500; color: var(--ink); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
-  .backup-row { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-weight: 300; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .backup-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--mono); font-weight: 300; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .backup-row .good { color: var(--ok); }
+  /* ---- backup ledger (#126): one archive per row, its mirror state SPOKEN, and a
+     detail line under a disclosure. The word at the right edge is the state of the
+     off-node copy, not a verdict on the archive — the shipped panel folded a DONE and
+     a FAILED mirror into the same green `ok`, which is how a mirror that has been
+     failing for a week reads as fine. Each state the API speaks gets its own word,
+     coloured by what it prevents: `mirrored`/`ok` Status Gold; `mirroring` the light,
+     wearing the live dot the house spends on work in progress; `mirror failed`
+     Caution — the save exists here, the off-node copy does not, so something IS
+     prevented; `failed` Crisis — the world was not saved. ---- */
+  .bk { display: grid; gap: 6px; }
+  .bk-sum { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .bk-sum > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bk-more {
+    flex: 0 0 auto; width: 18px; height: 18px; display: grid; place-items: center; padding: 0;
+    border: 1px solid transparent; border-radius: 3px; background: none; color: var(--ink-3); cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .bk-more svg { width: 10px; height: 10px; transition: transform 0.2s; }
+  .bk-more:hover, .bk-more:focus-visible { color: var(--ink); border-color: rgba(var(--lumen-rgb), 0.35); outline: none; }
+  .bk-more[aria-expanded="true"] svg { transform: rotate(90deg); }
+  .bk-state { font-size: 11px; letter-spacing: 0.06em; white-space: nowrap; color: var(--ok); }
+  .bk-state.mirroring { color: var(--lumen); display: inline-flex; align-items: center; gap: 6px; }
+  .bk-state.mirroring::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--lumen); box-shadow: 0 0 8px var(--lumen);
+    animation: bkPulse 1.6s ease-in-out infinite;
+  }
+  .bk-state.mirror-failed { color: var(--caution); }
+  .bk-state.failed { color: var(--crisis); }
+  @keyframes bkPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  /* a mirror still in flight is not asking for anything — the dot just holds its light */
+  @media (prefers-reduced-motion: reduce) { .bk-state.mirroring::before { animation: none; } }
+  .mini-act:disabled { opacity: 0.4; cursor: default; }
+  .mini-act.res:disabled:hover { color: var(--lumen); background: none; border-color: rgba(var(--lumen-rgb), 0.45); }
+  /* the detail is the house Label-Value Row, indented to the summary text and quieter:
+     these are the facts behind the one word above, not a second set of vitals */
+  .bk-detail { display: grid; gap: 5px; margin-left: 26px; padding: 8px 0 4px; border-top: 1px solid rgba(var(--lumen-rgb), 0.08); }
+  /* an author display value beats the UA [hidden] sheet, so the collapse needs saying outright */
+  .bk-detail[hidden] { display: none; }
+  .bk-detail .kv { font-size: 11px; letter-spacing: 0.1em; align-items: baseline; }
+  .bk-detail .kv b { font-size: 12px; font-weight: 300; color: var(--ink-2); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .bk-detail .kv b.warn { color: var(--caution); }
+  .bk-detail .kv b.crisis { color: var(--crisis); }
+  /* the ledger line: what governs the list, in the footnote voice the specs sheet uses */
+  .bk-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .bk-foot b { font-weight: 300; color: var(--ink-2); }
+  .bk-foot b.at-cap { color: var(--caution); }
+  /* Retention names a consequence the operator must see BEFORE the button, not
+     discover after: at capacity, the next backup evicts the oldest, so the create
+     control is about to delete a save. Caution, not Crisis — an eviction the
+     operator configured is expected, not an outage. Hidden until at capacity. */
+  .bk-evict { display: flex; align-items: baseline; gap: 6px; font-family: var(--mono); font-weight: 300; font-size: 11px; line-height: 1.5; color: var(--caution); letter-spacing: 0.02em; }
+  .bk-evict::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%; background: var(--caution); transform: translateY(-1px); }
   .runbackup {
     margin-top: 4px; padding: 10px;
     font-size: 11px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--lumen);
@@ -2715,8 +2768,90 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
           <div class="backup-row"><span>tonight 03:00</span><span class="good">scheduled</span></div>
-          <div class="backup-row"><span>aug 21 03:00 · 4.8G</span><span class="bk-acts"><span class="good">ok</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span></div>
-          <div class="backup-row"><span>aug 20 03:00 · 4.7G</span><span class="bk-acts"><span class="good">ok</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span></div>
+          <!-- Every detail field is a fact the API already carries or the spec makes
+               derivable: `captured` is the spec's backup globs, `archive` the name and
+               size, `mirror` the node's configured target plus the replication state,
+               `note` the archive's error string — a failure reason, or on a READY
+               archive the degraded-capture note that used to live only in a tooltip.
+               Nothing here invents a timestamp or a progress figure the agent does not
+               report. -->
+          <!-- A .bk with data-slot holds a retention slot: it kept an archive, so it
+               counts against `keep 5`. A failed attempt captured nothing, carries no
+               data-slot, and never occupies a slot or gets evicted — it is a record of
+               a miss, not a save. refreshRetention() reads these to keep the footer and
+               the eviction warning honest as rows are created and deleted. -->
+          <div class="bk">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="bkd0" aria-label="Show details for the aug 22 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 22 03:00 · nightly</span></span>
+              <span class="bk-acts"><span class="bk-state failed">failed</span><button class="mini-act res" disabled title="nothing was captured — there is no archive to restore">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd0" hidden>
+              <div class="kv"><span>captured</span><b>nothing kept</b></div>
+              <div class="kv"><span>note</span><b class="crisis">Pal/Saved/SaveGames/…/Level.sav changed while archiving — the game was writing; try with the server stopped, or after its next autosave</b></div>
+            </div>
+          </div>
+          <div class="bk" data-slot data-when="aug 21 03:00">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="true" aria-controls="bkd1" aria-label="Hide details for the aug 21 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 21 03:00 · nightly · 4.8G</span></span>
+              <span class="bk-acts"><span class="bk-state mirrored">mirrored</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd1">
+              <div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>
+              <div class="kv"><span>archive</span><b>nightly-2026-08-21T0300.tar.gz</b></div>
+              <div class="kv"><span>mirror</span><b>sftp nas.local:/backups/palworld · done</b></div>
+            </div>
+          </div>
+          <div class="bk" data-slot data-when="aug 20 03:00">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="bkd2" aria-label="Show details for the aug 20 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 20 03:00 · nightly · 4.7G</span></span>
+              <span class="bk-acts"><span class="bk-state mirror-failed">mirror failed</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd2" hidden>
+              <div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>
+              <div class="kv"><span>archive</span><b>nightly-2026-08-20T0300.tar.gz</b></div>
+              <div class="kv"><span>mirror</span><b class="warn">sftp nas.local: connection refused — the save is safe on this node, not off it</b></div>
+            </div>
+          </div>
+          <div class="bk" data-slot data-when="aug 19 03:00">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="bkd3" aria-label="Show details for the aug 19 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 19 03:00 · nightly · 4.7G</span></span>
+              <span class="bk-acts"><span class="bk-state mirroring">mirroring</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd3" hidden>
+              <div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>
+              <div class="kv"><span>archive</span><b>nightly-2026-08-19T0300.tar.gz</b></div>
+              <div class="kv"><span>mirror</span><b>sftp nas.local:/backups/palworld · in progress</b></div>
+              <div class="kv"><span>note</span><b class="warn">2 files changed while archiving and were skipped — the game was writing</b></div>
+            </div>
+          </div>
+          <div class="bk" data-slot data-when="aug 18 03:00">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="bkd4" aria-label="Show details for the aug 18 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 18 03:00 · nightly · 4.8G</span></span>
+              <span class="bk-acts"><span class="bk-state mirrored">mirrored</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd4" hidden>
+              <div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>
+              <div class="kv"><span>archive</span><b>nightly-2026-08-18T0300.tar.gz</b></div>
+              <div class="kv"><span>mirror</span><b>sftp nas.local:/backups/palworld · done</b></div>
+            </div>
+          </div>
+          <div class="bk" data-slot data-when="aug 17 03:00">
+            <div class="backup-row">
+              <span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="bkd5" aria-label="Show details for the aug 17 backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>aug 17 03:00 · nightly · 4.7G</span></span>
+              <span class="bk-acts"><span class="bk-state mirrored">mirrored</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>
+            </div>
+            <div class="bk-detail" id="bkd5" hidden>
+              <div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>
+              <div class="kv"><span>archive</span><b>nightly-2026-08-17T0300.tar.gz</b></div>
+              <div class="kv"><span>mirror</span><b>sftp nas.local:/backups/palworld · done</b></div>
+            </div>
+          </div>
+          <!-- The ledger line states the policy the list is under: keep the 5 most
+               recent archives, oldest evicted on the next backup. `data-keep="5"` is the
+               retention cap the mock's create/delete logic reads; the counts are derived
+               by refreshRetention(), never written twice. -->
+          <p class="bk-evict" id="bkEvict">at capacity — the next backup removes <b id="bkEvictWhich" style="color: inherit; font-weight: 400;">aug 17 03:00</b>, on this node and its mirror</p>
+          <div class="bk-foot" id="bkFoot" data-keep="5"><span>keep <b>5</b> · <b id="bkKept" class="at-cap">5 of 5</b> · <b id="bkDisk">23.7G</b> on disk</span><span>mirror <b>sftp nas.local</b></span></div>
           <button class="bk-big" id="createBackupBtn">create backup now</button>
         </div>
       </section>
@@ -4913,13 +5048,26 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   });
 
   $('backupBody').addEventListener('click', e => {
+    // the disclosure: one row's facts, in place, no modal — the detail is the
+    // reason behind the one word on the row, not a second surface
+    const more = e.target.closest('.bk-more');
+    if (more) {
+      const open = more.getAttribute('aria-expanded') !== 'true';
+      more.setAttribute('aria-expanded', String(open));
+      const detail = document.getElementById(more.getAttribute('aria-controls'));
+      if (detail) detail.hidden = !open;
+      more.setAttribute('aria-label', more.getAttribute('aria-label').replace(open ? 'Show' : 'Hide', open ? 'Hide' : 'Show'));
+      return;
+    }
     const act = e.target.closest('.mini-act');
-    if (!act) return;
-    const row = act.closest('.backup-row');
-    const label = row.querySelector('span').textContent;
+    if (!act || act.disabled) return;
+    // an archive owns its detail, so delete takes the whole .bk; the summary text
+    // is the row's own span, past the disclosure button
+    const row = act.closest('.bk') || act.closest('.backup-row');
+    const label = (row.querySelector('.bk-sum > span') || row.querySelector('span')).textContent;
     if (act.classList.contains('del')) {
       row.style.opacity = '0.3';
-      setTimeout(() => row.remove(), 250);
+      setTimeout(() => { row.remove(); refreshRetention(); }, 250);
       logDepthLine('[Backup] deleted ' + label, 'warn');
     } else {
       act.textContent = 'restoring…';
@@ -4932,6 +5080,38 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       }, 2600);
     }
   });
+
+  // Retention is a fact about the LIST, derived — never written down twice. A slot
+  // is a .bk[data-slot] (an archive that kept data); a failed attempt holds none.
+  // The footer count, the at-capacity tint, and the eviction warning all read the
+  // live DOM here, so create and delete stay honest without restating any number.
+  function refreshRetention() {
+    const foot = $('bkFoot');
+    if (!foot) return;
+    const keep = parseInt(foot.dataset.keep, 10) || 5;
+    const slots = [...document.querySelectorAll('#backupBody .bk[data-slot]')];
+    const kept = $('bkKept');
+    kept.textContent = slots.length + ' of ' + keep;
+    kept.classList.toggle('at-cap', slots.length >= keep);
+    // sum the sizes carried in each slot's summary ("· 4.8G"); a mock figure, but
+    // one that tracks what is actually on screen instead of a frozen total
+    let gb = 0;
+    for (const s of slots) {
+      const m = (s.querySelector('.bk-sum > span')?.textContent || '').match(/([\d.]+)G\b/);
+      if (m) gb += parseFloat(m[1]);
+    }
+    $('bkDisk').textContent = gb ? gb.toFixed(1) + 'G' : '0G';
+    // the eviction warning names the oldest slot (last in this newest-first list),
+    // shown only at capacity — the create button is about to delete that save
+    const evict = $('bkEvict');
+    if (slots.length >= keep && slots.length > 0) {
+      $('bkEvictWhich').textContent = slots[slots.length - 1].dataset.when || 'the oldest';
+      evict.hidden = false;
+    } else {
+      evict.hidden = true;
+    }
+  }
+  refreshRetention();
   // Console rows are built from text nodes, never from a markup string: the
   // values interpolated here come from the schedule/backup name inputs, so
   // innerHTML would let anything typed into them execute (js/xss-through-dom).
@@ -4976,11 +5156,48 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       if (prog >= 100) {
         clearInterval(timer);
         setTimeout(() => {
+          // the archive lands, then the mirror runs: the row is born `mirroring` and
+          // settles to `mirrored`, which is the lifecycle the API actually reports
+          const id = 'bkd-' + name;
           const done = document.createElement('div');
-          done.className = 'backup-row';
-          done.innerHTML = '<span>just now · ' + name + ' · 4.8G</span><span class="bk-acts"><span class="good">ok</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>';
-          row.replaceWith(done);
+          done.className = 'bk';
+          // a completed manual backup kept an archive, so it holds a retention slot
+          done.dataset.slot = '';
+          done.dataset.when = 'just now · ' + name;
+          done.innerHTML =
+            '<div class="backup-row">' +
+              '<span class="bk-sum"><button class="bk-more" aria-expanded="false" aria-controls="' + id + '" aria-label="Show details for the ' + name + ' backup"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button><span>just now · ' + name + ' · 4.8G</span></span>' +
+              '<span class="bk-acts"><span class="bk-state mirroring">mirroring</span><button class="mini-act res">restore</button><button class="mini-act del">delete</button></span>' +
+            '</div>' +
+            '<div class="bk-detail" id="' + id + '" hidden>' +
+              '<div class="kv"><span>captured</span><b>Pal/Saved/** − Logs, Crashes</b></div>' +
+              '<div class="kv"><span>archive</span><b>' + name + '.tar.gz</b></div>' +
+              '<div class="kv"><span>mirror</span><b class="bk-mirror-line">sftp nas.local:/backups/palworld · in progress</b></div>' +
+            '</div>';
+          // swap the progress row out, then seat the finished archive below the
+          // future "scheduled" marker and above the rest
+          row.remove();
+          const firstBk = $('backupBody').querySelector('.bk');
+          $('backupBody').insertBefore(done, firstBk);
           btn.disabled = false;
+          // evict-on-create: keeping the 5 most recent means the new archive pushes
+          // the oldest slot out. The removal is the honest cost the warning promised.
+          const keep = parseInt($('bkFoot').dataset.keep, 10) || 5;
+          const slots = [...document.querySelectorAll('#backupBody .bk[data-slot]')];
+          if (slots.length > keep) {
+            const oldest = slots[slots.length - 1];
+            const evicted = oldest.dataset.when || 'the oldest backup';
+            oldest.style.opacity = '0.3';
+            setTimeout(() => { oldest.remove(); refreshRetention(); }, 300);
+            logDepthLine('[Backup] retention: removed ' + evicted + ' from node and mirror (keep ' + keep + ')', 'warn');
+          }
+          refreshRetention();
+          setTimeout(() => {
+            const st = done.querySelector('.bk-state');
+            st.className = 'bk-state mirrored';
+            st.textContent = 'mirrored';
+            done.querySelector('.bk-mirror-line').textContent = 'sftp nas.local:/backups/palworld · done';
+          }, 3200);
         }, 400);
       }
     }, 220);

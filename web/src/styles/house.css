@@ -2335,7 +2335,7 @@
      matter what width it asks for - a child cannot out-width a capped ancestor. */
   .spec-code {
     margin: 0; font-family: var(--mono); font-weight: 300; font-size: 12px; line-height: 1.7;
-    color: var(--ink-2); tab-size: 2;
+    color: rgba(var(--ink-3-rgb), 0.75); tab-size: 2; /* base = punctuation; keys/values are tagged brighter */
     width: 100%; height: 80vh; overflow-y: auto; overflow-x: hidden;
     padding: 28px;
     background: rgba(3, 10, 17, 0.6); border: 1px solid var(--edge); border-radius: 6px;
@@ -2382,6 +2382,26 @@
     display: block; white-space: pre-wrap; overflow-wrap: anywhere;
     text-indent: -3ch; padding-left: 3ch;
   }
-  .spec-code b { color: rgba(var(--lumen-rgb), 0.9); font-weight: 400; }
-  .spec-code i { font-style: normal; color: var(--ink); }
+  /* ---- abyssal syntax highlight ----
+     A DELIBERATE editor-only exception to the One Light Rule: the code view is a
+     neutral surface with no server state, so the reserved semantic hues carry no
+     "warning"/"danger" meaning here and are free to do colour work. The whole
+     palette earns its keep — a full-colour K:V read — while punctuation still
+     recedes so the eye rides the pairs. Do NOT copy these colour roles back into
+     the app chrome, where violet and magenta ARE semantics.
+       key       b            Caution Violet — the property you scan
+       string    i            Spectrum Teal (lightened) — the value you read
+       number    .n           Status Gold — a machine-measured value
+       literal   .k           Crisis Magenta — true / false / null; keyword, not data
+       template  .t           Sodium Lumen, dotted-underlined — a {{slot}} filled at deploy time
+       comment   em           Sand Faint — present, quiet
+       punctuation (untagged)  faintest ink — braces, colons, commas, dashes */
+  .spec-code b { color: var(--caution); font-weight: 400; }
+  .spec-code i { font-style: normal; color: #3fb69b; } /* lightened Spectrum Deep Teal (#1a7a6d) for legibility */
+  .spec-code .n { color: var(--ok); }
+  .spec-code .k { color: var(--crisis); }
+  .spec-code .t {
+    color: var(--lumen);
+    text-decoration: underline dotted rgba(var(--lumen-rgb), 0.5); text-underline-offset: 2px;
+  }
   .spec-code em { font-style: normal; color: var(--ink-3); }

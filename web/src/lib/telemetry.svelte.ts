@@ -23,8 +23,14 @@ import type { NodeTelemetry } from "@/api/types";
 
 const POLL_MS = 5_000;
 
-/** Samples kept per node — the dot-matrix track's column count. */
-export const TELEMETRY_HISTORY = 48;
+/**
+ * Samples kept per node — the dot-matrix track's column count. 72 (matching the
+ * server card's CARD_TRACK): at flex:1 the columns stretch to fill the band cell,
+ * so a count near the cell's own width is what makes the ridge read dense. 48 left
+ * the dots widely spaced; 72 fills the width while still showing the per-sample
+ * grain. See DESIGN.md's dot-matrix meter section.
+ */
+export const TELEMETRY_HISTORY = 72;
 
 /**
  * Full scale of the link instrument's zone track, in milliseconds. 0–20ms puts

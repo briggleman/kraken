@@ -69,7 +69,10 @@
     position: fixed; top: -12vh; z-index: 1; pointer-events: none;
     background: linear-gradient(180deg, rgba(255,215,154,var(--ray-op)), transparent 70%);
     filter: blur(20px);
-    mix-blend-mode: screen;
+    /* no mix-blend-mode. Over a ground this dark, screen(a, b) = a + b - ab collapses to
+       plain alpha (b is near zero), so the blend bought nothing visible — but it did make the
+       compositor cut a render surface for the backdrop of every ray on every frame, four
+       times over, at display resolution. */
     transform: skewX(-9deg);
     transform-origin: top center;
     animation: rayDrift var(--ray-dur) ease-in-out var(--ray-delay) infinite backwards;

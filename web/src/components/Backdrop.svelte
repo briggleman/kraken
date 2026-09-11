@@ -10,8 +10,27 @@
   $effect(() => {
     const c = canvas;
     const bctx = c.getContext("2d")!;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
+    // Rendered at CSS resolution on purpose. The flakes are 0.4–2px soft discs;
+    // drawing them at device resolution multiplies the per-frame fill 2–4× on a
+    // HiDPI panel for grain the eye cannot resolve, and the compositor's
+    // upscale only softens them.
+    const dpr = 1;
     const N = 78;
+    // The glow used to be a canvas shadowBlur per lit flake — a separate blur
+    // pass per fill, every frame. It is now one radial gradient rendered once
+    // and stamped.
+    const GLOW = 8;
+    const glow = document.createElement("canvas");
+    glow.width = glow.height = 32;
+    {
+      const g = glow.getContext("2d")!;
+      const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, "rgba(255,205,130,0.55)");
+      grad.addColorStop(0.3, "rgba(255,205,130,0.22)");
+      grad.addColorStop(1, "rgba(255,205,130,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 32, 32);
+    }
     let w = 0,
       h = 0;
     interface Flake {
@@ -56,19 +75,17 @@
           p.y = -4;
           p.x = Math.random() * w;
         }
-        bctx.beginPath();
         if (p.glow) {
-          bctx.shadowBlur = 8;
-          bctx.shadowColor = "rgba(255,205,130,0.9)";
+          const R = p.r + GLOW;
+          bctx.drawImage(glow, p.x - R, p.y - R, R * 2, R * 2);
           bctx.fillStyle = "rgba(255,228,180," + (p.a + 0.2) + ")";
         } else {
-          bctx.shadowBlur = 0;
           bctx.fillStyle = "rgba(206,196,180," + p.a + ")";
         }
+        bctx.beginPath();
         bctx.arc(p.x, p.y, p.r, 0, 6.283);
         bctx.fill();
       }
-      bctx.shadowBlur = 0;
       if (!reducedMotion) raf = requestAnimationFrame(tick);
     };
     tick();

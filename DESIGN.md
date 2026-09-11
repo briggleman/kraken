@@ -449,8 +449,9 @@ key rather than restarting at the margin. A JSON⇄YAML segmented control pins t
 Its highlighting is a **deliberate editor-only exception to the One Light Rule.** Everywhere else
 the light means "alive" and violet/magenta are reserved for warning and danger; the code view has
 no server state, so those hues carry no meaning here and are freed to do colour work. The result is
-a full-colour key/value read, with punctuation receding to the faintest ink so the eye rides the
-pairs:
+a full-colour key/value read on a **violet-and-green duotone**: violet names the property, green
+carries everything structural around it — the strings themselves and the punctuation that frames
+them — so a pair reads as *violet : green* at a glance and only whitespace is left uncoloured:
 
 - **key** (`<b>`) — **Caution Violet** (`var(--caution)`): the property you scan.
 - **string** (`<i>`) — **Spectrum Teal**, lightened to `#3fb69b` for legibility on the code ground.
@@ -458,7 +459,12 @@ pairs:
 - **literal** (`.k`, `true`/`false`/`null`) — **Crisis Magenta** (`var(--crisis)`): a keyword, not data.
 - **template** (`.t`, `{{SLOT}}`) — **Sodium Lumen** with a dotted underline: a value filled at
   deploy time, the one place the light appears here, marking the fillable slots.
-- **comment** (`<em>`) — Sand Faint; **punctuation** (untagged base) — faintest ink.
+- **punctuation** (`.p`, the structural `{ } [ ] : ,` and YAML's `-` list marker) — **Spectrum
+  Teal, one step under the strings** (`#2a9a89`): the scaffold the pairs hang on. It is green so
+  the structure joins the value side of the duotone rather than vanishing, and it is a step darker
+  than string teal so a value always sits in front of its own brackets and comma. Indentation is
+  the only text left on the faint base.
+- **comment** (`<em>`) — Sand Faint.
 
 **The Editor-Palette Exception Rule.** These colour roles live only in the spec code view. Do not
 carry them back into the app chrome, where Caution Violet and Crisis Magenta are semantics — a

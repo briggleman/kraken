@@ -397,6 +397,11 @@
      not the textarea's scrollbar is showing, so the two wrap at the same width. */
   .spec-code-stack {
     position: relative;
+    /* Isolate so the textarea's z-index:1 stays inside this stack and doesn't
+       compete in the wrap's context with the pinned json|yaml switch (.cd-sw,
+       also z-index:1, earlier in the DOM). Without this the later-painted
+       textarea covers the switch and eats its clicks — the toggle looks dead. */
+    isolation: isolate;
   }
   .spec-code-stack :global(.spec-code) {
     scrollbar-gutter: stable;

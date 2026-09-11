@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/briggleman/kraken/compare/v0.40.0...v0.41.0) (2026-09-10)
+
+
+### Features
+
+* **web:** deep-linkable server URLs ([#254](https://github.com/briggleman/kraken/issues/254)) ([97b15e9](https://github.com/briggleman/kraken/commit/97b15e94aa1478a96c4321e041f3db4c78badf02))
+
 ## [0.40.0](https://github.com/briggleman/kraken/compare/v0.39.1...v0.40.0) (2026-09-10)
 
 

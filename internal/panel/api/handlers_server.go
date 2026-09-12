@@ -497,6 +497,12 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sv.State = storeStateFromAgent(resp.State)
+	// The crash exit code describes the run that ended; a power action begins a
+	// new one, so it must not survive into it and explain a server that is now
+	// plainly fine. (The reconciler re-attaches it if this server crashes again.)
+	if sv.State != store.StateCrashed {
+		sv.LastExitCode, sv.LastExitCodeKnown = 0, false
+	}
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update server state")
 		return

@@ -250,11 +250,15 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 		}
 	}
 
+	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
 	s.setServerState(server.ID, store.StateOffline, "")
-	// A successful install's log has no reader: the console surface shows this
-	// server's own output from here on, and only an install state routes to the
-	// buffer. Keeping it would retain memory nothing can display.
-	s.installs.Drop(server.ID)
+	// Close the buffer but KEEP it. A successful install is not proof of a
+	// working one: an installer can exit 0 having written half a game (#278),
+	// and once the state leaves `installing` the console has no container to
+	// tail, so dropping the lines here left the operator with a wipe-and-watch
+	// reinstall as the only way to see what SteamCMD had actually done (#280).
+	// It is freed on delete, and replaced the moment a reinstall starts.
+	s.installs.Finish(server.ID)
 	s.logger.Info("server installed", "id", server.ID)
 }
 
@@ -329,6 +333,60 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, serverView(sv))
+}
+
+// installLogResponse is the retained install output for one server.
+//
+// `retained` is the honest part: the buffer lives in this Panel process's
+// memory, so a restart between the install and the read leaves nothing, and the
+// caller must be able to tell that from an install that printed nothing at all.
+type installLogResponse struct {
+	ServerID   string        `json:"server_id"`
+	Lines      []installLine `json:"lines"`
+	Done       bool          `json:"done"`
+	Retained   bool          `json:"retained"`
+	StartedMs  int64         `json:"started_ms,omitempty"`
+	FinishedMs int64         `json:"finished_ms,omitempty"`
+}
+
+// handleServerInstallLog serves the buffered output of a server's most recent
+// install, at any state — including long after it succeeded.
+//
+// The console WebSocket only routes to the install buffer while the server is
+// installing or install_failed; afterwards it tails the container, which for a
+// server that never started is nothing at all. This endpoint is the way back to
+// the one record of what the installer did (#280). It reads the same buffer, so
+// it needs no agent and works for a server on a node the Panel cannot reach.
+func (s *Server) handleServerInstallLog(w http.ResponseWriter, r *http.Request) {
+	sv, err := s.store.GetServer(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get server")
+		return
+	}
+	if !s.authorizeServer(w, r.Context(), sv) {
+		return
+	}
+	snap := s.installs.Snapshot(sv.ID)
+	resp := installLogResponse{
+		ServerID: sv.ID,
+		Lines:    snap.Lines,
+		Done:     snap.Done,
+		Retained: snap.Retained,
+	}
+	if resp.Lines == nil {
+		resp.Lines = []installLine{} // a JSON array, never null
+	}
+	if !snap.StartedAt.IsZero() {
+		resp.StartedMs = snap.StartedAt.UnixMilli()
+	}
+	if !snap.FinishedAt.IsZero() {
+		resp.FinishedMs = snap.FinishedAt.UnixMilli()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // serverView returns a shallow copy of sv with SFTP credential material removed,

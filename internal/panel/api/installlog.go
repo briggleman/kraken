@@ -16,9 +16,17 @@ import (
 // one summary line for what may have been a 20-minute SteamCMD download.
 //
 // Buffers live only in memory, one per server, capped at maxInstallLines. They
-// survive the install so a failure stays readable, and are dropped when the
+// survive the install — success as well as failure — so the account of what the
+// installer actually did stays readable afterwards, and are dropped when the
 // server is deleted or a reinstall starts. Retention is therefore bounded by
 // the server count, which the node's memory and port reservations already bound.
+//
+// Keeping a *successful* install's output is the fix for #280: an installer can
+// exit 0 having produced a broken tree (a SteamCMD self-update race downloads
+// half a game and still reports success), and once the state moves past
+// installing the console has nothing left to tail. Being in memory, the buffer
+// does not survive a Panel restart — the API says so with `retained`, and the UI
+// says so in words rather than showing an empty pane.
 type installLog struct {
 	mu      sync.Mutex
 	entries map[string]*installEntry
@@ -44,7 +52,12 @@ type installEntry struct {
 	// done is set when the install reached a verdict; a subscriber that has
 	// drained the buffer of a done entry can stop rather than wait forever.
 	done bool
-	subs map[chan installLine]struct{}
+	// startedAt/finishedAt bracket the attempt so a reader can say *which*
+	// install it is looking at — "the last one" is not an answer when a server
+	// has been reinstalled twice today.
+	startedAt  time.Time
+	finishedAt time.Time
+	subs       map[chan installLine]struct{}
 }
 
 func newInstallLog() *installLog {
@@ -71,7 +84,7 @@ func (l *installLog) Start(id string) {
 			close(ch)
 		}
 	}
-	l.entries[id] = &installEntry{subs: map[chan installLine]struct{}{}}
+	l.entries[id] = &installEntry{startedAt: time.Now(), subs: map[chan installLine]struct{}{}}
 }
 
 // Append records a line of ordinary installer output.
@@ -113,10 +126,42 @@ func (l *installLog) Finish(id string) {
 	defer l.mu.Unlock()
 	e := l.entry(id)
 	e.done = true
+	if e.finishedAt.IsZero() {
+		e.finishedAt = time.Now()
+	}
 	for ch := range e.subs {
 		close(ch)
 	}
 	e.subs = map[chan installLine]struct{}{}
+}
+
+// installSnapshot is a completed-or-running attempt's whole output, as read by
+// something that is not tailing it — the REST endpoint. Retained is false when
+// this Panel process holds no buffer for the server at all (it never ran the
+// install, or restarted since), which is a different answer from "an install
+// that printed nothing".
+type installSnapshot struct {
+	Lines      []installLine
+	Done       bool
+	Retained   bool
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
+
+// Snapshot returns the buffered lines without subscribing to later ones.
+func (l *installLog) Snapshot(id string) installSnapshot {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e := l.entries[id]
+	if e == nil {
+		return installSnapshot{Done: true}
+	}
+	lines := make([]installLine, len(e.lines))
+	copy(lines, e.lines)
+	return installSnapshot{
+		Lines: lines, Done: e.done, Retained: true,
+		StartedAt: e.startedAt, FinishedAt: e.finishedAt,
+	}
 }
 
 // Drop forgets a server's install output entirely (server deleted).

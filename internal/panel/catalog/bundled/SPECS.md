@@ -64,6 +64,56 @@ Abiotic Factor, Windrose, Dragonwilds) have TWO Steam appids:
 
 Never point the image URLs at the server appid — it has no store CDN entry.
 
+A game whose single server appid ships **both** OS depots (Dragonwilds) lists
+the same id under `linux` and `windows` — SteamCMD picks the depot for the
+platform it runs on, and the Panel injects `{{APP_ID}}` from the entry that
+matches the placement's OS family (`buildVars` in
+[`internal/panel/api/handlers_server.go`](../../api/handlers_server.go)).
+
+## Dual-platform specs — per-platform overrides and config paths
+
+### Platform policy
+
+The goal is that **every game is deployable on either agent**, and that native
+builds win over any OS preference of ours:
+
+1. **Bias toward the NATIVE build for the node's OS.** A Windows node runs the
+   game's native Windows build; a Linux node runs the native Linux build. The
+   spec does not push a server onto one OS — the node it lands on picks.
+2. **Most games ship a native Windows server. When a native Linux server ALSO
+   exists, declare both** `windows-native` **and** `linux-native` **platform
+   entries** so the game loads on either agent.
+3. **When no Linux build exists, add a `linux-wine` entry** so Linux nodes can
+   still host it. Wine is the fallback — never preferred over a native build.
+
+The `platforms` list order is scheduler priority, not an OS preference: put the
+native kinds before `linux-wine` so a native build is always chosen when the
+node can run one.
+
+### Per-platform overrides
+
+`platforms[]` entries take optional `install_script` / `startup_command`
+overrides (see `abiotic-factor.yaml`, `dragonwilds.yaml`); the spec-level
+`install.script` / `startup.command` are the fallback. `config_files`, `stop`,
+`ports` and `backup` have **no** per-platform variant, so:
+
+- **Config paths always use the logical `/data/…` root** — the agent maps it to
+  `C:\data` on a Windows node and leaves it alone on Linux. A literal
+  `C:\data\…` breaks on a Linux/wine node (it resolves to a `C:` subdirectory).
+- **Platform-named config folders** (Unreal reads `Saved/Config/LinuxServer/`
+  on the Linux build and `Saved/Config/WindowsServer/` on the Windows build):
+  declare one `config_files` entry per folder with the same template. Every save
+  writes both; each build reads its own and ignores the other.
+- **`stop`** — declare the Linux signal (`SIGINT`); a Windows daemon ignores
+  custom stop signals and sends its own shutdown event, while a Linux agent
+  ignores Windows-only names such as `CTRL_SHUTDOWN_EVENT` (falls back to
+  SIGTERM). Either name is safe on both — declaring the Linux signal is the
+  convention because it is the only one either agent can actually honour.
+- **`backup` globs** are data-dir-relative and OS-neutral; make sure the
+  Windows build actually writes its saves under the data dir (Unreal builds
+  marked "installed" default to `%LOCALAPPDATA%\<Project>` — pin them with
+  `-UserDir=C:\data\<Project>` in the Windows startup command).
+
 ## The `backup:` block — where the saves live
 
 **A backup is the game's SAVE DATA, not the reinstallable install tree.** The

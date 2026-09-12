@@ -24,6 +24,7 @@
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import type { ScheduleAction } from "@/api/types";
+  import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
   const server = $derived(depth.server);
   const name = $derived(server?.name ?? "");
@@ -69,11 +70,43 @@
     if (depth.open) surfaceBtn.focus();
   });
 
-  // keep the log pinned to the newest line
+  // keep the log pinned to the newest line — but only while the operator is
+  // actually at the bottom. Scrolling back to read something must not be undone
+  // by the next line, and on a noisy stream the unconditional pin was a forced
+  // layout per line on a pane that had just grown by kilobytes (#279).
+  // A plain variable, NOT $state: the effect writes nothing, and the scroll
+  // handler runs far more often than the log changes.
+  const PIN_SLACK_PX = 24;
+  let pinned = true;
+  function onLogScroll() {
+    if (!consoleLog) return;
+    pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
+  }
   $effect(() => {
     stream.lines.length;
-    if (consoleLog) consoleLog.scrollTop = consoleLog.scrollHeight;
+    if (consoleLog && pinned) consoleLog.scrollTop = consoleLog.scrollHeight;
   });
+
+  // A clamped line still holds its original text; the affordance hands that over
+  // rather than rendering it, so a 64 KB record costs a clipboard write and not
+  // a layout pass.
+  const COPIED_MS = 1_500;
+  let copiedSeq = $state(-1);
+  function copyLine(line: StreamConsoleLine) {
+    // no clipboard at all on an insecure origin — the button simply does nothing
+    const wrote = navigator.clipboard?.writeText(line.full ?? line.text);
+    if (!wrote) return;
+    void wrote
+      .then(() => {
+        copiedSeq = line.seq;
+        setTimeout(() => {
+          if (copiedSeq === line.seq) copiedSeq = -1;
+        }, COPIED_MS);
+      })
+      .catch(() => {
+        /* denied — nothing useful to say in a console line */
+      });
+  }
 
   function sendCommand(e: KeyboardEvent) {
     if (e.key !== "Enter" || !cmdInput.trim()) return;
@@ -393,12 +426,15 @@
           {/if}
         </div>
         <div class="stn-panel p-console">
-          <div class="console-log" id="consoleLog" bind:this={consoleLog}>
+          <div class="console-log" id="consoleLog" bind:this={consoleLog} onscroll={onLogScroll}>
             {#if stream.status === "retrying"}
-              <div><span class="t">{ui_now()}</span><span class="warn">[panel] stream lost — reconnecting</span></div>
+              <div class="log-line"><span class="t">{ui_now()}</span><span class="warn">[panel] stream lost — reconnecting</span></div>
             {/if}
-            {#each stream.lines as line}
-              <div><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}</div>
+            <!-- Keyed on the line's own seq: the buffer evicts from the front, so
+                 an index key would renumber every surviving row and make one new
+                 line rewrite the whole pane. -->
+            {#each stream.lines as line (line.seq)}
+              <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}{#if line.hidden > 0}<button type="button" class="log-more" onclick={() => copyLine(line)}>{copiedSeq === line.seq ? "copied" : `… ${line.hidden.toLocaleString()} more chars — copy line`}</button>{/if}</div>
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
                 <div><span class="t">—</span>{installing
@@ -740,3 +776,32 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Console line mechanics (#279). The mock's .console-log is a static pane of
+     short lines; a live Windows installer is not, so these two rules live here
+     rather than in the generated house.css. Colour comes from the house
+     variables and the one metric is in ch — nothing new is invented. */
+
+  /* A multi-KB record has no spaces to break on, so the default wrapping gives
+     the pane a scrollWidth in the tens of thousands of pixels and every repaint
+     pays for it. Break anywhere instead; the pane only scrolls vertically. */
+  .log-line {
+    overflow-wrap: anywhere;
+  }
+
+  /* The "… N more chars" affordance reads as console text, not as a control:
+     it is the tail of the line it hangs off. */
+  .log-more {
+    margin-left: 0.5ch;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: var(--lumen);
+    cursor: pointer;
+  }
+  .log-more:hover {
+    color: var(--ink);
+  }
+</style>

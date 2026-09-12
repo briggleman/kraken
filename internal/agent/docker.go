@@ -703,11 +703,23 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		return d.fail(emit, "pull image: "+err.Error())
 	}
 
+	// Windows containers only: steamcmd.exe self-updates by spawning the new
+	// binary and exiting, which lets cmd (PID 1) run off the end of the script
+	// and kill the container mid-download. Prime the update and wait for every
+	// steamcmd to be gone before the chain ends. See steamguard.go.
+	script := req.InstallScript
+	if d.isWindows() {
+		if guarded, applied := guardWindowsSteamInstall(script); applied {
+			script = guarded
+			_ = emit(logLine("[kraken] windows SteamCMD guard applied: priming steamcmd.exe's self-update and waiting for steamcmd to exit before the install container ends"))
+		}
+	}
+
 	// One-shot install container: run the install script against the data dir.
 	cfg := &container.Config{
 		Image:      req.Image,
 		Entrypoint: d.shellEntrypoint(),
-		Cmd:        []string{req.InstallScript},
+		Cmd:        []string{script},
 		Env:        envSlice(req.Env),
 		WorkingDir: dataPath,
 		Labels:     map[string]string{labelManaged: "true", labelServerID: req.ServerId},
@@ -943,15 +955,30 @@ func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.S
 	// difference between a graceful stop, a crash, and a not-yet-ready start). Use
 	// it when present; otherwise fall back to inspecting the container directly.
 	var state agentpb.ServerState
+	// The last container exit code travels with the state: it is the only clue a
+	// crashed server offers before its next start, and a Windows game that dies
+	// on a missing DLL says nothing else anywhere (#280).
+	var exitCode int64
+	var exitKnown bool
 	if st, ok := d.monitorState(serverID); ok {
 		state = st
+		exitCode, exitKnown = d.monitorExit(serverID)
 	} else if insp, err := d.cli.ContainerInspect(ctx, containerName(serverID)); err != nil {
 		// No container → treat as offline.
 		return &agentpb.ServerStatus{ServerId: serverID, State: agentpb.ServerState_SERVER_STATE_OFFLINE}, nil
 	} else {
 		state = mapState(insp.State)
+		// No watchdog (the Agent restarted after the crash) — the stopped
+		// container still carries its exit code, so the diagnosis survives an
+		// Agent restart the same way the state does.
+		if insp.State != nil && !insp.State.Running && insp.State.Status == "exited" {
+			exitCode, exitKnown = int64(insp.State.ExitCode), true
+		}
 	}
-	status := &agentpb.ServerStatus{ServerId: serverID, State: state}
+	status := &agentpb.ServerStatus{
+		ServerId: serverID, State: state,
+		LastExitCode: exitCode, ExitCodeKnown: exitKnown,
+	}
 	// Attach the online-player count so the reconciler can surface it fleet-wide
 	// without an open stats stream (TTL-cached, so this poll rarely hits the game).
 	if state == agentpb.ServerState_SERVER_STATE_RUNNING {

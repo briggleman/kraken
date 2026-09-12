@@ -5,6 +5,7 @@ import { api } from "@/api/client";
 import type {
   Backup,
   FileListing,
+  InstallLog,
   PowerActionName,
   ScheduledTask,
   Server,
@@ -35,6 +36,12 @@ export const depth = $state({
   settings: null as ServerSettings | null,
   files: null as FileListing | null,
   filesDir: ".",
+  // The retained output of this server's last install, and whether the console
+  // pane is showing it instead of the container's log. An install that "worked"
+  // is the case this exists for: the console has nothing to tail for a server
+  // that never started, and the install is the only account of why (#280).
+  installLog: null as InstallLog | null,
+  installLogOpen: false,
   creatingBackup: false,
   restoringBackup: null as string | null,
   powerBusy: false,
@@ -84,6 +91,8 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.settings = null;
   depth.files = null;
   depth.filesDir = ".";
+  depth.installLog = null;
+  depth.installLogOpen = false;
   depth.error = null;
   depth.sftp = null;
   depth.sftpOpen = false;
@@ -167,9 +176,10 @@ async function refreshDetail() {
     api.getServerSettings(id),
     api.listFiles(id, "."),
     api.getServerSftp(id),
+    api.getInstallLog(id),
   ]);
   if (depth.serverId !== id) return; // drilled elsewhere meanwhile
-  const [srv, bk, sch, dns, settings, files, sftp] = results;
+  const [srv, bk, sch, dns, settings, files, sftp, installLog] = results;
   if (srv.status === "fulfilled") {
     depth.server = srv.value;
     stream.set(id, streamModeFor(srv.value.state));
@@ -187,7 +197,11 @@ async function refreshDetail() {
   depth.sftp = sftp.status === "fulfilled" ? sftp.value : null;
   depth.sftpError =
     sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
-  const firstErr = results.slice(0, -1).find((r) => r.status === "rejected") as
+  // Same reasoning for the install log: it is a look back at a finished phase,
+  // and failing to read it must not take the drill-in's error line hostage.
+  depth.installLog = installLog.status === "fulfilled" ? installLog.value : null;
+  // The two optional reads are excluded from the drill-in's error line.
+  const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
     | undefined;
   depth.error = firstErr ? String(firstErr.reason?.message ?? firstErr.reason) : null;
@@ -199,8 +213,28 @@ export function syncDepthFromFleet() {
   if (!depth.open || !depth.serverId) return;
   const s = fleet.servers.find((x) => x.id === depth.serverId);
   if (s) {
+    const was = depth.server?.state;
     depth.server = s;
     stream.set(s.id, streamModeFor(s.state));
+    // An install that just ended leaves a retained log the open drill-in has
+    // never read — and this is exactly the moment it matters, because the
+    // console's socket is about to switch to a container that may not start.
+    if (was !== s.state && (was === "installing" || was === "install_failed")) {
+      void refreshInstallLog();
+    }
+  }
+}
+
+/** Re-read the retained install log (after an install ends, or on demand). */
+export async function refreshInstallLog() {
+  const id = depth.serverId;
+  if (!id) return;
+  try {
+    const log = await api.getInstallLog(id);
+    if (depth.serverId === id) depth.installLog = log;
+  } catch {
+    // Optional surface: a failed read leaves the last value rather than
+    // claiming the log is gone.
   }
 }
 

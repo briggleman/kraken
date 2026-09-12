@@ -22,7 +22,7 @@
   } from "@/lib/depth.svelte";
   import { openConfirm } from "@/lib/state.svelte";
   import { specOf } from "@/lib/fleet.svelte";
-  import { fmtClock, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
+  import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import type { ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
@@ -57,6 +57,38 @@
     if (!raw) return "";
     return /[.!?]$/.test(raw) ? raw : raw + ".";
   });
+  // A crash's exit code, the one fact the agent's watchdog has that nothing else
+  // does. Decimal AND hex, because a Windows NTSTATUS is unrecognisable in
+  // decimal — 3221225781 says nothing, 0xC0000135 names a missing DLL.
+  const crashExit = $derived(
+    server?.state === "crashed" && server.last_exit_code_known
+      ? fmtExit(server.last_exit_code ?? 0)
+      : "",
+  );
+
+  // The retained install log: the same lines the console showed while the
+  // install ran, kept so a "successful" install that produced a broken tree can
+  // still be read. Offered once the install phase is over — during it the
+  // console is already showing them live.
+  const installLines = $derived(depth.installLog?.lines ?? []);
+  const canShowInstallLog = $derived(!installing && installLines.length > 0);
+  const showingInstall = $derived(canShowInstallLog && depth.installLogOpen);
+  // Both sources share the console's row shape so one keyed `{#each}` renders
+  // either. The retained install log is a static snapshot, so its index is a
+  // stable key; live lines carry their own seq because the ring evicts from the
+  // front (#279).
+  const logLines: StreamConsoleLine[] = $derived(
+    showingInstall
+      ? installLines.map((l, i) => ({ seq: i, ts: l.ts, stream: l.stream, text: l.text, hidden: 0 }))
+      : stream.lines,
+  );
+  // When the install finished. The buffer is in-Panel memory only — this is the
+  // last install this Panel process ran, and a restart since would leave nothing
+  // (the notice below says so rather than showing a blank pane).
+  const installWhen = $derived.by(() => {
+    const ms = depth.installLog?.finished_ms || depth.installLog?.started_ms || 0;
+    return ms ? fmtWhen(ms) : "the last attempt";
+  });
 
   function ui_now(): string {
     return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -83,7 +115,7 @@
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
   $effect(() => {
-    stream.lines.length;
+    logLines.length;
     if (consoleLog && pinned) consoleLog.scrollTop = consoleLog.scrollHeight;
   });
 
@@ -403,9 +435,25 @@
         <input type="radio" name="stn" id="stnSettings" class="stn-r" />
         <input type="radio" name="stn" id="stnFiles" class="stn-r" />
         <div class="stn-tabs" role="tablist">
-          <label for="stnConsole">{installing ? "install log" : "live console"}</label>
+          <label for="stnConsole">{installing || showingInstall ? "install log" : "live console"}</label>
           <label for="stnSettings">settings</label>
           <label for="stnFiles">files</label>
+          <!-- The one way back to what the installer actually did. A server that
+               installed "successfully" and then never started has no container
+               log to tail, so without this the console is blank for exactly the
+               failure that is hardest to diagnose (#280). -->
+          {#if canShowInstallLog}
+            <button
+              type="button"
+              class="stn-chip"
+              aria-pressed={depth.installLogOpen}
+              onclick={() => (depth.installLogOpen = !depth.installLogOpen)}
+            >
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 3 2.5 H 9 L 11 4.5 V 11.5 H 3 Z M 5 6.5 H 9 M 5 9 H 9"/></svg>
+              <span class="stn-chip-k">install log</span>
+              <span class="stn-chip-v">{depth.installLogOpen ? "hide" : "show"}</span>
+            </button>
+          {/if}
           <!-- The chip is present whenever the node can answer for SFTP at all,
                not only when it is on: per the Far-End Affordance Rule it exists
                so the strip answers "is SFTP even on?" without being opened, and
@@ -427,13 +475,15 @@
         </div>
         <div class="stn-panel p-console">
           <div class="console-log" id="consoleLog" bind:this={consoleLog} onscroll={onLogScroll}>
-            {#if stream.status === "retrying"}
+            {#if showingInstall}
+              <div class="log-line"><span class="t">—</span>[panel] install log from {installWhen} — held in panel memory only, so a panel restart loses it</div>
+            {:else if stream.status === "retrying"}
               <div class="log-line"><span class="t">{ui_now()}</span><span class="warn">[panel] stream lost — reconnecting</span></div>
             {/if}
-            <!-- Keyed on the line's own seq: the buffer evicts from the front, so
-                 an index key would renumber every surviving row and make one new
-                 line rewrite the whole pane. -->
-            {#each stream.lines as line (line.seq)}
+            <!-- Keyed on the line's own seq: the live buffer evicts from the front,
+                 so an index key would renumber every surviving row and make one
+                 new line rewrite the whole pane. -->
+            {#each logLines as line (line.seq)}
               <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}{#if line.hidden > 0}<button type="button" class="log-more" onclick={() => copyLine(line)}>{copiedSeq === line.seq ? "copied" : `… ${line.hidden.toLocaleString()} more chars — copy line`}</button>{/if}</div>
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
@@ -589,6 +639,18 @@
               ? " " + failReason
               : ""}{haveInstallLog ? " the full install log is in the console pane." : ""}</b>
           <button class="mini-act res" disabled={depth.powerBusy} onclick={() => void reinstall()}>reinstall</button>
+        </p>
+      {/if}
+      <!-- A crash used to read as "crashed · logs held until next start", with
+           the exit code sitting in the agent's journal where nobody looks. It
+           is the first real clue the operator gets, so it goes in the notice
+           with the hex form beside it and, for the codes worth naming, what it
+           means. -->
+      {#if server?.state === "crashed" && crashExit}
+        <p class="depth-notice bad" role="alert">
+          <b>crashed — {crashExit}{canShowInstallLog
+              ? ". the install log is still readable in the console pane."
+              : ""}</b>
         </p>
       {/if}
       {#if depth.error}

@@ -107,11 +107,22 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if ls := status.LastStats; ls != nil && ls.PlayersKnown {
 			np, nmax, nknown = ls.Players, ls.MaxPlayers, true
 		}
-		if newState == sv.State && np == sv.Players && nmax == sv.MaxPlayers && nknown == sv.PlayersKnown {
+		// The exit code of the run that ended, persisted only for a crash: that
+		// is the state where the operator has nothing else to go on, and holding
+		// it past a successful start would let a stale number explain a server
+		// that is plainly fine.
+		var nexit int64
+		var nexitKnown bool
+		if newState == store.StateCrashed && status.ExitCodeKnown {
+			nexit, nexitKnown = status.LastExitCode, true
+		}
+		if newState == sv.State && np == sv.Players && nmax == sv.MaxPlayers && nknown == sv.PlayersKnown &&
+			nexit == sv.LastExitCode && nexitKnown == sv.LastExitCodeKnown {
 			continue
 		}
 		sv.State = newState
 		sv.Players, sv.MaxPlayers, sv.PlayersKnown = np, nmax, nknown
+		sv.LastExitCode, sv.LastExitCodeKnown = nexit, nexitKnown
 		if uerr := s.store.UpdateServer(ctx, sv); uerr != nil {
 			s.logger.Warn("reconcile: update server failed", "server", sv.ID, "err", uerr)
 			continue

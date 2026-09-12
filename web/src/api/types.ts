@@ -258,6 +258,11 @@ export interface Server {
   /** Why the most recent provisioning attempt failed, verbatim — set with
    *  state install_failed, cleared when a (re)install succeeds or begins. */
   last_error?: string;
+  /** The exit status of the container's last run, carried from the agent's
+   *  watchdog. Held only while the state is crashed; last_exit_code_known
+   *  separates "exited 0" from "no exit was observed". */
+  last_exit_code?: number;
+  last_exit_code_known?: boolean;
   created_at: string;
 }
 
@@ -523,6 +528,27 @@ export interface FileEntry {
 export interface FileListing {
   path: string;
   entries: FileEntry[] | null;
+}
+
+/** One line of install output, as the console stream writes it: stream is
+ *  "install" for ordinary output and "error" for a failure note. */
+export interface InstallLogLine {
+  ts: number;
+  stream: string;
+  text: string;
+}
+
+/** The retained output of a server's most recent install. The buffer lives in
+ *  the Panel's memory, so `retained` is false when the Panel has restarted since
+ *  the attempt — which is NOT the same as an install that printed nothing, and
+ *  the console pane says which of the two it is looking at. */
+export interface InstallLog {
+  server_id: string;
+  lines: InstallLogLine[];
+  done: boolean;
+  retained: boolean;
+  started_ms?: number;
+  finished_ms?: number;
 }
 
 export interface FileContent {

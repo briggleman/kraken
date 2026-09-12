@@ -535,6 +535,18 @@ message ServerStatus {
   string server_id = 1;
   ServerState state = 2;
   ResourceStats last_stats = 3;
+
+  // last_exit_code is the exit status of the server's most recent container run,
+  // as the crash watchdog observed it (or, when no watchdog is armed, as the
+  // stopped container still reports it). It is the operator's first real clue
+  // about a crash — a Windows game that dies on a missing DLL exits 3221225781
+  // (0xC0000135) and says nothing else anywhere.
+  //
+  // int64, not int32: Windows NTSTATUS codes are unsigned 32-bit and overflow a
+  // signed 32-bit field into a negative number nobody can look up.
+  // exit_code_known separates "exited 0" from "no exit has been observed".
+  int64 last_exit_code = 4;
+  bool exit_code_known = 5;
 }
 
 message StreamConsoleRequest {

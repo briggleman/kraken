@@ -351,6 +351,41 @@ paths:
                 type: object
                 properties:
                   state: { $ref: '#/components/schemas/ServerState' }
+  /servers/{id}/install-log:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Servers]
+      summary: Read the retained output of the server's most recent install
+      description: >
+        The install runs on the Agent and is streamed to the Panel, which buffers
+        it in memory: there is no container left to tail once the phase ends. The
+        buffer is kept after the install finishes — success included, since an
+        installer can exit 0 having produced a broken tree — until the server is
+        deleted or reinstalled. It does NOT survive a Panel restart; `retained`
+        is false when nothing is held, which is not the same as an install that
+        printed nothing.
+      responses:
+        '200':
+          description: Buffered install output
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server_id: { type: string }
+                  done: { type: boolean, description: the attempt reached a verdict }
+                  retained: { type: boolean, description: this Panel process still holds a buffer }
+                  started_ms: { type: integer, format: int64 }
+                  finished_ms: { type: integer, format: int64 }
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ts: { type: integer, format: int64 }
+                        stream: { type: string, description: '"install" or "error"' }
+                        text: { type: string }
+
   /servers/{id}/settings:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:

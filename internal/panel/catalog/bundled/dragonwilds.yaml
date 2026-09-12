@@ -1,20 +1,53 @@
 name: RuneScape Dragonwilds
 slug: dragonwilds
 description: >-
-  RuneScape: Dragonwilds dedicated server (SteamCMD app 4019830). Linux-native
-  UE5 server, anonymous SteamCMD, 6-player cap. Server identity + admin/world
-  passwords live in DedicatedServer.ini, generated from the Settings tab.
-  IMPORTANT: the game refuses to start until you paste your in-game Player ID
-  into the OwnerId field.
+  RuneScape: Dragonwilds dedicated server (SteamCMD app 4019830). UE5 server
+  shipped for both Linux and Windows (anonymous SteamCMD, 6-player cap) — runs
+  Linux-native on a Linux node or Windows-native on a Windows node (steam-win
+  image). Server identity + admin/world passwords live in DedicatedServer.ini,
+  generated from the Settings tab. IMPORTANT: the game refuses to start until
+  you paste your in-game Player ID into the OwnerId field.
 # Steam main-capsule + community-icon (game appid 1374490 = RS: Dragonwilds).
 # Server appid 4019830 has no CDN assets; always use the game appid. See
 # bundled/SPECS.md.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1374490/26888710528ba20ab11743212140ca36930569d3/library_hero_2x.jpg?t=1785319638
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1374490/8e307e43b46f4dc3554487c491015ba2b24ff235.jpg
+# One server appid ships both OS depots; SteamCMD picks the depot for the
+# platform it runs on (Linux SteamCMD → Linux build, steamcmd.exe → Windows build).
 steam_app_ids:
   linux: 4019830
+  windows: 4019830
 platforms:
+  # Scheduler priority order: Linux-native first, Windows-native when the server
+  # lands on a Windows node. The spec-level install/startup below are the Linux
+  # commands; the windows-native entry overrides both.
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
+  - kind: windows-native
+    image: ghcr.io/briggleman/kraken-steam-win:ltsc2022
+    # Same anonymous two-step as Linux, cmd-flavoured (`&` so the second pass
+    # always runs and its "Success!" clears the first pass's "Missing
+    # configuration" exit).
+    install_script: >-
+      steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    # Runs via `cmd /S /C`. The wiki documents launching the root bootstrap exe
+    # (RSDragonwilds.exe, which forwards its arguments to the Win64 Shipping
+    # binary — the same pattern as the abiotic-factor spec); UE server targets
+    # normally name that wrapper <Project>Server.exe, so fall back to it if the
+    # documented name is absent. Flags: the trailing project name mirrors the
+    # Linux command; -Port binds the allocated game port; -UserDir pins UE's
+    # user dir to the install tree so Saved/ (worlds, config, logs) lands under
+    # C:\data — the wiki reports the Windows build otherwise writing saves to
+    # %LOCALAPPDATA%\RSDragonwilds, which a fresh container would lose; -stdout
+    # + -FullStdOutLogOutput mirror the UE log to the container console (UE GUI
+    # exes print nothing otherwise); -unattended suppresses crash dialogs no one
+    # can click in a container. -NewConsole from the wiki is deliberately
+    # omitted (it only opens a console window).
+    startup_command: >-
+      cd /d C:\data & if exist RSDragonwilds.exe
+      (RSDragonwilds.exe RSDragonwilds -log -stdout -FullStdOutLogOutput -unattended -Port={{PORT_GAME}} -UserDir=C:\data\RSDragonwilds)
+      else
+      (RSDragonwildsServer.exe RSDragonwilds -log -stdout -FullStdOutLogOutput -unattended -Port={{PORT_GAME}} -UserDir=C:\data\RSDragonwilds)
 install:
   # Anonymous SteamCMD; two-step to defeat the "Missing configuration" first-run
   # race (fresh appinfo cache). Second pass' "Success!" clears the agent's exit-0-
@@ -40,6 +73,8 @@ startup:
   restart:
     on_crash: true
     max_retries: 3
+  # SIGINT is honoured on Linux; a Windows daemon ignores custom stop signals and
+  # sends its own shutdown event, so the same spec-level stop serves both.
   stop: { type: signal, value: SIGINT }
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
@@ -68,6 +103,11 @@ settings:
       fields:
         - { key: ServerGuid, label: Server GUID, type: string, default: "", pattern: "^[A-F0-9]*$", help: "Uppercase hex. Leave blank on first deploy; the game generates one. Paste it here after first run to lock it." }
 
+# UE reads DedicatedServer.ini from a platform-named config folder — LinuxServer
+# on the Linux build, WindowsServer on the Windows build. config_files has no
+# per-platform variant, so the same template is written to BOTH paths on every
+# save; each build reads its own and ignores the other. The logical /data root
+# maps to C:\data on a Windows node (agent safePath).
 config_files:
   - path: /data/RSDragonwilds/Saved/Config/LinuxServer/DedicatedServer.ini
     format: template
@@ -80,11 +120,23 @@ config_files:
       WorldPassword={{.settings.WorldPassword}}
       {{if .settings.ServerGuid}}ServerGuid={{.settings.ServerGuid}}
       {{end}}
+  - path: /data/RSDragonwilds/Saved/Config/WindowsServer/DedicatedServer.ini
+    format: template
+    template: |
+      [/Script/Dominion.DedicatedServerSettings]
+      OwnerId={{.settings.OwnerId}}
+      ServerName={{.settings.ServerName}}
+      DefaultWorldName={{.settings.DefaultWorldName}}
+      AdminPassword={{.settings.AdminPassword}}
+      WorldPassword={{.settings.WorldPassword}}
+      {{if .settings.ServerGuid}}ServerGuid={{.settings.ServerGuid}}
+      {{end}}
 # A backup is the save data, not the reinstallable install tree. Source: the
-# config_files path above — /data/RSDragonwilds/Saved/… — which pins the UE
-# project dir and its Saved tree (worlds, config, server GUID) inside /data.
-# UE's own Logs/Crashes live in that same tree and are the files that grow
-# mid-archive, so they are filtered back out.
+# config_files paths above — /data/RSDragonwilds/Saved/… — which pin the UE
+# project dir and its Saved tree (worlds, config, server GUID) inside /data on
+# both platforms (-UserDir keeps the Windows build there too). UE's own
+# Logs/Crashes live in that same tree and are the files that grow mid-archive,
+# so they are filtered back out.
 backup:
   include:
     - RSDragonwilds/Saved/**

@@ -3479,10 +3479,21 @@ func (x *GetServerStatusRequest) GetServerId() string {
 }
 
 type ServerStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	State         ServerState            `protobuf:"varint,2,opt,name=state,proto3,enum=kraken.agent.v1.ServerState" json:"state,omitempty"`
-	LastStats     *ResourceStats         `protobuf:"bytes,3,opt,name=last_stats,json=lastStats,proto3" json:"last_stats,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ServerId  string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	State     ServerState            `protobuf:"varint,2,opt,name=state,proto3,enum=kraken.agent.v1.ServerState" json:"state,omitempty"`
+	LastStats *ResourceStats         `protobuf:"bytes,3,opt,name=last_stats,json=lastStats,proto3" json:"last_stats,omitempty"`
+	// last_exit_code is the exit status of the server's most recent container run,
+	// as the crash watchdog observed it (or, when no watchdog is armed, as the
+	// stopped container still reports it). It is the operator's first real clue
+	// about a crash — a Windows game that dies on a missing DLL exits 3221225781
+	// (0xC0000135) and says nothing else anywhere.
+	//
+	// int64, not int32: Windows NTSTATUS codes are unsigned 32-bit and overflow a
+	// signed 32-bit field into a negative number nobody can look up.
+	// exit_code_known separates "exited 0" from "no exit has been observed".
+	LastExitCode  int64 `protobuf:"varint,4,opt,name=last_exit_code,json=lastExitCode,proto3" json:"last_exit_code,omitempty"`
+	ExitCodeKnown bool  `protobuf:"varint,5,opt,name=exit_code_known,json=exitCodeKnown,proto3" json:"exit_code_known,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3536,6 +3547,20 @@ func (x *ServerStatus) GetLastStats() *ResourceStats {
 		return x.LastStats
 	}
 	return nil
+}
+
+func (x *ServerStatus) GetLastExitCode() int64 {
+	if x != nil {
+		return x.LastExitCode
+	}
+	return 0
+}
+
+func (x *ServerStatus) GetExitCodeKnown() bool {
+	if x != nil {
+		return x.ExitCodeKnown
+	}
+	return false
 }
 
 type StreamConsoleRequest struct {
@@ -4643,12 +4668,14 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x13PowerActionResponse\x122\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\"5\n" +
 	"\x16GetServerStatusRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\x9e\x01\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xec\x01\n" +
 	"\fServerStatus\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x122\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\x12=\n" +
 	"\n" +
-	"last_stats\x18\x03 \x01(\v2\x1e.kraken.agent.v1.ResourceStatsR\tlastStats\"R\n" +
+	"last_stats\x18\x03 \x01(\v2\x1e.kraken.agent.v1.ResourceStatsR\tlastStats\x12$\n" +
+	"\x0elast_exit_code\x18\x04 \x01(\x03R\flastExitCode\x12&\n" +
+	"\x0fexit_code_known\x18\x05 \x01(\bR\rexitCodeKnown\"R\n" +
 	"\x14StreamConsoleRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1d\n" +
 	"\n" +

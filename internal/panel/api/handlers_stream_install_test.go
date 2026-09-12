@@ -79,8 +79,9 @@ func TestStream_InstallOutputReachesTheBrowser(t *testing.T) {
 
 	// Break the route to the agent, leaving the node schedulable: the placement
 	// succeeds, the provisioning call does not. (The fake agent's install always
-	// succeeds, and a successful install drops its buffer by design — the failure
-	// is the case whose output has to survive.)
+	// succeeds, and a success no longer routes to this socket once the state
+	// moves on — its buffer is read over REST instead, covered in
+	// handlers_installlog_test.go. A failure is the case this socket serves.)
 	node, err := st.GetNode(context.Background(), nodeID)
 	if err != nil {
 		t.Fatalf("get node: %v", err)

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"regexp"
@@ -41,6 +42,13 @@ type monitor struct {
 	state        agentpb.ServerState
 	expectedDown bool // an operator stop/kill was requested; the next exit is intentional
 	restarts     int
+	// exitCode is the status of the most recent observed container exit, and
+	// exitKnown says one has been observed at all (0 is a real exit code). The
+	// watchdog is the only thing that sees it: without carrying it out of here
+	// the code lived in the agent's journal and nowhere an operator looks, so a
+	// Windows game dying on 0xC0000135 read as a bare "crashed" (#280).
+	exitCode  int64
+	exitKnown bool
 }
 
 // startMonitor (re)arms the watchdog for a freshly started server. Any prior
@@ -206,6 +214,21 @@ func (d *DockerRuntime) monitorState(serverID string) (agentpb.ServerState, bool
 	return m.state, true
 }
 
+// monitorExit returns the exit code of the last container exit the watchdog
+// observed. known is false when it has seen none (a server that has not stopped
+// since the monitor was armed), which is not the same as an exit code of 0.
+func (d *DockerRuntime) monitorExit(serverID string) (code int64, known bool) {
+	d.monMu.Lock()
+	m := d.monitors[serverID]
+	d.monMu.Unlock()
+	if m == nil {
+		return 0, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.exitCode, m.exitKnown
+}
+
 func (m *monitor) setState(st agentpb.ServerState) {
 	m.mu.Lock()
 	m.state = st
@@ -235,7 +258,11 @@ func (m *monitor) run(since time.Time) {
 			return
 		}
 
+		// Record the code before deciding what the exit means: an operator stop
+		// has one too, and a Status poll that arrives between here and the next
+		// start should report what actually happened.
 		m.mu.Lock()
+		m.exitCode, m.exitKnown = code, true
 		intentional := m.expectedDown
 		m.mu.Unlock()
 		if intentional {
@@ -253,12 +280,17 @@ func (m *monitor) run(since time.Time) {
 		m.mu.Unlock()
 
 		if !canRestart {
-			slog.Warn("watchdog: server crashed", "server", m.serverID, "exit_code", code, "auto_restart", m.restartOnCrash)
+			// Hex alongside the decimal: a Windows NTSTATUS (0xC0000135 =
+			// STATUS_DLL_NOT_FOUND) is unrecognisable in decimal, and this line
+			// is what a journal-reading operator has.
+			slog.Warn("watchdog: server crashed", "server", m.serverID,
+				"exit_code", code, "exit_hex", hexExit(code), "auto_restart", m.restartOnCrash)
 			m.setState(agentpb.ServerState_SERVER_STATE_CRASHED)
 			return
 		}
 
-		slog.Info("watchdog: server crashed — auto-restarting", "server", m.serverID, "exit_code", code, "attempt", attempt, "max", max)
+		slog.Info("watchdog: server crashed — auto-restarting", "server", m.serverID,
+			"exit_code", code, "exit_hex", hexExit(code), "attempt", attempt, "max", max)
 		m.setState(agentpb.ServerState_SERVER_STATE_STARTING)
 		since = time.Now()
 		if err := m.d.ensureAndStart(m.ctx, m.serverID); err != nil {
@@ -295,6 +327,13 @@ func (m *monitor) scanReady(since time.Time) {
 		}
 		return nil
 	})
+}
+
+// hexExit renders an exit code the way Windows names it. A game killed by a
+// missing DLL exits 3221225781, which is meaningless until it reads 0xC0000135;
+// Linux codes (0-255, or 128+signal) are small and read fine either way.
+func hexExit(code int64) string {
+	return fmt.Sprintf("0x%08X", uint32(code))
 }
 
 // waitExit blocks until the server's container is no longer running and returns

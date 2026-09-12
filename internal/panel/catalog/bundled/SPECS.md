@@ -72,6 +72,26 @@ matches the placement's OS family (`buildVars` in
 
 ## Dual-platform specs — per-platform overrides and config paths
 
+### Platform policy
+
+The goal is that **every game is deployable on either agent**, and that native
+builds win over any OS preference of ours:
+
+1. **Bias toward the NATIVE build for the node's OS.** A Windows node runs the
+   game's native Windows build; a Linux node runs the native Linux build. The
+   spec does not push a server onto one OS — the node it lands on picks.
+2. **Most games ship a native Windows server. When a native Linux server ALSO
+   exists, declare both** `windows-native` **and** `linux-native` **platform
+   entries** so the game loads on either agent.
+3. **When no Linux build exists, add a `linux-wine` entry** so Linux nodes can
+   still host it. Wine is the fallback — never preferred over a native build.
+
+The `platforms` list order is scheduler priority, not an OS preference: put the
+native kinds before `linux-wine` so a native build is always chosen when the
+node can run one.
+
+### Per-platform overrides
+
 `platforms[]` entries take optional `install_script` / `startup_command`
 overrides (see `abiotic-factor.yaml`, `dragonwilds.yaml`); the spec-level
 `install.script` / `startup.command` are the fallback. `config_files`, `stop`,
@@ -87,8 +107,8 @@ overrides (see `abiotic-factor.yaml`, `dragonwilds.yaml`); the spec-level
 - **`stop`** — declare the Linux signal (`SIGINT`); a Windows daemon ignores
   custom stop signals and sends its own shutdown event, while a Linux agent
   ignores Windows-only names such as `CTRL_SHUTDOWN_EVENT` (falls back to
-  SIGTERM). Either name is safe on both, so pick the one the preferred
-  platform honours.
+  SIGTERM). Either name is safe on both — declaring the Linux signal is the
+  convention because it is the only one either agent can actually honour.
 - **`backup` globs** are data-dir-relative and OS-neutral; make sure the
   Windows build actually writes its saves under the data dir (Unreal builds
   marked "installed" default to `%LOCALAPPDATA%\<Project>` — pin them with

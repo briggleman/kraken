@@ -18,36 +18,67 @@ steam_app_ids:
   linux: 4019830
   windows: 4019830
 platforms:
-  # Scheduler priority order: Linux-native first, Windows-native when the server
-  # lands on a Windows node. The spec-level install/startup below are the Linux
-  # commands; the windows-native entry overrides both.
+  # Both native builds are declared, so the node's OS picks: a Linux node runs
+  # the native Linux build, a Windows node the native Windows build. No
+  # linux-wine entry — wine is only a fallback for games with no Linux build,
+  # and this one has one. (List order is scheduler priority; native kinds come
+  # before linux-wine — see bundled/SPECS.md.) The spec-level install/startup
+  # below are the Linux commands; the windows-native entry overrides both.
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
   - kind: windows-native
     image: ghcr.io/briggleman/kraken-steam-win:ltsc2022
     # Same anonymous two-step as Linux, cmd-flavoured (`&` so the second pass
     # always runs and its "Success!" clears the first pass's "Missing
-    # configuration" exit).
+    # configuration" exit) — preceded by a self-update prime. The steam-win
+    # image bakes SteamCMD at build time; once Valve ships a newer client,
+    # steamcmd.exe on Windows updates itself by SPAWNING the new binary and
+    # exiting, so cmd moves on to the next command while the relaunched
+    # updater/downloader is still running — and when the chain ends the
+    # container (PID 1 = cmd) dies with it, leaving only steamapps/downloading.
+    # Observed live on abyss-win 2026-09-12. `+quit` triggers the update on its
+    # own; after it AND after each real pass a PowerShell loop waits until no
+    # steamcmd.exe is left (the bootstrapper can relaunch itself on any pass,
+    # not just the updating one). The loop is passed as -EncodedCommand
+    # (UTF-16LE base64) because Docker's Windows arg escaping turns inner
+    # double quotes into \" and PowerShell then echoes the text as a string
+    # literal instead of running it. Decoded, it reads:
+    #   Start-Sleep -Seconds 3; while (Get-Process steamcmd -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }
     install_script: >-
-      steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd.exe +quit
+      & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
       & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-    # Runs via `cmd /S /C`. The wiki documents launching the root bootstrap exe
-    # (RSDragonwilds.exe, which forwards its arguments to the Win64 Shipping
-    # binary — the same pattern as the abiotic-factor spec); UE server targets
-    # normally name that wrapper <Project>Server.exe, so fall back to it if the
-    # documented name is absent. Flags: the trailing project name mirrors the
-    # Linux command; -Port binds the allocated game port; -UserDir pins UE's
-    # user dir to the install tree so Saved/ (worlds, config, logs) lands under
-    # C:\data — the wiki reports the Windows build otherwise writing saves to
-    # %LOCALAPPDATA%\RSDragonwilds, which a fresh container would lose; -stdout
-    # + -FullStdOutLogOutput mirror the UE log to the container console (UE GUI
-    # exes print nothing otherwise); -unattended suppresses crash dialogs no one
+      & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
+    # KNOWN GAP (2026-09-12): the Shipping exe statically imports DSOUND.dll
+    # (DirectSound), which Windows Server Core does not ship, so on the current
+    # steam-win image the process dies at load with STATUS_DLL_NOT_FOUND
+    # (0xC0000135) before UE prints a line. Its other imports all resolve
+    # (verified by parsing the PE import table in the container). Dropping a
+    # desktop-Windows dsound.dll next to the exe does NOT work either: that
+    # build needs ResampleDmo.dll, also absent from Server Core (LoadLibrary
+    # error 126). The fix belongs in the steam-win image — copy dsound.dll +
+    # ResampleDmo.dll (and whatever they pull in) from the full windows/server
+    # base the way the Unity/UE DLLs already are. Until that image ships, this
+    # platform entry installs but will not boot.
+    # Runs via `cmd /S /C`. Launch the Win64 Shipping binary DIRECTLY, not the
+    # root RSDragonwildsServer.exe the wiki points at: that wrapper is UE's
+    # BootstrapPackagedGame, which checks the DirectX/VC++ prerequisites and
+    # pops a modal installer prompt when they are missing — invisible and
+    # unclickable inside Server Core, so the container sat in "starting" at
+    # 0 MB forever (observed on abyss-win 2026-09-12; same reason the
+    # abiotic-factor wine entry skips its wrapper). Flags: the trailing
+    # project name mirrors the Linux command; -Port binds the allocated game
+    # port; -UserDir pins UE's user dir to the install tree so Saved/ (worlds,
+    # config, logs) lands under C:\data — the wiki reports the Windows build
+    # otherwise writing saves to %LOCALAPPDATA%\RSDragonwilds, which a fresh
+    # container would lose; -stdout + -FullStdOutLogOutput mirror the UE log
+    # to the container console; -unattended suppresses crash dialogs no one
     # can click in a container. -NewConsole from the wiki is deliberately
     # omitted (it only opens a console window).
     startup_command: >-
-      cd /d C:\data & if exist RSDragonwilds.exe
-      (RSDragonwilds.exe RSDragonwilds -log -stdout -FullStdOutLogOutput -unattended -Port={{PORT_GAME}} -UserDir=C:\data\RSDragonwilds)
-      else
-      (RSDragonwildsServer.exe RSDragonwilds -log -stdout -FullStdOutLogOutput -unattended -Port={{PORT_GAME}} -UserDir=C:\data\RSDragonwilds)
+      cd /d C:\data\RSDragonwilds\Binaries\Win64
+      & RSDragonwildsServer-Win64-Shipping.exe RSDragonwilds -log -stdout -FullStdOutLogOutput -unattended -Port={{PORT_GAME}} -UserDir=C:\data\RSDragonwilds
 install:
   # Anonymous SteamCMD; two-step to defeat the "Missing configuration" first-run
   # race (fresh appinfo cache). Second pass' "Success!" clears the agent's exit-0-

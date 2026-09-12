@@ -204,8 +204,17 @@ type Server struct {
 	// set alongside StateInstallFailed and cleared when an install succeeds or a
 	// reinstall begins. It is the operator's whole diagnosis, so it must live on
 	// the record, not only in the Panel's process log.
-	LastError string    `json:"last_error,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	LastError string `json:"last_error,omitempty"`
+	// LastExitCode is the exit status of the container's most recent run, carried
+	// from the Agent's watchdog by the reconciler and held only while the server
+	// is crashed (any other state clears it). It is the operator's first clue
+	// about a crash — a Windows game that dies on a missing DLL exits 3221225781
+	// (0xC0000135) and leaves nothing else behind. LastExitCodeKnown separates
+	// "exited 0" from "no exit was observed"; int64 because Windows NTSTATUS
+	// codes are unsigned 32-bit and would go negative in an int32.
+	LastExitCode      int64     `json:"last_exit_code,omitempty"`
+	LastExitCodeKnown bool      `json:"last_exit_code_known,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // ScheduleAction is the operation a scheduled task performs on its server.

@@ -26,11 +26,15 @@
 # game servers (e.g. V Rising) statically import. They come from the larger
 # Windows Server base; XInput 1.3 isn't in any base, so it's pulled from the
 # legacy DirectX redistributable. (Determined empirically by diffing V Rising's
-# loaded modules against Server Core — see SECURITY.md.)
+# loaded modules against Server Core — see SECURITY.md.) dsound.dll is a static
+# import of UE5 dedicated servers (RuneScape: Dragonwilds died at load with
+# STATUS_DLL_NOT_FOUND until it was present, 2026-09-12); it in turn imports
+# ResampleDmo.dll, which imports msdmo.dll — all three are missing from Server
+# Core, so they travel together.
 FROM mcr.microsoft.com/windows/server:ltsc2022 AS deps
 SHELL ["powershell", "-NoLogo", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop';"]
 RUN New-Item -ItemType Directory -Force C:\sys32 | Out-Null; \
-    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
+    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll','dsound.dll','ResampleDmo.dll','msdmo.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
     Invoke-WebRequest -UseBasicParsing -Uri 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe' -OutFile C:\dxr.exe; \
     Start-Process -Wait -FilePath C:\dxr.exe -ArgumentList '/Q','/T:C:\dxr'; \
     expand C:\dxr\APR2007_xinput_x64.cab -F:xinput1_3.dll C:\sys32 | Out-Null

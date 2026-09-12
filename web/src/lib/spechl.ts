@@ -20,12 +20,51 @@ const esc = (s: string): string =>
 const withTemplates = (escaped: string): string =>
   escaped.replace(/\{\{[^{}]+\}\}/g, (m) => `<span class="t">${m}</span>`);
 
-/** Highlight spec source in the given serialisation. */
-export function highlight(text: string, fmt: "json" | "yaml"): string {
-  return fmt === "yaml" ? highlightYAML(text) : highlightJSON(text);
+// Guards (#279). A spec can legitimately carry a multi-KB value on ONE line —
+// the base64 of a PowerShell -EncodedCommand in an install_script — and the
+// document is re-highlighted as you type. Tokenising is only milliseconds even
+// then, so these thresholds are not about the CPU: they bound how many inline
+// boxes the overlay hands the layout engine for a run of text that has no break
+// opportunities and reads as one opaque blob anyway. Past them the line falls
+// back to escaped plain text — one text node, which is what it looked like.
+//
+// 8 KB is comfortably above the longest line in any bundled spec (palworld's
+// config template, ~4.5 KB), so nothing real loses its colour.
+const MAX_LINE = 8_000;
+const MAX_DOC = 200_000;
+
+/**
+ * Highlight spec source a LINE AT A TIME, in the given serialisation.
+ *
+ * Returned per line rather than as one blob so the editor can mount one
+ * `{@html}` per line: typing then rewrites the line you are on instead of
+ * replacing — and re-laying-out — the whole overlay on every keystroke (#279).
+ *
+ * Both serialisations tokenise per line. For YAML that was always true; for
+ * JSON it is free, because a JSON string cannot hold a raw newline — so
+ * splitting first costs nothing in correctness and buys the per-line guard.
+ * (It also stops one unterminated quote mid-edit from painting the rest of the
+ * document as a string.)
+ */
+export function highlightLines(text: string, fmt: "json" | "yaml"): string[] {
+  const lines = text.split("\n");
+  if (text.length > MAX_DOC) return lines.map(esc);
+  const one = fmt === "yaml" ? highlightYAMLLine : highlightJSONLine;
+  return lines.map((l) => (l.length > MAX_LINE ? esc(l) : one(l)));
 }
 
-function highlightJSON(text: string): string {
+/** Highlight a whole document. Line-joined `highlightLines`. */
+export function highlight(text: string, fmt: "json" | "yaml"): string {
+  return highlightLines(text, fmt).join("\n");
+}
+
+// Sticky (/y) so they can be matched AT an offset without slicing the rest of
+// the line off first — the per-character `text.slice(i)` this used to do made
+// tokenising quadratic in the line length (#279).
+const NUM_RE = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+const LIT_RE = /(?:true|false|null)\b/y;
+
+function highlightJSONLine(text: string): string {
   let out = "";
   let i = 0;
   const n = text.length;
@@ -55,28 +94,30 @@ function highlightJSON(text: string): string {
       continue;
     }
     if (c === "-" || (c >= "0" && c <= "9")) {
-      const m = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(text.slice(i));
+      NUM_RE.lastIndex = i;
+      const m = NUM_RE.exec(text);
       if (m) {
         out += `<span class="n">${m[0]}</span>`;
         i += m[0].length;
         continue;
       }
     }
-    const lit = /^(true|false|null)\b/.exec(text.slice(i));
-    if (lit) {
-      out += `<span class="k">${lit[0]}</span>`;
-      i += lit[0].length;
-      continue;
+    // gate on the initial letter so the literal regex only runs where one of
+    // true/false/null could actually begin
+    if (c === "t" || c === "f" || c === "n") {
+      LIT_RE.lastIndex = i;
+      const lit = LIT_RE.exec(text);
+      if (lit) {
+        out += `<span class="k">${lit[0]}</span>`;
+        i += lit[0].length;
+        continue;
+      }
     }
     // structural punctuation is the green scaffold; whitespace is the only base text
     out += "{}[]:,".includes(c) ? `<span class="p">${c}</span>` : esc(c);
     i++;
   }
   return out;
-}
-
-function highlightYAML(text: string): string {
-  return text.split("\n").map(highlightYAMLLine).join("\n");
 }
 
 function highlightYAMLLine(line: string): string {

@@ -254,7 +254,15 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 }
 
 func (f *FakeRuntime) Status(_ context.Context, serverID string) (*agentpb.ServerStatus, error) {
-	return &agentpb.ServerStatus{ServerId: serverID, State: f.getState(serverID)}, nil
+	st := f.getState(serverID)
+	status := &agentpb.ServerStatus{ServerId: serverID, State: st}
+	// A crashed fake server reports the exit code a real one would, so the
+	// Panel's crash notice can be exercised without a Windows node: 0xC0000135
+	// is STATUS_DLL_NOT_FOUND, the case that made #280 expensive.
+	if st == agentpb.ServerState_SERVER_STATE_CRASHED {
+		status.LastExitCode, status.ExitCodeKnown = 3221225781, true
+	}
+	return status, nil
 }
 
 func (f *FakeRuntime) StreamConsole(ctx context.Context, serverID string, tail int32, emit func(*agentpb.ConsoleLine) error) error {

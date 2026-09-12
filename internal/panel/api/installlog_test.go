@@ -173,3 +173,69 @@ func TestInstallLog_ErrorLinesCarryTheErrorStream(t *testing.T) {
 		t.Fatalf("snapshot = %+v, want one line on the error stream", snap)
 	}
 }
+
+// Snapshot is what the REST endpoint reads: the whole attempt, without taking a
+// subscription. A finished install must still hand back its lines — the #280
+// case, where an installer exited 0 and left a broken tree behind.
+func TestInstallLog_SnapshotSurvivesTheAttempt(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "downloading")
+	l.Finish("s1")
+
+	snap := l.Snapshot("s1")
+	if !snap.Retained {
+		t.Fatal("a finished install must still read as retained")
+	}
+	if !snap.Done {
+		t.Error("a finished install must read as done")
+	}
+	if len(snap.Lines) != 1 || snap.Lines[0].Text != "downloading" {
+		t.Fatalf("lines = %+v, want the buffered line", snap.Lines)
+	}
+	if snap.StartedAt.IsZero() || snap.FinishedAt.IsZero() {
+		t.Errorf("want both timestamps set; started=%v finished=%v", snap.StartedAt, snap.FinishedAt)
+	}
+	if snap.FinishedAt.Before(snap.StartedAt) {
+		t.Errorf("finished %v is before started %v", snap.FinishedAt, snap.StartedAt)
+	}
+}
+
+// "Nothing retained" and "an install that printed nothing" are different
+// answers: only the first means the Panel restarted since the attempt, and the
+// UI says so in words rather than showing a blank pane.
+func TestInstallLog_SnapshotOfAnUnknownServerIsNotRetained(t *testing.T) {
+	l := newInstallLog()
+	snap := l.Snapshot("nobody")
+	if snap.Retained {
+		t.Fatal("a server with no buffer must not read as retained")
+	}
+	if len(snap.Lines) != 0 {
+		t.Fatalf("lines = %+v, want none", snap.Lines)
+	}
+
+	l.Start("s1")
+	l.Finish("s1")
+	if empty := l.Snapshot("s1"); !empty.Retained {
+		t.Fatal("an attempt that printed nothing is still retained")
+	}
+}
+
+// A reinstall replaces the retained attempt rather than adding to it: an
+// operator reading the log after a retry must see the retry, not a merge.
+func TestInstallLog_SnapshotAfterAReinstallShowsOnlyTheNewAttempt(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "first attempt")
+	l.Finish("s1")
+
+	l.Start("s1")
+	l.Append("s1", "second attempt")
+	snap := l.Snapshot("s1")
+	if snap.Done {
+		t.Error("a running reinstall must not read as done")
+	}
+	if len(snap.Lines) != 1 || snap.Lines[0].Text != "second attempt" {
+		t.Fatalf("lines = %+v, want only the second attempt", snap.Lines)
+	}
+}

@@ -6,9 +6,20 @@
 import { getToken } from "@/api/client";
 
 export interface StreamConsoleLine {
+  /** Stable identity for the console's keyed `{#each}`. The buffer is a ring —
+   *  array indices shift on every eviction, so keying by index makes one new
+   *  line rewrite all MAX_LINES rows (#279). */
+  seq: number;
   ts: number;
   stream: string;
+  /** What the console renders: clamped to MAX_LINE_CHARS, or a marker when the
+   *  line was a PowerShell CLIXML record. */
   text: string;
+  /** Characters `text` leaves out; 0 when the line is rendered whole. */
+  hidden: number;
+  /** The untouched line, kept only when `text` is not the whole of it, so the
+   *  console can still hand the operator the real thing on copy. */
+  full?: string;
 }
 
 export interface LiveStats {
@@ -34,6 +45,17 @@ interface StreamFrame extends Partial<LiveStats> {
 
 const MAX_LINES = 500;
 const MAX_SAMPLES = 40;
+// A single console line renders only this far (#279). A Windows container's
+// installer can emit multi-KB records with no newline in them; laying one out
+// costs far more than the buffer's whole nominal 500 lines, and dozens arrive
+// in a row. The remainder is kept on the line for copy, never for layout.
+const MAX_LINE_CHARS = 2_000;
+// PowerShell writes its progress bars and error records as CLIXML — a
+// `#< CLIXML` header followed by an <Objs …> blob, all on one line. They carry
+// nothing an operator can act on, so they collapse to a marker rather than
+// eating 2 KB of the pane each. Detection looks at the head of the line only.
+const CLIXML_HEAD_CHARS = 32;
+const CLIXML_RE = /^\s*(?:#<\s*CLIXML|<Objs\b)/;
 // Reconnect backoff for a live stream, in ms. The last value repeats.
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
 // A handshake that neither opens nor errors within this window is abandoned
@@ -50,6 +72,22 @@ export type StreamMode = "off" | "live" | "replay";
 
 export type StreamStatus = "idle" | "connecting" | "open" | "retrying" | "ended";
 
+/** Reduce one raw console line to what the pane should render, keeping the
+ *  original alongside it when the two differ. O(1) in the line's length apart
+ *  from the one slice that produces the clamped prefix. */
+function renderable(raw: string): { text: string; hidden: number; full?: string } {
+  const head = raw.length > CLIXML_HEAD_CHARS ? raw.slice(0, CLIXML_HEAD_CHARS) : raw;
+  if (CLIXML_RE.test(head)) {
+    return {
+      text: `[powershell clixml record — ${raw.length.toLocaleString()} chars]`,
+      hidden: raw.length,
+      full: raw,
+    };
+  }
+  if (raw.length <= MAX_LINE_CHARS) return { text: raw, hidden: 0 };
+  return { text: raw.slice(0, MAX_LINE_CHARS), hidden: raw.length - MAX_LINE_CHARS, full: raw };
+}
+
 export class ServerStream {
   lines = $state<StreamConsoleLine[]>([]);
   stats = $state<LiveStats | null>(null);
@@ -64,6 +102,16 @@ export class ServerStream {
   #connectTimer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
   #openedAt = 0;
+  #seq = 0;
+
+  /** Append one console line to the ring buffer. Clamping happens here rather
+   *  than at render time so the cap covers replayed scrollback too, and so a
+   *  line costs one slice once instead of a layout pass per repaint. */
+  #say(ts: number, stream: string, raw: string) {
+    const { text, hidden, full } = renderable(raw);
+    this.lines.push({ seq: this.#seq++, ts, stream, text, hidden, full });
+    if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
+  }
 
   get connected() {
     return this.status === "open";
@@ -188,8 +236,7 @@ export class ServerStream {
       return;
     }
     if (f.type === "console") {
-      this.lines.push({ ts: f.ts ?? 0, stream: f.stream ?? "stdout", text: f.text ?? "" });
-      if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
+      this.#say(f.ts ?? 0, f.stream ?? "stdout", f.text ?? "");
     } else if (f.type === "stats") {
       const memLimit = f.mem_limit_mb ?? 0;
       const memPct = memLimit > 0 ? ((f.mem_used_mb ?? 0) / memLimit) * 100 : 0;
@@ -211,11 +258,7 @@ export class ServerStream {
       this.memHistory.push(memPct);
       if (this.memHistory.length > MAX_SAMPLES) this.memHistory.shift();
     } else if (f.type === "error") {
-      this.lines.push({
-        ts: Date.now(),
-        stream: "error",
-        text: `[panel] ${f.message ?? "stream error"}`,
-      });
+      this.#say(Date.now(), "error", `[panel] ${f.message ?? "stream error"}`);
     }
   }
 }

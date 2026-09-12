@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { istyle } from "@/lib/istyle";
   import { ui, closeSheet, openSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
@@ -29,14 +30,30 @@
     fleet.nodes.find((n) => n.id === ui.nsFormNodeId) ?? fleet.nodes[0],
   );
 
-  // (re)seed when the sheet opens or the game changes
+  // (re)seed when the sheet opens or the game changes — and ONLY then. The
+  // seed reads the fleet (the server count behind the default `<slug>-NN`
+  // name, the spec's defaults), and the fleet refreshes every few seconds
+  // with fresh objects. If those reads were tracked, every refresh would
+  // re-run the seed and silently revert whatever the operator had typed —
+  // memory set to 4096 snapped back to the spec's 8192 mid-form. So the
+  // effect tracks just the open flag and the chosen spec's id; everything
+  // it seeds from is read untracked, at the moment the game is picked.
   $effect(() => {
     if (!open) return;
     if (!specId && fleet.specs.length) specId = fleet.specs[0].id;
   });
+  let seededFor: string | null = null;
   $effect(() => {
-    const s = spec;
-    if (!s) return;
+    if (!open) {
+      seededFor = null; // reopening starts from the defaults again
+      return;
+    }
+    const id = spec?.id;
+    if (!id || id === seededFor) return;
+    seededFor = id;
+    untrack(() => seed(spec!));
+  });
+  function seed(s: Spec) {
     name = s.slug + "-" + String(fleet.servers.filter((x) => x.spec_id === s.id).length + 1).padStart(2, "0");
     const v: Record<string, string> = {};
     for (const sv of s.variables ?? []) if (sv.user_editable) v[sv.key] = sv.default;
@@ -45,7 +62,7 @@
     bepinex = false;
     memMb = String(s.resources.recommended_memory_mb || s.resources.min_memory_mb || 0);
     err = null;
-  });
+  }
 
   const platformWords = $derived(
     (spec?.platforms ?? []).map((p) =>

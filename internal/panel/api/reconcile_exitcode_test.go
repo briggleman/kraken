@@ -25,9 +25,15 @@ type statusAgent struct {
 }
 
 func (a *statusAgent) GetServerStatus(_ context.Context, req *agentpb.GetServerStatusRequest) (*agentpb.ServerStatus, error) {
-	st := *a.status
-	st.ServerId = req.ServerId
-	return &st, nil
+	// Rebuilt rather than copied: a generated message carries a lock.
+	want := a.status
+	return &agentpb.ServerStatus{
+		ServerId:      req.ServerId,
+		State:         want.State,
+		LastStats:     want.LastStats,
+		LastExitCode:  want.LastExitCode,
+		ExitCodeKnown: want.ExitCodeKnown,
+	}, nil
 }
 
 func startStatusAgent(t *testing.T, initial *agentpb.ServerStatus) (*statusAgent, string) {

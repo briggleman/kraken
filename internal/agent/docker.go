@@ -703,11 +703,23 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		return d.fail(emit, "pull image: "+err.Error())
 	}
 
+	// Windows containers only: steamcmd.exe self-updates by spawning the new
+	// binary and exiting, which lets cmd (PID 1) run off the end of the script
+	// and kill the container mid-download. Prime the update and wait for every
+	// steamcmd to be gone before the chain ends. See steamguard.go.
+	script := req.InstallScript
+	if d.isWindows() {
+		if guarded, applied := guardWindowsSteamInstall(script); applied {
+			script = guarded
+			_ = emit(logLine("[kraken] windows SteamCMD guard applied: priming steamcmd.exe's self-update and waiting for steamcmd to exit before the install container ends"))
+		}
+	}
+
 	// One-shot install container: run the install script against the data dir.
 	cfg := &container.Config{
 		Image:      req.Image,
 		Entrypoint: d.shellEntrypoint(),
-		Cmd:        []string{req.InstallScript},
+		Cmd:        []string{script},
 		Env:        envSlice(req.Env),
 		WorkingDir: dataPath,
 		Labels:     map[string]string{labelManaged: "true", labelServerID: req.ServerId},

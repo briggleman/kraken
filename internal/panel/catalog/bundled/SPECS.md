@@ -114,6 +114,44 @@ overrides (see `abiotic-factor.yaml`, `dragonwilds.yaml`); the spec-level
   marked "installed" default to `%LOCALAPPDATA%\<Project>` — pin them with
   `-UserDir=C:\data\<Project>` in the Windows startup command).
 
+### The Windows SteamCMD guard — the agent handles it, don't copy it into specs
+
+`steamcmd.exe` never updates itself in place: when Valve ships a newer client
+the running bootstrapper **spawns the new binary and exits**. Because a
+`windows-native` install script runs as `cmd /S /C "<script>"` — cmd is PID 1 —
+cmd sees that first `steamcmd.exe` return, walks the rest of the `&` chain,
+reaches the end, and the container dies while the relaunched downloader is still
+writing `steamapps/downloading`. Exit code 0, no game files, no error line, and
+the Panel shows an offline server over an empty data dir.
+
+**The agent guards this for you.** On a Windows node only, and only when the
+install script mentions `steamcmd`, `internal/agent/docker.go`'s `Install()`
+rewrites the script (see `internal/agent/steamguard.go`):
+
+- prepends a bare `steamcmd.exe +quit` prime, which triggers the self-update
+  before any real `app_update` pass can be cut short by it;
+- follows the prime, every `steamcmd` segment of the `&` chain, and the end of
+  the chain with a PowerShell loop that blocks until no `steamcmd` process
+  remains — so the relaunched child's `Success! App … fully installed` line
+  still reaches the log stream and the existing success/failure regexes still
+  decide the outcome.
+
+An install-log line (`[kraken] windows SteamCMD guard applied: …`) records that
+it fired. Per-segment insertion is skipped — prime plus a trailing wait are
+still applied — when the chain contains `"`, `^`, `(`, `)`, `<`, `>`, `|` or
+`&&`, any of which makes splitting on `&` unsafe.
+
+So **write the plain two-pass script**; do not hand-roll the wait. Linux
+scripts and non-Steam scripts are never touched, and a script that already
+carries the guard (`dragonwilds.yaml` predates it) is left alone.
+
+**The `\"` gotcha, if you ever do need to write it by hand:** the wait cannot be
+`powershell -Command "…"`. Docker's Windows argument escaping rewrites inner
+double quotes as `\"`, so PowerShell receives the loop as a quoted string
+literal, echoes it, and exits 0 — doing nothing, silently. It has to go through
+`powershell -NoProfile -NonInteractive -EncodedCommand <UTF-16LE base64>`,
+which carries no quotes at all.
+
 ## The `backup:` block — where the saves live
 
 **A backup is the game's SAVE DATA, not the reinstallable install tree.** The

@@ -4,9 +4,10 @@
   import { refreshFleet } from "@/lib/fleet.svelte";
   import { api } from "@/api/client";
   import { sheetFocus } from "@/lib/sheetFocus";
-  import { highlight } from "@/lib/spechl";
+  import { highlightLines } from "@/lib/spechl";
   import type { Spec } from "@/api/types";
   import YAML from "yaml";
+  import { untrack } from "svelte";
 
   // the mock's data-confirm-body, passed through to the typed-confirm dialog
   const DELETE_BODY =
@@ -31,7 +32,36 @@
   // so a highlighted <pre> renders behind it and the textarea sits on top with
   // transparent text (a live overlay — DESIGN.md's Spec code editor). The trailing
   // newline keeps the pre's height in step with the textarea's final blank line.
-  const hl = $derived(highlight(codeText, fmt) + "\n");
+  //
+  // The overlay is built a LINE AT A TIME (#279). A single {@html} over the whole
+  // document made every keystroke throw the entire <pre> away and lay it out
+  // again — and with a multi-KB single-line value in the document (a base64
+  // -EncodedCommand in an install_script) that one re-layout is the freeze. One
+  // {@html} per line means typing rewrites only the line you are on; every other
+  // line's DOM, and its layout, is left alone.
+  //
+  // Tokenising itself stays off the keystroke for large documents: a spec of
+  // ordinary size re-highlights synchronously (the overlay sits under the caret,
+  // so lag there is visible), and only a document big enough to cost real time
+  // takes the debounce, where a beat of stale colour beats a stalled tab.
+  const HL_SYNC_LIMIT = 20_000;
+  const HL_DEBOUNCE_MS = 90;
+  let hlText = $state("");
+  let hlTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const t = codeText;
+    if (untrack(() => hlText) === t) return;
+    if (t.length <= HL_SYNC_LIMIT) {
+      hlText = t;
+      return;
+    }
+    clearTimeout(hlTimer);
+    hlTimer = setTimeout(() => (hlText = t), HL_DEBOUNCE_MS);
+    return () => clearTimeout(hlTimer);
+  });
+  // Depends on hlText and fmt and nothing else — a fleet refresh, a stats tick,
+  // or any other page activity can never re-highlight the document.
+  const hlLines = $derived(highlightLines(hlText, fmt));
   let taEl = $state<HTMLTextAreaElement | null>(null);
   let hlEl = $state<HTMLElement | null>(null);
   // Mirror the textarea's scroll onto the highlight layer so the two never drift.
@@ -371,7 +401,14 @@
         <label class="cd-opt"><input class="cd-r r-y" type="radio" name="specfmt" bind:this={yamlFmt} onchange={() => onFmt("yaml")} />yaml</label>
       </span>
       <div class="spec-code-stack">
-        <pre class="spec-code spec-code-hl" aria-hidden="true" bind:this={hlEl}>{@html hl}</pre>
+        <!-- One {@html} per line, keyed by line number, each followed by the
+             newline that separates it from the next (the last one is the trailing
+             blank line that keeps the pre's height in step with the textarea).
+             Svelte skips an {@html} whose string is unchanged, so a keystroke
+             rewrites exactly one line's DOM — see the note by hlLines. The
+             wrapper is an inline span, which is transparent to line breaking, so
+             the overlay still wraps exactly where the textarea does. -->
+        <pre class="spec-code spec-code-hl" aria-hidden="true" bind:this={hlEl}>{#each hlLines as l, i (i)}<span>{@html l}</span>{"\n"}{/each}</pre>
         <textarea
           class="spec-code spec-code-input"
           spellcheck="false"

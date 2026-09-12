@@ -54,6 +54,37 @@ export function fmtClock(tsMs: number): string {
   return new Date(tsMs).toLocaleTimeString("en-US", { hour12: false });
 }
 
+// Windows NTSTATUS codes an operator actually meets when a game server dies in
+// a container. They are only recognisable in hex — 3221225781 is noise,
+// 0xC0000135 is a name — and each one points at a different fix, so the hint
+// says what to do, not just what the constant is called.
+const EXIT_HINTS: Record<string, string> = {
+  "0xC0000135": "a dll the game needs is missing from the container image (STATUS_DLL_NOT_FOUND)",
+  "0xC0000139": "a dll is present but the wrong build — an export the game wants is missing (STATUS_ENTRYPOINT_NOT_FOUND)",
+  "0xC0000005": "access violation — the game crashed on a bad memory access (STATUS_ACCESS_VIOLATION)",
+  "0xC000007B": "bad image format — a 32/64-bit mismatch between the game and a dll (STATUS_INVALID_IMAGE_FORMAT)",
+};
+
+/** An exit code in hex the way Windows names it: 3221225781 → "0xC0000135".
+ *  Codes are unsigned 32-bit, so a negative render would match no documentation
+ *  anywhere. */
+export function fmtExitHex(code: number): string {
+  return "0x" + (code >>> 0).toString(16).toUpperCase().padStart(8, "0");
+}
+
+/** The crash notice's whole sentence: decimal and hex, plus what the code means
+ *  when it is one of the handful worth naming. Linux codes stay short — 137 is
+ *  a SIGKILL, which is a fact about the host, not the game. */
+export function fmtExit(code: number): string {
+  const hex = fmtExitHex(code);
+  const line = `exit ${code} / ${hex}`;
+  const hint = EXIT_HINTS[hex];
+  if (hint) return `${line} — ${hint}`;
+  if (code === 0) return `${line} — the process ended on its own without an error code`;
+  if (code > 128 && code < 165) return `${line} — killed by signal ${code - 128}`;
+  return line;
+}
+
 /** "HH:MM" for the events floor. */
 export function fmtHm(iso: string): string {
   const d = new Date(iso);

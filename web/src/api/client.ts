@@ -14,6 +14,7 @@ import type {
   ServerDNS,
   FileContent,
   FileListing,
+  InstallLog,
   LoginResponse,
   Node,
   NodeConfig,
@@ -217,6 +218,11 @@ export const api = {
   },
   getServerSettings(id: string): Promise<ServerSettings> {
     return request("GET", `/servers/${id}/settings`);
+  },
+  /** The retained install log — readable at any state, including long after the
+   *  install succeeded (the console socket only carries it while installing). */
+  getInstallLog(id: string): Promise<InstallLog> {
+    return request("GET", `/servers/${id}/install-log`);
   },
   listFiles(id: string, path: string): Promise<FileListing> {
     return request("GET", `/servers/${id}/files?path=${encodeURIComponent(path)}`);

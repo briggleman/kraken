@@ -30,6 +30,11 @@ type FakeRuntime struct {
 	backups map[string][]*agentpb.BackupInfo // serverID → backups
 	files   map[string]map[string]*fakeFile  // serverID → logical path → entry (see tree)
 	queries map[string]*agentpb.PlayerQuery  // serverID → the spec's player query (see fakeRoster)
+	// runs counts container "runs" per server: every start, restart and stop
+	// bumps it, and an open console stream ends when it moves — the way
+	// Docker's log follow ends when the container it was following stops. That
+	// is what lets the Panel's reconnect-on-restart path be exercised here.
+	runs map[string]int
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -454,7 +459,20 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("agent: unknown power action %v", action)
 	}
 	f.setState(serverID, st)
+	f.mu.Lock()
+	if f.runs == nil {
+		f.runs = make(map[string]int)
+	}
+	f.runs[serverID]++
+	f.mu.Unlock()
 	return st, nil
+}
+
+// run returns the server's current run number (see runs).
+func (f *FakeRuntime) run(serverID string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.runs[serverID]
 }
 
 func (f *FakeRuntime) Status(_ context.Context, serverID string) (*agentpb.ServerStatus, error) {
@@ -481,11 +499,15 @@ func (f *FakeRuntime) StreamConsole(ctx context.Context, serverID string, tail i
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	n := 0
+	started := f.run(serverID)
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if f.run(serverID) != started {
+				return nil // the container this follow was attached to is gone
+			}
 			n++
 			if err := emit(&agentpb.ConsoleLine{
 				ServerId: serverID, TsUnixMs: nowMs(), Stream: "stdout",

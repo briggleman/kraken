@@ -169,6 +169,12 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	if closer, ok := rt.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
 	}
+	// Reclaim the untagged images every re-pull of a moving tag leaves behind
+	// (#289). Long-lived and ctx-bound like the host sampler below; the fake
+	// runtime has no images to prune, hence the assertion.
+	if pruner, ok := rt.(interface{ StartImagePruner(context.Context) }); ok {
+		pruner.StartImagePruner(ctx)
+	}
 
 	// The SFTP guard is built here — before the Service, which reports both
 	// listeners' state — but binds further down, once the gRPC side is wired.

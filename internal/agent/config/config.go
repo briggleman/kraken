@@ -68,7 +68,10 @@ type Config struct {
 	// ImagePull is how hard the Agent tries the registry before using a local
 	// copy of a game-server image: "always" (the default), "if-not-present", or
 	// "never". See internal/agent/images.go.
-	ImagePull         string `json:"image_pull,omitempty"`
+	ImagePull string `json:"image_pull,omitempty"`
+	// ImagePrune is the weekly dangling-image collector: "on" (the default) or
+	// "off". See internal/agent/imageprune.go.
+	ImagePrune        string `json:"image_prune,omitempty"`
 	AllowInsecureGRPC *bool  `json:"allow_insecure_grpc,omitempty"`
 
 	// Tunnel enables reverse-connection mode: the Agent dials the Panel and
@@ -191,6 +194,7 @@ func parseArgs(args []string) (Config, Flags, string, error) {
 	fs.StringVar(&fromFlags.Runtime, "runtime", "", `container backend: "docker" or "fake"`)
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
 	fs.StringVar(&fromFlags.ImagePull, "image-pull", "", `when to pull game-server images: "always", "if-not-present", or "never"`)
+	fs.StringVar(&fromFlags.ImagePrune, "image-prune", "", `weekly prune of dangling (untagged) game-server images: "on" or "off"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
 	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", "stop", or "status"`+
 		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed)`)
@@ -301,6 +305,7 @@ func (c *Config) overlayEnv() {
 	str("KRAKEN_RUNTIME", &c.Runtime)
 	str("KRAKEN_WINDOWS_ISOLATION", &c.WindowsIsolation)
 	str("KRAKEN_IMAGE_PULL", &c.ImagePull)
+	str("KRAKEN_IMAGE_PRUNE", &c.ImagePrune)
 	str("KRAKEN_TUNNEL_ADDR", &c.TunnelAddr)
 	if v, ok := os.LookupEnv("KRAKEN_TUNNEL"); ok && v != "" {
 		b := v == "1" || strings.EqualFold(v, "true")
@@ -346,6 +351,7 @@ func (c *Config) overlay(f *Config) {
 	str(f.Runtime, &c.Runtime)
 	str(f.WindowsIsolation, &c.WindowsIsolation)
 	str(f.ImagePull, &c.ImagePull)
+	str(f.ImagePrune, &c.ImagePrune)
 	str(f.TunnelAddr, &c.TunnelAddr)
 	if f.Tunnel != nil {
 		c.Tunnel = f.Tunnel
@@ -420,6 +426,12 @@ func (c *Config) applyDefaults() {
 	if c.ImagePull == "" {
 		c.ImagePull = "always"
 	}
+	// On by default: a moving tag's previous image is untagged on every re-pull
+	// and nothing else ever reclaims it, so an opt-in collector would leave disks
+	// filling on exactly the nodes that never turned it on (#289).
+	if c.ImagePrune == "" {
+		c.ImagePrune = "on"
+	}
 	if c.Wine == nil {
 		t := true
 		c.Wine = &t
@@ -454,6 +466,11 @@ func (c *Config) validate() error {
 	case "always", "if-not-present", "never":
 	default:
 		return fmt.Errorf("config: image_pull must be \"always\", \"if-not-present\", or \"never\", got %q", c.ImagePull)
+	}
+	switch c.ImagePrune {
+	case "on", "off":
+	default:
+		return fmt.Errorf("config: image_prune must be \"on\" or \"off\", got %q", c.ImagePrune)
 	}
 	switch strings.ToLower(c.WindowsIsolation) {
 	case "", "hyperv", "process", "default":
@@ -541,6 +558,9 @@ func (c *Config) Export() error {
 	}
 	if c.ImagePull != "" {
 		vars["KRAKEN_IMAGE_PULL"] = c.ImagePull
+	}
+	if c.ImagePrune != "" {
+		vars["KRAKEN_IMAGE_PRUNE"] = c.ImagePrune
 	}
 	if c.hostDataDirSet {
 		vars["KRAKEN_HOST_DATA_DIR"] = c.HostDataDir

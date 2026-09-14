@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
@@ -18,6 +19,7 @@ import (
 type imageAPI interface {
 	ImageInspect(ctx context.Context, ref string, opts ...client.ImageInspectOption) (image.InspectResponse, error)
 	ImagePull(ctx context.Context, ref string, options image.PullOptions) (io.ReadCloser, error)
+	ImagesPrune(ctx context.Context, pruneFilter filters.Args) (image.PruneReport, error)
 }
 
 // imagePullPolicy decides how hard the Agent tries the registry before settling

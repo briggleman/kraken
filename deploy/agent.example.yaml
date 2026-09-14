@@ -101,6 +101,14 @@ node_os: linux
 #                   already be on this node.
 # image_pull: always
 
+# Weekly prune of dangling (untagged) images — the previous copy of a moving tag
+# after a re-pull, which nothing else on the node ever reclaims. "on" (default)
+# or "off". Only images no tag points at are removed, and Docker never removes
+# one that backs a container, running or stopped, so servers are unaffected.
+# There is no retention floor: a dangling image is gone a week after it was
+# untagged, and rolling back to it means downloading it again.
+# image_prune: on
+
 # Serve plaintext gRPC on a non-loopback address. This hands the Docker socket
 # to any host that can reach the port — enroll instead.
 # allow_insecure_grpc: false

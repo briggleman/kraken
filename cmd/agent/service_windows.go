@@ -186,10 +186,17 @@ func serviceControl(action string, cfg *config.Config) error {
 			return fmt.Errorf("open service %s (is it installed?): %w", serviceName, err)
 		}
 		defer func() { _ = s.Close() }()
+		// Where the service logs is decided by the command line the SCM has
+		// registered, not by the flags typed here — an operator who omits
+		// --root used to be sent to an agent.log that does not exist (#273).
+		registered := ""
+		if scfg, cerr := s.Config(); cerr == nil {
+			registered = scfg.BinaryPathName
+		}
 		if err := s.Start(); err != nil {
 			return fmt.Errorf("start %s: %w", serviceName, err)
 		}
-		fmt.Printf("service %s started (logs: %s)\n", serviceName, filepath.Join(cfg.StateDir, "agent.log"))
+		fmt.Printf("service %s started (%s)\n", serviceName, startLogNotice(registered, cfg.StateDir))
 		return nil
 	case "stop":
 		s, err := m.OpenService(serviceName)
@@ -329,8 +336,8 @@ func setRecoveryActions(s *mgr.Service) error {
 }
 
 // statusService prints the service's ACTUAL SCM configuration beside what a
-// `--service install` from this same invocation would write, and exits 0 in
-// sync · 1 on drift · 2 when it cannot read the config at all.
+// `--service install` would write, and exits 0 in sync · 1 on drift · 2 when it
+// cannot read the config at all.
 //
 // It exists because #184's failure was invisible without `sc.exe qc` +
 // `sc.exe qfailure`: a node that stopped coming back after self-updates because
@@ -338,6 +345,12 @@ func setRecoveryActions(s *mgr.Service) error {
 // pasting sc.exe output. The exit code is the point — it makes the README's
 // healing instruction scriptable ("nonzero means run --service install")
 // instead of something a human has to eyeball.
+//
+// "What install would write" is judged against the flags the operator typed
+// when they typed any, and otherwise against the flags the service is already
+// registered with (statusBaselineArgs, #273) — so a bare `--service status` on
+// a healthy install is all "ok" rather than a DRIFT row manufactured by the
+// operator's shorter command line.
 func statusService(m *mgr.Mgr) error {
 	s, err := m.OpenService(serviceName)
 	if err != nil {
@@ -356,12 +369,12 @@ func statusService(m *mgr.Mgr) error {
 	if err != nil {
 		return &exitError{exitServiceUnavailable, fmt.Sprintf("resolve executable path: %v", err)}
 	}
-	// The same rule as install: the expected command line is rebuilt from THIS
-	// invocation's flags, so status has to be run the way the service was
-	// installed (install.ps1 always passes --root). The note below says so,
-	// because drift on that row is as likely to be the operator's flags as the
-	// service's configuration.
-	expected := expectedServiceFacts(serviceCommandLine(exe, stripServiceFlag(os.Args[1:]), syscall.EscapeArg))
+	// The expected command line is rebuilt from the baseline flags: this
+	// invocation's, or — when none were typed — the ones the SCM already holds.
+	// The note below only fires in the first case, where drift on that row is as
+	// likely to be the operator's flags as the service's configuration.
+	baseline, fromRegistered := statusBaselineArgs(stripServiceFlag(os.Args[1:]), actual.CommandLine)
+	expected := expectedServiceFacts(serviceCommandLine(exe, baseline, syscall.EscapeArg))
 
 	rows := compareServiceConfig(actual, expected)
 	fmt.Printf("service %s (%s)\n", serviceName, serviceDisplayName)
@@ -382,13 +395,16 @@ func statusService(m *mgr.Mgr) error {
 	for _, d := range drift {
 		fmt.Printf("  - %s\n", d)
 	}
-	if actual.CommandLine != expected.CommandLine {
+	if !fromRegistered && actual.CommandLine != expected.CommandLine {
 		fmt.Print("\nNote: the expected command line is rebuilt from the flags YOU typed. Run status with the\n" +
 			"same flags the service was installed with (install.ps1 always passes --root), or this row\n" +
-			"reports drift that isn't there.\n")
+			"reports drift that isn't there. Run it with no flags at all to compare against the flags\n" +
+			"the service is registered with.\n")
 	}
-	fmt.Printf("\nHeal it with: %s --service install %s\n",
-		filepath.Base(exe), joinArgs(stripServiceFlag(os.Args[1:])))
+	// The heal command carries the baseline flags, so healing a service whose
+	// only real drift is (say) its recovery actions does not re-register it
+	// without the --root it was installed with.
+	fmt.Printf("\nHeal it with: %s --service install %s\n", filepath.Base(exe), joinArgs(baseline))
 	return &exitError{exitServiceDrift,
 		fmt.Sprintf("service %s configuration has drifted (%d field(s))", serviceName, len(drift))}
 }

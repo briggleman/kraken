@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/briggleman/kraken/compare/v0.45.0...v0.46.0) (2026-09-14)
+
+
+### Features
+
+* **web:** delete files and folders from the files tab ([#291](https://github.com/briggleman/kraken/issues/291)) ([22490f2](https://github.com/briggleman/kraken/commit/22490f2effb728dbdcd92bd04ae8aba026714a64))
+
 ## [0.45.0](https://github.com/briggleman/kraken/compare/v0.44.1...v0.45.0) (2026-09-12)
 
 

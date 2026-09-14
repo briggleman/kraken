@@ -57,7 +57,7 @@ func TestAdoptRunningRestoresCrashRestart(t *testing.T) {
 		RestartOnCrash: true,
 		MaxRestarts:    2,
 	}
-	if err := first.pullImage(ctx, spec.Image, func(string) {}); err != nil {
+	if err := first.pullImage(ctx, spec.Image, installPullTimeout, func(string) {}); err != nil {
 		t.Skipf("could not pull %s: %v", spec.Image, err)
 	}
 	if err := first.Create(ctx, spec); err != nil {
@@ -66,7 +66,7 @@ func TestAdoptRunningRestoresCrashRestart(t *testing.T) {
 
 	// Start it *without* arming a monitor — this is what a running server looks
 	// like to an Agent that has just restarted.
-	if err := first.ensureAndStart(ctx, serverID); err != nil {
+	if err := first.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	if _, watched := first.monitorState(serverID); watched {

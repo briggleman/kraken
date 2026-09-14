@@ -60,11 +60,15 @@ type Config struct {
 	TLSKey  string `json:"tls_key,omitempty"`
 	TLSCA   string `json:"tls_ca,omitempty"`
 
-	PanelURL          string `json:"panel_url,omitempty"`
-	EnrollToken       string `json:"enroll_token,omitempty"`
-	CAFingerprint     string `json:"ca_fingerprint,omitempty"`
-	Runtime           string `json:"runtime,omitempty"`
-	WindowsIsolation  string `json:"windows_isolation,omitempty"`
+	PanelURL         string `json:"panel_url,omitempty"`
+	EnrollToken      string `json:"enroll_token,omitempty"`
+	CAFingerprint    string `json:"ca_fingerprint,omitempty"`
+	Runtime          string `json:"runtime,omitempty"`
+	WindowsIsolation string `json:"windows_isolation,omitempty"`
+	// ImagePull is how hard the Agent tries the registry before using a local
+	// copy of a game-server image: "always" (the default), "if-not-present", or
+	// "never". See internal/agent/images.go.
+	ImagePull         string `json:"image_pull,omitempty"`
 	AllowInsecureGRPC *bool  `json:"allow_insecure_grpc,omitempty"`
 
 	// Tunnel enables reverse-connection mode: the Agent dials the Panel and
@@ -186,6 +190,7 @@ func parseArgs(args []string) (Config, Flags, string, error) {
 	fs.StringVar(&fromFlags.TunnelAddr, "tunnel-addr", "", "Panel reverse-tunnel endpoint (host:port; default: panel-url host on port 9443)")
 	fs.StringVar(&fromFlags.Runtime, "runtime", "", `container backend: "docker" or "fake"`)
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
+	fs.StringVar(&fromFlags.ImagePull, "image-pull", "", `when to pull game-server images: "always", "if-not-present", or "never"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
 	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", "stop", or "status"`+
 		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed)`)
@@ -295,6 +300,7 @@ func (c *Config) overlayEnv() {
 	str("KRAKEN_CA_FINGERPRINT", &c.CAFingerprint)
 	str("KRAKEN_RUNTIME", &c.Runtime)
 	str("KRAKEN_WINDOWS_ISOLATION", &c.WindowsIsolation)
+	str("KRAKEN_IMAGE_PULL", &c.ImagePull)
 	str("KRAKEN_TUNNEL_ADDR", &c.TunnelAddr)
 	if v, ok := os.LookupEnv("KRAKEN_TUNNEL"); ok && v != "" {
 		b := v == "1" || strings.EqualFold(v, "true")
@@ -339,6 +345,7 @@ func (c *Config) overlay(f *Config) {
 	str(f.CAFingerprint, &c.CAFingerprint)
 	str(f.Runtime, &c.Runtime)
 	str(f.WindowsIsolation, &c.WindowsIsolation)
+	str(f.ImagePull, &c.ImagePull)
 	str(f.TunnelAddr, &c.TunnelAddr)
 	if f.Tunnel != nil {
 		c.Tunnel = f.Tunnel
@@ -406,6 +413,13 @@ func (c *Config) applyDefaults() {
 	if c.Runtime == "" {
 		c.Runtime = "docker"
 	}
+	// Pull by default: every image in every bundled spec is a moving tag, so a
+	// node that never contacts the registry silently runs whatever it happened
+	// to download first (#288). The pull falls back to the local copy, so this
+	// costs an offline node nothing but a log line.
+	if c.ImagePull == "" {
+		c.ImagePull = "always"
+	}
 	if c.Wine == nil {
 		t := true
 		c.Wine = &t
@@ -435,6 +449,11 @@ func (c *Config) validate() error {
 	case "docker", "fake":
 	default:
 		return fmt.Errorf("config: runtime must be \"docker\" or \"fake\", got %q", c.Runtime)
+	}
+	switch c.ImagePull {
+	case "always", "if-not-present", "never":
+	default:
+		return fmt.Errorf("config: image_pull must be \"always\", \"if-not-present\", or \"never\", got %q", c.ImagePull)
 	}
 	switch strings.ToLower(c.WindowsIsolation) {
 	case "", "hyperv", "process", "default":
@@ -502,11 +521,11 @@ func (c *Config) InsecureGRPCAllowed() bool {
 // Export materializes the resolved configuration into the process environment.
 //
 // Parts of the runtime still read KRAKEN_* directly (the Docker runtime's data,
-// backup, and isolation settings), and they must observe the same values the
-// rest of the Agent resolved — otherwise a --data-dir flag would silently apply
-// to file ops but not to the container the Agent creates. Writing the resolved
-// value back is always correct: it either came from the environment already, or
-// from a source that outranks it.
+// backup, isolation, and image-pull settings), and they must observe the same
+// values the rest of the Agent resolved — otherwise a --data-dir flag would
+// silently apply to file ops but not to the container the Agent creates.
+// Writing the resolved value back is always correct: it either came from the
+// environment already, or from a source that outranks it.
 //
 // HostDataDir is exported only when it was configured explicitly, so the
 // runtime's "containerized Agent with no KRAKEN_HOST_DATA_DIR" warning still
@@ -519,6 +538,9 @@ func (c *Config) Export() error {
 	}
 	if c.WindowsIsolation != "" {
 		vars["KRAKEN_WINDOWS_ISOLATION"] = c.WindowsIsolation
+	}
+	if c.ImagePull != "" {
+		vars["KRAKEN_IMAGE_PULL"] = c.ImagePull
 	}
 	if c.hostDataDirSet {
 		vars["KRAKEN_HOST_DATA_DIR"] = c.HostDataDir

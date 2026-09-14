@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.0](https://github.com/briggleman/kraken/compare/v0.48.0...v0.49.0) (2026-09-14)
+
+
+### Features
+
+* **web:** download files and folders from the files tab ([#305](https://github.com/briggleman/kraken/issues/305)) ([cf587a0](https://github.com/briggleman/kraken/commit/cf587a07fc01d773570657d957b5a4e63dfcf1a2))
+
 ## [0.48.0](https://github.com/briggleman/kraken/compare/v0.47.2...v0.48.0) (2026-09-14)
 
 

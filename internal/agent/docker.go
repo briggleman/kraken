@@ -22,7 +22,6 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -44,7 +43,13 @@ func containerName(serverID string) string { return "kraken_" + serverID }
 // server in its own container with a persistent data volume, and a one-shot
 // container for the install/update phase.
 type DockerRuntime struct {
-	cli         *client.Client
+	cli *client.Client
+	// images is the same client, narrowed to the image calls, so the pull policy
+	// can be exercised against a fake in tests (#288). Never nil.
+	images imageAPI
+	// pullPolicy is how hard this node tries the registry before using a local
+	// copy of an image (KRAKEN_IMAGE_PULL).
+	pullPolicy  imagePullPolicy
 	nodeID      string
 	wineEnabled bool
 	version     string
@@ -150,7 +155,7 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if stateDir == "" {
 		stateDir = "."
 	}
-	d := &DockerRuntime{cli: cli, nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir)}
+	d := &DockerRuntime{cli: cli, images: cli, pullPolicy: parsePullPolicy(os.Getenv("KRAKEN_IMAGE_PULL")), nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir)}
 	d.backups = selectBackupTarget(backupDir)
 	// Failed backups outlive the process: without this an agent restart erased
 	// every FAILED row from ListBackups and the operator saw a backup that
@@ -702,7 +707,7 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		return d.fail(emit, "create data dir: "+err.Error())
 	}
 
-	if err := d.pullImage(ctx, req.Image, func(line string) { _ = emit(logLine(line)) }); err != nil {
+	if err := d.pullImage(ctx, req.Image, installPullTimeout, func(line string) { _ = emit(logLine(line)) }); err != nil {
 		return d.fail(emit, "pull image: "+err.Error())
 	}
 
@@ -806,7 +811,7 @@ var (
 func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
 	switch action {
 	case agentpb.PowerAction_POWER_ACTION_START:
-		if err := d.ensureAndStart(ctx, serverID); err != nil {
+		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
 		}
 		// Launch the crash watchdog; readiness (and thus running) is async, so
@@ -817,7 +822,7 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 		// Mark the in-flight monitor down first so the stop isn't read as a crash.
 		d.markExpectedDown(serverID)
 		_ = d.stop(ctx, serverID)
-		if err := d.ensureAndStart(ctx, serverID); err != nil {
+		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
 		}
 		d.startMonitor(serverID) // fresh monitor resets the crash-restart counter
@@ -839,19 +844,37 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 	}
 }
 
-func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string) error {
-	if err := d.ensureContainer(ctx, serverID); err != nil {
+// imageRefresh says whether a start should ask the registry for a newer image
+// before recreating the container. It is a parameter rather than runtime state
+// because the two callers want opposite things and both should read that way at
+// the call site (#288).
+type imageRefresh bool
+
+const (
+	// refreshImage is for operator-driven starts. Without it a server installed
+	// months ago never moves onto a rebuilt image: ensureContainer recreates the
+	// container from whatever happens to be on disk, and Install is the only
+	// other thing that pulls.
+	refreshImage imageRefresh = true
+	// keepImage is for the crash watchdog. A crash loop must recover on the
+	// image it was already running — swapping images mid-loop would change what
+	// is being diagnosed — and must never stall on an unreachable registry.
+	keepImage imageRefresh = false
+)
+
+func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, refresh imageRefresh) error {
+	if err := d.ensureContainer(ctx, serverID, refresh); err != nil {
 		return err
 	}
 	return d.cli.ContainerStart(ctx, containerName(serverID), container.StartOptions{})
 }
 
 // ensureContainer makes sure a runnable container exists for the server. A
-// running container is kept as-is; a non-running one (created/exited/crashed) is
-// removed and recreated so it starts clean and from the current image — data
-// lives on the host bind mount, so nothing is lost, and this lets an image
-// rebuild take effect on the next start.
-func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string) error {
+// running container is kept as-is (image and all); a non-running one
+// (created/exited/crashed) is removed and recreated so it starts clean and from
+// the current image — data lives on the host bind mount, so nothing is lost, and
+// this lets an image rebuild take effect on the next start.
+func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, refresh imageRefresh) error {
 	name := containerName(serverID)
 	if info, err := d.cli.ContainerInspect(ctx, name); err == nil {
 		if info.State != nil && info.State.Running {
@@ -862,6 +885,16 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string) er
 	spec, ok := d.getSpec(serverID)
 	if !ok {
 		return fmt.Errorf("docker: no spec for server %q (call CreateServer first)", serverID)
+	}
+	if refresh {
+		// Pull before recreating, so the container that comes back is built on
+		// the refreshed image. A pull that fails but finds a local copy still
+		// starts the server — see pullImage.
+		if err := d.pullImage(ctx, spec.Image, startPullTimeout, func(line string) {
+			slog.Info("image refresh on start", "server", serverID, "detail", line)
+		}); err != nil {
+			return fmt.Errorf("docker: refresh image for %s: %w", serverID, err)
+		}
 	}
 	return d.createRuntimeContainer(ctx, spec)
 }
@@ -1747,26 +1780,6 @@ func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id str
 func (d *DockerRuntime) fail(emit func(*agentpb.InstallEvent) error, msg string) error {
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: msg}})
 	return fmt.Errorf("docker install: %s", msg)
-}
-
-func (d *DockerRuntime) pullImage(ctx context.Context, ref string, log func(string)) error {
-	// A locally-present image is used as-is — this supports images built on the
-	// host (e.g. ghcr.io/briggleman/kraken-steam-win, steam-base) that live in no registry.
-	if _, err := d.cli.ImageInspect(ctx, ref); err == nil {
-		log("Using local image " + ref)
-		return nil
-	}
-	log("Pulling image " + ref)
-	rc, err := d.cli.ImagePull(ctx, ref, image.PullOptions{})
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	if _, err = io.Copy(io.Discard, rc); err != nil { // drain progress stream
-		return err
-	}
-	log("Image ready: " + ref)
-	return nil
 }
 
 // streamLogs streams a container's logs to fn until the stream ends (used for

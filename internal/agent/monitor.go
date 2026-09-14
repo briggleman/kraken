@@ -316,7 +316,7 @@ func (m *monitor) run(since time.Time) {
 			"exit_code", code, "exit_hex", hexExit(code), "attempt", attempt, "max", max)
 		m.setState(agentpb.ServerState_SERVER_STATE_STARTING)
 		since = time.Now()
-		if err := m.d.ensureAndStart(m.ctx, m.serverID); err != nil {
+		if err := m.d.ensureAndStart(m.ctx, m.serverID, keepImage); err != nil {
 			slog.Error("watchdog: auto-restart failed", "server", m.serverID, "err", err)
 			m.setState(agentpb.ServerState_SERVER_STATE_CRASHED)
 			return

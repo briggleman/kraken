@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.45.0](https://github.com/briggleman/kraken/compare/v0.44.1...v0.45.0) (2026-09-12)
+
+
+### Features
+
+* **panel:** keep the install log after completion and surface the crash exit code ([11ef540](https://github.com/briggleman/kraken/commit/11ef5402c3f7954020c76cb721e381ee61aab182))
+* **specs:** add windows-native platform to the dragonwilds spec ([b8c1f50](https://github.com/briggleman/kraken/commit/b8c1f50436de54015aa1643d35e14fb6e6aa1add))
+
+
+### Bug Fixes
+
+* **agent:** guard windows steamcmd installs against the self-update relaunch ([3890ae4](https://github.com/briggleman/kraken/commit/3890ae46f411bd1e78dfe4e0d790e79da1bb8895))
+* **web:** keep long console and spec lines from stalling the main thread ([54b5f5d](https://github.com/briggleman/kraken/commit/54b5f5d81d04d0394092123c48f8bfc9aa770d8d))
+* **web:** keep new-server edits across fleet refreshes ([#277](https://github.com/briggleman/kraken/issues/277)) ([3bd5b2e](https://github.com/briggleman/kraken/commit/3bd5b2e73940c65f9928f2e0e93333553658b586))
+
 ## [0.44.1](https://github.com/briggleman/kraken/compare/v0.44.0...v0.44.1) (2026-09-11)
 
 

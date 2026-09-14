@@ -226,8 +226,14 @@ query:
   running; the count reads **unknown** while no follower is attached.
 - The leave regex is tried first on every line, so a join pattern loose enough
   to match a departure line does not resurrect a player who just left.
-- A log never states the cap, so `max_players:` is the game's own number; omit
-  it and the readout shows the count with no denominator.
+- A log never states the cap. `max_players:` is the game's own constant
+  (Dragonwilds: 6); where the operator picks it, `max_players_setting:` names
+  the setting key holding it (Enshrouded: `slotCount`) and the Panel resolves
+  the server's value, falling back to `max_players:` when it is blank. Omit
+  both and the readout shows the count with no denominator.
+- A line that carries single quotes (`Player 'name' logged in`) needs
+  double-quoted YAML instead, with every `\` doubled: `"\\[server\\] Player
+  '(?P<name>[^']+)'"`.
 - Derive the lines from a real server log, quote them in a comment above the
   block with the date you saw them, and prefer the most specific prefix the
   game prints (`LogDominionPlayerController: ClientRequestDisconnect`, not

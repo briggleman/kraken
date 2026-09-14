@@ -164,6 +164,11 @@ type PlayerQuery struct {
 	// MaxPlayers, for "log", is the game's player cap — a log never states one,
 	// and the PLAYERS readout wants a denominator. 0 leaves it unknown.
 	MaxPlayers int `json:"max_players,omitempty"`
+	// MaxPlayersSetting, for "log", names a setting key whose value is the cap
+	// (Enshrouded's slotCount) for games where the operator chooses it. The
+	// Panel resolves the server's value; MaxPlayers is the fallback when the
+	// setting is blank or not a number.
+	MaxPlayersSetting string `json:"max_players_setting,omitempty"`
 }
 
 // queryMethods are the PlayerQuery methods the Agent implements.

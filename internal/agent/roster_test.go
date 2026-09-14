@@ -102,3 +102,27 @@ func TestSplitLogTimestamp(t *testing.T) {
 		t.Fatalf("got %v %q", at, line)
 	}
 }
+
+// The Enshrouded lines, verbatim from a live server (2026-09-14). The log
+// names the player and nothing else, so the name is the key.
+func TestLogRoster_Enshrouded(t *testing.T) {
+	r, err := newLogRoster(&agentpb.PlayerQuery{
+		Method:     "log",
+		JoinRegex:  `\[server\] Player '(?P<name>[^']+)' logged in with Permissions`,
+		LeaveRegex: `\[server\] Remove Entity for Player '(?P<name>[^']+)'`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.reset()
+	now := time.Now()
+	r.observe(`11:04:56[server] Player 'GHETTO.CHiLD' logged in with Permissions:`, now)
+	r.observe(`11:04:57[server] Player 'Tide Walker' logged in with Permissions: kick/ban chests`, now)
+	if ps, _ := r.snapshot(); len(ps) != 2 || ps[0].Name != "GHETTO.CHiLD" || ps[1].Name != "Tide Walker" {
+		t.Fatalf("after joins: %v", names(ps))
+	}
+	r.observe(`11:05:05[server] Remove Entity for Player 'GHETTO.CHiLD'`, now.Add(9*time.Second))
+	if ps, _ := r.snapshot(); len(ps) != 1 || ps[0].Name != "Tide Walker" {
+		t.Fatalf("after leave: %v", names(ps))
+	}
+}

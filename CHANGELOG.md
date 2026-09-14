@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.2](https://github.com/briggleman/kraken/compare/v0.47.1...v0.47.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* **panel:** reconnect the console stream after a server restart ([#298](https://github.com/briggleman/kraken/issues/298)) ([9191825](https://github.com/briggleman/kraken/commit/9191825ad689f85d1eb9c089e9cd7d0797b7271c))
+
 ## [0.47.1](https://github.com/briggleman/kraken/compare/v0.47.0...v0.47.1) (2026-09-14)
 
 

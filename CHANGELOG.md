@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.48.0](https://github.com/briggleman/kraken/compare/v0.47.2...v0.48.0) (2026-09-14)
+
+
+### Features
+
+* **agent:** weekly prune of dangling game-server images ([#303](https://github.com/briggleman/kraken/issues/303)) ([7577577](https://github.com/briggleman/kraken/commit/75775777c8fe1ccf1870c7c4484ce6e857d04b27))
+
+
+### Bug Fixes
+
+* **agent:** derive --service start/status paths from the registered service command line ([#301](https://github.com/briggleman/kraken/issues/301)) ([36e1064](https://github.com/briggleman/kraken/commit/36e1064752b622e3cc924971ca0cdb5026efeec6))
+* **agent:** pull the image on install and start, falling back to the local copy ([#300](https://github.com/briggleman/kraken/issues/300)) ([c5e6bb2](https://github.com/briggleman/kraken/commit/c5e6bb2c6213134bd0999401e773fadaad3f36c1))
+
 ## [0.47.2](https://github.com/briggleman/kraken/compare/v0.47.1...v0.47.2) (2026-09-14)
 
 

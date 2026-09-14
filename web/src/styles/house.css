@@ -417,15 +417,36 @@
   }
   .files-crumb b { color: var(--lumen); font-weight: 500; }
   .files-list { min-height: 0; overflow-y: auto; padding: 6px 8px; scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent; }
+  /* a file row is two controls in one grid, not one button: the name/size/date cell (.f-open)
+     opens a folder - a file's cell does nothing yet, there is no viewer, so it keeps the default
+     cursor rather than promising one - and a .mini-act.del pill sits in a trailing cell. The pill
+     is hidden until the row is pointed at or holds focus, so a 200-row listing is not 200 crisis
+     pills; where there is no hover (a phone) it stays visible, because there is nothing to reveal
+     it with. The row itself never turns crisis: the row is a fact about the server, only the pill
+     is a threat to it. */
   .f-row {
-    width: 100%; display: grid; grid-template-columns: 1fr 90px 150px; gap: 14px; align-items: center;
-    padding: 8px; font-family: var(--mono); font-weight: 300; font-size: 13px;
-    color: var(--ink-2); text-align: left; border-radius: 4px; cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    color: var(--ink-2); border-radius: 4px; transition: background 0.15s, color 0.15s;
   }
-  .f-row:hover { background: rgba(var(--lumen-rgb), 0.06); color: var(--ink); }
-  .f-row.dir > span:first-child { color: var(--lumen); }
-  .f-row > span:nth-child(2), .f-row > span:nth-child(3) { text-align: right; color: var(--ink-3); font-size: 12px; }
+  .f-row:hover, .f-row:focus-within { background: rgba(var(--lumen-rgb), 0.06); color: var(--ink); }
+  .f-open {
+    min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 90px 150px; gap: 14px; align-items: center;
+    padding: 8px; font-family: var(--mono); font-weight: 300; font-size: 13px;
+    color: inherit; border-radius: 4px; cursor: default;
+  }
+  .f-row.dir .f-open { cursor: pointer; }
+  .f-open > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .f-row.dir .f-open > span:first-child { color: var(--lumen); }
+  .f-open > span:nth-child(2), .f-open > span:nth-child(3) { text-align: right; color: var(--ink-3); font-size: 12px; }
+  .f-del { margin-right: 8px; opacity: 0; transition: opacity 0.15s, color 0.2s, background 0.2s, border-color 0.2s; }
+  .f-row:hover .f-del, .f-row:focus-within .f-del { opacity: 1; }
+  @media (hover: none) { .f-del { opacity: 1; } }
+  /* on a phone the date column is the one that goes: the name is what you are looking for and the
+     size is what tells a stray upload from the world save. */
+  @media (max-width: 640px) {
+    .f-open { grid-template-columns: minmax(0, 1fr) 70px; }
+    .f-open > span:nth-child(3) { display: none; }
+  }
   .files-foot {
     display: flex; align-items: center; gap: 12px; padding: 10px 16px;
     border-top: 1px solid var(--edge);

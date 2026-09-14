@@ -7,6 +7,7 @@
     power,
     filesGo,
     filesUpload,
+    filesDelete,
     backupCreate,
     backupRestore,
     backupDelete,
@@ -20,10 +21,11 @@
     reinstall,
     sftpShow,
   } from "@/lib/depth.svelte";
-  import { openConfirm } from "@/lib/state.svelte";
+  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
+  import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
-  import type { ScheduleAction } from "@/api/types";
+  import type { FileEntry, ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
   const server = $derived(depth.server);
@@ -198,6 +200,25 @@
     return crumbs.slice(0, i + 1).join("/") || ".";
   }
   let uploadInput: HTMLInputElement | undefined = $state();
+  let filesListEl: HTMLDivElement | undefined = $state();
+  // Every write in this pane — upload, delete — is gated on the same permission
+  // the Panel checks, so a read-only session sees a listing, not controls that
+  // come back 403.
+  const canWriteFiles = $derived(hasPerm("server.files.write"));
+  // A file delete is irreversible (the agent removes it from the host data dir;
+  // there is no trash), so it goes through the typed confirmation like a server
+  // does — with a noun and a warning that are true of a file, or of a folder,
+  // which takes its contents with it. On success the row is gone, so focus
+  // lands on the listing rather than falling to the body.
+  function fileDelete(f: FileEntry, from: HTMLElement) {
+    openConfirm(f.name, from, {
+      noun: f.is_dir ? "folder" : "file",
+      body: f.is_dir ? CD_FOLDER_BODY : CD_FILE_BODY,
+      go: async () => {
+        if (await filesDelete(f.path)) filesListEl?.focus();
+      },
+    });
+  }
 
   // settings — editable copies of the real values/variables
   let edited = $state<Record<string, string>>({});
@@ -592,17 +613,26 @@
                 onkeydown={(e) => e.key === "Enter" && void filesGo(crumbPath(i))}>{c}</b
               >/{/each}
           </div>
-          <div class="files-list">
+          <div class="files-list" tabindex="-1" bind:this={filesListEl}>
             {#each depth.files?.entries ?? [] as f (f.path)}
-              <button
-                class="f-row{f.is_dir ? ' dir' : ''}"
-                onclick={() => f.is_dir && void filesGo(f.path)}
-                ><span>{f.name}{f.is_dir ? "/" : ""}</span><span
-                  >{f.is_dir ? "—" : fmtSize(f.size)}</span
-                ><span>{fmtWhen(f.modified_ms)}</span></button
-              >
+              <div class="f-row{f.is_dir ? ' dir' : ''}">
+                <button class="f-open" onclick={() => f.is_dir && void filesGo(f.path)}
+                  ><span>{f.name}{f.is_dir ? "/" : ""}</span><span
+                    >{f.is_dir ? "—" : fmtSize(f.size)}</span
+                  ><span>{fmtWhen(f.modified_ms)}</span></button
+                >
+                {#if canWriteFiles}
+                  <button
+                    class="mini-act del f-del"
+                    aria-label="delete {f.name}"
+                    onclick={(e) => fileDelete(f, e.currentTarget)}>delete</button
+                  >
+                {/if}
+              </div>
             {:else}
-              <button class="f-row" disabled><span>empty</span><span>—</span><span>—</span></button>
+              <div class="f-row">
+                <button class="f-open" disabled><span>empty</span><span>—</span><span>—</span></button>
+              </div>
             {/each}
           </div>
           <div class="files-foot">
@@ -621,7 +651,9 @@
                 void filesUpload(files);
               }}
             />
-            <button class="cfg-btn ghost" onclick={() => uploadInput?.click()}>upload</button>
+            {#if canWriteFiles}
+              <button class="cfg-btn ghost" onclick={() => uploadInput?.click()}>upload</button>
+            {/if}
           </div>
         </div>
       </section>

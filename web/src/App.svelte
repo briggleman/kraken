@@ -17,7 +17,7 @@
   import Rotate from "@/surfaces/Rotate.svelte";
   import DbRestart from "@/surfaces/DbRestart.svelte";
   import Setup from "@/surfaces/Setup.svelte";
-  import { startSim, ui, closeSheet } from "@/lib/state.svelte";
+  import { startSim, ui, closeSheet, closeConfirm } from "@/lib/state.svelte";
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
@@ -67,7 +67,10 @@
       return;
     }
     if (ui.confirm) {
-      ui.confirm = null;
+      // Through closeConfirm rather than clearing the state: Escape is a
+      // cancel, and a cancel hands focus back to the control that opened the
+      // dialog — the same as the cancel button does.
+      closeConfirm();
       return;
     }
     // topmost open sheet first — ui.stack is bottom → top and keeps closed ids

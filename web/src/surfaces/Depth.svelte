@@ -708,16 +708,36 @@
           online · {stats?.players_known ? stats.players : running ? "?" : 0}
         </h3>
         <div class="side-body roster" id="dRoster">
-          <!-- the agent reports counts, not names — a roster needs game-side query support -->
-          <p class="roster-empty">
-            {#if running && stats?.players_known && stats.players > 0}
-              {stats.players} aboard — names need game query support
-            {:else if running}
-              player names unavailable for this game
-            {:else}
-              no one aboard — server is dark
-            {/if}
-          </p>
+          <!-- Names arrive only from the log-roster query method (the agent
+               follows the console for the spec's join/leave lines); A2S and
+               REST give a count and nothing else, so those games still read
+               "aboard — names need game query support". The time is how long
+               each player has been aboard, re-read from the stats tick's own
+               clock so it advances without a timer of its own. -->
+          {#if running && stats?.players_known && stats.online_players.length > 0}
+            {#each stats.online_players as p (p.name + ":" + p.joined_ms)}
+              <div class="roster-row">
+                <span>{p.name}</span>
+                {#if p.joined_ms}
+                  <time datetime={new Date(p.joined_ms).toISOString()} title="joined {fmtClock(p.joined_ms)}"
+                    >{fmtUptime(Math.max(0, ((stats.ts || Date.now()) - p.joined_ms) / 1000))}</time
+                  >
+                {/if}
+              </div>
+            {/each}
+          {:else}
+            <p class="roster-empty">
+              {#if running && stats?.players_known && stats.players > 0}
+                {stats.players} aboard — names need game query support
+              {:else if running && stats?.players_known}
+                no one aboard
+              {:else if running}
+                player names unavailable for this game
+              {:else}
+                no one aboard — server is dark
+              {/if}
+            </p>
+          {/if}
         </div>
       </section>
       <section class="side-block" aria-label="Server vitals">

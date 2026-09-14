@@ -34,6 +34,9 @@ type monitor struct {
 	readyRe        *regexp.Regexp // nil → ready as soon as the container runs
 	restartOnCrash bool
 	maxRestarts    int
+	// roster, when the spec's player query is the "log" method, is fed by a
+	// console follower started for each container run (see run).
+	roster *logRoster
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -89,7 +92,19 @@ func (d *DockerRuntime) armMonitor(serverID string, since time.Time, probeReady 
 				slog.Warn("invalid ready_regex; treating server as ready when running", "server", serverID, "err", err)
 			}
 		}
+		// The log roster lives with the watchdog: armed here, fed per run, and
+		// forgotten with it. A spec with a broken regex reached the Agent
+		// without going through Validate; the count reads unknown rather than
+		// the Agent refusing to watch the server at all.
+		if q := spec.GetPlayerQuery(); q.GetMethod() == "log" {
+			if r, err := newLogRoster(q); err == nil {
+				m.roster = r
+			} else {
+				slog.Warn("invalid player-query regex; player count stays unknown", "server", serverID, "err", err)
+			}
+		}
 	}
+	d.setRoster(serverID, m.roster)
 
 	// With no readiness probe the server is up as soon as its container is, so
 	// settle on that here rather than leaving a STARTING window until the run
@@ -175,6 +190,7 @@ func (d *DockerRuntime) stopMonitor(serverID string) {
 		delete(d.monitors, serverID)
 	}
 	d.monMu.Unlock()
+	d.setRoster(serverID, nil)
 }
 
 // markExpectedDown tells a server's watchdog that the next exit is an operator
@@ -246,6 +262,13 @@ func (m *monitor) run(since time.Time) {
 		} else {
 			m.setState(agentpb.ServerState_SERVER_STATE_STARTING)
 			go m.scanReady(since)
+		}
+		if m.roster != nil {
+			// A fresh roster per run, replayed from the run's start so an Agent
+			// restart recovers who is aboard. The follower ends with the
+			// container and marks the roster down on its way out.
+			m.roster.reset()
+			go m.d.followRoster(m.ctx, m.serverID, m.roster, since)
 		}
 
 		code, err := m.d.waitExit(m.ctx, m.serverID)

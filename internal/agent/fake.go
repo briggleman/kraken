@@ -29,6 +29,7 @@ type FakeRuntime struct {
 	configs map[string]map[string]string     // serverID → path → content
 	backups map[string][]*agentpb.BackupInfo // serverID → backups
 	files   map[string]map[string]*fakeFile  // serverID → logical path → entry (see tree)
+	queries map[string]*agentpb.PlayerQuery  // serverID → the spec's player query (see fakeRoster)
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -102,7 +103,29 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 
 func (f *FakeRuntime) Create(_ context.Context, spec *agentpb.ServerSpec) error {
 	f.setState(spec.ServerId, agentpb.ServerState_SERVER_STATE_OFFLINE)
+	f.mu.Lock()
+	if f.queries == nil {
+		f.queries = make(map[string]*agentpb.PlayerQuery)
+	}
+	f.queries[spec.ServerId] = spec.GetPlayerQuery()
+	f.mu.Unlock()
 	return nil
+}
+
+// fakeRoster is what a "log" player query reads on the fake: two players who
+// have been aboard since shortly after the stream started, so the drill-in's
+// roster pane (names + time aboard) can be exercised without a game.
+func (f *FakeRuntime) fakeRoster(serverID string, since time.Time) (players, cap int32, known bool, names []*agentpb.OnlinePlayer) {
+	f.mu.Lock()
+	q := f.queries[serverID]
+	f.mu.Unlock()
+	if q.GetMethod() != "log" {
+		return 0, 0, false, nil
+	}
+	return 2, q.GetMaxPlayers(), true, []*agentpb.OnlinePlayer{
+		{Name: "Kestrel", JoinedUnixMs: since.Add(-3 * time.Minute).UnixMilli()},
+		{Name: "MossVeil", JoinedUnixMs: since.Add(-40 * time.Second).UnixMilli()},
+	}
 }
 
 func (f *FakeRuntime) Remove(_ context.Context, serverID string, _ bool) error {
@@ -490,11 +513,13 @@ func (f *FakeRuntime) StreamStats(ctx context.Context, serverID string, interval
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			players, cap, known, names := f.fakeRoster(serverID, start)
 			if err := emit(&agentpb.ResourceStats{
 				ServerId: serverID, TsUnixMs: nowMs(),
 				CpuPercent: 34.0, MemoryUsedMb: 6200, MemoryLimitMb: 16384,
 				NetRxBytes: 1024, NetTxBytes: 2048,
 				UptimeSeconds: int64(time.Since(start).Seconds()), DiskUsedMb: 512,
+				Players: players, MaxPlayers: cap, PlayersKnown: known, OnlinePlayers: names,
 			}); err != nil {
 				return err
 			}

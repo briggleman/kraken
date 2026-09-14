@@ -723,6 +723,13 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 			if pv, err := strconv.Atoi(server.Settings[q.Port]); err == nil && pv > 0 && pv <= 65535 {
 				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: server.Settings[q.Password]}
 			}
+		case "log":
+			// Nothing to resolve: the Agent follows the container's own console
+			// and keeps the roster from the join/leave lines. The cap is the
+			// spec's word for it, since a log never states one.
+			agentSpec.PlayerQuery = &agentpb.PlayerQuery{
+				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: int32(q.MaxPlayers),
+			}
 		}
 	}
 	// Per-server SFTP credentials (username = server id); pushed so the Agent's

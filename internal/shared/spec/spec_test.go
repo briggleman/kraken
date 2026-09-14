@@ -31,6 +31,18 @@ func TestSpecValidate_OK(t *testing.T) {
 	if err := validSpec().Validate(); err != nil {
 		t.Fatalf("expected valid spec, got error: %v", err)
 	}
+	// Each implemented query method, declared the way the bundled specs do.
+	for _, q := range []*PlayerQuery{
+		{Method: "a2s", Port: "game"},
+		{Method: "palworld-rest", Port: "RESTAPIPort", Password: "AdminPassword"},
+		{Method: "log", JoinRegex: `joined for Account\[(?P<id>[^\]]+)\] Name\[(?P<name>[^\]]*)\]`, LeaveRegex: `left (?P<id>\S+)`, MaxPlayers: 6},
+	} {
+		s := validSpec()
+		s.Query = q
+		if err := s.Validate(); err != nil {
+			t.Fatalf("query %q: expected valid, got %v", q.Method, err)
+		}
+	}
 }
 
 func TestSpecValidate_Failures(t *testing.T) {
@@ -58,6 +70,25 @@ func TestSpecValidate_Failures(t *testing.T) {
 		{"port out of range", func(s *Spec) { s.Ports[0].Default = 70000 }},
 		{"duplicate variable key", func(s *Spec) {
 			s.Variables = append(s.Variables, Variable{Key: "NAME", Default: "x"})
+		}},
+		// query: every failure here is silent at runtime ("players unknown"),
+		// so Validate is where the author finds out.
+		{"query unknown method", func(s *Spec) { s.Query = &PlayerQuery{Method: "rcon", Port: "game"} }},
+		{"query a2s without port", func(s *Spec) { s.Query = &PlayerQuery{Method: "a2s"} }},
+		{"query palworld-rest without password", func(s *Spec) {
+			s.Query = &PlayerQuery{Method: "palworld-rest", Port: "RESTAPIPort"}
+		}},
+		{"query log without leave regex", func(s *Spec) {
+			s.Query = &PlayerQuery{Method: "log", JoinRegex: `joined: (?P<name>\w+)`}
+		}},
+		{"query log regex does not compile", func(s *Spec) {
+			s.Query = &PlayerQuery{Method: "log", JoinRegex: `joined: (?P<name>\w+`, LeaveRegex: `left: (?P<name>\w+)`}
+		}},
+		{"query log regex captures nothing", func(s *Spec) {
+			s.Query = &PlayerQuery{Method: "log", JoinRegex: `joined: \w+`, LeaveRegex: `left: (?P<name>\w+)`}
+		}},
+		{"query log negative cap", func(s *Spec) {
+			s.Query = &PlayerQuery{Method: "log", JoinRegex: `joined: (?P<name>\w+)`, LeaveRegex: `left: (?P<name>\w+)`, MaxPlayers: -1}
 		}},
 	}
 	for _, tt := range tests {

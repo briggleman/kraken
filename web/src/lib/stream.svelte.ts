@@ -34,6 +34,15 @@ export interface LiveStats {
   players: number;
   max_players: number;
   players_known: boolean;
+  /** The names behind the count, when the agent could read them (the log
+   *  roster). Empty for count-only games even when players > 0. */
+  online_players: OnlinePlayer[];
+}
+
+export interface OnlinePlayer {
+  name: string;
+  /** When the agent saw the join line; 0 when it does not know. */
+  joined_ms: number;
 }
 
 interface StreamFrame extends Partial<LiveStats> {
@@ -252,6 +261,7 @@ export class ServerStream {
         players: f.players ?? 0,
         max_players: f.max_players ?? 0,
         players_known: f.players_known ?? false,
+        online_players: f.online_players ?? [],
       };
       this.cpuHistory.push(f.cpu_percent ?? 0);
       if (this.cpuHistory.length > MAX_SAMPLES) this.cpuHistory.shift();

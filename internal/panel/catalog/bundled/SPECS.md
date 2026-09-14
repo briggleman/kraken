@@ -195,6 +195,47 @@ backup:
   Panel on every backup, manual or scheduled. Restore is unaffected: an archive
   only ever contains what was included.
 
+## The `query:` block — who is online
+
+Optional. Without it the PLAYERS readout and the fleet's "n online" stay blank;
+with it the agent reads the count (and, for one method, the names) while the
+server runs. Three methods, in order of preference:
+
+| method | when | declares | yields |
+| --- | --- | --- | --- |
+| `a2s` | the server answers Steam's A2S_INFO UDP query (most Source/Steam servers, Valheim) | `port:` — the spec **port name** to query (Valheim: its `query` port) | count + cap |
+| `palworld-rest` | Palworld's admin REST API | `port:` / `password:` — the **setting keys** holding the REST port and admin password | count + cap |
+| `log` | the game answers nothing but prints a line when a player arrives and another when one leaves (UE5 early-access servers, typically) | `join_regex:` / `leave_regex:` / `max_players:` | count + **names** |
+
+```yaml
+query:
+  method: log
+  join_regex: 'LogDominionPlayerController: RequestGameExit : .* for Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]'
+  leave_regex: 'LogDominionPlayerController: ClientRequestDisconnect : .*Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]'
+  max_players: 6
+```
+
+- The regexes are [RE2](https://github.com/google/re2/wiki/Syntax) (Go's
+  `regexp`). Each must capture the player: `(?P<name>…)` is the display name,
+  `(?P<id>…)` an optional stable account id the roster keys on — with an id, a
+  renamed character is one player, not two; without one the name is the key.
+  Quote them with **single quotes** in YAML so `\[` survives.
+- The agent follows the container's console for the life of each run and
+  replays the run's log from its start after an agent restart, so who is
+  aboard survives the agent going down. Nobody is aboard a server that is not
+  running; the count reads **unknown** while no follower is attached.
+- The leave regex is tried first on every line, so a join pattern loose enough
+  to match a departure line does not resurrect a player who just left.
+- A log never states the cap, so `max_players:` is the game's own number; omit
+  it and the readout shows the count with no denominator.
+- Derive the lines from a real server log, quote them in a comment above the
+  block with the date you saw them, and prefer the most specific prefix the
+  game prints (`LogDominionPlayerController: ClientRequestDisconnect`, not
+  `Account\[`) — a regex that also matches a chat line will invent players.
+- `Validate` rejects an unknown method, a missing port/password for the query
+  methods, and a `log` regex that does not compile or captures neither group,
+  because every one of those fails silently at runtime as "players unknown".
+
 ## Related
 
 - Spec schema: [`internal/shared/spec/spec.go`](../../../shared/spec/spec.go)

@@ -209,9 +209,24 @@ message SftpAccess {
 // Panel resolves the spec's query block into the concrete host port (and, for
 // the REST method, the admin password) before sending it.
 message PlayerQuery {
-  string method = 1;   // "a2s" (Steam query) | "palworld-rest" | "" (none)
+  string method = 1;   // "a2s" (Steam query) | "palworld-rest" | "log" | "" (none)
   int32 port = 2;      // host port to query (A2S) / REST API port
   string password = 3; // Basic-auth password for palworld-rest (admin); empty otherwise
+  // For "log": the Agent follows the container's console and keeps a roster
+  // from the lines that match. Each regex names its captures — (?P<name>…) is
+  // the display name, (?P<id>…) an optional stable account id the roster keys
+  // on (falls back to the name). No max is discoverable from a log, so the
+  // spec states the game's cap.
+  string join_regex = 4;
+  string leave_regex = 5;
+  int32 max_players = 6;
+}
+
+// OnlinePlayer is one entry of a roster the Agent could actually read names
+// for (today: the "log" query method). Count-only methods leave the list empty.
+message OnlinePlayer {
+  string name = 1;
+  int64 joined_unix_ms = 2; // when the Agent saw the join line (0 if unknown)
 }
 
 message CreateServerRequest {
@@ -591,6 +606,9 @@ message ResourceStats {
   int32 players = 10;
   int32 max_players = 11;
   bool players_known = 12;
+  // Names behind the count, when the query method yields them (log roster).
+  // Empty for count-only methods even when players > 0.
+  repeated OnlinePlayer online_players = 13;
 }
 
 // NodeConfig is the Panel-managed per-node configuration the Agent applies to

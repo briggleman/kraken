@@ -110,18 +110,20 @@ startup:
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
 # No A2S and no REST: the only account of who is online is the UE log. The
-# agent follows the console and keeps a roster from these two lines (observed
-# live on abyss-win, 2026-09-14). Both carry the same Account[XP:…] / Character
-# Name[…] / Guid[DCG:…] triple; the roster keys on the account id so a
-# renamed character does not count twice. Oddly, the line the server prints
-# when a player ARRIVES is the "RequestGameExit : Server saving World and
-# Player state" one — that is what the log shows on join, exit or not — and the
-# leave line is "ClientRequestDisconnect : DisconnectMe". The cap is the
-# game's own 6.
+# agent follows the console and keeps a roster from the matcher session's own
+# pair of lines (observed live on abyss-win, 2026-09-14):
+#   LogDomMatcherSession: Player ADDED to session [00023a5e…]-[GHETTO.CHiLD]
+#   LogDomMatcherSession: Player Removed from session [00023a5e…]-[GHETTO.CHiLD]
+# The bracketed pair is the account id, then the character name; the roster
+# keys on the id so a renamed character does not count twice. NOT the
+# "RequestGameExit : Server saving …" / "ClientRequestDisconnect : DisconnectMe"
+# lines that also carry the name: both of those fire half a second apart on
+# the way OUT, so a roster built on them adds and removes the player in the
+# same breath and always reads empty. The cap is the game's own 6.
 query:
   method: log
-  join_regex: 'LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]'
-  leave_regex: 'LogDominionPlayerController: ClientRequestDisconnect : DisconnectMe : .*Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]'
+  join_regex: 'LogDomMatcherSession: Player (?i:added) to session \[(?P<id>[^\]]+)\]-\[(?P<name>[^\]]*)\]'
+  leave_regex: 'LogDomMatcherSession: Player (?i:removed) from session \[(?P<id>[^\]]+)\]-\[(?P<name>[^\]]*)\]'
   max_players: 6
 settings:
   groups:

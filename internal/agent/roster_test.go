@@ -7,15 +7,20 @@ import (
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
-// The Dragonwilds lines, verbatim from a live server (2026-09-14). The join and
-// leave lines carry the same Account/Character/Guid triple, so the roster keys
-// on the account id and shows the character name.
+// The Dragonwilds lines, verbatim from a live server (2026-09-14): the matcher
+// session's ADDED / Removed pair. Both carry [account id]-[character name], so
+// the roster keys on the id and shows the name. (The "RequestGameExit : Server
+// saving …" and "ClientRequestDisconnect" lines also carry the name but both
+// fire on the way out, half a second apart — a roster built on them is always
+// empty, which is how the first cut of this spec shipped.)
 const (
-	dwJoin  = `LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]`
-	dwLeave = `LogDominionPlayerController: ClientRequestDisconnect : DisconnectMe : .*Account\[(?P<id>[^\]]+)\] Character Name\[(?P<name>[^\]]*)\]`
+	dwJoin  = `LogDomMatcherSession: Player (?i:added) to session \[(?P<id>[^\]]+)\]-\[(?P<name>[^\]]*)\]`
+	dwLeave = `LogDomMatcherSession: Player (?i:removed) from session \[(?P<id>[^\]]+)\]-\[(?P<name>[^\]]*)\]`
 
-	dwJoinLine  = `[2026.09.14-14.02.11:512][123]LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account[XP:00023a5e93534de8a2868b4f4bf96f35] Character Name[GHETTO.CHiLD] Guid[DCG:4969D2EC4FBA4C0F7094F7A075757A4F] Type[0]`
-	dwLeaveLine = `[2026.09.14-14.40.02:001][987]LogDominionPlayerController: ClientRequestDisconnect : DisconnectMe : PlayerStateSave result[true] - state saved for Account[XP:00023a5e93534de8a2868b4f4bf96f35] Character Name[GHETTO.CHiLD] Guid[DCG:4969D2EC4FBA4C0F7094F7A075757A4F] Type[0]`
+	dwJoinLine  = `[2026.09.14-16.27.06:172][883]LogDomMatcherSession: Player ADDED to session [00023a5e93534de8a2868b4f4bf96f35]-[GHETTO.CHiLD]`
+	dwLeaveLine = `[2026.09.14-16.24.28:741][153]LogDomMatcherSession: Player Removed from session [00023a5e93534de8a2868b4f4bf96f35]-[GHETTO.CHiLD]`
+	// The exit-path lines that must NOT count as a join.
+	dwExitSaveLine = `[2026.09.14-16.24.28:055][146]LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account[XP:00023a5e93534de8a2868b4f4bf96f35] Character Name[GHETTO.CHiLD] Guid[DCG:4969D2EC4FBA4C0F7094F7A075757A4F] Type[0]`
 )
 
 func names(ps []*agentpb.OnlinePlayer) []string {
@@ -47,20 +52,25 @@ func TestLogRoster_DragonwildsJoinLeave(t *testing.T) {
 		t.Fatalf("after repeated join: %v", ps)
 	}
 	// A second account, renamed later — same id, one entry, new name.
-	second := `LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account[XP:0000aaaa] Character Name[Bramble] Guid[DCG:1] Type[0]`
+	second := `LogDomMatcherSession: Player ADDED to session [0000aaaa]-[Bramble]`
 	r.observe(second, t0.Add(time.Minute))
-	r.observe(`LogDominionPlayerController: RequestGameExit : Server saving World and Player state for Account[XP:0000aaaa] Character Name[Bramble the Second] Guid[DCG:1] Type[0]`, t0.Add(2*time.Minute))
+	r.observe(`LogDomMatcherSession: Player ADDED to session [0000aaaa]-[Bramble the Second]`, t0.Add(2*time.Minute))
 	ps, _ = r.snapshot()
 	if got := names(ps); len(got) != 2 || got[0] != "GHETTO.CHiLD" || got[1] != "Bramble the Second" {
 		t.Fatalf("after second account: %v", got)
 	}
 
+	// The save-on-exit line names the player but is neither a join nor a leave.
+	r.observe(dwExitSaveLine, t0.Add(37*time.Minute))
+	if ps, _ = r.snapshot(); len(ps) != 2 {
+		t.Fatalf("exit-save line changed the roster: %v", names(ps))
+	}
 	r.observe(dwLeaveLine, t0.Add(38*time.Minute))
 	if ps, _ = r.snapshot(); len(ps) != 1 || ps[0].Name != "Bramble the Second" {
 		t.Fatalf("after leave: %v", names(ps))
 	}
 	// A leave for someone never seen is not an error and changes nothing.
-	r.observe(`LogDominionPlayerController: ClientRequestDisconnect : DisconnectMe : PlayerStateSave result[true] - state saved for Account[XP:nobody] Character Name[Ghost] Guid[DCG:2] Type[0]`, t0)
+	r.observe(`LogDomMatcherSession: Player Removed from session [nobody]-[Ghost]`, t0)
 	if ps, _ = r.snapshot(); len(ps) != 1 {
 		t.Fatalf("after stranger leave: %v", names(ps))
 	}

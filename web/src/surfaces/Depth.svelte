@@ -8,6 +8,7 @@
     filesGo,
     filesUpload,
     filesDelete,
+    filesDownload,
     backupCreate,
     backupRestore,
     backupDelete,
@@ -621,13 +622,27 @@
                     >{f.is_dir ? "—" : fmtSize(f.size)}</span
                   ><span>{fmtWhen(f.modified_ms)}</span></button
                 >
-                {#if canWriteFiles}
+                <!-- read-then-destroy order: download (a read, so the pill stays
+                     plain and never takes the light) then delete at the far end.
+                     Download needs only files.read, which anyone who can see
+                     this tab holds; delete is a write. -->
+                <span class="f-acts">
                   <button
-                    class="mini-act del f-del"
-                    aria-label="delete {f.name}"
-                    onclick={(e) => fileDelete(f, e.currentTarget)}>delete</button
+                    class="mini-act f-dl"
+                    aria-label="download {f.name}"
+                    title={f.is_dir ? "downloads as a .zip" : undefined}
+                    disabled={depth.downloading !== null}
+                    onclick={() => void filesDownload(f)}
+                    >{depth.downloading === f.path ? "fetching…" : "download"}</button
                   >
-                {/if}
+                  {#if canWriteFiles}
+                    <button
+                      class="mini-act del f-del"
+                      aria-label="delete {f.name}"
+                      onclick={(e) => fileDelete(f, e.currentTarget)}>delete</button
+                    >
+                  {/if}
+                </span>
               </div>
             {:else}
               <div class="f-row">

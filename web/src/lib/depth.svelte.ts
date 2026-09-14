@@ -4,6 +4,7 @@
 import { api } from "@/api/client";
 import type {
   Backup,
+  FileEntry,
   FileListing,
   InstallLog,
   PowerActionName,
@@ -36,6 +37,9 @@ export const depth = $state({
   settings: null as ServerSettings | null,
   files: null as FileListing | null,
   filesDir: ".",
+  // The logical path of the entry being fetched for download, so its pill can
+  // say so; null between downloads. One at a time — see filesDownload.
+  downloading: null as string | null,
   // The retained output of this server's last install, and whether the console
   // pane is showing it instead of the container's log. An install that "worked"
   // is the case this exists for: the console has nothing to tail for a server
@@ -324,6 +328,41 @@ export async function filesDelete(p: string): Promise<boolean> {
   }
   await filesGo(depth.filesDir);
   return ok;
+}
+
+/** Hand one entry to the browser as a download: a file as its raw bytes, a
+ *  folder as the zip the Panel builds for it. The session rides as a Bearer
+ *  header, so this cannot be a plain link — the bytes are fetched into a Blob
+ *  and offered through a throwaway anchor, which means the whole payload sits
+ *  in browser memory first. Fine for configs and saves; a multi-GB install
+ *  tree wants a streamed, tokenised URL instead (#304). One download at a time
+ *  per pane: `depth.downloading` holds the path in flight so its pill can say
+ *  so, and a refusal lands in the pane's notice like every other file op. */
+export async function filesDownload(f: FileEntry) {
+  if (!depth.serverId || depth.downloading) return;
+  depth.downloading = f.path;
+  try {
+    const dl = f.is_dir
+      ? await api.downloadZip(depth.serverId, [f.path], `${f.name}.zip`)
+      : await api.downloadFile(depth.serverId, f.path);
+    const url = URL.createObjectURL(dl.blob);
+    const a = document.createElement("a");
+    a.href = url;
+    // A file keeps the name the Panel put in Content-Disposition. A folder's
+    // zip is named by the Panel after the SERVER ("midgard-files.zip"), which
+    // says nothing about which folder it holds — so it is saved as the folder.
+    a.download = f.is_dir ? `${f.name}.zip` : dl.filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next tick: the click has to have started the save first.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    depth.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    depth.downloading = null;
+  }
 }
 
 // --- backups ---------------------------------------------------------------

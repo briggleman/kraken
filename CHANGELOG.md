@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.47.0](https://github.com/briggleman/kraken/compare/v0.46.0...v0.47.0) (2026-09-14)
+
+
+### Features
+
+* **specs:** read the dragonwilds roster from its console log ([#293](https://github.com/briggleman/kraken/issues/293)) ([def0575](https://github.com/briggleman/kraken/commit/def0575c56b335533be23dc6241762f0540a7293))
+* **specs:** read the enshrouded roster from its console log ([#295](https://github.com/briggleman/kraken/issues/295)) ([dec9f44](https://github.com/briggleman/kraken/commit/dec9f44b86e2cf12bdf9da72ef8796f6b86e60a8))
+
 ## [0.46.0](https://github.com/briggleman/kraken/compare/v0.45.0...v0.46.0) (2026-09-14)
 
 

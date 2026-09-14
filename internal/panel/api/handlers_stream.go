@@ -178,13 +178,23 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Console stream → frames.
+	// Console stream → frames. When the agent's stream ends — the container
+	// stopped, so Docker's log follow ran out — the socket closes with it
+	// rather than idling open on a dead goroutine. The browser treats a live
+	// stream's close as unexpected and reconnects on its backoff ladder, which
+	// is what picks up the NEXT container after a restart: running → stopping →
+	// starting → running never changes the stream mode, so nothing else would
+	// reopen the socket, and the pane sat stale until the drill-in was reopened.
+	// A replay (stopped server) ends the same way and reads "ended", which is
+	// what that mode expects. A stream that never opened keeps the error frame
+	// and the socket: cancelling here would race the frame out of the writer.
 	go func() {
 		stream, err := client.StreamConsole(ctx, &agentpb.StreamConsoleRequest{ServerId: id, TailLines: 200})
 		if err != nil {
 			push(frame{Type: "error", Message: "console: " + err.Error()})
 			return
 		}
+		defer cancel()
 		for {
 			line, err := stream.Recv()
 			if err != nil {

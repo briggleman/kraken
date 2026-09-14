@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.1](https://github.com/briggleman/kraken/compare/v0.47.0...v0.47.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **specs:** key the dragonwilds roster on the matcher session lines ([#296](https://github.com/briggleman/kraken/issues/296)) ([a6256ff](https://github.com/briggleman/kraken/commit/a6256ff4b717b6c9533f01b45ae8227e77107b23))
+
 ## [0.47.0](https://github.com/briggleman/kraken/compare/v0.46.0...v0.47.0) (2026-09-14)
 
 

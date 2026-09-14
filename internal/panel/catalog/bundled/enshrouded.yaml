@@ -45,6 +45,19 @@ startup:
 # template only reads .ports.game.
 ports:
   - { name: game, protocol: udp, default: 15637, required: true }
+# Enshrouded's UDP port answers no A2S, so the roster comes from the server
+# log (lines observed live 2026-09-14):
+#   [server] Player 'GHETTO.CHiLD' logged in with Permissions: …
+#   [server] Remove Entity for Player 'GHETTO.CHiLD'
+# The name is the only identity the log gives, so it is the key. The cap is
+# whatever the operator set slotCount to, not a constant. Double-quoted YAML
+# here because the lines carry single quotes; that is why every \ is doubled.
+query:
+  method: log
+  join_regex: "\\[server\\] Player '(?P<name>[^']+)' logged in with Permissions"
+  leave_regex: "\\[server\\] Remove Entity for Player '(?P<name>[^']+)'"
+  max_players_setting: slotCount
+  max_players: 16
 
 # The custom gameSettings block below is only APPLIED by the game when
 # gameSettingsPreset == "Custom". Any other preset (Default/Relaxed/Hard/Survival)

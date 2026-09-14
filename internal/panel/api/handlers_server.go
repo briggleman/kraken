@@ -724,11 +724,18 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: server.Settings[q.Password]}
 			}
 		case "log":
-			// Nothing to resolve: the Agent follows the container's own console
-			// and keeps the roster from the join/leave lines. The cap is the
-			// spec's word for it, since a log never states one.
+			// The Agent follows the container's own console and keeps the
+			// roster from the join/leave lines. A log never states the cap, so
+			// it is the server's own setting where the operator picks it
+			// (Enshrouded's slotCount), else the spec's constant.
+			cap := q.MaxPlayers
+			if q.MaxPlayersSetting != "" {
+				if v, err := strconv.Atoi(strings.TrimSpace(server.Settings[q.MaxPlayersSetting])); err == nil && v > 0 {
+					cap = v
+				}
+			}
 			agentSpec.PlayerQuery = &agentpb.PlayerQuery{
-				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: int32(q.MaxPlayers),
+				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: int32(cap),
 			}
 		}
 	}

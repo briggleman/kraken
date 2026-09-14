@@ -36,6 +36,7 @@ func TestSpecValidate_OK(t *testing.T) {
 		{Method: "a2s", Port: "game"},
 		{Method: "palworld-rest", Port: "RESTAPIPort", Password: "AdminPassword"},
 		{Method: "log", JoinRegex: `joined for Account\[(?P<id>[^\]]+)\] Name\[(?P<name>[^\]]*)\]`, LeaveRegex: `left (?P<id>\S+)`, MaxPlayers: 6},
+		{Method: "log", JoinRegex: `\[server\] Player '(?P<name>[^']+)' logged in`, LeaveRegex: `Remove Entity for Player '(?P<name>[^']+)'`, MaxPlayersSetting: "slotCount", MaxPlayers: 16},
 	} {
 		s := validSpec()
 		s.Query = q

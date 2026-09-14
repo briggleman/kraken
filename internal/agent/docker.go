@@ -49,7 +49,12 @@ type DockerRuntime struct {
 	images imageAPI
 	// pullPolicy is how hard this node tries the registry before using a local
 	// copy of an image (KRAKEN_IMAGE_PULL).
-	pullPolicy  imagePullPolicy
+	pullPolicy imagePullPolicy
+	// pullMu guards pulls, the image references currently being downloaded in
+	// the background by the start path, keyed so a second start joins the pull
+	// already running instead of starting a competing one.
+	pullMu      sync.Mutex
+	pulls       map[string]*inflightPull
 	nodeID      string
 	wineEnabled bool
 	version     string
@@ -887,12 +892,11 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 		return fmt.Errorf("docker: no spec for server %q (call CreateServer first)", serverID)
 	}
 	if refresh {
-		// Pull before recreating, so the container that comes back is built on
-		// the refreshed image. A pull that fails but finds a local copy still
-		// starts the server — see pullImage.
-		if err := d.pullImage(ctx, spec.Image, startPullTimeout, func(line string) {
-			slog.Info("image refresh on start", "server", serverID, "detail", line)
-		}); err != nil {
+		// Refresh before recreating, so the container that comes back is built on
+		// the newer image when one arrives in time. This waits only a few seconds
+		// — the Panel bounds the Power RPC — and otherwise leaves the download
+		// running in the background; see refreshImageForStart.
+		if err := d.refreshImageForStart(ctx, spec.Image, serverID); err != nil {
 			return fmt.Errorf("docker: refresh image for %s: %w", serverID, err)
 		}
 	}

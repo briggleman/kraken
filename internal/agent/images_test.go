@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,27 +14,47 @@ import (
 )
 
 // fakeImages is the imageAPI seam: enough of the Docker client to drive the
-// pull/fallback policy without a daemon (#288).
+// pull/fallback policy without a daemon (#288). It is mutex-guarded because the
+// start path detaches pulls into their own goroutine (see refreshImageForStart),
+// so a test and a background pull touch it at the same time.
 type fakeImages struct {
-	local    map[string]image.InspectResponse
-	pullErr  error
-	pulls    []string
-	inspects int
+	mu      sync.Mutex
+	local   map[string]image.InspectResponse
+	pullErr error
+	pulls   []string
 	// pulled, when set, is added to local once a pull succeeds, so the
 	// post-pull re-inspect sees what the registry delivered.
 	pulled *image.InspectResponse
+	// gate, when set, blocks every ImagePull until the test closes it — this is
+	// how a "still downloading" pull is simulated.
+	gate chan struct{}
+	// pullCtxErr is the state of the pull's context when the pull finished,
+	// recorded to prove a detached pull outlives the RPC that started it.
+	pullCtxErr error
 }
 
 func (f *fakeImages) ImageInspect(_ context.Context, ref string, _ ...client.ImageInspectOption) (image.InspectResponse, error) {
-	f.inspects++
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if info, ok := f.local[ref]; ok {
 		return info, nil
 	}
 	return image.InspectResponse{}, errors.New("no such image: " + ref)
 }
 
-func (f *fakeImages) ImagePull(_ context.Context, ref string, _ image.PullOptions) (io.ReadCloser, error) {
+func (f *fakeImages) ImagePull(ctx context.Context, ref string, _ image.PullOptions) (io.ReadCloser, error) {
+	f.mu.Lock()
 	f.pulls = append(f.pulls, ref)
+	gate := f.gate
+	f.mu.Unlock()
+
+	if gate != nil {
+		<-gate
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pullCtxErr = ctx.Err()
 	if f.pullErr != nil {
 		return nil, f.pullErr
 	}
@@ -44,6 +65,13 @@ func (f *fakeImages) ImagePull(_ context.Context, ref string, _ image.PullOption
 		f.local[ref] = *f.pulled
 	}
 	return io.NopCloser(strings.NewReader(`{"status":"Downloaded"}`)), nil
+}
+
+// pullCount is the number of ImagePull calls so far.
+func (f *fakeImages) pullCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.pulls)
 }
 
 func newPullRuntime(t *testing.T, policy imagePullPolicy, f *fakeImages) *DockerRuntime {
@@ -71,8 +99,8 @@ func TestPullImagePullsEvenWhenPresentLocally(t *testing.T) {
 	if err := d.pullImage(context.Background(), testRef, time.Minute, log); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(f.pulls) != 1 {
-		t.Fatalf("expected exactly one pull, got %v", f.pulls)
+	if f.pullCount() != 1 {
+		t.Fatalf("expected exactly one pull, got %d", f.pullCount())
 	}
 	// The identity of the image the node ended up on must be in the log, so
 	// "which image is this node on?" is answerable from the install log (#284).
@@ -121,8 +149,8 @@ func TestPullImageSkipsDigestPinnedRefWithLocalHit(t *testing.T) {
 	if err := d.pullImage(context.Background(), ref, time.Minute, log); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(f.pulls) != 0 {
-		t.Errorf("a digest ref is immutable — it must not be re-pulled, got %v", f.pulls)
+	if f.pullCount() != 0 {
+		t.Errorf("a digest ref is immutable — it must not be re-pulled, got %d", f.pullCount())
 	}
 	if got := dump(); !strings.Contains(got, "immutable") {
 		t.Errorf("the skip reason should be logged:\n%s", got)
@@ -137,8 +165,8 @@ func TestPullImageDigestRefStillPullsWhenAbsent(t *testing.T) {
 	if err := d.pullImage(context.Background(), ref, time.Minute, log); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(f.pulls) != 1 {
-		t.Errorf("a digest ref that is not on the node must be fetched, got %v", f.pulls)
+	if f.pullCount() != 1 {
+		t.Errorf("a digest ref that is not on the node must be fetched, got %d", f.pullCount())
 	}
 }
 
@@ -149,8 +177,8 @@ func TestPullImagePolicyIfNotPresent(t *testing.T) {
 	if err := d.pullImage(context.Background(), testRef, time.Minute, log); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(f.pulls) != 0 {
-		t.Errorf(`"if-not-present" must not contact the registry for an image already on the node, got %v`, f.pulls)
+	if f.pullCount() != 0 {
+		t.Errorf(`"if-not-present" must not contact the registry for an image already on the node, got %d`, f.pullCount())
 	}
 	if got := dump(); !strings.Contains(got, "if-not-present") {
 		t.Errorf("the policy decision should be logged:\n%s", got)
@@ -162,8 +190,8 @@ func TestPullImagePolicyIfNotPresent(t *testing.T) {
 	if err := d2.pullImage(context.Background(), testRef, time.Minute, func(string) {}); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(missing.pulls) != 1 {
-		t.Errorf(`"if-not-present" must fetch an image that is not on the node, got %v`, missing.pulls)
+	if missing.pullCount() != 1 {
+		t.Errorf(`"if-not-present" must fetch an image that is not on the node, got %d`, missing.pullCount())
 	}
 }
 
@@ -173,8 +201,8 @@ func TestPullImagePolicyNever(t *testing.T) {
 	if err := d.pullImage(context.Background(), testRef, time.Minute, func(string) {}); err != nil {
 		t.Fatalf("pullImage: %v", err)
 	}
-	if len(f.pulls) != 0 {
-		t.Errorf(`"never" must not contact the registry at all, got %v`, f.pulls)
+	if f.pullCount() != 0 {
+		t.Errorf(`"never" must not contact the registry at all, got %d`, f.pullCount())
 	}
 
 	// With nothing on the node, "never" fails immediately rather than hanging on
@@ -185,8 +213,8 @@ func TestPullImagePolicyNever(t *testing.T) {
 	if err == nil {
 		t.Fatal(`expected "never" with no local image to fail`)
 	}
-	if len(empty.pulls) != 0 {
-		t.Errorf(`"never" must not pull even when the image is missing, got %v`, empty.pulls)
+	if empty.pullCount() != 0 {
+		t.Errorf(`"never" must not pull even when the image is missing, got %d`, empty.pullCount())
 	}
 }
 

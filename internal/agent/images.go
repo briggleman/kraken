@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -56,23 +57,33 @@ func parsePullPolicy(s string) imagePullPolicy {
 	}
 }
 
-// Pull deadlines. Both exist so a registry that accepts the connection and then
-// stalls cannot wedge an install or an operator's START forever.
-const (
-	// installPullTimeout covers the install path, where a cold node legitimately
-	// downloads a multi-gigabyte base image (kraken-steam-win is several GB) over
-	// whatever link the operator has. Generous on purpose: there is no local copy
-	// to fall back to on a first install, so cutting this short turns a slow link
-	// into a hard failure.
-	installPullTimeout = 30 * time.Minute
-	// startPullTimeout covers the refresh on an operator-driven start, where the
-	// image is almost always already current and the pull is a manifest check of
-	// a few KB. A start must not hang on a slow or unreachable registry, and
-	// timing out here is harmless: the fallback starts the server on the local
-	// image. A tag that genuinely moved and needs a full layer transfer will
-	// exceed this and be picked up by the next install instead.
-	startPullTimeout = 2 * time.Minute
-)
+// installPullTimeout bounds any actual transfer, so a registry that accepts the
+// connection and then stalls cannot wedge a pull forever. It is generous because
+// a cold node legitimately downloads a multi-gigabyte base image
+// (kraken-steam-win is several GB) over whatever link the operator has: on a
+// first install there is no local copy to fall back to, so cutting this short
+// would turn a slow link into a hard failure. The same ceiling applies to the
+// background pulls the start path detaches (see refreshImageForStart) — those
+// have all the time they need precisely because nothing is waiting on them.
+const installPullTimeout = 30 * time.Minute
+
+// startPullBudget is how long an operator-driven start is willing to *wait* for
+// a refresh before proceeding without it.
+//
+// The Panel bounds the Power RPC — START 15s, RESTART 60s
+// (internal/panel/api/handlers_server.go) — so a pull that blocks the RPC past
+// that makes the Panel report "agent error: context deadline exceeded" while the
+// Agent is still working, and the operator sees a failed start that then
+// mysteriously succeeds. Eight seconds clears the tightest of those deadlines
+// with room for the container recreate and ContainerStart that follow.
+//
+// The common case, an unchanged moving tag, is a manifest check of a few KB and
+// finishes well inside this, so a start still comes up on the refreshed image. A
+// tag that genuinely moved overruns it and is downloaded in the background
+// instead — see refreshImageForStart.
+//
+// A var, not a const, only so tests can shorten it.
+var startPullBudget = 8 * time.Second
 
 // pullImage makes ref available locally, preferring the registry.
 //
@@ -120,6 +131,106 @@ func (d *DockerRuntime) pullImage(ctx context.Context, ref string, timeout time.
 		log("Image ready: " + ref)
 	}
 	return nil
+}
+
+// inflightPull is one background pull, shared by everyone waiting on the same
+// reference. err is written before done is closed, so a reader that has taken
+// the channel may read it.
+type inflightPull struct {
+	done chan struct{}
+	err  error
+}
+
+// refreshImageForStart gives an operator-driven start the current image when
+// that is cheap, and never lets it block on the registry when it is not.
+//
+// It waits startPullBudget for the pull and then stops waiting — but does NOT
+// cancel it. The pull runs on its own context to completion in the background,
+// and the server starts now on the copy already on the node. ensureContainer
+// removes and recreates a non-running container from whatever is local, so the
+// freshly-downloaded image takes effect on the next start with no further code.
+//
+// The crash watchdog never comes through here (see imageRefresh): a crash loop
+// must recover on the image it was already running.
+func (d *DockerRuntime) refreshImageForStart(ctx context.Context, ref, serverID string) error {
+	local, localErr := d.images.ImageInspect(ctx, ref)
+	hasLocal := localErr == nil
+
+	if reason, skip := d.skipPull(ref, hasLocal); skip {
+		if !hasLocal {
+			return fmt.Errorf("image %s is not present on this node and the image pull policy is %q", ref, d.pullPolicy)
+		}
+		slog.Info("image refresh on start skipped", "server", serverID, "image", ref,
+			"local", imageIdentity(local), "reason", reason)
+		return nil
+	}
+
+	p := d.backgroundPull(ref)
+	select {
+	case <-p.done:
+		if p.err != nil {
+			if !hasLocal {
+				return fmt.Errorf("pull %s: %w", ref, p.err)
+			}
+			slog.Warn("image refresh on start failed; starting on the local image",
+				"server", serverID, "image", ref, "local", imageIdentity(local), "err", p.err)
+			return nil
+		}
+		return nil
+	case <-time.After(startPullBudget):
+		if !hasLocal {
+			// Nothing to start from, so failing fast beats hanging the RPC: the
+			// operator gets one clear sentence and a start that will work.
+			return fmt.Errorf("image %s is not on this node yet; the pull is running in the background — start again once it completes", ref)
+		}
+		slog.Info("newer image for "+ref+" still downloading in the background; it takes effect on the next start",
+			"server", serverID, "image", ref, "local", imageIdentity(local), "waited", startPullBudget)
+		return nil
+	}
+}
+
+// backgroundPull returns the in-flight pull for ref, starting one if there is
+// none. De-duplicating by reference matters because a second START while a
+// multi-gigabyte transfer is running must join that pull rather than launch a
+// competing one — and because several servers commonly share one base image.
+func (d *DockerRuntime) backgroundPull(ref string) *inflightPull {
+	d.pullMu.Lock()
+	if p, ok := d.pulls[ref]; ok {
+		d.pullMu.Unlock()
+		return p
+	}
+	p := &inflightPull{done: make(chan struct{})}
+	if d.pulls == nil {
+		d.pulls = map[string]*inflightPull{}
+	}
+	d.pulls[ref] = p
+	d.pullMu.Unlock()
+
+	go func() {
+		// context.Background(), not the caller's: the Power RPC that started this
+		// is bounded by the Panel and will usually be gone long before a real
+		// layer transfer ends. Cancelling a multi-GB download at the 15-second
+		// mark, every time, would mean the node never converges on the new image.
+		err := d.doPull(context.Background(), ref, installPullTimeout)
+
+		d.pullMu.Lock()
+		delete(d.pulls, ref)
+		d.pullMu.Unlock()
+
+		p.err = err
+		close(p.done)
+
+		if err != nil {
+			slog.Warn("image pull failed", "image", ref, "err", err)
+			return
+		}
+		id := "unknown"
+		if info, ierr := d.images.ImageInspect(context.Background(), ref); ierr == nil {
+			id = imageIdentity(info)
+		}
+		slog.Info("image pull complete", "image", ref, "id", id)
+	}()
+	return p
 }
 
 // skipPull reports whether the registry should be left alone for this reference,

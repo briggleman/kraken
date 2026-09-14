@@ -91,7 +91,11 @@ node_os: linux
 #                   operator-driven start, falling back to the copy already on
 #                   this node when the pull fails. Every bundled spec names a
 #                   moving tag, so this is what keeps a node on the current
-#                   image; a crash-restart never pulls.
+#                   image; a crash-restart never pulls. A start waits only a
+#                   few seconds for the refresh — a download that takes longer
+#                   finishes in the background and takes effect on the next
+#                   start, so starting a server is never held up by the
+#                   registry. An install waits for the whole download.
 #   if-not-present  only fetch an image this node does not already have.
 #   never           never contact a registry — every image a spec names must
 #                   already be on this node.

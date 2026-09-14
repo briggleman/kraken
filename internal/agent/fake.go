@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +28,7 @@ type FakeRuntime struct {
 	states  map[string]agentpb.ServerState
 	configs map[string]map[string]string     // serverID → path → content
 	backups map[string][]*agentpb.BackupInfo // serverID → backups
+	files   map[string]map[string]*fakeFile  // serverID → logical path → entry (see tree)
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -106,10 +109,12 @@ func (f *FakeRuntime) Remove(_ context.Context, serverID string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.states, serverID)
+	delete(f.files, serverID)
 	return nil
 }
 
-// ApplyConfig records the rendered files in memory (no real volume in the fake).
+// ApplyConfig records the rendered files in memory (no real volume in the fake)
+// and writes them into the fake data dir so they show up in the file listing.
 func (f *FakeRuntime) ApplyConfig(_ context.Context, serverID string, files map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -117,31 +122,170 @@ func (f *FakeRuntime) ApplyConfig(_ context.Context, serverID string, files map[
 		f.configs = make(map[string]map[string]string)
 	}
 	f.configs[serverID] = files
+	t := f.tree(serverID)
+	for p, content := range files {
+		if fp := fakePath(p); fp != fakeDataRoot {
+			f.putFile(t, fp, []byte(content))
+		}
+	}
 	return nil
 }
 
-func (f *FakeRuntime) ListFiles(_ context.Context, _ string, path string) ([]*agentpb.FileEntry, error) {
-	if path == "" {
-		path = "/data"
+// --- files ---------------------------------------------------------------
+//
+// The fake keeps a real (in-memory) data dir per server, seeded with a config
+// file and a saves folder, so the file API behaves the way it does against a
+// node: an upload appears in the listing, a delete removes it, a folder delete
+// takes its contents. Before this the file ops were no-ops that always listed
+// the same two entries, which made the Files tab impossible to exercise against
+// the fake stack (#287).
+
+const fakeDataRoot = "/data"
+
+type fakeFile struct {
+	entry *agentpb.FileEntry
+	data  []byte
+}
+
+// fakePath maps any client path onto the logical data root the way the docker
+// runtime's safePath does: "" and "." are the root, relative paths hang off it,
+// and Windows separators are normalized.
+func fakePath(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	if p == "" || p == "." {
+		return fakeDataRoot
 	}
-	return []*agentpb.FileEntry{
-		{Name: "server.cfg", Path: path + "/server.cfg", IsDir: false, Size: 128, ModUnixMs: nowMs()},
-		{Name: "saves", Path: path + "/saves", IsDir: true, Size: 0, ModUnixMs: nowMs()},
-	}, nil
+	if !strings.HasPrefix(p, "/") {
+		p = fakeDataRoot + "/" + p
+	}
+	p = path.Clean(p)
+	if p != fakeDataRoot && !strings.HasPrefix(p, fakeDataRoot+"/") {
+		p = fakeDataRoot + p
+	}
+	return p
 }
 
-func (f *FakeRuntime) ReadFile(_ context.Context, _ string, p string, _ int64) ([]byte, int64, bool, bool, error) {
-	content := []byte("# fake content for " + p + "\nkey=value\n")
-	return content, int64(len(content)), false, false, nil
+// tree returns the server's file map, seeding it on first touch. Callers hold f.mu.
+func (f *FakeRuntime) tree(serverID string) map[string]*fakeFile {
+	if f.files == nil {
+		f.files = make(map[string]map[string]*fakeFile)
+	}
+	t, ok := f.files[serverID]
+	if !ok {
+		t = make(map[string]*fakeFile)
+		f.files[serverID] = t
+		f.putFile(t, fakeDataRoot+"/server.cfg", []byte("# fake content for "+fakeDataRoot+"/server.cfg\nkey=value\n"))
+		f.putDir(t, fakeDataRoot+"/saves")
+		f.putFile(t, fakeDataRoot+"/saves/world.sav", make([]byte, 2048))
+	}
+	return t
 }
 
-func (f *FakeRuntime) DownloadFile(_ context.Context, _ string, p string, w io.Writer) error {
-	_, err := w.Write([]byte("fake content for " + p + "\n"))
+// putDir records a directory and every ancestor below the root. Callers hold f.mu.
+func (f *FakeRuntime) putDir(t map[string]*fakeFile, p string) {
+	for cur := p; cur != fakeDataRoot && cur != "/" && cur != "."; cur = path.Dir(cur) {
+		if _, ok := t[cur]; ok {
+			continue
+		}
+		t[cur] = &fakeFile{entry: &agentpb.FileEntry{Name: path.Base(cur), Path: cur, IsDir: true, ModUnixMs: nowMs()}}
+	}
+}
+
+// putFile records a file (creating its parents) and its bytes. Callers hold f.mu.
+func (f *FakeRuntime) putFile(t map[string]*fakeFile, p string, data []byte) {
+	f.putDir(t, path.Dir(p))
+	t[p] = &fakeFile{
+		entry: &agentpb.FileEntry{Name: path.Base(p), Path: p, Size: int64(len(data)), ModUnixMs: nowMs()},
+		data:  data,
+	}
+}
+
+func (f *FakeRuntime) ListFiles(_ context.Context, serverID string, p string) ([]*agentpb.FileEntry, error) {
+	dir := fakePath(p)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.tree(serverID)
+	if dir != fakeDataRoot {
+		d, ok := t[dir]
+		if !ok || !d.entry.IsDir {
+			return nil, fmt.Errorf("fake: %s: not a directory", p)
+		}
+	}
+	var out []*agentpb.FileEntry
+	for k, ff := range t {
+		if path.Dir(k) == dir {
+			out = append(out, ff.entry)
+		}
+	}
+	// Folders first, then by name — the order an operator expects of a listing.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].IsDir != out[j].IsDir {
+			return out[i].IsDir
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
+}
+
+func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ int64) ([]byte, int64, bool, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ff, ok := f.tree(serverID)[fakePath(p)]
+	if !ok || ff.entry.IsDir {
+		return nil, 0, false, false, fmt.Errorf("fake: %s: no such file", p)
+	}
+	return ff.data, int64(len(ff.data)), false, false, nil
+}
+
+func (f *FakeRuntime) DownloadFile(_ context.Context, serverID string, p string, w io.Writer) error {
+	data, _, _, _, err := f.ReadFile(context.Background(), serverID, p, 0)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
 	return err
 }
 
-func (f *FakeRuntime) MovePath(_ context.Context, _ string, _, _ string) error { return nil }
-func (f *FakeRuntime) CopyPath(_ context.Context, _ string, _, _ string) error { return nil }
+// MovePath renames a file or a whole subtree; CopyPath duplicates one.
+func (f *FakeRuntime) MovePath(_ context.Context, serverID string, src, dst string) error {
+	return f.transplant(serverID, src, dst, true)
+}
+
+func (f *FakeRuntime) CopyPath(_ context.Context, serverID string, src, dst string) error {
+	return f.transplant(serverID, src, dst, false)
+}
+
+func (f *FakeRuntime) transplant(serverID, src, dst string, move bool) error {
+	s, d := fakePath(src), fakePath(dst)
+	if s == fakeDataRoot || d == fakeDataRoot {
+		return fmt.Errorf("fake: cannot move the data root")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.tree(serverID)
+	if _, ok := t[s]; !ok {
+		return fmt.Errorf("fake: %s: no such file or directory", src)
+	}
+	moved := make(map[string]*fakeFile)
+	for k, ff := range t {
+		if k != s && !strings.HasPrefix(k, s+"/") {
+			continue
+		}
+		nk := d + strings.TrimPrefix(k, s)
+		moved[nk] = &fakeFile{
+			entry: &agentpb.FileEntry{Name: path.Base(nk), Path: nk, IsDir: ff.entry.IsDir, Size: ff.entry.Size, ModUnixMs: nowMs()},
+			data:  append([]byte(nil), ff.data...),
+		}
+		if move {
+			delete(t, k)
+		}
+	}
+	f.putDir(t, path.Dir(d))
+	for k, ff := range moved {
+		t[k] = ff
+	}
+	return nil
+}
 
 func (f *FakeRuntime) ZipFiles(_ context.Context, _ string, paths []string, w io.Writer) error {
 	zw := zip.NewWriter(w)
@@ -212,9 +356,46 @@ func (f *FakeRuntime) DeleteBackup(_ context.Context, serverID, _, id string) er
 	return nil
 }
 
-func (f *FakeRuntime) MakeDir(_ context.Context, _ string, _ string) error             { return nil }
-func (f *FakeRuntime) WriteFile(_ context.Context, _ string, _ string, _ []byte) error { return nil }
-func (f *FakeRuntime) DeletePaths(_ context.Context, _ string, _ []string) error       { return nil }
+func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.putDir(f.tree(serverID), fakePath(p))
+	return nil
+}
+
+func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, content []byte) error {
+	fp := fakePath(p)
+	if fp == fakeDataRoot {
+		return fmt.Errorf("fake: cannot write the data root")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.putFile(f.tree(serverID), fp, append([]byte(nil), content...))
+	return nil
+}
+
+// DeletePaths removes each path and, for a folder, everything under it. The
+// data root itself is skipped, the way the docker runtime skips it.
+func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.tree(serverID)
+	for _, p := range paths {
+		fp := fakePath(p)
+		if fp == fakeDataRoot {
+			continue
+		}
+		if _, ok := t[fp]; !ok {
+			return fmt.Errorf("fake: delete %s: no such file or directory", p)
+		}
+		for k := range t {
+			if k == fp || strings.HasPrefix(k, fp+"/") {
+				delete(t, k)
+			}
+		}
+	}
+	return nil
+}
 
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
 	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_INSTALLING)

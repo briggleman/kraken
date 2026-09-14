@@ -305,6 +305,27 @@ export async function filesUpload(files: File[]) {
   }
 }
 
+/** Remove one entry — a file, or a folder and everything under it — then
+ *  re-list the directory so the row leaves without a reload. `p` is the
+ *  listing's own logical path (`/data/...`): the agent maps it onto the node's
+ *  real root, `C:\data` included, so a host path must never be sent (#287).
+ *  Resolves true when the agent confirmed the delete; a refusal lands in
+ *  `depth.error`, the pane's notice. The listing is re-read either way — the
+ *  usual refusal is a row that went stale (removed over SFTP, or by another
+ *  session), and the honest response to that is the listing as it now is. */
+export async function filesDelete(p: string): Promise<boolean> {
+  if (!depth.serverId) return false;
+  let ok = true;
+  try {
+    await api.deleteFiles(depth.serverId, [p]);
+  } catch (e) {
+    depth.error = e instanceof Error ? e.message : String(e);
+    ok = false;
+  }
+  await filesGo(depth.filesDir);
+  return ok;
+}
+
 // --- backups ---------------------------------------------------------------
 
 function stopBackupPoll() {

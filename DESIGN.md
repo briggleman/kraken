@@ -409,7 +409,7 @@ A bordered lane between `wan` and `lan` endpoint tags; gold packet dots animate 
 Each server card carries its game's key art as `.srv-art` — an absolute paint layer (zero layout impact) in **abyssal duotone**: `grayscale(1) sepia(0.5) hue-rotate(125deg) saturate(1.6) brightness(0.55)` at 0.5 opacity under a `.srv-shade` legibility gradient. Stopped servers desaturate fully and drop to 0.25.
 
 ### Drill-in overlay (server depth)
-Full-screen fixed overlay opening with a circular clip-path plunge from the click point; SURFACE button and Esc return. Layout: live console (left, streaming mono log with severity colors) + side column of press-travel controls (stop/restart, or start when stopped), player roster with kick, vitals, the network ledger, backups, schedules, and the danger block. Per-server data; a stopped server shows a dark room.
+Full-screen fixed overlay opening with a circular clip-path plunge from the click point; SURFACE button and Esc return. Layout: live console (left, streaming mono log with severity colors, sharing its tab strip with settings and the file listing) + side column of press-travel controls (stop/restart, or start when stopped), player roster with kick, vitals, the network ledger, backups, schedules, and the danger block. Per-server data; a stopped server shows a dark room. The file listing is a mono ledger of `.f-row`s — folders in the light, files in Sand Secondary, size and date right-aligned in Sand Faint — with upload in its footer and a revealed delete pill per row (see Destructive Control).
 
 ### Solid Button (the one lit control)
 The house's only filled control, and the only place the palette inverts: Abyss Floor text on a
@@ -672,6 +672,22 @@ one fact or a sequence.
 Crisis Magenta, at one of three weights chosen by the control’s size, all off the same tokens. A **table-row pill** (`.mini-act.del`) carries the colour on its text and a 0.45 border with no ground — eight washed pills in a list would read as a warning about the table rather than about a row. A **full-size button** (`.cfg-btn.danger`) and a **drill-in control** (`.ctl-delete`) both take text, a 0.35 border and a 0.08 crisis ground. Those last two stay separate rules on purpose: the `.ctl-*` family hovers with `filter: brightness(1.3)` and `.cfg-btn` controls move their own values, so one shared selector would force one base’s idiom onto the other.
 
 Anything irreversible is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost, and keeps its confirm disabled until the word `delete` is typed — matched case-insensitively, so `DELETE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this removes the world, backups and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through.
+
+**The Revealed Pill Rule.** A table-row pill in a list whose length the operator does not control
+— the drill-in's file listing (`.f-row .f-del`), where a Steam install tree runs to hundreds of
+rows — is present in the markup but held at `opacity: 0` until its row is pointed at or holds
+focus (`:hover`, `:focus-within`), because two hundred crisis pills are a warning about the pane,
+not about a row. Where there is no hover to reveal it with (`@media (hover: none)`, the phone
+scene) it stays visible, since a control that can only be found by pointing is not a control
+there. The row it lives in is two controls in one grid, never a button holding a button: the
+`.f-open` cell carries the name, size and date and opens a folder (a file's cell does nothing yet,
+and keeps the default cursor rather than promising a viewer), and the pill takes the trailing
+cell. The row lifts on hover in the light (`--lumen` at 0.06), not in crisis — the row is a fact
+about the server; only the pill is a threat to it. Each pill opens the typed confirmation with its
+own noun: a **folder** takes everything inside it, a **file** does not, and neither has a trash to
+come back from, which is what its warning says. Backup and schedule rows keep their pills always
+visible: those lists are short by construction (retention caps one at five), so there is nothing
+to protect the pane from.
 
 **The Opposite Ends Rule.** A destructive control that shares a row with the surface's committing
 one takes the **far end** of it, on `margin-right: auto`, with a hairline

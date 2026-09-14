@@ -59,7 +59,14 @@ export const ui = $state({
   stack: [] as SheetId[],
 
   // typed-confirmation dialog
-  confirm: null as null | { name: string; noun: string; body: string | null },
+  confirm: null as null | {
+    name: string;
+    noun: string;
+    body: string | null;
+    // The consequence, when the opener owns it (a file, a folder). Without it
+    // the dialog falls through to the noun branches in confirmGo.
+    go?: () => Promise<void> | void;
+  },
 
   // first-run overlays (the login itself is auth-driven; these are the
   // wizard's restart choreography)
@@ -115,18 +122,28 @@ export const CD_NODE_BODY =
   "re-adding it needs a fresh enrollment token because this one's identity is orphaned. " +
   "it cannot be undone.";
 
+// A file or folder in the Files tab. The agent removes it from the host data
+// dir with no trash, so the warning says exactly that and nothing about worlds
+// or backups — those are what a *server* delete takes.
+export const CD_FILE_BODY =
+  "this removes the file from the server's data on the node. there is no trash. it cannot be undone.";
+export const CD_FOLDER_BODY =
+  "this removes the folder and everything inside it from the server's data on the node. " +
+  "there is no trash. it cannot be undone.";
+
 let confirmReturn: HTMLElement | null = null;
 
 export function openConfirm(
   name: string,
   returnTo: HTMLElement | null,
-  opts?: { noun?: string; body?: string },
+  opts?: { noun?: string; body?: string; go?: () => Promise<void> | void },
 ) {
   confirmReturn = returnTo;
   ui.confirm = {
     name,
     noun: opts?.noun || "server",
     body: opts?.body || CD_SERVER_BODY,
+    go: opts?.go,
   };
 }
 
@@ -138,6 +155,16 @@ export function closeConfirm() {
 export async function confirmGo() {
   const c = ui.confirm;
   if (!c) return;
+  if (c.go) {
+    // The opener owns the consequence; the dialog only gates it. It closes
+    // before the call so a slow agent leaves the pane, not the veil, as the
+    // thing reporting back — and focus goes home only if home still exists
+    // (a deleted row's button does not).
+    ui.confirm = null;
+    await c.go();
+    if (confirmReturn && document.contains(confirmReturn)) confirmReturn.focus();
+    return;
+  }
   if (c.noun === "spec") {
     // a spec is a recipe, not a running thing: it leaves the list and the
     // editor closes; servers built from it keep running

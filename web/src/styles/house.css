@@ -417,13 +417,16 @@
   }
   .files-crumb b { color: var(--lumen); font-weight: 500; }
   .files-list { min-height: 0; overflow-y: auto; padding: 6px 8px; scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent; }
-  /* a file row is two controls in one grid, not one button: the name/size/date cell (.f-open)
-     opens a folder - a file's cell does nothing yet, there is no viewer, so it keeps the default
-     cursor rather than promising one - and a .mini-act.del pill sits in a trailing cell. The pill
-     is hidden until the row is pointed at or holds focus, so a 200-row listing is not 200 crisis
-     pills; where there is no hover (a phone) it stays visible, because there is nothing to reveal
-     it with. The row itself never turns crisis: the row is a fact about the server, only the pill
-     is a threat to it. */
+  /* a file row is one open cell and a cluster of pills, never a button holding a button: the
+     name/size/date cell (.f-open) opens a folder - a file's cell does nothing yet, there is no
+     viewer, so it keeps the default cursor rather than promising one - and the trailing cell
+     (.f-acts) carries the row's actions in read-then-destroy order: a plain download pill (a read,
+     so it stays in Sand Faint and only lifts to Sand on hover - the Verb-Risk Rule), then the
+     .mini-act.del pill at the far end. The whole cluster is hidden until the row is pointed at or
+     holds focus, so a 200-row listing is not 400 pills; where there is no hover (a phone) it stays
+     visible, because there is nothing to reveal it with. The row itself never turns crisis: the
+     row is a fact about the server, only the delete pill is a threat to it. A folder's download
+     is the zip the Panel builds for it (POST /files/download); a file's is its raw bytes. */
   .f-row {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
     color: var(--ink-2); border-radius: 4px; transition: background 0.15s, color 0.15s;
@@ -438,9 +441,10 @@
   .f-open > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .f-row.dir .f-open > span:first-child { color: var(--lumen); }
   .f-open > span:nth-child(2), .f-open > span:nth-child(3) { text-align: right; color: var(--ink-3); font-size: 12px; }
-  .f-del { margin-right: 8px; opacity: 0; transition: opacity 0.15s, color 0.2s, background 0.2s, border-color 0.2s; }
-  .f-row:hover .f-del, .f-row:focus-within .f-del { opacity: 1; }
-  @media (hover: none) { .f-del { opacity: 1; } }
+  .f-acts { display: flex; align-items: center; gap: 6px; margin-right: 8px; opacity: 0; transition: opacity 0.15s; }
+  .f-row:hover .f-acts, .f-row:focus-within .f-acts { opacity: 1; }
+  @media (hover: none) { .f-acts { opacity: 1; } }
+  .f-dl:hover { color: var(--ink); border-color: rgba(var(--ink-2-rgb), 0.6); }
   /* on a phone the date column is the one that goes: the name is what you are looking for and the
      size is what tells a stray upload from the world save. */
   @media (max-width: 640px) {

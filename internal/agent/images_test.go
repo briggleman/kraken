@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
@@ -31,6 +32,11 @@ type fakeImages struct {
 	// pullCtxErr is the state of the pull's context when the pull finished,
 	// recorded to prove a detached pull outlives the RPC that started it.
 	pullCtxErr error
+
+	// Prune side (see imageprune_test.go).
+	pruneFilters []filters.Args
+	pruneReport  image.PruneReport
+	pruneErr     error
 }
 
 func (f *fakeImages) ImageInspect(_ context.Context, ref string, _ ...client.ImageInspectOption) (image.InspectResponse, error) {

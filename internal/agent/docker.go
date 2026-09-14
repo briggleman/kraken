@@ -53,8 +53,12 @@ type DockerRuntime struct {
 	// pullMu guards pulls, the image references currently being downloaded in
 	// the background by the start path, keyed so a second start joins the pull
 	// already running instead of starting a competing one.
-	pullMu      sync.Mutex
-	pulls       map[string]*inflightPull
+	pullMu sync.Mutex
+	pulls  map[string]*inflightPull
+	// imagePrune enables the weekly dangling-image prune (KRAKEN_IMAGE_PRUNE),
+	// and pruneClock persists when it last ran (#289).
+	imagePrune  bool
+	pruneClock  *pruneClock
 	nodeID      string
 	wineEnabled bool
 	version     string
@@ -160,7 +164,7 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if stateDir == "" {
 		stateDir = "."
 	}
-	d := &DockerRuntime{cli: cli, images: cli, pullPolicy: parsePullPolicy(os.Getenv("KRAKEN_IMAGE_PULL")), nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir)}
+	d := &DockerRuntime{cli: cli, images: cli, pullPolicy: parsePullPolicy(os.Getenv("KRAKEN_IMAGE_PULL")), nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir), imagePrune: !strings.EqualFold(os.Getenv("KRAKEN_IMAGE_PRUNE"), "off"), pruneClock: newPruneClock(stateDir)}
 	d.backups = selectBackupTarget(backupDir)
 	// Failed backups outlive the process: without this an agent restart erased
 	// every FAILED row from ListBackups and the operator saw a backup that

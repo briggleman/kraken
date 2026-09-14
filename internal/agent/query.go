@@ -41,6 +41,21 @@ const playerCacheTTL = 10 * time.Second
 // sampledPlayers returns the server's online-player count, querying at most once
 // per playerCacheTTL and caching the result. ok=false means unknown.
 func (d *DockerRuntime) sampledPlayers(ctx context.Context, serverID string) (players, maxPlayers int32, ok bool) {
+	// The log roster is not a query — it is already in memory, kept current by
+	// the console follower — so it bypasses the TTL cache: a join shows on the
+	// next tick, not up to ten seconds later. Known only while a follower is
+	// actually reading the run's console.
+	if r := d.rosterFor(serverID); r != nil {
+		names, alive := r.snapshot()
+		if !alive {
+			return 0, 0, false
+		}
+		var cap int32
+		if spec, hasSpec := d.getSpec(serverID); hasSpec {
+			cap = spec.GetPlayerQuery().GetMaxPlayers()
+		}
+		return int32(len(names)), cap, true
+	}
 	d.pcMu.Lock()
 	if s, hit := d.playerSamples[serverID]; hit && time.Since(s.at) < playerCacheTTL {
 		d.pcMu.Unlock()

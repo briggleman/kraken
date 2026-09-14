@@ -39,6 +39,23 @@ func streamToken(r *http.Request) string {
 	return r.URL.Query().Get("token")
 }
 
+// onlinePlayer is one roster entry as the browser sees it.
+type onlinePlayer struct {
+	Name     string `json:"name"`
+	JoinedMs int64  `json:"joined_ms,omitempty"`
+}
+
+func onlinePlayersFrom(in []*agentpb.OnlinePlayer) []onlinePlayer {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]onlinePlayer, 0, len(in))
+	for _, p := range in {
+		out = append(out, onlinePlayer{Name: p.GetName(), JoinedMs: p.GetJoinedUnixMs()})
+	}
+	return out
+}
+
 // frame is a message pushed to the browser over the stream WebSocket.
 type frame struct {
 	Type string `json:"type"` // "console" | "stats" | "error"
@@ -62,6 +79,10 @@ type frame struct {
 	Players       int32   `json:"players,omitempty"`
 	MaxPlayers    int32   `json:"max_players,omitempty"`
 	PlayersKnown  bool    `json:"players_known,omitempty"`
+	// The names behind the count, when the query method reads them (the log
+	// roster). Absent for count-only methods, so the UI can tell "6 aboard,
+	// names unknown" from "nobody aboard".
+	OnlinePlayers []onlinePlayer `json:"online_players,omitempty"`
 
 	// error
 	Message string `json:"message,omitempty"`
@@ -191,6 +212,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 				NetRxBytes: st.NetRxBytes, NetTxBytes: st.NetTxBytes,
 				UptimeSeconds: st.UptimeSeconds, DiskUsedMB: st.DiskUsedMb,
 				Players: st.Players, MaxPlayers: st.MaxPlayers, PlayersKnown: st.PlayersKnown,
+				OnlinePlayers: onlinePlayersFrom(st.OnlinePlayers),
 			})
 		}
 	}()

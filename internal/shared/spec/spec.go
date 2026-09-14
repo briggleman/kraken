@@ -7,6 +7,7 @@ package spec
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -142,15 +143,70 @@ type Platform struct {
 
 // PlayerQuery declares how to read a server's online-player count.
 type PlayerQuery struct {
-	// Method is "a2s" (Steam A2S_INFO UDP query — most Steam servers) or
-	// "palworld-rest" (Palworld's REST players endpoint with admin Basic auth).
+	// Method is "a2s" (Steam A2S_INFO UDP query — most Steam servers),
+	// "palworld-rest" (Palworld's REST players endpoint with admin Basic auth),
+	// or "log" (the Agent follows the console and keeps a roster from the
+	// join/leave lines — the only method that yields names).
 	Method string `json:"method"`
 	// Port is the spec port NAME to query: the A2S query port, or the REST API
 	// port. The Panel resolves it to the allocated host port for the Agent.
-	Port string `json:"port"`
+	Port string `json:"port,omitempty"`
 	// Password, for palworld-rest, names the setting/var key holding the admin
 	// password (e.g. "AdminPassword"); the Panel resolves its value. Empty for A2S.
 	Password string `json:"password,omitempty"`
+	// JoinRegex and LeaveRegex, for "log", match the console line the game
+	// prints when a player arrives and when one leaves. Each must capture the
+	// player: (?P<name>…) is the display name, (?P<id>…) an optional stable
+	// account id the roster keys on (so a renamed character does not count
+	// twice); with no id the name is the key. RE2 syntax.
+	JoinRegex  string `json:"join_regex,omitempty"`
+	LeaveRegex string `json:"leave_regex,omitempty"`
+	// MaxPlayers, for "log", is the game's player cap — a log never states one,
+	// and the PLAYERS readout wants a denominator. 0 leaves it unknown.
+	MaxPlayers int `json:"max_players,omitempty"`
+}
+
+// queryMethods are the PlayerQuery methods the Agent implements.
+var queryMethods = []string{"a2s", "palworld-rest", "log"}
+
+// validateQuery rejects a query block the Agent could not act on. The failure
+// modes are silent at runtime — an unknown method, a missing port, or a regex
+// that never matches all read as "player count unknown" — so they are caught
+// here, where the author sees them.
+func (s *Spec) validateQuery() error {
+	q := s.Query
+	if q == nil {
+		return nil
+	}
+	switch q.Method {
+	case "a2s":
+		if q.Port == "" {
+			return fmt.Errorf("spec %q: query.port (the spec port name to query) is required for method a2s", s.Slug)
+		}
+	case "palworld-rest":
+		if q.Port == "" || q.Password == "" {
+			return fmt.Errorf("spec %q: query.port and query.password (setting keys) are required for method palworld-rest", s.Slug)
+		}
+	case "log":
+		for _, f := range []struct{ field, rx string }{{"join_regex", q.JoinRegex}, {"leave_regex", q.LeaveRegex}} {
+			if f.rx == "" {
+				return fmt.Errorf("spec %q: query.%s is required for method log", s.Slug, f.field)
+			}
+			re, err := regexp.Compile(f.rx)
+			if err != nil {
+				return fmt.Errorf("spec %q: query.%s: %v", s.Slug, f.field, err)
+			}
+			if re.SubexpIndex("name") < 0 && re.SubexpIndex("id") < 0 {
+				return fmt.Errorf("spec %q: query.%s must capture the player as (?P<name>…) or (?P<id>…)", s.Slug, f.field)
+			}
+		}
+		if q.MaxPlayers < 0 {
+			return fmt.Errorf("spec %q: query.max_players must be >= 0", s.Slug)
+		}
+	default:
+		return fmt.Errorf("spec %q: query.method must be one of %v", s.Slug, queryMethods)
+	}
+	return nil
 }
 
 // Install describes the one-shot install/update phase, run in a short-lived
@@ -392,6 +448,9 @@ func (s *Spec) Validate() error {
 		return err
 	}
 	if err := s.validateBackup(); err != nil {
+		return err
+	}
+	if err := s.validateQuery(); err != nil {
 		return err
 	}
 	return nil

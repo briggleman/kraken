@@ -95,6 +95,9 @@ type DockerRuntime struct {
 	// each hitting the game server.
 	pcMu          sync.Mutex
 	playerSamples map[string]playerSample
+	// rosters holds the "log" player-query roster per server (see roster.go),
+	// armed and forgotten with the server's watchdog. Also under pcMu.
+	rosters map[string]*logRoster
 }
 
 // playerSample is a cached online-player reading for one server.
@@ -983,7 +986,10 @@ func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.S
 	// without an open stats stream (TTL-cached, so this poll rarely hits the game).
 	if state == agentpb.ServerState_SERVER_STATE_RUNNING {
 		if pl, mx, known := d.sampledPlayers(ctx, serverID); known {
-			status.LastStats = &agentpb.ResourceStats{ServerId: serverID, Players: pl, MaxPlayers: mx, PlayersKnown: known}
+			status.LastStats = &agentpb.ResourceStats{
+				ServerId: serverID, Players: pl, MaxPlayers: mx, PlayersKnown: known,
+				OnlinePlayers: d.sampledRoster(serverID),
+			}
 		}
 	}
 	return status, nil
@@ -1094,6 +1100,7 @@ func (d *DockerRuntime) StreamStats(ctx context.Context, serverID string, _ int3
 			Players:       lastPlayers,
 			MaxPlayers:    lastMaxPlayers,
 			PlayersKnown:  lastPlayersKnown,
+			OnlinePlayers: d.sampledRoster(serverID),
 		}); err != nil {
 			return err
 		}

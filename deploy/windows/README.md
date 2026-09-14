@@ -95,7 +95,7 @@ C:\kraken\bin\kraken-agent.exe --service start
 
 # Check the registered SCM config against what --service install would write
 # (exit 0 in sync, 1 drift, 2 not installed) — see "Existing installs" below:
-C:\kraken\bin\kraken-agent.exe --service status --root C:\kraken
+C:\kraken\bin\kraken-agent.exe --service status
 
 # Logs (JSON, rotated at 10 MiB):
 Get-Content C:\kraken\state\agent.log -Tail 30 -Wait
@@ -133,14 +133,15 @@ heal, then check again:
 
 ```powershell
 # 1. What is the SCM actually holding? Prints actual vs expected per field.
-C:\kraken\bin\kraken-agent.exe --service status --root C:\kraken
+C:\kraken\bin\kraken-agent.exe --service status
 
 # 2. Heal it. Pass the same flags the service was installed with: this also
 #    rewrites the service's command line. install.ps1 always passes --root.
+#    (Status prints this line for you, with those flags already filled in.)
 C:\kraken\bin\kraken-agent.exe --service install --root C:\kraken
 
 # 3. Confirm — this should now print "ok" on every row.
-C:\kraken\bin\kraken-agent.exe --service status --root C:\kraken
+C:\kraken\bin\kraken-agent.exe --service status
 ```
 
 `--service status` exits **0** when the registered config matches what
@@ -149,13 +150,18 @@ isn't installed or the SCM can't be read (an unelevated shell lands here), so
 the check is scriptable — nonzero means run `--service install`:
 
 ```powershell
-C:\kraken\bin\kraken-agent.exe --service status --root C:\kraken
+C:\kraken\bin\kraken-agent.exe --service status
 if ($LASTEXITCODE -ne 0) { C:\kraken\bin\kraken-agent.exe --service install --root C:\kraken }
 ```
 
-Run status with the **same flags as install** — the expected command line is
-rebuilt from the flags you type, so a bare `--service status` reports command-line
-drift that isn't there (it says so when that row mismatches).
+A bare `--service status` compares the service against **the flags it is
+registered with**, so it reports no command-line drift on a healthy install.
+Pass flags only to ask the other question — "did `install.ps1` register what I
+meant?" — in which case the expected command line is rebuilt from the flags you
+typed and the output says so.
+
+`--service start` likewise reports the log path from the **registered** command
+line (`C:\kraken\state\agent.log`), not from the flags you typed.
 
 Re-running `install.ps1` does the healing for you on every run, so the next
 upgrade heals the config with no extra step.

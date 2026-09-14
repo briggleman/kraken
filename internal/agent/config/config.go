@@ -101,6 +101,63 @@ type Flags struct {
 // Load resolves the configuration from args (typically os.Args[1:]) plus the
 // environment and, if one is found, a config file.
 func Load(args []string) (*Config, Flags, error) {
+	fromFlags, modes, cfgPath, err := parseArgs(args)
+	if err != nil {
+		return nil, modes, err
+	}
+
+	// The root has to settle before the file is looked for, since <root>/agent.yaml
+	// is one of the candidate locations.
+	root := firstNonEmpty(fromFlags.Root, os.Getenv("KRAKEN_ROOT"))
+
+	cfg := &Config{}
+	if cfgPath == "" {
+		cfgPath = os.Getenv("KRAKEN_CONFIG")
+	}
+	path, err := findConfigFile(cfgPath, root)
+	if err != nil {
+		return nil, modes, err
+	}
+	if path != "" {
+		loaded, lerr := loadFile(path)
+		if lerr != nil {
+			return nil, modes, lerr
+		}
+		cfg = loaded
+		cfg.ConfigFile = path
+	}
+
+	cfg.overlayEnv()
+	cfg.overlay(&fromFlags)
+	cfg.applyDefaults()
+	return cfg, modes, cfg.validate()
+}
+
+// LoadArgs resolves the configuration from args ALONE — no environment, no
+// config file, just the flags plus the defaults they imply.
+//
+// It exists for the Windows service commands (#273), which have to answer
+// "where does the SERVICE write its log?" from the command line the SCM has
+// registered (`kraken-agent.exe --root C:\kraken`). Feeding those args through
+// Load would mix in the environment and working directory of whatever elevated
+// shell the operator happens to be typing in, which is exactly the contamination
+// that made `--service start` print a log path that did not exist.
+func LoadArgs(args []string) (*Config, Flags, error) {
+	fromFlags, modes, _, err := parseArgs(args)
+	if err != nil {
+		return nil, modes, err
+	}
+	cfg := &Config{}
+	cfg.overlay(&fromFlags)
+	cfg.applyDefaults()
+	return cfg, modes, cfg.validate()
+}
+
+// parseArgs parses the command line into the flag-provided half of a Config,
+// the non-config modes, and the requested config-file path. Split out of Load
+// so LoadArgs can reuse the flag definitions instead of keeping a second,
+// drifting copy of them.
+func parseArgs(args []string) (Config, Flags, string, error) {
 	var (
 		fromFlags  Config
 		modes      Flags
@@ -136,14 +193,14 @@ func Load(args []string) (*Config, Flags, error) {
 	fs.StringVar(&fromFlags.ImagePull, "image-pull", "", `when to pull game-server images: "always", "if-not-present", or "never"`)
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
 	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", "stop", or "status"`+
-		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed; run it with the same flags as install)`)
+		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed)`)
 	fs.BoolVar(&modes.ShowVersion, "version", false, "print version and exit")
 	fs.BoolVar(&modes.PrintConfig, "print-config", false, "print the resolved configuration and exit")
 	if err := fs.Parse(args); err != nil {
-		return nil, modes, err
+		return fromFlags, modes, cfgPath, err
 	}
 	if n := fs.NArg(); n > 0 {
-		return nil, modes, fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
+		return fromFlags, modes, cfgPath, fmt.Errorf("config: unexpected argument %q", fs.Arg(0))
 	}
 	switch modes.Service {
 	case "", "install", "uninstall", "start", "stop", "status":
@@ -152,7 +209,7 @@ func Load(args []string) (*Config, Flags, error) {
 		// mode to relaunch the service once the updating process has stopped.
 		// Accepted but not advertised — an operator never types it.
 	default:
-		return nil, modes, fmt.Errorf(`config: --service must be "install", "uninstall", "start", "stop", or "status" (got %q)`, modes.Service)
+		return fromFlags, modes, cfgPath, fmt.Errorf(`config: --service must be "install", "uninstall", "start", "stop", or "status" (got %q)`, modes.Service)
 	}
 
 	// Which flags were actually typed — zero values must not outrank the file.
@@ -167,32 +224,7 @@ func Load(args []string) (*Config, Flags, error) {
 	if set["tunnel"] {
 		fromFlags.Tunnel = &tunnelFlag
 	}
-
-	// The root has to settle before the file is looked for, since <root>/agent.yaml
-	// is one of the candidate locations.
-	root := firstNonEmpty(fromFlags.Root, os.Getenv("KRAKEN_ROOT"))
-
-	cfg := &Config{}
-	if cfgPath == "" {
-		cfgPath = os.Getenv("KRAKEN_CONFIG")
-	}
-	path, err := findConfigFile(cfgPath, root)
-	if err != nil {
-		return nil, modes, err
-	}
-	if path != "" {
-		loaded, lerr := loadFile(path)
-		if lerr != nil {
-			return nil, modes, lerr
-		}
-		cfg = loaded
-		cfg.ConfigFile = path
-	}
-
-	cfg.overlayEnv()
-	cfg.overlay(&fromFlags)
-	cfg.applyDefaults()
-	return cfg, modes, cfg.validate()
+	return fromFlags, modes, cfgPath, nil
 }
 
 // findConfigFile resolves which file to read. An explicitly requested path that

@@ -13,6 +13,7 @@ import {
   depth,
   emptyConsoleNote,
   powerControls,
+  restoreTop,
   stateLabel,
   stream,
   surface,
@@ -307,6 +308,16 @@ describe("consoleViewKey", () => {
     expect(at("srv-1", true)).not.toBe(at("srv-1", false));
     expect(at("srv-1", false)).not.toBe(at("srv-2", false));
     expect(at("srv-1", false)).toBe(at("srv-1", false));
+  });
+});
+
+describe("restoreTop", () => {
+  it("sends a following console to the tail and leaves a reader where they were", () => {
+    expect(restoreTop({ pinned: true, lastTop: 400, scrollHeight: 9_000 })).toBe(9_000);
+    expect(restoreTop({ pinned: false, lastTop: 400, scrollHeight: 9_000 })).toBe(400);
+    // The top of the buffer is a real place to have been left, and it is not
+    // the same answer as "no offset recorded".
+    expect(restoreTop({ pinned: false, lastTop: 0, scrollHeight: 9_000 })).toBe(0);
   });
 });
 

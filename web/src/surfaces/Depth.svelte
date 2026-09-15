@@ -28,6 +28,7 @@
     consoleRepin,
     consoleViewKey,
     emptyConsoleNote,
+    restoreTop,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
@@ -155,7 +156,13 @@
   // layout reads scrollTop 0, and hands back 0 again when it returns.
   let lastTop = 0;
   function onLogScroll() {
-    if (!consoleLog) return;
+    // The handler stays attached while the tab strip has the pane
+    // display:none'd, and a box with no layout answers 0 to all three of these.
+    // Recording that would be worse than recording nothing: lastTop would
+    // become 0 and the pin would read true (0 - 0 - 0 is under the slack), so
+    // the return would dump the operator at the tail — which is the very thing
+    // the round-trip fix exists to prevent (#320).
+    if (!consoleLog || consoleLog.clientHeight === 0) return;
     lastTop = consoleLog.scrollTop;
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
@@ -211,9 +218,13 @@
     if (want === "force") pinned = true;
     // The return trip always writes: display:none dropped the offset, so
     // leaving scrollTop alone would open at the top of the buffer — neither
-    // where the operator was nor where a pinned console belongs.
+    // where the operator was nor where a pinned console belongs. What goes back
+    // is a raw pixel offset, not a line: a live buffer that rolled its 500-line
+    // ring while the operator was in settings puts different lines at the same
+    // offset. Accepted — the alternative is anchoring on a line id, and the
+    // ring evicts the very line an absence long enough to matter would anchor.
     if (want === "restore") {
-      el.scrollTop = pinned ? el.scrollHeight : lastTop;
+      el.scrollTop = restoreTop({ pinned, lastTop, scrollHeight: el.scrollHeight });
       return;
     }
     if (pinned) el.scrollTop = el.scrollHeight;

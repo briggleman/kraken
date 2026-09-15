@@ -50,7 +50,9 @@ export const depth = $state({
   // scroll position on the identity of the document it is showing, and a
   // snapshot has no identity of its own to offer: its lines are keyed by index,
   // so a re-read of the same install is indistinguishable from the one it
-  // replaced (#320). Bumped by setInstallLog, which is the only writer.
+  // replaced (#320). Bumped by setInstallLog, which is the only writer — and
+  // never reset, including on open: the console's key carries the server id
+  // beside it, so the count only has to keep moving, not to start anywhere.
   installLogSeq: 0,
   // Whether this server's current `installing` is the pre-start update pass
   // (#307) rather than a first install. See syncUpdatePass — the state is the
@@ -225,6 +227,15 @@ export function consoleRepin(
   return next.content === prev.content ? "no" : "if-pinned";
 }
 
+/** Where a console coming back from a hidden tab should sit. The pane was
+ *  display:none'd, which drops the offset, so something has to be written: the
+ *  tail for a console that was following it, and otherwise the offset the
+ *  operator left — a raw pixel offset, which a ring that rolled during the
+ *  absence will have refilled with other lines. */
+export function restoreTop(v: { pinned: boolean; lastTop: number; scrollHeight: number }): number {
+  return v.pinned ? v.scrollHeight : v.lastTop;
+}
+
 /** What the console pane says when it has no lines at all. Three different
  *  facts, and the difference matters: a dark server has nothing to tail, an
  *  install whose output never arrived has it on the chip above, and a Panel
@@ -278,8 +289,7 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.settings = null;
   depth.files = null;
   depth.filesDir = ".";
-  depth.installLog = null;
-  depth.installLogSeq = 0;
+  setInstallLog(null);
   depth.installLogOpen = false;
   // A fresh server, and a fresh socket: nothing is latched until this server's
   // own state and console say so.

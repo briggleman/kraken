@@ -13,14 +13,16 @@ const listSpecs = vi.fn();
 const listNodes = vi.fn();
 const listAudit = vi.fn();
 
-vi.mock("@/api/client", () => ({
+// The api surface is stubbed; errMsg is the real helper, so what the header's
+// error line says here is what it says in the app.
+vi.mock("@/api/client", async (importOriginal) => ({
   api: {
     listServers: () => listServers(),
     listSpecs: () => listSpecs(),
     listNodes: () => listNodes(),
     listAudit: () => listAudit(),
   },
-  errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  errMsg: (await importOriginal<typeof import("@/api/client")>()).errMsg,
 }));
 
 import {
@@ -218,10 +220,12 @@ describe("fleetHealth", () => {
     expect(fleetHealth(Date.now()).stale).toBe(false);
   });
 
-  it("holds the clock still while the tab is hidden", () => {
+  it("holds the clock still while the tab is hidden", async () => {
     // Polling disarms while hidden, so an age that ran on through a lunch break
     // would paint "stale · 2h" on return — a lie about the panel, which was
-    // never asked.
+    // never asked. A whole tick first, because only a stamp a poll actually
+    // earned may be carried across the hidden stretch.
+    await refreshFleet();
     const t0 = 1_000_000;
     fleet.lastOkMs = t0;
     suspendStaleClock(t0 + 1_000);
@@ -339,6 +343,37 @@ describe("startFleetPolling / stopFleetPolling", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(listServers).toHaveBeenCalledTimes(2); // and polling picks up again
       expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      hidden.mockRestore();
+      vi.useRealTimers();
+      stopFleetPolling();
+    }
+  });
+
+  it("keeps reporting stale when the hidden start's own read never answered", async () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    try {
+      // The first start stamps a placeholder so the header has an age to read
+      // before anything has landed. Carrying *that* across the hidden stretch
+      // would have the deck paint the live dot for a full budget on return,
+      // for a Panel that has not once answered.
+      listServers.mockRejectedValue(new Error("down"));
+      listSpecs.mockRejectedValue(new Error("down"));
+      listNodes.mockRejectedValue(new Error("down"));
+
+      startFleetPolling();
+      const placeholder = fleet.lastOkMs;
+      expect(placeholder).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fleet.lastError).toContain("servers: down");
+
+      await vi.advanceTimersByTimeAsync(2 * 3_600_000);
+      hidden.mockReturnValue(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      expect(fleet.lastOkMs).toBe(placeholder); // not shifted
+      expect(fleetHealth().stale).toBe(true);
     } finally {
       hidden.mockRestore();
       vi.useRealTimers();

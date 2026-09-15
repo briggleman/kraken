@@ -49,7 +49,9 @@
     }
   });
 
-  // the 10s poll keeps the drilled server's chip/controls/stream in sync
+  // The fleet poll keeps the drilled server's chip/controls/stream in sync. Its
+  // cadence follows what the fleet is doing — 2.5s while anything is installing,
+  // starting or stopping, 10s once everything has settled (fleetPollMs).
   $effect(() => {
     fleet.servers;
     syncDepthFromFleet();

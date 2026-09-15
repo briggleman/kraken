@@ -229,6 +229,14 @@ export function startFleetPolling() {
     }
   };
   document.addEventListener("visibilitychange", onVisibility);
+  // A start on a hidden tab is a start that will not poll again: refreshThenArm
+  // declines to arm while hidden, exactly as the visibility handler's disarm
+  // would. The clock has to be told the same thing here, or `hiddenAt` stays 0
+  // through a background load and the resume has nothing to shift — the age
+  // would then have run the whole time the tab sat unopened, and the header
+  // would paint a stale reading for a deck nobody had asked about. One catch-up
+  // read still goes out, so the first paint on return is not an empty deck.
+  if (document.hidden) suspendStaleClock();
   void refreshThenArm();
 }
 

@@ -2,7 +2,7 @@
   import { istyle } from "@/lib/istyle";
   import { ui, closeSheet, openConfirm, sheetZ } from "@/lib/state.svelte";
   import { refreshFleet } from "@/lib/fleet.svelte";
-  import { api } from "@/api/client";
+  import { api, errMsg } from "@/api/client";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { highlightLines } from "@/lib/spechl";
   import type { Spec } from "@/api/types";
@@ -106,7 +106,7 @@
       })
       .catch((e) => {
         if (ui.specEditId !== id) return;
-        note = e instanceof Error ? e.message : String(e);
+        note = errMsg(e);
       });
   });
 
@@ -166,7 +166,7 @@
       codeText = serialize(updated);
       closeSheet("specEdit");
     } catch (e) {
-      note = e instanceof Error ? e.message : String(e);
+      note = errMsg(e);
     } finally {
       saving = false;
     }

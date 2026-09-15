@@ -1,7 +1,7 @@
 // Drill-in data: one server's live detail — stream, settings, files, backups,
 // schedules, DNS — fetched on open and kept fresh while the overlay is up.
 
-import { api } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 import type {
   Backup,
   FileEntry,
@@ -46,6 +46,12 @@ export const depth = $state({
   // that never started, and the install is the only account of why (#280).
   installLog: null as InstallLog | null,
   installLogOpen: false,
+  // Which *instance* of that retained log is in hand. The console keys its
+  // scroll position on the identity of the document it is showing, and a
+  // snapshot has no identity of its own to offer: its lines are keyed by index,
+  // so a re-read of the same install is indistinguishable from the one it
+  // replaced (#320). Bumped by setInstallLog, which is the only writer.
+  installLogSeq: 0,
   // Whether this server's current `installing` is the pre-start update pass
   // (#307) rather than a first install. See syncUpdatePass — the state is the
   // fact, this is only a finer name for one of its causes.
@@ -155,9 +161,8 @@ export function powerControls(state: Server["state"] | undefined): "stop" | "sta
 
 export interface ConsoleView {
   /** What makes this a *different document*: which server, which buffer, and
-   *  which generation of the stream — a re-target or a reconnect drops the
-   *  lines and replays from the start, and line seqs cannot say so because they
-   *  are handed out at receipt and never reset. */
+   *  which instance of that buffer. See consoleViewKey — the two buffers do not
+   *  answer that last question the same way. */
   key: string;
   /** What makes it a different *rendering of the same document*: the newest
    *  line's own id, plus anything else sharing the scroll box with it (the
@@ -165,22 +170,70 @@ export interface ConsoleView {
   content: string;
 }
 
+/** Which document the console is showing, as a comparable string.
+ *
+ *  The two buffers answer "which instance of this?" differently, and keying
+ *  both on the live stream was wrong in both directions (#320).
+ *
+ *  The live console *is* the stream, so a re-target or a reconnect is a new
+ *  document: the lines are dropped and replayed from the start, and line seqs
+ *  cannot say so because they are handed out at receipt and never reset.
+ *
+ *  The retained install log is a static snapshot fetched over REST, and the
+ *  stream's generation says nothing about it — the socket stays targeted at the
+ *  server whatever the chip is showing, so a background reconnect would re-key
+ *  a finished install the operator is reading back through and yank it to the
+ *  tail. Its instance is the fetch that produced it, which is also the only
+ *  thing that can distinguish a re-read from the snapshot it replaced: those
+ *  lines are keyed by index, so two reads of the same install render
+ *  identically down to the last line's id. */
+export function consoleViewKey(v: {
+  serverId: string | null;
+  showingInstall: boolean;
+  installLogSeq: number;
+  generation: number;
+}): string {
+  const buffer = v.showingInstall ? ["install", v.installLogSeq] : ["live", v.generation];
+  return [v.serverId ?? "", ...buffer].join("|");
+}
+
 /** What the console viewport owes the next render.
  *
  *  - `force` — a different document is on screen. It opens at its tail whatever
  *    the operator had scrolled the previous one to; no offset on the old log
  *    means anything on the new one.
+ *  - `restore` — the same document, coming back from a tab round-trip. The pane
+ *    was display:none'd, which drops the offset, so the viewport is put back
+ *    where the operator left it rather than re-decided from scratch.
  *  - `if-pinned` — the same document, rendered differently. Honour the pin:
  *    someone reading back through a noisy install must not be dragged to the
  *    bottom by the next line.
  *  - `no` — nothing changed; do not touch scrollTop, and do not pay for the
- *    forced layout that reading scrollHeight costs (#279). */
+ *    forced layout that reading scrollHeight costs (#279).
+ *
+ *  `returning` says the console tab has just come back up. It never overrides a
+ *  changed document — a log that was swapped out while the operator was in
+ *  settings still opens at its tail — and it is what keeps a deliberate scroll
+ *  back from being discarded by the round trip (#320). */
 export function consoleRepin(
   prev: ConsoleView | null,
   next: ConsoleView,
-): "no" | "if-pinned" | "force" {
+  returning = false,
+): "no" | "if-pinned" | "force" | "restore" {
   if (!prev || prev.key !== next.key) return "force";
+  if (returning) return "restore";
   return next.content === prev.content ? "no" : "if-pinned";
+}
+
+/** What the console pane says when it has no lines at all. Three different
+ *  facts, and the difference matters: a dark server has nothing to tail, an
+ *  install whose output never arrived has it on the chip above, and a Panel
+ *  that restarted since the attempt genuinely kept none of it. */
+export function emptyConsoleNote(opts: { installing: boolean; hasRetained: boolean }): string {
+  if (!opts.installing) return "no output — server is dark";
+  return opts.hasRetained
+    ? "nothing came over the console — the retained install log is on the chip above"
+    : "no install output kept — the panel restarted since this attempt";
 }
 
 /** Whether the INSTALL LOG chip has anything to offer.
@@ -226,6 +279,7 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.files = null;
   depth.filesDir = ".";
   depth.installLog = null;
+  depth.installLogSeq = 0;
   depth.installLogOpen = false;
   // A fresh server, and a fresh socket: nothing is latched until this server's
   // own state and console say so.
@@ -339,7 +393,7 @@ async function refreshDetail() {
     sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
   // Same reasoning for the install log: it is a look back at a finished phase,
   // and failing to read it must not take the drill-in's error line hostage.
-  depth.installLog = installLog.status === "fulfilled" ? installLog.value : null;
+  setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
   // The two optional reads are excluded from the drill-in's error line.
   const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
@@ -369,13 +423,22 @@ export function syncDepthFromFleet() {
   }
 }
 
+/** Assign the retained install log and name the instance. Every writer of
+ *  `depth.installLog` goes through here: the console's view key is the only
+ *  thing standing between a re-read and a viewport that jumps, and the snapshot
+ *  itself has nothing in it that a re-read would change (#320). */
+function setInstallLog(log: InstallLog | null) {
+  depth.installLog = log;
+  depth.installLogSeq++;
+}
+
 /** Re-read the retained install log (after an install ends, or on demand). */
 export async function refreshInstallLog() {
   const id = depth.serverId;
   if (!id) return;
   try {
     const log = await api.getInstallLog(id);
-    if (depth.serverId === id) depth.installLog = log;
+    if (depth.serverId === id) setInstallLog(log);
   } catch {
     // Optional surface: a failed read leaves the last value rather than
     // claiming the log is gone.
@@ -392,7 +455,7 @@ export async function power(action: PowerActionName) {
     await refreshFleet();
     syncDepthFromFleet();
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   } finally {
     depth.powerBusy = false;
   }
@@ -411,7 +474,7 @@ export async function reinstall() {
     await refreshFleet();
     syncDepthFromFleet();
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   } finally {
     depth.powerBusy = false;
   }
@@ -424,7 +487,7 @@ export async function deleteCurrentServer(): Promise<boolean> {
     await refreshFleet();
     return true;
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
     return false;
   }
 }
@@ -437,7 +500,7 @@ export async function filesGo(dir: string) {
   try {
     depth.files = await api.listFiles(depth.serverId, dir);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -447,7 +510,7 @@ export async function filesUpload(files: File[]) {
     await api.uploadFiles(depth.serverId, depth.filesDir, files);
     await filesGo(depth.filesDir);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -465,7 +528,7 @@ export async function filesDelete(p: string): Promise<boolean> {
   try {
     await api.deleteFiles(depth.serverId, [p]);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
     ok = false;
   }
   await filesGo(depth.filesDir);
@@ -501,7 +564,7 @@ export async function filesDownload(f: FileEntry) {
     // Revoke on the next tick: the click has to have started the save first.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   } finally {
     depth.downloading = null;
   }
@@ -534,7 +597,7 @@ export async function backupCreate() {
     stopBackupPoll();
     backupPoll = setInterval(() => void refreshBackups().catch(() => {}), 2000);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   } finally {
     depth.creatingBackup = false;
   }
@@ -546,7 +609,7 @@ export async function backupRestore(b: Backup) {
   try {
     await api.restoreBackup(depth.serverId, b.id);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   } finally {
     depth.restoringBackup = null;
   }
@@ -558,7 +621,7 @@ export async function backupDelete(b: Backup) {
     await api.deleteBackup(depth.serverId, b.id);
     depth.backups = depth.backups.filter((x) => x.id !== b.id);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -576,7 +639,7 @@ export async function scheduleToggle(t: ScheduledTask) {
     });
     depth.schedules = depth.schedules.map((x) => (x.id === t.id ? updated : x));
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -586,7 +649,7 @@ export async function scheduleDelete(t: ScheduledTask) {
     await api.deleteSchedule(depth.serverId, t.id);
     depth.schedules = depth.schedules.filter((x) => x.id !== t.id);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -597,7 +660,7 @@ export async function scheduleAdd(input: ScheduleInput): Promise<boolean> {
     depth.schedules = [...depth.schedules, created];
     return true;
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
     return false;
   }
 }
@@ -622,7 +685,7 @@ export async function settingsApply(
     if (r.applied && r.hot_reload) return "saved — the game re-reads config live";
     return r.restart_needed ? "saved — applies on next restart" : "saved";
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
     return null;
   }
 }
@@ -641,7 +704,7 @@ export async function dnsPublish(name: string, service?: string) {
     await api.setServerDns(depth.serverId, { name, service: service || undefined });
     depth.dns = await api.getServerDns(depth.serverId);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -651,7 +714,7 @@ export async function dnsUnpublish() {
     await api.deleteServerDns(depth.serverId);
     depth.dns = await api.getServerDns(depth.serverId);
   } catch (e) {
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }
 
@@ -677,7 +740,7 @@ async function sftpRun(fn: (id: string) => Promise<SftpStatus>) {
   try {
     depth.sftp = await fn(depth.serverId);
   } catch (e) {
-    depth.sftpError = e instanceof Error ? e.message : String(e);
+    depth.sftpError = errMsg(e);
   } finally {
     depth.sftpBusy = false;
   }
@@ -692,7 +755,7 @@ export async function sftpRotate() {
     depth.sftp = r.status;
     depth.sftpPassword = r.password;
   } catch (e) {
-    depth.sftpError = e instanceof Error ? e.message : String(e);
+    depth.sftpError = errMsg(e);
   } finally {
     depth.sftpBusy = false;
   }
@@ -724,6 +787,6 @@ export async function forwardSet(portName: string, open: boolean) {
     // the caller resyncs its toggle from depth.dns after this returns, which is
     // what actually snaps a refused flip back (reassigning depth.dns here never
     // did — the memoized checked attribute saw the same value and skipped)
-    depth.error = e instanceof Error ? e.message : String(e);
+    depth.error = errMsg(e);
   }
 }

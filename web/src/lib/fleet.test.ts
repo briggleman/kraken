@@ -312,6 +312,40 @@ describe("startFleetPolling / stopFleetPolling", () => {
     }
   });
 
+  it("starts the stale clock suspended when the tab is already hidden", async () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    try {
+      // A panel opened into a background tab, or a sign-in the operator walked
+      // away from. The poll declines to arm while hidden, so the deck simply
+      // is not being asked — but `hiddenAt` stayed 0, so the resume had nothing
+      // to shift and the header painted "stale · 40m" on return for a freeze
+      // that never happened (#320).
+      startFleetPolling();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listServers).toHaveBeenCalledTimes(1); // one catch-up read, then quiet
+      expect(vi.getTimerCount()).toBe(0); // nothing armed behind a hidden tab
+
+      const stamped = fleet.lastOkMs;
+      expect(stamped).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(40 * 60_000);
+      expect(fleetHealth().stale).toBe(true); // ...until the clock is resumed
+
+      hidden.mockReturnValue(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(fleet.lastOkMs).toBeGreaterThanOrEqual(stamped + 40 * 60_000 - 1_000);
+      expect(fleetHealth().stale).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listServers).toHaveBeenCalledTimes(2); // and polling picks up again
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      hidden.mockRestore();
+      vi.useRealTimers();
+      stopFleetPolling();
+    }
+  });
+
   it("re-decides the cadence from the roster each tick brought back", async () => {
     vi.useFakeTimers();
     try {

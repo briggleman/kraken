@@ -3,15 +3,11 @@
   import { untrack } from "svelte";
   import { ui, closeSheet, openConfirm, sheetZ, CD_NODE_BODY } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
-  import { api } from "@/api/client";
+  import { api, errMsg } from "@/api/client";
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
   import type { NodeConfig, NodeConfigUpdate } from "@/api/types";
 
   type Res = { cls: "ok" | "bad"; text: string } | null;
-
-  function errMsg(e: unknown): string {
-    return e instanceof Error ? e.message : "request failed";
-  }
 
   // the node this sheet is about — set by the node band before opening
   const node = $derived(fleet.nodes.find((n) => n.id === ui.nodeCfgId) ?? null);
@@ -41,7 +37,7 @@
       else await api.cordonNode(node.id);
       await refreshFleet();
     } catch (e) {
-      lockErr = e instanceof Error ? e.message : String(e);
+      lockErr = errMsg(e);
     } finally {
       locking = false;
     }

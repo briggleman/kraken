@@ -6,7 +6,7 @@
 // tab's OS (a tunnel agent can't be probed — #112); direct mode registers
 // the agent's self-reported address.
 
-import { api } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 import type { EnrollStatus } from "@/api/types";
 import { fleet, refreshFleet } from "./fleet.svelte";
 
@@ -73,7 +73,7 @@ export class Enrollment {
       this.#poll = setInterval(() => void this.#check(mode, os), 3000);
     } catch (e) {
       this.status = "error";
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMsg(e);
     }
   }
 
@@ -125,7 +125,7 @@ export class Enrollment {
       void this.#checkOnline();
     } catch (e) {
       this.status = "error";
-      this.error = e instanceof Error ? e.message : String(e);
+      this.error = errMsg(e);
       this.lines.push({
         text: "registration failed — " + (this.error ?? "unknown"),
         pending: false,

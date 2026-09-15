@@ -136,7 +136,16 @@ func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionO
 		IP:         clientIP(r),
 	}
 	metricsAuditTotal.Add(1)
-	if err := s.store.AppendAudit(r.Context(), e); err != nil {
+	// The append does NOT inherit the request's cancellation. An entry is
+	// written after the response — and the cases most worth recording are
+	// exactly the ones where the client hung up first: a cancelled multi-GB
+	// download, an abandoned POST. On the request context those rows would be
+	// dropped to a Warn by the store. Values (and so any request-scoped
+	// tracing) are kept; a short deadline of its own keeps a wedged store from
+	// pinning the handler goroutine now that the client cannot free it.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer cancel()
+	if err := s.store.AppendAudit(ctx, e); err != nil {
 		s.logger.Warn("audit: append failed", "err", err)
 		return false
 	}

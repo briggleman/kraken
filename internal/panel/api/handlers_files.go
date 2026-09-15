@@ -44,7 +44,10 @@ func stripUnsafeName(name string) string {
 // RFC 5987 filename* parameter — see contentDisposition.
 func sanitizeFilename(name string) string {
 	ascii := strings.Map(func(r rune) rune {
-		if r == '"' || r == '\\' || r > 0x7e {
+		// "/" is flattened for the same reason "\" is: a filename is a leaf,
+		// and a client that honours a separator in it is a client writing
+		// somewhere the operator did not ask for.
+		if r == '"' || r == '\\' || r == '/' || r > 0x7e {
 			return '_'
 		}
 		return r
@@ -88,7 +91,9 @@ func contentDisposition(name string) string {
 	return cd
 }
 
-// streamChunks pipes an Agent download stream to the browser.
+// streamChunks pipes an Agent download stream to the browser. `about` is the
+// identifying detail for a failure log (server id, how many paths) — never the
+// path itself, and never a token.
 //
 // The first chunk is read BEFORE a single header is set, and that is the whole
 // point of this helper. A stream that fails on its first Recv has to answer
@@ -96,10 +101,15 @@ func contentDisposition(name string) string {
 // back: writeError would send the error body under `attachment`, which a real
 // anchor navigation saves to disk as the file the operator asked for — a
 // 40-byte "saves.zip" holding an error message, with nothing on screen to say
-// so, now that no JS is watching the outcome. Once the first chunk is in hand
-// the headers are honest; a failure after that can only abort the connection,
-// because the body is already going out.
-func streamChunks(w http.ResponseWriter, recv func() ([]byte, error), contentType, filename string) {
+// so, now that no JS is watching the outcome.
+//
+// Once the first chunk is out there is no status left to change, so a failure
+// after that ABORTS THE CONNECTION (`http.ErrAbortHandler`, which chi's
+// Recoverer deliberately re-panics). Returning instead would let net/http
+// finish the chunked response cleanly, and a truncated file would arrive as a
+// complete 200 — the browser reports a finished download and the operator has
+// a half a save file with nothing anywhere saying so.
+func (s *Server) streamChunks(w http.ResponseWriter, recv func() ([]byte, error), contentType, filename string, about ...any) {
 	first, err := recv()
 	if err != nil && err != io.EOF {
 		writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
@@ -111,17 +121,27 @@ func streamChunks(w http.ResponseWriter, recv func() ([]byte, error), contentTyp
 	if err == io.EOF { // an empty file is an honest, empty 200
 		return
 	}
-	flusher, _ := w.(http.Flusher)
+	// A ResponseController, not a w.(http.Flusher) assertion: every request is
+	// already wrapped by the metrics and audit middleware's statusRecorder,
+	// which forwards Unwrap but has no Flush of its own — so the assertion was
+	// always nil in production and nothing was ever flushed.
+	rc := http.NewResponseController(w)
 	for data := first; ; {
 		if _, werr := w.Write(data); werr != nil {
+			// The client went away mid-save. Nothing to abort and nothing to
+			// report: the connection is already gone.
 			return
 		}
-		if flusher != nil {
-			flusher.Flush()
+		if ferr := rc.Flush(); ferr != nil && !errors.Is(ferr, http.ErrNotSupported) {
+			return
 		}
 		next, rerr := recv()
+		if rerr == io.EOF {
+			return // the whole payload is out
+		}
 		if rerr != nil {
-			return
+			s.logger.Warn("download truncated mid-stream", append(append([]any{}, about...), "err", rerr)...)
+			panic(http.ErrAbortHandler)
 		}
 		data = next
 	}
@@ -406,13 +426,13 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streamChunks(w, func() ([]byte, error) {
+	s.streamChunks(w, func() ([]byte, error) {
 		chunk, rerr := stream.Recv()
 		if rerr != nil {
 			return nil, rerr
 		}
 		return chunk.Data, nil
-	}, "application/octet-stream", path.Base(p))
+	}, "application/octet-stream", path.Base(p), "server", sv.ID, "paths", 1)
 }
 
 type downloadFilesRequest struct {
@@ -473,11 +493,11 @@ func (s *Server) streamZip(w http.ResponseWriter, r *http.Request, paths []strin
 			name = base + ".zip"
 		}
 	}
-	streamChunks(w, func() ([]byte, error) {
+	s.streamChunks(w, func() ([]byte, error) {
 		chunk, rerr := stream.Recv()
 		if rerr != nil {
 			return nil, rerr
 		}
 		return chunk.Data, nil
-	}, "application/zip", name)
+	}, "application/zip", name, "server", sv.ID, "paths", len(paths))
 }

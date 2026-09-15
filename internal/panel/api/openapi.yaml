@@ -522,7 +522,8 @@ paths:
         '200': { description: Raw file stream }
         '400': { description: No path was supplied on the session-authenticated form }
         '401': { description: The download token is unknown, expired, already used, or not valid for this server or path }
-        '502': { description: The node could not serve the file; the body is a JSON error, never a file }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '502': { description: The node could not serve the file — a missing file included; the body is a JSON error, never a file }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -546,6 +547,7 @@ paths:
         '200': { description: Zip stream }
         '400': { description: No token was supplied }
         '401': { description: The download token is unknown, expired, already used, or not valid for this server }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
         '502': { description: The node could not serve the zip; the body is a JSON error, never a file }
     post:
       tags: [Files]

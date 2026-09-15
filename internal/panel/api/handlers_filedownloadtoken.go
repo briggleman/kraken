@@ -165,12 +165,16 @@ func (s *Server) downloadEntry(kind string, tokenH http.HandlerFunc, sessionH ht
 		// Audit the OUTCOME, not the intent: the handler can still 404 on the
 		// ownership scope or 502 on an unreachable Agent, and a row that says
 		// every redemption streamed is worse than no row at all. The recorder
-		// is the audit middleware's (it forwards Hijack/Flush), so nothing
-		// about the streaming changes.
+		// is the audit middleware's (it forwards Unwrap, so the stream still
+		// flushes), and the row is deferred so a stream that aborts mid-way
+		// (streamChunks panics with http.ErrAbortHandler) is recorded too
+		// rather than unwinding past it.
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		defer func() {
+			s.recordAuditDetail(r, rec.status, auditAction(r,
+				fmt.Sprintf("download token redeemed (%s, %s)", grant.kind, pathCount(len(grant.paths)))))
+		}()
 		tokenH(rec, r)
-		s.recordAuditDetail(r, rec.status, auditAction(r,
-			fmt.Sprintf("download token redeemed (%s, %s)", grant.kind, pathCount(len(grant.paths)))))
 	}
 }
 

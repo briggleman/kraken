@@ -557,7 +557,12 @@ cannot be turned into one. Concretely, each token is:
   cannot amplify writes into the audit table. The redemption row carries the
   request's **outcome** status, not an assumed 200 — a redemption the node
   could not serve is on the record as the 502 it was, rather than as a
-  download that never happened.
+  download that never happened. It is written from a deferred call, so a
+  stream that aborts mid-way is recorded rather than unwound past, and the
+  append runs on a `context.WithoutCancel` copy of the request context (with a
+  deadline of its own): the rows most worth having are the ones where the
+  client hung up first, and on the request context the store would drop
+  exactly those.
 
 Three things the browser-side change forced, all of which touch the
 already-shipped session-authenticated routes too:
@@ -570,7 +575,15 @@ already-shipped session-authenticated routes too:
   navigation the browser saves it — a 40-byte "saves.zip" holding an error
   message, and nothing on screen to say so, because no JS is watching a
   navigation's outcome. `streamChunks` now reads the first chunk as a
-  lookahead and only then commits headers.
+  lookahead and only then commits headers. A failure *after* the first chunk
+  has no status left to change, so it aborts the connection
+  (`http.ErrAbortHandler`, which chi's Recoverer re-panics by design) and
+  logs a `download truncated mid-stream` warning: returning normally would let
+  net/http finish the chunked response and hand the operator half a save file
+  as a completed download. That is detection by connection reset, not by
+  content: the Agent's `FileChunk` carries no total size, so the Panel cannot
+  set a `Content-Length` for the browser to check the transfer against.
+  Positive truncation detection is tracked as **#324**.
 - **Content-Disposition filenames are sanitised on both halves.** The zip's
   name now comes from a path segment — a folder name anyone with
   `server.files.write` or SFTP chose — rather than from the server record.
@@ -619,6 +632,9 @@ Covered by `TestDownloadTokenRegistrySingleUse`,
 `TestFilesRawWithoutTokenIsUnchanged`,
 `TestDownloadTokenAuditsMintAndRedemption`,
 `TestDownloadTokenAuditsTheOutcomeNotTheIntent`,
-`TestDownloadFailureDoesNotArriveAsAFile` and
-`TestDownloadFilenameIsSanitised` (`internal/panel/api`), plus
+`TestDownloadFailureDoesNotArriveAsAFile`,
+`TestDownloadFilenameIsSanitised`, `TestStreamChunksWholePayload`,
+`TestStreamChunksFirstChunkFailure`,
+`TestStreamChunksAbortsOnMidStreamFailure` and
+`TestAuditAppendOutlivesACancelledRequest` (`internal/panel/api`), plus
 `web/src/lib/depth.download.test.ts` for the browser's side.

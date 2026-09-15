@@ -210,3 +210,7 @@ jobs:
       - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web
+
+      - name: unit tests (vitest)
+        run: npm test
+        working-directory: web

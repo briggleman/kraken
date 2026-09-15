@@ -769,19 +769,12 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 
 	// Stream install logs, watching for a SteamCMD app failure. SteamCMD exits 0
 	// even when an app fails to download (e.g. "Missing configuration", "No
-	// subscription", "Not for anonymous users"), so the exit code alone would let
-	// a broken install pass as success — leaving a silent, empty server.
+	// subscription", "Not for anonymous users", "Error! App '…' state is 0x6
+	// after update job."), so the exit code alone would let a broken install pass
+	// as success — leaving a silent, empty server, or relaunching a stale build.
 	var steamErr string
 	if err := d.streamLogs(ctx, created.ID, "all", func(_ string, text string) error {
-		// A later success supersedes an earlier transient failure — SteamCMD's
-		// "Missing configuration" two-step prints a failure on the first app_update
-		// pass and succeeds on the second.
-		switch {
-		case steamInstallSuccessRE.MatchString(text):
-			steamErr = ""
-		case steamInstallFailureRE.MatchString(text):
-			steamErr = strings.TrimSpace(text)
-		}
+		steamErr = steamInstallOutcome(steamErr, text)
 		return emit(logLine(text))
 	}); err != nil && ctx.Err() == nil {
 		return d.fail(emit, "stream install logs: "+err.Error())
@@ -809,13 +802,59 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Completed{Completed: true}})
 }
 
+// steamInstallFailurePhrases are the SteamCMD output lines that mean an app
+// failed to install even though the steamcmd process exits 0. The canonical set
+// is LinuxGSM's error list (https://docs.linuxgsm.com/steamcmd/errors); the
+// "state is 0x… after update job" family is the one that bit us live on
+// 2026-09-15 (Dragonwilds, app 4019830, state 0x6 — no connection to the content
+// servers — where both app_update passes exited 0 and the stale build relaunched).
+//
+// Matching here is per-line and the LAST relevant line wins: a later
+// "Success! App … fully installed" clears an earlier match, which is what makes
+// it safe to list transient first-pass phrases like "Missing configuration".
+var steamInstallFailurePhrases = []string{
+	`Failed to install app`, // "ERROR! Failed to install app '740' (No subscription)"
+	// "Error! App '4019830' state is 0x6 after update job." — also seen without
+	// the app id ("Error! State is 0x402 after update job.") and with SteamCMD's
+	// own "state is is 0x2" typo. Never matches the benign "Update state (0x3)
+	// reconfiguring, progress: …" progress lines.
+	`state is (?:is )?0x[0-9a-f]+ after update job`,
+	`Password check for AppId .* returned error`, // wrong/expired beta-branch password
+	`No subscription`,          // the Steam account does not own the app
+	`Not for anonymous`,        // the app requires a real Steam login
+	`Missing configuration`,    // transient on the first two-step pass — cleared by the later success
+	`Missing update files`,     // 0x626
+	`Corrupt update files`,     // 0x6A6
+	`Invalid platform`,         // wrong +@sSteamCmdForcePlatformType for the depot
+	`Rate Limit Exceeded`,      // too many requests from this IP
+	`Timeout downloading item`, // workshop item download timed out
+	`Disk write failure`,       // 0x606 — permissions or a full volume
+	`Depot download failed`,    // a depot could not be fetched
+}
+
 // steamInstallFailureRE matches the SteamCMD lines that signal an app failed to
 // install despite SteamCMD's process exiting 0. steamInstallSuccessRE matches the
 // success line, which clears a prior (transient) failure — see the two-step quirk.
 var (
-	steamInstallFailureRE = regexp.MustCompile(`(?i)(ERROR! Failed to install app|Failed to install app .* \(|No subscription|Not for anonymous)`)
+	steamInstallFailureRE = regexp.MustCompile(`(?i)(?:` + strings.Join(steamInstallFailurePhrases, `|`) + `)`)
 	steamInstallSuccessRE = regexp.MustCompile(`(?i)Success! App .* fully installed`)
 )
+
+// steamInstallOutcome folds one SteamCMD log line into the pending install
+// failure: a success line clears it, a failure line replaces it, anything else
+// leaves it alone. The last relevant line therefore wins — a later success
+// supersedes an earlier transient failure (SteamCMD's "Missing configuration"
+// two-step fails the first app_update pass and succeeds on the second), and a
+// failure on a later pass overrides an earlier pass's success.
+func steamInstallOutcome(pending, text string) string {
+	switch {
+	case steamInstallSuccessRE.MatchString(text):
+		return ""
+	case steamInstallFailureRE.MatchString(text):
+		return strings.TrimSpace(text)
+	}
+	return pending
+}
 
 func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
 	switch action {

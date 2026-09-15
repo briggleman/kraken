@@ -508,11 +508,21 @@ paths:
         When `token` is present the Authorization header is not consulted at
         all, and `path` must be exactly the path the token was minted for.
       parameters:
-        - { name: path, in: query, required: true, schema: { type: string } }
-        - { $ref: '#/components/parameters/DownloadToken' }
+        - name: path
+          in: query
+          required: false
+          description: >
+            The file to stream. Required on the session-authenticated form; on
+            the token form it may be omitted, since the token already names the
+            path — supplied, it must match that path exactly or the request is
+            refused.
+          schema: { type: string }
+        - $ref: '#/components/parameters/DownloadToken'
       responses:
         '200': { description: Raw file stream }
+        '400': { description: No path was supplied on the session-authenticated form }
         '401': { description: The download token is unknown, expired, already used, or not valid for this server or path }
+        '502': { description: The node could not serve the file; the body is a JSON error, never a file }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -523,11 +533,20 @@ paths:
         body: the paths come from the one-time `token`, which is also the only
         thing that authorizes it. Required — without a token there is nothing
         to stream.
-      parameters: [ { $ref: '#/components/parameters/DownloadToken' } ]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: >
+            A one-time download token from POST
+            /servers/{id}/files/download-token. Required here: it is both the
+            authorization and the only source of the paths.
+          schema: { type: string }
       responses:
         '200': { description: Zip stream }
         '400': { description: No token was supplied }
         '401': { description: The download token is unknown, expired, already used, or not valid for this server }
+        '502': { description: The node could not serve the zip; the body is a JSON error, never a file }
     post:
       tags: [Files]
       summary: Download selected paths as a zip
@@ -585,6 +604,7 @@ paths:
                   expires_at: { type: string, format: date-time }
                   expires_in_seconds: { type: integer }
         '400': { description: No path, both shapes at once, or a path that escapes the tree }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
   /servers/{id}/files/mkdir:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post: { tags: [Files], summary: Create a directory, responses: { '200': { description: Created } } }

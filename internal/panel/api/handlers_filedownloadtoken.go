@@ -25,7 +25,7 @@ import (
 // cannot be used to widen a token past the path it was minted for.
 func canonicalFilePath(p string) (string, bool) {
 	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
-	if p == "" {
+	if p == "" || len(p) > maxTokenPathLen {
 		return "", false
 	}
 	clean := path.Clean(p)
@@ -162,9 +162,15 @@ func (s *Server) downloadEntry(kind string, tokenH http.HandlerFunc, sessionH ht
 		if !ok {
 			return
 		}
-		s.recordAuditDetail(r, http.StatusOK, auditAction(r,
+		// Audit the OUTCOME, not the intent: the handler can still 404 on the
+		// ownership scope or 502 on an unreachable Agent, and a row that says
+		// every redemption streamed is worse than no row at all. The recorder
+		// is the audit middleware's (it forwards Hijack/Flush), so nothing
+		// about the streaming changes.
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		tokenH(rec, r)
+		s.recordAuditDetail(r, rec.status, auditAction(r,
 			fmt.Sprintf("download token redeemed (%s, %s)", grant.kind, pathCount(len(grant.paths)))))
-		tokenH(w, r)
 	}
 }
 
@@ -185,8 +191,9 @@ func (s *Server) sessionRoute(p rbac.Permission, h http.HandlerFunc) http.Handle
 // grant rather than the URL: the server must be the one it was minted for, the
 // route kind must match, the requested path must equal the bound path exactly,
 // and the minting user must still exist, still be enabled, still hold
-// server.files.read, and still be allowed to reach this server. A permission
-// revoked in the 60 seconds since the mint takes effect here.
+// server.files.read, and still pass the ownership scope on that server. A
+// permission revoked, an account deleted or a server re-owned in the 60 seconds
+// since the mint all take effect here.
 func (s *Server) redeemDownloadToken(w http.ResponseWriter, r *http.Request, kind string) (*http.Request, downloadGrant, bool) {
 	reject := func(reason string) (*http.Request, downloadGrant, bool) {
 		// Deliberately opaque to the caller and never logged with the token:
@@ -206,9 +213,12 @@ func (s *Server) redeemDownloadToken(w http.ResponseWriter, r *http.Request, kin
 	if grant.kind != kind {
 		return reject("route mismatch")
 	}
-	// The raw route names its path in the URL so the request reads honestly;
-	// it must be the bound one. The zip route takes its paths from the grant
-	// alone — a GET has no body, and the token is the authority regardless.
+	// The raw route names its path in the URL so the request reads honestly,
+	// and a named path that is not the bound one is a rejection rather than a
+	// silent correction. Note what this check is NOT load-bearing for: the
+	// grant is the only source of the path downstream (see the rewrite below),
+	// so an absent or mismatched URL path can never widen anything — this
+	// refuses the mismatch instead of quietly serving something else.
 	if kind == downloadKindRaw {
 		if q := r.URL.Query().Get("path"); q != "" {
 			c, ok := canonicalFilePath(q)
@@ -232,12 +242,22 @@ func (s *Server) redeemDownloadToken(w http.ResponseWriter, r *http.Request, kin
 	ctx = context.WithValue(ctx, ctxKeyRole, role)
 	ctx = context.WithValue(ctx, ctxKeyDownloadPaths, slices.Clone(grant.paths))
 	r = r.WithContext(ctx)
-	// Downstream may only ever see the bound path: rewrite the query rather
-	// than trusting the one that arrived, so nothing after this point can read
-	// a path the token did not authorize. The spent token is dropped from the
-	// URL at the same time, so nothing downstream can log it. (The ownership
-	// scope is enforced by the handler's own agentForServer, now that the user
-	// is in context.)
+	// The ownership scope is re-checked here, not only downstream: a server
+	// handed to another owner inside the 60-second window must fail as a token
+	// rejection rather than reach a handler at all. (agentForServer checks it
+	// again on the way through, which is what keeps the Bearer path honest.)
+	sv, err := s.store.GetServer(r.Context(), grant.serverID)
+	if err != nil {
+		return reject("server is gone")
+	}
+	if !s.mayAccessServer(r.Context(), sv) {
+		return reject("minting user may no longer reach this server")
+	}
+	// Downstream may only ever see the bound path: the query is REWRITTEN from
+	// the grant rather than trusted as it arrived, so nothing after this point
+	// can read a path the token did not authorize — and reordering the check
+	// above away would not change that. The spent token is dropped at the same
+	// time, so nothing downstream can log it.
 	q := r.URL.Query()
 	q.Del("token")
 	if kind == downloadKindRaw {

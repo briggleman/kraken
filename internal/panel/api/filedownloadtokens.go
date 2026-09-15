@@ -3,7 +3,6 @@ package api
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"slices"
@@ -18,9 +17,14 @@ import (
 // minute of being minted.
 const downloadTokenTTL = 60 * time.Second
 
-// maxTokenPaths caps how many paths one token may cover. The zip route takes a
-// list, and an unbounded list is unbounded in-memory state on the Panel.
-const maxTokenPaths = 256
+// maxTokenPaths caps how many paths one token may cover, and maxTokenPathLen
+// caps each one. The zip route takes a list, and an unbounded list of unbounded
+// strings is unbounded in-memory state on the Panel — held for 60 seconds per
+// mint, by anyone who can mint. 4096 bytes is past any path either OS accepts.
+const (
+	maxTokenPaths   = 256
+	maxTokenPathLen = 4096
+)
 
 // Download-token kinds. A token minted for a single file's raw bytes is not
 // redeemable on the zip route, and vice versa — the route a token was minted
@@ -44,12 +48,13 @@ type downloadGrant struct {
 	userID   string
 	kind     string
 	paths    []string // canonical, in mint order; the exact set that may stream
-	hash     [32]byte // sha256 of the token, for the constant-time compare
 	expires  time.Time
 }
 
 // downloadTokenRegistry holds one-time file-download tokens in memory, keyed by
-// the SHA-256 of the token so the Panel never stores the secret it handed out.
+// the SHA-256 of the token: the Panel never stores the secret it handed out, and
+// a grant is found by hashing the presented token rather than by comparing the
+// secret against anything.
 // In memory on purpose, and never in Postgres: a token is valid for 60 seconds
 // and a Panel restart simply invalidates the handful outstanding (the browser
 // mints a fresh one per click). Same shape and hygiene as the Agent bootstrap
@@ -80,7 +85,6 @@ func (d *downloadTokenRegistry) issue(serverID, userID, kind string, paths []str
 		userID:   userID,
 		kind:     kind,
 		paths:    slices.Clone(paths),
-		hash:     sum,
 		expires:  exp,
 	}
 	// Opportunistically sweep anything that has aged out, so an idle Panel does
@@ -110,11 +114,6 @@ func (d *downloadTokenRegistry) redeem(token string) (downloadGrant, error) {
 	delete(d.grants, key) // one-time use, before the caller streams anything
 	d.mu.Unlock()
 	if !ok {
-		return downloadGrant{}, errDownloadTokenUnknown
-	}
-	// The map lookup already matched the digest; compare it again in constant
-	// time so the hit is never decided by a short-circuiting byte compare.
-	if subtle.ConstantTimeCompare(g.hash[:], sum[:]) != 1 {
 		return downloadGrant{}, errDownloadTokenUnknown
 	}
 	if time.Now().After(g.expires) {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -15,15 +16,115 @@ import (
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
-// sanitizeFilename strips characters that could break the Content-Disposition
-// quoted-string (quotes, backslashes, and control chars including CR/LF).
-func sanitizeFilename(name string) string {
+// stripUnsafeName removes what no Content-Disposition form should ever carry:
+// C0/C1 control characters (CR/LF would break the header outright) and the
+// Unicode bidi controls — U+200E/F, U+061C, U+202A–U+202E, U+2066–U+2069 —
+// that reverse how a name renders, so "…gpj.exe" can present as "…exe.jpg" in
+// a save prompt. These are dropped rather than substituted: they have no
+// legitimate place in a filename, and the download-token work made the zip's
+// name come from a user-controlled folder name rather than the server's.
+func stripUnsafeName(name string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '"' || r == '\\' || r < 0x20 || r == 0x7f {
-			return '_'
+		switch {
+		case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
+			return -1
+		case r == 0x061c, r == 0x200e, r == 0x200f:
+			return -1
+		case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			return -1
 		}
 		return r
 	}, name)
+}
+
+// sanitizeFilename renders a name for the Content-Disposition quoted-string:
+// unsafe code points are gone, and everything a quoted-string cannot carry
+// (quotes, backslashes) or a legacy client may mis-decode (anything non-ASCII)
+// becomes "_". The real name still reaches modern clients through the
+// RFC 5987 filename* parameter — see contentDisposition.
+func sanitizeFilename(name string) string {
+	ascii := strings.Map(func(r rune) rune {
+		if r == '"' || r == '\\' || r > 0x7e {
+			return '_'
+		}
+		return r
+	}, stripUnsafeName(name))
+	if ascii == "" {
+		return "download"
+	}
+	return ascii
+}
+
+// rfc5987 percent-encodes a name as RFC 5987's ext-value, leaving only the
+// attr-char set unescaped. Every non-ASCII byte is escaped, so nothing the
+// header carries can be mistaken for header syntax.
+func rfc5987(name string) string {
+	const attr = "!#$&+-.^_`|~"
+	var b strings.Builder
+	for _, c := range []byte(name) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			strings.IndexByte(attr, c) >= 0:
+			b.WriteByte(c)
+		default:
+			b.WriteString(fmt.Sprintf("%%%02X", c))
+		}
+	}
+	return b.String()
+}
+
+// contentDisposition builds the attachment header for a download. It always
+// carries an ASCII-only `filename=` every client understands, and adds the
+// RFC 5987 percent-encoded filename* form when the real name has anything the ASCII
+// form had to flatten — so a non-Latin name saves correctly without any client
+// having to parse a raw UTF-8 byte in a quoted-string.
+func contentDisposition(name string) string {
+	safe := stripUnsafeName(name)
+	ascii := sanitizeFilename(name)
+	cd := `attachment; filename="` + ascii + `"`
+	if safe != ascii && safe != "" {
+		cd += `; filename*=UTF-8''` + rfc5987(safe)
+	}
+	return cd
+}
+
+// streamChunks pipes an Agent download stream to the browser.
+//
+// The first chunk is read BEFORE a single header is set, and that is the whole
+// point of this helper. A stream that fails on its first Recv has to answer
+// with a JSON error, and a Content-Disposition set beforehand cannot be taken
+// back: writeError would send the error body under `attachment`, which a real
+// anchor navigation saves to disk as the file the operator asked for — a
+// 40-byte "saves.zip" holding an error message, with nothing on screen to say
+// so, now that no JS is watching the outcome. Once the first chunk is in hand
+// the headers are honest; a failure after that can only abort the connection,
+// because the body is already going out.
+func streamChunks(w http.ResponseWriter, recv func() ([]byte, error), contentType, filename string) {
+	first, err := recv()
+	if err != nil && err != io.EOF {
+		writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", contentDisposition(filename))
+	w.WriteHeader(http.StatusOK)
+	if err == io.EOF { // an empty file is an honest, empty 200
+		return
+	}
+	flusher, _ := w.(http.Flusher)
+	for data := first; ; {
+		if _, werr := w.Write(data); werr != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		next, rerr := recv()
+		if rerr != nil {
+			return
+		}
+		data = next
+	}
 }
 
 type fileEntryView struct {
@@ -305,36 +406,13 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize the filename for the Content-Disposition quoted-string (strip
-	// quotes/backslashes/control chars so a crafted name can't break the header).
-	name := sanitizeFilename(path.Base(p))
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
-	flusher, _ := w.(http.Flusher)
-
-	wroteHeader := false
-	for {
-		chunk, err := stream.Recv()
-		if err == io.EOF {
-			return
+	streamChunks(w, func() ([]byte, error) {
+		chunk, rerr := stream.Recv()
+		if rerr != nil {
+			return nil, rerr
 		}
-		if err != nil {
-			if !wroteHeader {
-				writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
-			}
-			return
-		}
-		if !wroteHeader {
-			w.WriteHeader(http.StatusOK)
-			wroteHeader = true
-		}
-		if _, werr := w.Write(chunk.Data); werr != nil {
-			return
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
+		return chunk.Data, nil
+	}, "application/octet-stream", path.Base(p))
 }
 
 type downloadFilesRequest struct {
@@ -386,41 +464,20 @@ func (s *Server) streamZip(w http.ResponseWriter, r *http.Request, paths []strin
 		return
 	}
 
-	// The server name is operator-supplied, so it goes through the same
-	// quoted-string sanitizer a filename does.
-	name := sanitizeFilename(sv.Name) + "-files.zip"
+	// Both halves of the name are attacker-adjacent — the server name is
+	// operator-supplied and the folder name is whoever can write to the tree —
+	// so both go through contentDisposition's sanitizer (see streamChunks).
+	name := sv.Name + "-files.zip"
 	if nameAfterPath && len(paths) == 1 {
 		if base := path.Base(paths[0]); base != "" && base != "/" && base != "." {
-			name = sanitizeFilename(base) + ".zip"
+			name = base + ".zip"
 		}
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
-	flusher, _ := w.(http.Flusher)
-
-	wroteHeader := false
-	for {
-		chunk, err := stream.Recv()
-		if err == io.EOF {
-			return
+	streamChunks(w, func() ([]byte, error) {
+		chunk, rerr := stream.Recv()
+		if rerr != nil {
+			return nil, rerr
 		}
-		if err != nil {
-			// If nothing was written yet, surface an error status; otherwise the
-			// zip is already partly streamed and we can only abort the connection.
-			if !wroteHeader {
-				writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
-			}
-			return
-		}
-		if !wroteHeader {
-			w.WriteHeader(http.StatusOK)
-			wroteHeader = true
-		}
-		if _, werr := w.Write(chunk.Data); werr != nil {
-			return
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
+		return chunk.Data, nil
+	}, "application/zip", name)
 }

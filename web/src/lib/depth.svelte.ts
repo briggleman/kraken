@@ -1,7 +1,7 @@
 // Drill-in data: one server's live detail — stream, settings, files, backups,
 // schedules, DNS — fetched on open and kept fresh while the overlay is up.
 
-import { ApiError, api, errMsg } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 import type {
   Backup,
   FileEntry,
@@ -14,7 +14,7 @@ import type {
   ServerSettings,
   SftpStatus,
 } from "@/api/types";
-import type { DownloadToken, ScheduleInput } from "@/api/client";
+import type { ScheduleInput } from "@/api/client";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 
@@ -37,8 +37,9 @@ export const depth = $state({
   settings: null as ServerSettings | null,
   files: null as FileListing | null,
   filesDir: ".",
-  // The logical path of the entry being fetched for download, so its pill can
-  // say so; null between downloads. One at a time — see filesDownload.
+  // The logical path of the entry whose download token is being minted, so its
+  // pill can say so; null otherwise. The transfer itself belongs to the
+  // browser, so this only ever spans the mint — see filesDownload.
   downloading: null as string | null,
   // The retained output of this server's last install, and whether the console
   // pane is showing it instead of the container's log. An install that "worked"
@@ -562,44 +563,28 @@ function saveThroughAnchor(href: string, name: string) {
  *  The session rides as a Bearer header, so the obvious `<a download href>`
  *  would arrive unauthenticated. The Panel's answer is a one-time, 60-second
  *  download token bound to this server, this exact path and the asking user
- *  (#304): mint one, navigate the anchor to the URL it returns, and the
- *  browser streams to disk with its own progress UI — nothing buffers in tab
- *  memory, so a multi-GB install tree is a download rather than a crashed tab.
+ *  (#304): mint one, point the anchor at the URL it returns, and the browser
+ *  streams to disk with its own progress UI. Nothing here ever holds the
+ *  bytes, so a multi-GB install tree is a download rather than a crashed tab.
  *
- *  A Panel from before the token route answers 404; that falls back to the old
- *  Blob path, which is also what a genuinely missing server lands on — it
- *  refuses again there, honestly, rather than being guessed at here.
+ *  There is no Blob fallback. The Panel embeds this bundle (`//go:embed`), so
+ *  a UI that knows the mint route is being served by a Panel that has it —
+ *  the version skew a fallback would guard against cannot happen. Every mint
+ *  failure is therefore a real refusal (no permission, server gone, node
+ *  unreachable) and belongs in the pane's notice, not in a second attempt.
  *
- *  One download at a time per pane: `depth.downloading` holds the path in
- *  flight so its pill can say so, and a refusal lands in the pane's notice like
- *  every other file op. */
+ *  `depth.downloading` holds the path while the MINT is in flight — that is
+ *  all it can span, since the transfer itself belongs to the browser — so the
+ *  pill can say so and a double click cannot mint twice. */
 export async function filesDownload(f: FileEntry) {
   if (!depth.serverId || depth.downloading) return;
   const id = depth.serverId;
   depth.downloading = f.path;
   try {
-    let minted: DownloadToken | null = null;
-    try {
-      minted = await api.mintDownloadToken(id, f.is_dir ? { paths: [f.path] } : { path: f.path });
-    } catch (e) {
-      if (!(e instanceof ApiError) || e.status !== 404) throw e;
-    }
-    if (minted) {
-      saveThroughAnchor(minted.url, f.is_dir ? `${f.name}.zip` : f.name);
-      return;
-    }
-    // Fallback: fetch the bytes with the session header and hand over a Blob.
-    const dl = f.is_dir
-      ? await api.downloadZip(id, [f.path], `${f.name}.zip`)
-      : await api.downloadFile(id, f.path);
-    const url = URL.createObjectURL(dl.blob);
-    // A file keeps the name the Panel put in Content-Disposition. A folder's
-    // zip is named by the old POST route after the SERVER ("midgard-files.zip"),
-    // which says nothing about which folder it holds — so it is saved as the
-    // folder.
-    saveThroughAnchor(url, f.is_dir ? `${f.name}.zip` : dl.filename);
-    // Revoke on the next tick: the click has to have started the save first.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const minted = await api.mintDownloadToken(id, f.is_dir ? { paths: [f.path] } : { path: f.path });
+    // The Panel names the save through Content-Disposition, which wins for a
+    // same-origin navigation; this is the belt for anything that ignores it.
+    saveThroughAnchor(minted.url, f.is_dir ? `${f.name}.zip` : f.name);
   } catch (e) {
     depth.error = errMsg(e);
   } finally {

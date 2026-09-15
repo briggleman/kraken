@@ -56,6 +56,29 @@ type mintedToken struct {
 	ExpiresIn int    `json:"expires_in_seconds"`
 }
 
+// seedDownloadOperator creates a user on the Operator role — which holds
+// server.files.read but NOT server.any, so it is scoped to servers it owns —
+// gives it a live session, and hands it the env's server.
+func seedDownloadOperator(t *testing.T, e *downloadEnv, id string) string {
+	t.Helper()
+	ctx := context.Background()
+	if err := e.st.CreateUser(ctx, &store.User{ID: id, Username: id, RoleID: rbac.RoleOperator, CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := e.st.CreateSession(ctx, &store.Session{Token: id + "-token", UserID: id, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sv, err := e.st.GetServer(ctx, e.server)
+	if err != nil {
+		t.Fatalf("get server: %v", err)
+	}
+	sv.OwnerID = id
+	if err := e.st.UpdateServer(ctx, sv); err != nil {
+		t.Fatalf("update server owner: %v", err)
+	}
+	return id + "-token"
+}
+
 func (e *downloadEnv) mint(t *testing.T, sessionToken, serverID string, body any) (mintedToken, int) {
 	t.Helper()
 	rec := do(t, e.h, http.MethodPost, "/api/v1/servers/"+serverID+"/files/download-token", sessionToken, body)
@@ -236,30 +259,10 @@ func TestDownloadTokenRejectsPathAndRouteWidening(t *testing.T) {
 // enough for an admin to revoke a role or delete the account outright.
 func TestDownloadTokenRevalidatesTheMintingUser(t *testing.T) {
 	ctx := context.Background()
-	// Operator holds server.files.read but not server.any, so it is scoped to
-	// servers it owns — hand it this one.
-	seedOperator := func(t *testing.T, e *downloadEnv, id string) string {
-		t.Helper()
-		if err := e.st.CreateUser(ctx, &store.User{ID: id, Username: id, RoleID: rbac.RoleOperator, CreatedAt: time.Now()}); err != nil {
-			t.Fatalf("create user: %v", err)
-		}
-		if err := e.st.CreateSession(ctx, &store.Session{Token: id + "-token", UserID: id, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-			t.Fatalf("create session: %v", err)
-		}
-		sv, err := e.st.GetServer(ctx, e.server)
-		if err != nil {
-			t.Fatalf("get server: %v", err)
-		}
-		sv.OwnerID = id
-		if err := e.st.UpdateServer(ctx, sv); err != nil {
-			t.Fatalf("update server owner: %v", err)
-		}
-		return id + "-token"
-	}
 
 	t.Run("permission revoked", func(t *testing.T) {
 		e := newDownloadEnv(t)
-		sess := seedOperator(t, e, "op1")
+		sess := seedDownloadOperator(t, e, "op1")
 		tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
 		if code != http.StatusCreated {
 			t.Fatalf("operator mint: got %d, want 201", code)
@@ -279,7 +282,7 @@ func TestDownloadTokenRevalidatesTheMintingUser(t *testing.T) {
 
 	t.Run("user deleted", func(t *testing.T) {
 		e := newDownloadEnv(t)
-		sess := seedOperator(t, e, "op2")
+		sess := seedDownloadOperator(t, e, "op2")
 		tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
 		if code != http.StatusCreated {
 			t.Fatalf("operator mint: got %d, want 201", code)

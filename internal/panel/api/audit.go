@@ -83,10 +83,14 @@ type auditNote struct{ claimed bool }
 // download token covers, that one was redeemed). Inside the audit middleware
 // it also claims the request's entry, so an enriched mint is one row, not two.
 func (s *Server) recordAuditDetail(r *http.Request, status int, action string) {
-	if n, _ := r.Context().Value(ctxKeyAuditNote).(*auditNote); n != nil {
-		n.claimed = true
+	// Claim the middleware's row only once this one is actually on the record:
+	// a store that refused the write must still leave the generic entry to be
+	// written, rather than trading one row for none.
+	if s.appendAudit(r, status, "", action) {
+		if n, _ := r.Context().Value(ctxKeyAuditNote).(*auditNote); n != nil {
+			n.claimed = true
+		}
 	}
-	s.appendAudit(r, status, "", action)
 }
 
 // recordAudit appends one audit entry. actorOverride is used for pre-auth events
@@ -97,7 +101,8 @@ func (s *Server) recordAudit(r *http.Request, status int, actorOverride string) 
 
 // appendAudit is the one writer. actionOverride replaces the derived
 // "METHOD /route" action when a handler has something more specific to say.
-func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionOverride string) {
+// It reports whether the entry reached the store.
+func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionOverride string) bool {
 	actor, actorID := "anonymous", ""
 	if u := userFrom(r.Context()); u != nil {
 		actor, actorID = u.Username, u.ID
@@ -133,7 +138,9 @@ func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionO
 	metricsAuditTotal.Add(1)
 	if err := s.store.AppendAudit(r.Context(), e); err != nil {
 		s.logger.Warn("audit: append failed", "err", err)
+		return false
 	}
+	return true
 }
 
 func targetType(short string) string {

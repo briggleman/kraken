@@ -103,6 +103,13 @@ export class ServerStream {
   cpuHistory = $state<number[]>([]);
   memHistory = $state<number[]>([]);
   status = $state<StreamStatus>("idle");
+  /** Bumped every time the buffer stops being a continuation of itself: a
+   *  re-target, and every (re)connect, both of which drop the lines and start
+   *  a fresh replay. Line seqs cannot say this — they are handed out at receipt
+   *  and never reset, so a replay of the same scrollback arrives looking like
+   *  new output. A reader that renders the buffer needs to know when it is
+   *  looking at a different document (#314). */
+  generation = $state(0);
 
   #id = "";
   #mode: StreamMode = "off";
@@ -133,6 +140,7 @@ export class ServerStream {
     this.#id = id;
     this.#mode = mode;
     this.lines = [];
+    this.generation += 1;
     this.stats = null;
     this.cpuHistory = [];
     this.memHistory = [];
@@ -218,6 +226,7 @@ export class ServerStream {
       // open. Every connection replays the tail, so drop what we were holding
       // or a reconnect duplicates the overlap.
       this.lines = [];
+      this.generation += 1;
       this.status = "open";
     };
     ws.onerror = () => {

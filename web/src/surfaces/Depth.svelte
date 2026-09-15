@@ -24,7 +24,10 @@
     syncUpdatePass,
     stateLabel,
     powerControls,
+    canShowInstallLog,
+    consoleRepin,
   } from "@/lib/depth.svelte";
+  import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
@@ -89,8 +92,25 @@
   // still be read. Offered once the install phase is over — during it the
   // console is already showing them live.
   const installLines = $derived(depth.installLog?.lines ?? []);
-  const canShowInstallLog = $derived(!installing && installLines.length > 0);
-  const showingInstall = $derived(canShowInstallLog && depth.installLogOpen);
+  // Offered whenever the console pane is not already the install log itself —
+  // see canShowInstallLog in the store for why that is the gate rather than the
+  // state (#314). haveInstallLog above is the same question the failure notice
+  // asks: are those lines in hand, or is the socket still working on them.
+  const showInstallChip = $derived(
+    canShowInstallLog({
+      installing,
+      hasRetained: installLines.length > 0,
+      consoleCarriesInstall: haveInstallLog,
+    }),
+  );
+  const showingInstall = $derived(showInstallChip && depth.installLogOpen);
+  // A chip that goes away takes its selection with it. Otherwise a server that
+  // enters an install with the log open comes back out of it showing a snapshot
+  // of the pass that just ended, in place of the boot log the operator is
+  // actually waiting on — and nothing was clicked to ask for that.
+  $effect(() => {
+    if (!showInstallChip && depth.installLogOpen) depth.installLogOpen = false;
+  });
   // Both sources share the console's row shape so one keyed `{#each}` renders
   // either. The retained install log is a static snapshot, so its index is a
   // stable key; live lines carry their own seq because the ring evicts from the
@@ -132,9 +152,46 @@
     if (!consoleLog) return;
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
+  // Which station tab is up. The tabs are CSS-only (`:checked ~` on three
+  // radios, verbatim from the mock), so switching them changes no reactive
+  // state and nothing below would re-run — which is how a swap performed on a
+  // hidden pane used to stay unapplied. This is the notice.
+  let stnTab = $state<"console" | "settings" | "files">("console");
   $effect(() => {
-    logLines.length;
-    if (consoleLog && pinned) consoleLog.scrollTop = consoleLog.scrollHeight;
+    depth.serverId; // the keyed block remounts with the console radio checked
+    stnTab = "console";
+  });
+
+  // Keyed on the document as well as its rendering (see consoleRepin): both
+  // rings cap at 500 lines, so neither the line count nor a swap between two
+  // full buffers is visible to a length alone — the viewport was left sitting
+  // where the *previous* log had been scrolled to, which reads as the chip
+  // having done nothing (#314). A swap re-pins unconditionally: the operator
+  // asked for this log, so it opens at its tail.
+  let shown: ConsoleView | null = null;
+  $effect(() => {
+    stnTab; // a tab change is the only notice a CSS-only switch can give
+    const el = consoleLog;
+    const next: ConsoleView = {
+      key: [depth.serverId ?? "", stream.generation, showingInstall ? "install" : "live"].join("|"),
+      // stream.status rides here because the reconnect banner lives *inside*
+      // the scroll box: it changes the height with no line change at all.
+      content: (logLines.at(-1)?.seq ?? -1) + "|" + stream.status,
+    };
+    // Nothing can be scrolled in a pane the tab strip has display:none'd — a
+    // write lands on a box that does not exist and is silently dropped, and the
+    // browser does not keep the offset across the round trip either. So the
+    // swap is left unrecorded and re-decided from scratch when the console tab
+    // comes back, which is the moment the operator is looking at it.
+    if (!el || el.clientHeight === 0) {
+      shown = null;
+      return;
+    }
+    const want = consoleRepin(shown, next);
+    shown = next;
+    if (want === "no") return;
+    if (want === "force") pinned = true;
+    if (pinned) el.scrollTop = el.scrollHeight;
   });
 
   // A clamped line still holds its original text; the affordance hands that over
@@ -482,9 +539,28 @@
   <div class="depth-body">
     {#key depth.serverId}
       <section class="console" aria-label="Server station">
-        <input type="radio" name="stn" id="stnConsole" class="stn-r" checked />
-        <input type="radio" name="stn" id="stnSettings" class="stn-r" />
-        <input type="radio" name="stn" id="stnFiles" class="stn-r" />
+        <input
+          type="radio"
+          name="stn"
+          id="stnConsole"
+          class="stn-r"
+          checked
+          onchange={() => (stnTab = "console")}
+        />
+        <input
+          type="radio"
+          name="stn"
+          id="stnSettings"
+          class="stn-r"
+          onchange={() => (stnTab = "settings")}
+        />
+        <input
+          type="radio"
+          name="stn"
+          id="stnFiles"
+          class="stn-r"
+          onchange={() => (stnTab = "files")}
+        />
         <div class="stn-tabs" role="tablist">
           <label for="stnConsole">{installing || showingInstall ? "install log" : "live console"}</label>
           <label for="stnSettings">settings</label>
@@ -493,7 +569,7 @@
                installed "successfully" and then never started has no container
                log to tail, so without this the console is blank for exactly the
                failure that is hardest to diagnose (#280). -->
-          {#if canShowInstallLog}
+          {#if showInstallChip}
             <button
               type="button"
               class="stn-chip"
@@ -539,7 +615,9 @@
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
                 <div><span class="t">—</span>{installing
-                    ? "no install output kept — the panel restarted since this attempt"
+                    ? installLines.length > 0
+                      ? "nothing came over the console — the retained install log is on the chip above"
+                      : "no install output kept — the panel restarted since this attempt"
                     : "no output — server is dark"}</div>
               {/if}
             {/each}
@@ -752,7 +830,7 @@
            means. -->
       {#if server?.state === "crashed" && crashExit}
         <p class="depth-notice bad" role="alert">
-          <b>crashed — {crashExit}{canShowInstallLog
+          <b>crashed — {crashExit}{showInstallChip
               ? ". the install log is still readable in the console pane."
               : ""}</b>
         </p>

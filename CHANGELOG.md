@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.50.2](https://github.com/briggleman/kraken/compare/v0.50.1...v0.50.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **web:** keep fleet state fresh when one poll request fails and show when it is stale ([#317](https://github.com/briggleman/kraken/issues/317)) ([776c008](https://github.com/briggleman/kraken/commit/776c008021bf33302bdd93f15613574dde4767ac))
+* **web:** re-pin the console when switching to the install log and allow it while installing ([#318](https://github.com/briggleman/kraken/issues/318)) ([228ba81](https://github.com/briggleman/kraken/commit/228ba819233b5fe284cf64048d8dd1febfbe0b42))
+
 ## [0.50.1](https://github.com/briggleman/kraken/compare/v0.50.0...v0.50.1) (2026-09-15)
 
 

@@ -146,3 +146,42 @@ func TestPerPlatformOverrides(t *testing.T) {
 		t.Fatalf("Validate with overrides: %v", err)
 	}
 }
+
+// TestSkipUpdateOnStartFor — the pre-start update pass (#307) is on for every
+// spec by default; the flag is an opt-out, resolvable per platform.
+func TestSkipUpdateOnStartFor(t *testing.T) {
+	s := validSpec()
+	s.Platforms = append(s.Platforms, Platform{
+		Kind:  LinuxWine,
+		Image: "registry/kraken/steam-wine:latest",
+	})
+
+	// Default: nothing opts out, so every platform updates.
+	for _, k := range []PlatformKind{LinuxNative, LinuxWine, WindowsNative} {
+		if s.SkipUpdateOnStartFor(k) {
+			t.Fatalf("SkipUpdateOnStartFor(%s) = true on a spec with no opt-out", k)
+		}
+	}
+
+	// A platform-level opt-out covers only that platform.
+	s.Platforms[1].SkipUpdateOnStart = true
+	if !s.SkipUpdateOnStartFor(LinuxWine) {
+		t.Fatal("SkipUpdateOnStartFor(LinuxWine) = false; want the platform opt-out to apply")
+	}
+	if s.SkipUpdateOnStartFor(LinuxNative) {
+		t.Fatal("a linux-wine opt-out must not opt out linux-native")
+	}
+
+	// The spec-level opt-out covers every platform, and a platform cannot opt
+	// back in (there is no way to express that, and this asserts it stays so).
+	s.Platforms[1].SkipUpdateOnStart = false
+	s.Install.SkipUpdateOnStart = true
+	for _, k := range []PlatformKind{LinuxNative, LinuxWine, WindowsNative} {
+		if !s.SkipUpdateOnStartFor(k) {
+			t.Fatalf("SkipUpdateOnStartFor(%s) = false; want the spec-level opt-out to apply", k)
+		}
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("Validate with skip_update_on_start: %v", err)
+	}
+}

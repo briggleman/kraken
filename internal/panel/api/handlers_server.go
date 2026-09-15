@@ -43,6 +43,9 @@ type createServerRequest struct {
 	// the spec is bepinex_compatible). Persisted on the server so every
 	// install/start uses the modded install append + loader command.
 	InstallBepInEx bool `json:"install_bepinex,omitempty"`
+	// PinBuild pins the server to the build its install pulls now: no update
+	// pass runs before later starts (see store.Server.PinBuild). Default false.
+	PinBuild bool `json:"pin_build,omitempty"`
 }
 
 // handleCreateServer schedules a server onto a node, persists it, and kicks off
@@ -149,6 +152,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		MemoryMB: placement.MemoryMB,
 		// Only honor the BepInEx opt-in when the spec actually supports it.
 		BepInEx:   req.InstallBepInEx && sp.Install.BepInExCompatible,
+		PinBuild:  req.PinBuild,
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := s.store.CreateServer(ctx, server); err != nil {
@@ -160,6 +164,93 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Info("server scheduled", "id", server.ID, "name", server.Name, "node", chosen.Name, "kind", placement.Kind)
 	writeJSON(w, http.StatusCreated, server)
+}
+
+// installScriptFor renders the install script a pass should run: the spec's
+// per-platform script (falling back to the spec-level one) with the server's
+// CURRENT variables substituted, plus — only when withBepInEx — the spec's
+// BepInEx overlay appended after it. The separator is OS-aware: cmd chains with
+// " & ", POSIX shells (incl. the wine image, which is a Linux container) with a
+// newline.
+//
+// withBepInEx is false for the pre-start update pass even on a modded server:
+// the overlay scripts copy files over the tree rather than update them (they
+// would clobber BepInEx/config on every restart) and pull unpinned "latest"
+// builds, while a SteamCMD `validate` leaves the loader files alone. It is
+// re-run only by create and by an explicit reinstall.
+func installScriptFor(sv *store.Server, sp *spec.Spec, withBepInEx bool) string {
+	script := sp.InstallScriptFor(sv.Kind)
+	if withBepInEx && sp.Install.BepInExScript != "" {
+		sep := "\n"
+		if sv.Kind == spec.WindowsNative {
+			sep = " & "
+		}
+		script = script + sep + sp.Install.BepInExScript
+	}
+	return spec.Render(script, sv.Vars)
+}
+
+// runInstallPass runs one install phase on the Agent, streaming the installer's
+// output into the server's install buffer, and returns the failure reason (nil
+// on success). It does NOT touch the server's state or close the buffer — the
+// caller owns both, because the three callers differ: create/reinstall end at
+// offline, the pre-start update pass continues into a start.
+//
+// The caller must have opened the buffer (installs.Start) first, so even a
+// connect-time failure leaves the operator something to read.
+func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, withBepInEx bool) error {
+	client, err := s.nodes.Client(node.DialTarget())
+	if err != nil {
+		return fmt.Errorf("connect agent: %w", err)
+	}
+	agentSpec := toAgentSpec(server, sp)
+	if _, err := client.CreateServer(ctx, &agentpb.CreateServerRequest{Spec: agentSpec}); err != nil {
+		return fmt.Errorf("agent create: %w", err)
+	}
+
+	// Build the install env. For specs that need an authenticated Steam login,
+	// inject the node's stored credentials (+ the one-time Steam Guard code) here
+	// only — never into server.Vars, which is persisted and shell-validated.
+	installEnv := server.Vars
+	if sp.Install.RequiresSteamLogin {
+		env, cerr := s.steamInstallEnv(ctx, node, server.Vars, steamGuardCode)
+		if cerr != nil {
+			return cerr
+		}
+		installEnv = env
+	}
+
+	stream, err := client.InstallServer(ctx, &agentpb.InstallServerRequest{
+		ServerId:      server.ID,
+		Image:         agentSpec.Image,
+		InstallScript: installScriptFor(server, sp, withBepInEx),
+		Env:           installEnv,
+		MemoryLimitMb: int64(server.MemoryMB),
+	})
+	if err != nil {
+		return fmt.Errorf("agent install: %w", err)
+	}
+	for {
+		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil // clean end of the install stream = success
+		}
+		if err != nil {
+			// The stream died mid-install (agent restart, tunnel drop, network).
+			// The outcome is unknown — which must read as failed, never as
+			// installed; a reinstall re-runs the (idempotent) install script.
+			return fmt.Errorf("install stream interrupted: %w", err)
+		}
+		switch e := ev.Event.(type) {
+		case *agentpb.InstallEvent_LogLine:
+			// The installer's own output — SteamCMD's download progress, unpack
+			// errors, a game's first-run complaints. This is the only place it
+			// exists: the install container is removed when the phase ends.
+			s.installs.Append(server.ID, e.LogLine)
+		case *agentpb.InstallEvent_Failed:
+			return fmt.Errorf("install failed: %s", e.Failed)
+		}
+	}
 }
 
 // provision runs the install phase on the Agent and flips the server's state.
@@ -179,75 +270,9 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 	s.installs.Append(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
 
-	client, err := s.nodes.Client(node.DialTarget())
-	if err != nil {
-		s.failServer(server, "connect agent: "+err.Error())
+	if err := s.runInstallPass(ctx, server, sp, node, steamGuardCode, server.BepInEx); err != nil {
+		s.failServer(server, err.Error())
 		return
-	}
-	agentSpec := toAgentSpec(server, sp)
-	if _, err := client.CreateServer(ctx, &agentpb.CreateServerRequest{Spec: agentSpec}); err != nil {
-		s.failServer(server, "agent create: "+err.Error())
-		return
-	}
-
-	// Build the install env. For specs that need an authenticated Steam login,
-	// inject the node's stored credentials (+ the one-time Steam Guard code) here
-	// only — never into server.Vars, which is persisted and shell-validated.
-	installEnv := server.Vars
-	if sp.Install.RequiresSteamLogin {
-		env, cerr := s.steamInstallEnv(ctx, node, server.Vars, steamGuardCode)
-		if cerr != nil {
-			s.failServer(server, cerr.Error())
-			return
-		}
-		installEnv = env
-	}
-
-	// When BepInEx is enabled, run the vanilla install first, then append the
-	// spec's BepInEx install (download + unpack the loader into the data dir). The
-	// separator is OS-aware: cmd chains with " & ", POSIX shells (incl. the wine
-	// image, which is a Linux container) with a newline.
-	installScript := sp.InstallScriptFor(server.Kind)
-	if server.BepInEx && sp.Install.BepInExScript != "" {
-		sep := "\n"
-		if server.Kind == spec.WindowsNative {
-			sep = " & "
-		}
-		installScript = installScript + sep + sp.Install.BepInExScript
-	}
-	stream, err := client.InstallServer(ctx, &agentpb.InstallServerRequest{
-		ServerId:      server.ID,
-		Image:         agentSpec.Image,
-		InstallScript: spec.Render(installScript, server.Vars),
-		Env:           installEnv,
-		MemoryLimitMb: int64(server.MemoryMB),
-	})
-	if err != nil {
-		s.failServer(server, "agent install: "+err.Error())
-		return
-	}
-	for {
-		ev, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break // clean end of the install stream = success
-		}
-		if err != nil {
-			// The stream died mid-install (agent restart, tunnel drop, network).
-			// The outcome is unknown — which must read as failed, never as
-			// installed; a reinstall re-runs the (idempotent) install script.
-			s.failServer(server, "install stream interrupted: "+err.Error())
-			return
-		}
-		switch e := ev.Event.(type) {
-		case *agentpb.InstallEvent_LogLine:
-			// The installer's own output — SteamCMD's download progress, unpack
-			// errors, a game's first-run complaints. This is the only place it
-			// exists: the install container is removed when the phase ends.
-			s.installs.Append(server.ID, e.LogLine)
-		case *agentpb.InstallEvent_Failed:
-			s.failServer(server, "install failed: "+e.Failed)
-			return
-		}
 	}
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
@@ -470,6 +495,26 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	// its in-memory spec (e.g. after an Agent restart).
 	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
 		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
+			// Update-on-start (#307): unless the spec opts out or this server
+			// pins its build, re-run the install pass before launching so the
+			// game picks up depot updates instead of staying forever on the
+			// build it was created with. The pass can take many minutes, so it
+			// runs in its own goroutine and the request returns 202 with the
+			// server already in `installing` — which gates a racing start and
+			// routes the console to the live install log for free.
+			if s.updatesOnStart(ctx, sv, sp, node) {
+				sv.State = store.StateInstalling
+				sv.LastError = ""
+				sv.LastExitCode, sv.LastExitCodeKnown = 0, false
+				if err := s.store.UpdateServer(ctx, sv); err != nil {
+					writeError(w, http.StatusInternalServerError, "could not update server state")
+					return
+				}
+				s.logger.Info("server update-on-start requested", "id", sv.ID, "name", sv.Name, "action", req.Action)
+				go s.updateThenStart(sv, sp, node)
+				writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State, "updating": true})
+				return
+			}
 			s.rePushServerSpec(ctx, client, sv, sp)
 			if _, aerr := s.applyConfig(ctx, sv, sp); aerr != nil {
 				s.logger.Warn("config apply before start failed", "server", sv.ID, "err", aerr)
@@ -510,11 +555,115 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"state": sv.State})
 }
 
-// handleReinstallServer retries the install phase on a server whose previous
-// install failed, without deleting the server (so the allocated ports, name,
-// and server ID all survive). Only valid from the StateInstallFailed
-// terminal state — a still-running install or a fully installed server
-// should not go through here (deleting + recreating covers those cases).
+// updatesOnStart reports whether an operator-initiated start/restart of sv
+// should re-run the install pass first (#307). It is on by default — a server
+// that never re-runs its installer stays on its creation-day build forever, and
+// every bundled install script is an idempotent `app_update … validate`.
+//
+// It is off when the spec opts out (per-spec or per-platform
+// skip_update_on_start), when the operator pinned this server's build, or when
+// the pass could not succeed unattended:
+//
+//   - An authenticated-Steam install can be asked for a Steam Guard code, and a
+//     start request carries none. Without stored node credentials the pass could
+//     only fail and strand a working server in install_failed, so it is skipped;
+//     POST /reinstall remains the way to update one of these, and it takes a code.
+//
+// Note the Agent's crash watchdog is deliberately NOT a caller: auto-restart
+// after a crash happens entirely inside the Agent (monitor.go → ensureAndStart)
+// and never reaches the Panel, so a crash loop can never become a re-download
+// loop. Scheduled restarts (schedule.go) likewise drive the Agent directly — a
+// nightly restart is not an invitation to validate a 30GB tree nightly.
+func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.Spec, node *cluster.Node) bool {
+	if sp == nil || sv.PinBuild || sp.SkipUpdateOnStartFor(sv.Kind) {
+		return false
+	}
+	if sp.Install.RequiresSteamLogin {
+		cfg, err := s.store.GetNodeConfig(ctx, node.ID)
+		if err != nil || cfg == nil || cfg.SteamUsername == "" {
+			s.logger.Warn("skipping update-on-start: spec needs a Steam login and the node has no stored credentials",
+				"server", sv.ID, "node", node.ID)
+			return false
+		}
+	}
+	return true
+}
+
+// updateThenStart runs the pre-start update pass and then starts the server.
+// Runs in its own goroutine with a background context (the pass outlives the
+// request that asked for it); the server is already in `installing`.
+//
+// A failed pass lands in install_failed with last_error set, exactly like a
+// failed create: the power handler then refuses start until a reinstall, which
+// is the right outcome — an update that half-wrote the install tree must not be
+// launched over.
+func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.Node) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	s.installs.Start(sv.ID)
+	s.installs.Append(sv.ID, "[panel] updating "+sv.Name+" — re-running the install script before start")
+
+	client, err := s.nodes.Client(node.DialTarget())
+	if err != nil {
+		s.failServer(sv, "connect agent: "+err.Error())
+		return
+	}
+	// Stop first, always. The install container and the game container
+	// bind-mount the same data dir, and SteamCMD writing under a running game
+	// is how an update pass corrupts a live server. On a `start` the server is
+	// already down and this is a no-op; on a `restart` it is the stop half.
+	sctx, scancel := context.WithTimeout(ctx, 60*time.Second)
+	_, perr := client.PowerAction(sctx, &agentpb.PowerActionRequest{
+		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_STOP,
+	})
+	scancel()
+	if perr != nil {
+		s.failServer(sv, "stop before update: "+perr.Error())
+		return
+	}
+
+	// Vanilla install script only — never the BepInEx overlay (see
+	// installScriptFor).
+	if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
+		s.failServer(sv, err.Error())
+		return
+	}
+	s.installs.Append(sv.ID, "[panel] update complete — starting "+sv.Name)
+
+	// Config after the update, not before: the pass can restore a file the
+	// depot owns, so the server's settings are re-rendered over the fresh tree.
+	if _, aerr := s.applyConfig(ctx, sv, sp); aerr != nil {
+		s.logger.Warn("config apply after update failed", "server", sv.ID, "err", aerr)
+	}
+	pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
+	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{
+		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_START,
+	})
+	pcancel()
+	if err != nil {
+		// The update itself succeeded, so this is NOT install_failed: the tree
+		// is good and a plain start can be retried. Land offline with the
+		// reason in the log the operator is already reading.
+		s.installs.AppendError(sv.ID, "[panel] start after update failed: "+err.Error())
+		s.installs.Finish(sv.ID)
+		s.setServerState(sv.ID, store.StateOffline, "")
+		s.logger.Error("start after update failed", "server", sv.ID, "err", err)
+		return
+	}
+	s.installs.Finish(sv.ID)
+	s.setServerState(sv.ID, storeStateFromAgent(resp.State), "")
+	s.logger.Info("server updated and started", "id", sv.ID, "state", resp.State)
+}
+
+// handleReinstallServer re-runs the install phase without deleting the server
+// (so the allocated ports, name, and server ID all survive). It is both the
+// retry for a failed install and the explicit "update now" for a server whose
+// start path does not update it — one that pins its build, or whose spec opted
+// out of update-on-start — which is why it accepts offline and crashed too.
+// A server mid-flight (installing/starting/running/stopping) is refused: a
+// second install container against a live data dir is the one thing this must
+// never do.
 func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
@@ -529,8 +678,13 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	if sv.State != store.StateInstallFailed {
-		writeError(w, http.StatusConflict, "reinstall is only valid when state=install_failed (current state: "+string(sv.State)+")")
+	switch sv.State {
+	case store.StateInstallFailed, store.StateOffline, store.StateCrashed:
+		// Stopped states: nothing holds the data dir, so the install container
+		// can have it.
+	default:
+		writeError(w, http.StatusConflict,
+			"reinstall needs a stopped server (install_failed, offline or crashed); current state: "+string(sv.State))
 		return
 	}
 	sp, err := s.store.GetSpec(ctx, sv.SpecID)

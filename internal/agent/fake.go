@@ -35,6 +35,16 @@ type FakeRuntime struct {
 	// Docker's log follow ends when the container it was following stops. That
 	// is what lets the Panel's reconnect-on-restart path be exercised here.
 	runs map[string]int
+	// installScripts records the script of every install pass, per server, in
+	// order. The install phase runs more than once per server now (create, then
+	// again before every start — #307) and the passes differ, so what a pass
+	// actually sent is worth asserting: the pre-start pass must carry the
+	// vanilla install script and NOT the BepInEx overlay.
+	installScripts map[string][]string
+	// installErr, when set, makes every install fail with this reason — the
+	// failure path of an update pass (the server must land install_failed, not
+	// start over a half-written tree).
+	installErr string
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -51,6 +61,14 @@ type FakeOption func(*FakeRuntime)
 // #178, #186) are unreachable through the HTTP handler in a test.
 func WithFakeBinarySHA(sha string) FakeOption {
 	return func(f *FakeRuntime) { f.binarySHA = sha }
+}
+
+// WithFakeInstallFailure makes every install pass fail with the given reason,
+// the way a SteamCMD pass that cannot reach the depot does. It is how the
+// Panel's install-failure paths — including a failed pre-start update pass —
+// are reachable without a container runtime.
+func WithFakeInstallFailure(reason string) FakeOption {
+	return func(f *FakeRuntime) { f.installErr = reason }
 }
 
 // NewFakeRuntime returns a fake runtime identifying as the given node.
@@ -425,8 +443,27 @@ func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []st
 	return nil
 }
 
+// InstallScripts returns the install script of each pass run against serverID,
+// oldest first.
+func (f *FakeRuntime) InstallScripts(serverID string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.installScripts[serverID]...)
+}
+
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	f.mu.Lock()
+	if f.installScripts == nil {
+		f.installScripts = make(map[string][]string)
+	}
+	f.installScripts[req.ServerId] = append(f.installScripts[req.ServerId], req.InstallScript)
+	failure := f.installErr
+	f.mu.Unlock()
 	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_INSTALLING)
+	if failure != "" {
+		f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_OFFLINE)
+		return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: failure}})
+	}
 	steps := []string{
 		"Redirecting stderr to console",
 		"[  0%] Connecting anonymously to Steam Public...",

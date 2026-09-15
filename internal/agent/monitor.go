@@ -316,6 +316,11 @@ func (m *monitor) run(since time.Time) {
 			"exit_code", code, "exit_hex", hexExit(code), "attempt", attempt, "max", max)
 		m.setState(agentpb.ServerState_SERVER_STATE_STARTING)
 		since = time.Now()
+		// Straight back to the container — deliberately NOT through the Panel's
+		// update-on-start path (#307). That pass is driven by the Panel's power
+		// handler and reaches the Agent as InstallServer; an auto-restart never
+		// touches the Panel, so a crash loop can never turn into a SteamCMD
+		// re-download loop. Keep it that way.
 		if err := m.d.ensureAndStart(m.ctx, m.serverID, keepImage); err != nil {
 			slog.Error("watchdog: auto-restart failed", "server", m.serverID, "err", err)
 			m.setState(agentpb.ServerState_SERVER_STATE_CRASHED)

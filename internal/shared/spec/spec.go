@@ -139,6 +139,13 @@ type Platform struct {
 	// StartupCommand, when set, replaces Startup.Command for servers placed on
 	// this platform. Variable placeholders are substituted as usual.
 	StartupCommand string `json:"startup_command,omitempty"`
+	// SkipUpdateOnStart opts servers on THIS platform out of the pre-start
+	// update pass (see Install.SkipUpdateOnStart) even when the spec-level flag
+	// leaves it on — for the case where only one platform's install script is
+	// not idempotent (e.g. a linux-wine entry that re-primes a Wine prefix).
+	// It can only opt out: a platform cannot turn the pass back on for a spec
+	// that opted out spec-wide.
+	SkipUpdateOnStart bool `json:"skip_update_on_start,omitempty"`
 }
 
 // PlayerQuery declares how to read a server's online-player count.
@@ -214,13 +221,33 @@ func (s *Spec) validateQuery() error {
 	return nil
 }
 
-// Install describes the one-shot install/update phase, run in a short-lived
-// container against the server's persistent volume before the runtime container
-// starts.
+// Install describes the install/update phase, run in a short-lived container
+// against the server's persistent volume before the runtime container starts.
+//
+// IT IS NOT ONE-SHOT. The Panel re-runs this phase before every
+// operator-initiated start/restart so a server picks up depot updates instead
+// of staying forever on the build SteamCMD pulled the day it was created, so:
+//
+// AN INSTALL SCRIPT MUST BE IDEMPOTENT. It runs against a fully installed,
+// fully configured data dir carrying live save games. `steamcmd … app_update
+// <id> validate +quit` is exactly that — a no-op on a current tree, a repair on
+// a damaged one. A script that wipes the data dir, re-seeds a config file the
+// operator has since edited, or unconditionally re-downloads an unversioned
+// artifact is not, and must either be rewritten or opt out via
+// SkipUpdateOnStart.
 type Install struct {
 	// Script is the shell command run inside the install container. Variable
-	// placeholders (e.g. {{APP_ID}}) are substituted before execution.
+	// placeholders (e.g. {{APP_ID}}) are substituted before execution — from
+	// the server's CURRENT variables on every pass, so a variable edit lands on
+	// the next start rather than waiting for a reinstall.
 	Script string `json:"script"`
+	// SkipUpdateOnStart opts this spec out of the pre-start update pass: the
+	// install script then runs only at create time and on an explicit
+	// reinstall, the pre-#307 behaviour. Default false — updates run — because
+	// the opt-out costs a server its updates, and that is the rarer thing to
+	// want. Set it only for an install that cannot be made idempotent.
+	// Platform.SkipUpdateOnStart narrows the opt-out to one platform.
+	SkipUpdateOnStart bool `json:"skip_update_on_start,omitempty"`
 	// RequiresSteamLogin is true for app ids that need a real Steam account
 	// (vs. anonymous login). The Panel brokers credentials + Steam Guard 2FA.
 	RequiresSteamLogin bool `json:"requires_steam_login,omitempty"`
@@ -233,6 +260,13 @@ type Install struct {
 	// BepInExScript is appended after Script (vanilla install runs first) to
 	// download + unpack BepInEx into the data dir. Only used when a server is
 	// deployed with BepInEx enabled. Variable placeholders are substituted.
+	//
+	// It runs at CREATE and REINSTALL only — never on the pre-start update
+	// pass. These scripts overlay files rather than update them (valheim's
+	// `cp -rf …/. /data/` would clobber BepInEx/config on every restart, and
+	// vrising's pulls an unpinned "latest" from Thunderstore), while a SteamCMD
+	// `validate` only touches depot-manifest files and so leaves the
+	// Doorstop/winhttp overlay intact across a game update.
 	BepInExScript string `json:"bepinex_script,omitempty"`
 }
 
@@ -375,6 +409,22 @@ func (s *Spec) StartupCommandFor(kind PlatformKind) string {
 		}
 	}
 	return s.Startup.Command
+}
+
+// SkipUpdateOnStartFor reports whether servers on the given platform kind skip
+// the pre-start update pass: the platform's own opt-out when set, else the
+// spec-level Install.SkipUpdateOnStart. A platform can only opt out, never opt
+// a spec-wide opt-out back in.
+func (s *Spec) SkipUpdateOnStartFor(kind PlatformKind) bool {
+	if s.Install.SkipUpdateOnStart {
+		return true
+	}
+	for _, p := range s.Platforms {
+		if p.Kind == kind && p.SkipUpdateOnStart {
+			return true
+		}
+	}
+	return false
 }
 
 // Validate performs structural validation beyond JSON Schema: it enforces

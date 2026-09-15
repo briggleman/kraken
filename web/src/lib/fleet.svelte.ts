@@ -183,13 +183,31 @@ function disarm() {
 // the fleet is doing, so it has to be re-decided after every tick.
 function arm() {
   disarm();
-  timer = setTimeout(() => void tick(), fleetPollMs(fleet.servers));
+  timer = setTimeout(() => void refreshThenArm(), fleetPollMs(fleet.servers));
 }
 
-async function tick() {
+/** The one way the poll advances: read, then re-arm on the roster that read
+ *  just brought back.
+ *
+ *  The re-arm is in a `finally` because it is the only thing holding the chain
+ *  together. `refreshFleet` accounts for a *rejected* read itself, but a throw
+ *  from the call site of one — `api.listAudit()` raising before its own
+ *  `.catch` can be attached, say — escapes the whole function, and a re-arm
+ *  written after the await would simply not run. Polling would then stay dead
+ *  until the next visibilitychange, which on a tab nobody switches away from is
+ *  forever. Swallowing it here is deliberate for the same reason, and it is not
+ *  swallowed silently: a throw at that level is a fault in this file rather
+ *  than an unreachable Panel, and it goes on the header's error line like any
+ *  other reason the deck stopped being current. */
+async function refreshThenArm() {
   timer = undefined;
-  await refreshFleet();
-  if (started && !document.hidden) arm();
+  try {
+    await refreshFleet();
+  } catch (e) {
+    fleet.lastError = errMsg(e);
+  } finally {
+    if (started && !document.hidden) arm();
+  }
 }
 
 export function startFleetPolling() {
@@ -204,13 +222,14 @@ export function startFleetPolling() {
       suspendStaleClock();
     } else {
       resumeStaleClock();
-      void refreshFleet(); // catch up immediately on return, then resume
-      arm();
+      // Catch up immediately on return, and arm on what comes back rather than
+      // on the roster from before: a server that went into an install while the
+      // tab was away would otherwise get a resting interval to itself.
+      void refreshThenArm();
     }
   };
   document.addEventListener("visibilitychange", onVisibility);
-  void refreshFleet();
-  arm();
+  void refreshThenArm();
 }
 
 export function stopFleetPolling() {

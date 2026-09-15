@@ -280,6 +280,64 @@ describe("startFleetPolling / stopFleetPolling", () => {
       stopFleetPolling();
     }
   });
+
+  it("keeps the chain alive when a refresh throws outright", async () => {
+    vi.useFakeTimers();
+    try {
+      // A throw from the *call site* of a read rather than a rejected read:
+      // listAudit raising before the poll's own catch can be attached escapes
+      // the whole function, and a re-arm written after the await would not run.
+      // Polling would then stay dead until a visibilitychange, which on a tab
+      // nobody switches away from is forever.
+      listAudit.mockImplementation(() => {
+        throw new Error("boom");
+      });
+
+      startFleetPolling();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listServers).toHaveBeenCalledTimes(1);
+      expect(fleet.lastError).toBe("boom");
+      expect(vi.getTimerCount()).toBe(1); // armed anyway
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(listServers).toHaveBeenCalledTimes(2); // ...and it kept going
+
+      stopFleetPolling();
+      expect(vi.getTimerCount()).toBe(0); // no orphan left behind
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listServers).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      stopFleetPolling();
+    }
+  });
+
+  it("re-decides the cadence from the roster each tick brought back", async () => {
+    vi.useFakeTimers();
+    try {
+      listServers.mockResolvedValue({ servers: [server("srv-1", "installing")] });
+      startFleetPolling();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listServers).toHaveBeenCalledTimes(1);
+
+      // Mid-install: the transient cadence, decided on what the first read
+      // brought back rather than on the empty roster it was armed from.
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(listServers).toHaveBeenCalledTimes(2);
+
+      // The pass ends. The tick that observes it arms at the resting cadence.
+      listServers.mockResolvedValue({ servers: [server("srv-1", "running")] });
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(listServers).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(listServers).toHaveBeenCalledTimes(3); // no longer every 2.5s
+      await vi.advanceTimersByTimeAsync(7_500);
+      expect(listServers).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+      stopFleetPolling();
+    }
+  });
 });
 
 describe("fleetPollMs", () => {

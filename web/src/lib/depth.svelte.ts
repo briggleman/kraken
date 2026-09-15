@@ -147,53 +147,67 @@ export function powerControls(state: Server["state"] | undefined): "stop" | "sta
 // effect was keyed on the rendered line *count* alone, so toggling between two
 // full buffers changed nothing it could see and the viewport stayed exactly
 // where the old buffer had been left. The log had swapped; the pane had not
-// moved. These two helpers carry that reasoning as logic rather than as an
+// moved. Keying on a count is doubly wrong once a ring is full: the live buffer
+// pushes and splices back to its cap on every append, so past 500 lines the
+// count never changes again and a pinned console would stop following the tail
+// altogether. These helpers carry that reasoning as logic rather than as an
 // effect's dependency list.
 
-/** Which of the two the console is rendering. */
-export type ConsoleBuffer = "live" | "install";
-
 export interface ConsoleView {
-  buffer: ConsoleBuffer;
-  /** How many lines that buffer currently renders. */
-  count: number;
+  /** What makes this a *different document*: which server, which buffer, and
+   *  which generation of the stream — a re-target or a reconnect drops the
+   *  lines and replays from the start, and line seqs cannot say so because they
+   *  are handed out at receipt and never reset. */
+  key: string;
+  /** What makes it a different *rendering of the same document*: the newest
+   *  line's own id, plus anything else sharing the scroll box with it (the
+   *  reconnect and install-log banners are inside it and change its height). */
+  content: string;
 }
 
 /** What the console viewport owes the next render.
  *
- *  - `force` — a different buffer is on screen. It is a different document, so
- *    it opens at its tail whatever the operator had scrolled the last one to.
- *  - `if-pinned` — the same buffer, longer. Honour the pin: someone reading
- *    back through a noisy install must not be dragged to the bottom by the next
- *    line.
+ *  - `force` — a different document is on screen. It opens at its tail whatever
+ *    the operator had scrolled the previous one to; no offset on the old log
+ *    means anything on the new one.
+ *  - `if-pinned` — the same document, rendered differently. Honour the pin:
+ *    someone reading back through a noisy install must not be dragged to the
+ *    bottom by the next line.
  *  - `no` — nothing changed; do not touch scrollTop, and do not pay for the
  *    forced layout that reading scrollHeight costs (#279). */
-export function consoleRepin(prev: ConsoleView | null, next: ConsoleView): "no" | "if-pinned" | "force" {
-  if (!prev || prev.buffer !== next.buffer) return "force";
-  return next.count === prev.count ? "no" : "if-pinned";
+export function consoleRepin(
+  prev: ConsoleView | null,
+  next: ConsoleView,
+): "no" | "if-pinned" | "force" {
+  if (!prev || prev.key !== next.key) return "force";
+  return next.content === prev.content ? "no" : "if-pinned";
 }
 
 /** Whether the INSTALL LOG chip has anything to offer.
  *
  *  It needs a retained log to show, and it must not be offered while the
- *  console pane is *already* that log: during `installing` and `install_failed`
- *  the Panel's stream gate serves the same in-memory install buffer this chip
- *  snapshots (handlers_stream.go serveInstallStream, and the REST read, both
- *  read the one entry), so the chip would swap a live tail for an older copy of
- *  itself — which is the very "the toggle does nothing" complaint.
+ *  console pane is *already* that log: in `installing` and `install_failed` the
+ *  Panel's stream gate serves the very in-memory install buffer this chip
+ *  snapshots (serveInstallStream tails it, the REST read snapshots it, one
+ *  entry either way), so the chip would swap a live tail for an older copy of
+ *  itself — which is the "the toggle does nothing" complaint again.
  *
- *  The gate is therefore on the console *actually carrying* that output, not on
- *  the state alone. A pass whose socket never came up, or a drill-in opened
- *  after a Panel restart, leaves the pane blank in a state where the retained
- *  read still has the lines — and there the chip is exactly what is wanted, so
- *  it appears. */
+ *  So the gate is on the console actually carrying that tail, not on the state.
+ *  While an install is *running* that is always true — the socket is live or
+ *  reconnecting throughout, and a stream that has not delivered yet is still
+ *  working on it — so the chip stays away for the whole pass and no amount of
+ *  socket trouble brings it back mid-install. It is after a *failed* install
+ *  that the two can genuinely differ: that stream is a replay which ends, and a
+ *  socket that never delivered (blocked, proxied away) leaves the pane empty
+ *  while the REST read still holds the lines. There the chip appears, and it is
+ *  the only way to them. */
 export function canShowInstallLog(opts: {
   installing: boolean;
-  retainedLines: number;
-  consoleHasInstallOutput: boolean;
+  hasRetained: boolean;
+  consoleCarriesInstall: boolean;
 }): boolean {
-  if (opts.retainedLines === 0) return false;
-  return !(opts.installing && opts.consoleHasInstallOutput);
+  if (!opts.hasRetained) return false;
+  return !(opts.installing && opts.consoleCarriesInstall);
 }
 
 export function openDepth(id: string, x: number, y: number, returnTo?: HTMLElement | null) {

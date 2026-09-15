@@ -99,11 +99,18 @@
   const showInstallChip = $derived(
     canShowInstallLog({
       installing,
-      retainedLines: installLines.length,
-      consoleHasInstallOutput: haveInstallLog,
+      hasRetained: installLines.length > 0,
+      consoleCarriesInstall: haveInstallLog,
     }),
   );
   const showingInstall = $derived(showInstallChip && depth.installLogOpen);
+  // A chip that goes away takes its selection with it. Otherwise a server that
+  // enters an install with the log open comes back out of it showing a snapshot
+  // of the pass that just ended, in place of the boot log the operator is
+  // actually waiting on — and nothing was clicked to ask for that.
+  $effect(() => {
+    if (!showInstallChip && depth.installLogOpen) depth.installLogOpen = false;
+  });
   // Both sources share the console's row shape so one keyed `{#each}` renders
   // either. The retained install log is a static snapshot, so its index is a
   // stable key; live lines carry their own seq because the ring evicts from the
@@ -145,26 +152,44 @@
     if (!consoleLog) return;
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
-  // Keyed on which buffer is rendered as well as on how many lines it has: both
-  // rings cap at 500, so a toggle between two full buffers is invisible to a
-  // length alone and the viewport was left sitting where the *previous* log had
-  // been scrolled to — which reads as the chip having done nothing (#314). A
-  // swap re-pins unconditionally: the operator asked for this log, so it opens
-  // at its tail whatever they had scrolled the last one to.
-  let shown: ConsoleView | null = null;
-  let shownEl: HTMLDivElement | undefined;
+  // Which station tab is up. The tabs are CSS-only (`:checked ~` on three
+  // radios, verbatim from the mock), so switching them changes no reactive
+  // state and nothing below would re-run — which is how a swap performed on a
+  // hidden pane used to stay unapplied. This is the notice.
+  let stnTab = $state<"console" | "settings" | "files">("console");
   $effect(() => {
+    depth.serverId; // the keyed block remounts with the console radio checked
+    stnTab = "console";
+  });
+
+  // Keyed on the document as well as its rendering (see consoleRepin): both
+  // rings cap at 500 lines, so neither the line count nor a swap between two
+  // full buffers is visible to a length alone — the viewport was left sitting
+  // where the *previous* log had been scrolled to, which reads as the chip
+  // having done nothing (#314). A swap re-pins unconditionally: the operator
+  // asked for this log, so it opens at its tail.
+  let shown: ConsoleView | null = null;
+  $effect(() => {
+    stnTab; // a tab change is the only notice a CSS-only switch can give
     const el = consoleLog;
     const next: ConsoleView = {
-      buffer: showingInstall ? "install" : "live",
-      count: logLines.length,
+      key: [depth.serverId ?? "", stream.generation, showingInstall ? "install" : "live"].join("|"),
+      // stream.status rides here because the reconnect banner lives *inside*
+      // the scroll box: it changes the height with no line change at all.
+      content: (logLines.at(-1)?.seq ?? -1) + "|" + stream.status,
     };
-    // A fresh pane element is a fresh document too — drilling into another
-    // server remounts the keyed console, and its scrollTop starts at 0.
-    const want = el !== shownEl ? "force" : consoleRepin(shown, next);
+    // Nothing can be scrolled in a pane the tab strip has display:none'd — a
+    // write lands on a box that does not exist and is silently dropped, and the
+    // browser does not keep the offset across the round trip either. So the
+    // swap is left unrecorded and re-decided from scratch when the console tab
+    // comes back, which is the moment the operator is looking at it.
+    if (!el || el.clientHeight === 0) {
+      shown = null;
+      return;
+    }
+    const want = consoleRepin(shown, next);
     shown = next;
-    shownEl = el;
-    if (!el || want === "no") return;
+    if (want === "no") return;
     if (want === "force") pinned = true;
     if (pinned) el.scrollTop = el.scrollHeight;
   });
@@ -514,9 +539,28 @@
   <div class="depth-body">
     {#key depth.serverId}
       <section class="console" aria-label="Server station">
-        <input type="radio" name="stn" id="stnConsole" class="stn-r" checked />
-        <input type="radio" name="stn" id="stnSettings" class="stn-r" />
-        <input type="radio" name="stn" id="stnFiles" class="stn-r" />
+        <input
+          type="radio"
+          name="stn"
+          id="stnConsole"
+          class="stn-r"
+          checked
+          onchange={() => (stnTab = "console")}
+        />
+        <input
+          type="radio"
+          name="stn"
+          id="stnSettings"
+          class="stn-r"
+          onchange={() => (stnTab = "settings")}
+        />
+        <input
+          type="radio"
+          name="stn"
+          id="stnFiles"
+          class="stn-r"
+          onchange={() => (stnTab = "files")}
+        />
         <div class="stn-tabs" role="tablist">
           <label for="stnConsole">{installing || showingInstall ? "install log" : "live console"}</label>
           <label for="stnSettings">settings</label>
@@ -571,7 +615,9 @@
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
                 <div><span class="t">—</span>{installing
-                    ? "no install output kept — the panel restarted since this attempt"
+                    ? installLines.length > 0
+                      ? "nothing came over the console — the retained install log is on the chip above"
+                      : "no install output kept — the panel restarted since this attempt"
                     : "no output — server is dark"}</div>
               {/if}
             {/each}

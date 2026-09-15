@@ -3,9 +3,9 @@
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
-  import { fleet } from "@/lib/fleet.svelte";
+  import { fleet, fleetHealth } from "@/lib/fleet.svelte";
   import { logout } from "@/lib/auth.svelte";
-  import { fmtHm } from "@/lib/fmt";
+  import { fmtAge, fmtHm } from "@/lib/fmt";
 
   // the events floor shows the audit tail — the four most recent entries
   const recent = $derived(fleet.audit.slice(0, 4));
@@ -49,6 +49,18 @@
     if (!ms) return "—";
     return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(1) + "s";
   }
+
+  // The poll survives one failed sibling request now (#313), which means the
+  // deck can legitimately be showing a snapshot older than its own cadence.
+  // The one indicator that has always claimed the view is live is where that
+  // gets said. Read off ui.clock as well as the store: a request that hangs
+  // rather than rejecting produces no store write at all, and an age that only
+  // advanced on a completed poll would sit frozen at "live" through exactly the
+  // stall it exists to report.
+  const health = $derived.by(() => {
+    void ui.clock;
+    return fleetHealth();
+  });
 </script>
 
 <div class="pane">
@@ -58,7 +70,14 @@
     >
     <span class="top-sub">single pane · all systems</span>
     <div class="top-right">
-      <span><span class="live-dot">●</span> live · ping <span>{pingLabel(fleet.pingMs)}</span></span>
+      {#if health.stale}
+        <span class="stale" title={fleet.lastError ?? "the panel has not answered"}
+          ><span class="live-dot">●</span> stale · <span>{fmtAge(health.ageMs)}</span></span
+        >
+      {:else}
+        <span><span class="live-dot">●</span> live · ping <span>{pingLabel(fleet.pingMs)}</span></span
+        >
+      {/if}
       <span id="clock">{ui.clock}</span>
       <button
         class="prefs-open io"
@@ -148,3 +167,18 @@
     >
   </footer>
 </div>
+
+<style>
+  /* The stale reading on the live indicator (#313). Caution Violet, not the
+     light and not crisis: by The One Light Rule gold means "alive", and this
+     view is not — while by the same rule's prevented-by test a snapshot the
+     operator cannot trust is a condition, not an outage. The dot gives up the
+     light along with the word, so the two can never disagree. No new colour and
+     no new metric, so there is nothing here for the mock to carry. */
+  .stale {
+    color: var(--caution);
+  }
+  .stale .live-dot {
+    color: var(--caution);
+  }
+</style>

@@ -50,6 +50,17 @@ export function fmtUptime(seconds: number): string {
   return `${m}m`;
 }
 
+/** "45s" / "4m" / "2h" — how long ago, coarse on purpose. The header's stale
+ *  reading uses it to say "older than you think", not to be read to the
+ *  second, so it never grows a second unit the way fmtUptime does. */
+export function fmtAge(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return sec + "s";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + "m";
+  return Math.floor(min / 60) + "h";
+}
+
 export function fmtClock(tsMs: number): string {
   return new Date(tsMs).toLocaleTimeString("en-US", { hour12: false });
 }

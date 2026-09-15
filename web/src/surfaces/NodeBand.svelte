@@ -3,7 +3,7 @@
   import PacketChan from "@/components/PacketChan.svelte";
   import Spark from "@/components/Spark.svelte";
   import { onDestroy } from "svelte";
-  import { api } from "@/api/client";
+  import { api, errMsg } from "@/api/client";
   import { hasPerm } from "@/lib/auth.svelte";
   import { refreshFleet } from "@/lib/fleet.svelte";
   import { fmtCapacityMB } from "@/lib/fmt";
@@ -170,7 +170,7 @@
       // A refusal can arrive wordless (an edge proxy that replaces the origin's
       // JSON error with HTML leaves ApiError with an empty message). The state
       // machine keys off phase, but the LINE still owes the operator a reason.
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = errMsg(e);
       pushErr = msg || "the panel could not be reached, or refused without a reason — check the audit log";
       phase = "failed";
       return;

@@ -2,16 +2,12 @@
   import { istyle } from "@/lib/istyle";
   import { ui, openSheet, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
-  import { api } from "@/api/client";
+  import { api, errMsg } from "@/api/client";
   import { fleet } from "@/lib/fleet.svelte";
   import type { AdminUser, DatabaseConfig, PanelSettings } from "@/api/types";
 
   type Res = { cls: "ok" | "bad"; text: string } | null;
   type SettingsPatch = Parameters<typeof api.updatePanelSettings>[0];
-
-  function errMsg(e: unknown): string {
-    return e instanceof Error ? e.message : "request failed";
-  }
 
   let settings = $state<PanelSettings | null>(null);
   let db = $state<DatabaseConfig | null>(null);

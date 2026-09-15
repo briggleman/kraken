@@ -9,8 +9,11 @@ import {
   UPDATE_PASS_LINE,
   canShowInstallLog,
   consoleRepin,
+  consoleViewKey,
   depth,
+  emptyConsoleNote,
   powerControls,
+  restoreTop,
   stateLabel,
   stream,
   surface,
@@ -171,8 +174,14 @@ describe("syncDepthFromFleet", () => {
 describe("consoleRepin", () => {
   const SRV = "srv-1";
   /** The console pane's identity for one server, one stream generation, one
-   *  buffer — exactly what Depth.svelte composes. */
-  const key = (buffer: "live" | "install", gen = 1, srv = SRV) => [srv, gen, buffer].join("|");
+   *  buffer — composed by the same helper Depth.svelte uses. */
+  const key = (buffer: "live" | "install", gen = 1, srv = SRV, snapshot = 1) =>
+    consoleViewKey({
+      serverId: srv,
+      showingInstall: buffer === "install",
+      installLogSeq: snapshot,
+      generation: gen,
+    });
   const view = (buffer: "live" | "install", lastSeq: number, gen = 1, status = "open") => ({
     key: key(buffer, gen),
     content: lastSeq + "|" + status,
@@ -220,6 +229,115 @@ describe("consoleRepin", () => {
 
   it("does nothing when nothing changed", () => {
     expect(consoleRepin(view("live", 901), view("live", 901))).toBe("no");
+  });
+
+  it("puts the operator back where they were after a tab round-trip", () => {
+    // Settings and back. The pane was display:none'd, which drops the offset,
+    // so the viewport has to be written — but a deliberate scroll back through
+    // a noisy install is not a reason to re-pin, which is what clearing the
+    // remembered view used to make it (#320).
+    expect(consoleRepin(view("live", 901), view("live", 901), true)).toBe("restore");
+    // New lines arrived while the pane was away: still a restore, because the
+    // write is owed either way and the pin decides where it lands.
+    expect(consoleRepin(view("live", 901), view("live", 930), true)).toBe("restore");
+    // A document that changed while the operator was in settings still opens at
+    // its tail — no offset on the old log means anything on the new one.
+    expect(consoleRepin(view("live", 901), view("install", 499), true)).toBe("force");
+    expect(consoleRepin(null, view("live", 12), true)).toBe("force");
+  });
+});
+
+// The identity of the document on screen (#320). The live console and the
+// retained install log are two different kinds of thing, and keying both on the
+// live stream was wrong in both directions.
+describe("consoleViewKey", () => {
+  const snapshot = (snapshotSeq: number, generation: number) =>
+    consoleViewKey({
+      serverId: "srv-1",
+      showingInstall: true,
+      installLogSeq: snapshotSeq,
+      generation,
+    });
+
+  it("ignores the live stream while a static install snapshot is on screen", () => {
+    // The socket stays targeted at the server whatever the chip shows, so a
+    // background reconnect bumps the generation under a document it has nothing
+    // to do with — and force-scrolled an operator reading a finished install
+    // back to its tail.
+    expect(snapshot(4, 1)).toBe(snapshot(4, 9));
+    const before = { key: snapshot(4, 1), content: "499|ended" };
+    const after = { key: snapshot(4, 9), content: "499|ended" };
+    expect(consoleRepin(before, after)).toBe("no");
+  });
+
+  it("names the snapshot instance, so a re-read is a new document", () => {
+    // A refreshed snapshot of the same length renders identically: the lines
+    // are keyed by index, so `content` is just "length-1|status" and nothing in
+    // the document itself can say it was read again.
+    expect(snapshot(4, 1)).not.toBe(snapshot(5, 1));
+    const before = { key: snapshot(4, 1), content: "499|ended" };
+    const after = { key: snapshot(5, 1), content: "499|ended" };
+    expect(consoleRepin(before, after)).toBe("force");
+  });
+
+  it("still follows the stream while the console is the container log", () => {
+    const live = (generation: number) =>
+      consoleViewKey({ serverId: "srv-1", showingInstall: false, installLogSeq: 4, generation });
+    expect(live(1)).not.toBe(live(2));
+    // ...and the snapshot's own counter is none of the live console's business.
+    expect(
+      consoleViewKey({
+        serverId: "srv-1",
+        showingInstall: false,
+        installLogSeq: 4,
+        generation: 1,
+      }),
+    ).toBe(
+      consoleViewKey({
+        serverId: "srv-1",
+        showingInstall: false,
+        installLogSeq: 5,
+        generation: 1,
+      }),
+    );
+  });
+
+  it("separates the two buffers and the two servers", () => {
+    const at = (serverId: string, showingInstall: boolean) =>
+      consoleViewKey({ serverId, showingInstall, installLogSeq: 1, generation: 1 });
+    expect(at("srv-1", true)).not.toBe(at("srv-1", false));
+    expect(at("srv-1", false)).not.toBe(at("srv-2", false));
+    expect(at("srv-1", false)).toBe(at("srv-1", false));
+  });
+});
+
+describe("restoreTop", () => {
+  it("sends a following console to the tail and leaves a reader where they were", () => {
+    expect(restoreTop({ pinned: true, lastTop: 400, scrollHeight: 9_000 })).toBe(9_000);
+    expect(restoreTop({ pinned: false, lastTop: 400, scrollHeight: 9_000 })).toBe(400);
+    // The top of the buffer is a real place to have been left, and it is not
+    // the same answer as "no offset recorded".
+    expect(restoreTop({ pinned: false, lastTop: 0, scrollHeight: 9_000 })).toBe(0);
+  });
+});
+
+describe("emptyConsoleNote", () => {
+  it("does not claim nothing was kept when the chip above holds it", () => {
+    // After a failed install whose socket never delivered: the pane is empty,
+    // but the REST read has the lines and the chip is the only way to them.
+    expect(emptyConsoleNote({ installing: true, hasRetained: true })).toContain("chip above");
+    expect(emptyConsoleNote({ installing: true, hasRetained: false })).toContain(
+      "panel restarted",
+    );
+  });
+
+  it("says a stopped server is dark rather than talking about installs", () => {
+    expect(emptyConsoleNote({ installing: false, hasRetained: true })).toBe(
+      "no output — server is dark",
+    );
+    expect(emptyConsoleNote({ installing: false, hasRetained: false })).toBe(
+      "no output — server is dark",
+    );
   });
 });
 

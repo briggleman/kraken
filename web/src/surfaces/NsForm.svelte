@@ -4,7 +4,7 @@
   import { ui, closeSheet, openSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
-  import { api } from "@/api/client";
+  import { api, errMsg } from "@/api/client";
   import { fmtGb } from "@/lib/fmt";
   import type { Spec } from "@/api/types";
 
@@ -152,7 +152,7 @@
         }, 3000);
       }
     } catch (e) {
-      err = e instanceof Error ? e.message : String(e);
+      err = errMsg(e);
     } finally {
       busy = false;
     }

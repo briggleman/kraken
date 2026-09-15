@@ -17,7 +17,7 @@
 // flag — false means "this host cannot report this", which the band draws as an
 // empty instrument. Nothing here ever substitutes a zero for a missing value.
 
-import { api } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 import { fleet } from "./fleet.svelte";
 import type { NodeTelemetry } from "@/api/types";
 
@@ -144,7 +144,7 @@ export async function refreshTelemetry(): Promise<void> {
     telemetry.loaded = true;
     telemetry.lastError = null;
   } catch (e) {
-    telemetry.lastError = e instanceof Error ? e.message : String(e);
+    telemetry.lastError = errMsg(e);
   }
 }
 

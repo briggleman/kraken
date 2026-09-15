@@ -26,6 +26,9 @@
     powerControls,
     canShowInstallLog,
     consoleRepin,
+    consoleViewKey,
+    emptyConsoleNote,
+    restoreTop,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
@@ -148,8 +151,19 @@
   // handler runs far more often than the log changes.
   const PIN_SLACK_PX = 24;
   let pinned = true;
+  // Where the operator last had the console. Recorded on the way past because a
+  // pane the tab strip has hidden cannot be asked afterwards: a box with no
+  // layout reads scrollTop 0, and hands back 0 again when it returns.
+  let lastTop = 0;
   function onLogScroll() {
-    if (!consoleLog) return;
+    // The handler stays attached while the tab strip has the pane
+    // display:none'd, and a box with no layout answers 0 to all three of these.
+    // Recording that would be worse than recording nothing: lastTop would
+    // become 0 and the pin would read true (0 - 0 - 0 is under the slack), so
+    // the return would dump the operator at the tail — which is the very thing
+    // the round-trip fix exists to prevent (#320).
+    if (!consoleLog || consoleLog.clientHeight === 0) return;
+    lastTop = consoleLog.scrollTop;
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
   // Which station tab is up. The tabs are CSS-only (`:checked ~` on three
@@ -169,28 +183,50 @@
   // having done nothing (#314). A swap re-pins unconditionally: the operator
   // asked for this log, so it opens at its tail.
   let shown: ConsoleView | null = null;
+  // Whether the last run found the console pane hidden. A tab round-trip is not
+  // a new document and must not read as one: clearing `shown` here made the
+  // return a "force", which threw away a scroll-back the operator had left on
+  // purpose (#320).
+  let wasHidden = false;
   $effect(() => {
     stnTab; // a tab change is the only notice a CSS-only switch can give
     const el = consoleLog;
     const next: ConsoleView = {
-      key: [depth.serverId ?? "", stream.generation, showingInstall ? "install" : "live"].join("|"),
+      key: consoleViewKey({
+        serverId: depth.serverId,
+        showingInstall,
+        installLogSeq: depth.installLogSeq,
+        generation: stream.generation,
+      }),
       // stream.status rides here because the reconnect banner lives *inside*
       // the scroll box: it changes the height with no line change at all.
       content: (logLines.at(-1)?.seq ?? -1) + "|" + stream.status,
     };
     // Nothing can be scrolled in a pane the tab strip has display:none'd — a
-    // write lands on a box that does not exist and is silently dropped, and the
-    // browser does not keep the offset across the round trip either. So the
-    // swap is left unrecorded and re-decided from scratch when the console tab
-    // comes back, which is the moment the operator is looking at it.
+    // write lands on a box that does not exist and is silently dropped. `shown`
+    // keeps naming the view actually on screen, so the comparison on return is
+    // against that: a log swapped out while the operator was in settings still
+    // opens at its tail, and one that did not change keeps their place.
     if (!el || el.clientHeight === 0) {
-      shown = null;
+      wasHidden = true;
       return;
     }
-    const want = consoleRepin(shown, next);
+    const want = consoleRepin(shown, next, wasHidden);
+    wasHidden = false;
     shown = next;
     if (want === "no") return;
     if (want === "force") pinned = true;
+    // The return trip always writes: display:none dropped the offset, so
+    // leaving scrollTop alone would open at the top of the buffer — neither
+    // where the operator was nor where a pinned console belongs. What goes back
+    // is a raw pixel offset, not a line: a live buffer that rolled its 500-line
+    // ring while the operator was in settings puts different lines at the same
+    // offset. Accepted — the alternative is anchoring on a line id, and the
+    // ring evicts the very line an absence long enough to matter would anchor.
+    if (want === "restore") {
+      el.scrollTop = restoreTop({ pinned, lastTop, scrollHeight: el.scrollHeight });
+      return;
+    }
     if (pinned) el.scrollTop = el.scrollHeight;
   });
 
@@ -614,11 +650,10 @@
               <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}{#if line.hidden > 0}<button type="button" class="log-more" onclick={() => copyLine(line)}>{copiedSeq === line.seq ? "copied" : `… ${line.hidden.toLocaleString()} more chars — copy line`}</button>{/if}</div>
             {:else}
               {#if stream.status === "ended" || stream.status === "idle"}
-                <div><span class="t">—</span>{installing
-                    ? installLines.length > 0
-                      ? "nothing came over the console — the retained install log is on the chip above"
-                      : "no install output kept — the panel restarted since this attempt"
-                    : "no output — server is dark"}</div>
+                <div><span class="t">—</span>{emptyConsoleNote({
+                    installing,
+                    hasRetained: installLines.length > 0,
+                  })}</div>
               {/if}
             {/each}
           </div>

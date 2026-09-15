@@ -133,6 +133,7 @@ export async function refreshFleet(): Promise<void> {
     // as "ping" describes the failure rather than the link.
     fleet.pingMs = Math.round(performance.now() - t0);
     fleet.lastOkMs = Date.now();
+    lastOkIsReal = true; // earned, so the hidden-tab clock may carry it forward
     fleet.lastError = null;
   } else {
     fleet.lastError = errors.join("; ");
@@ -158,13 +159,21 @@ export function fleetHealth(nowMs: number = Date.now()): { stale: boolean; ageMs
 
 let hiddenAt = 0;
 
+// Whether `lastOkMs` is a stamp a whole tick actually earned, or the placeholder
+// the first start puts there so the header has an age to read before the first
+// tick lands. Only an earned one may be carried across a hidden stretch: the
+// placeholder shifted forward by a two-hour background sit would have the deck
+// paint the live dot for a full budget on return, for a Panel that has never
+// once answered (#320).
+let lastOkIsReal = false;
+
 export function suspendStaleClock(nowMs: number = Date.now()) {
   if (!hiddenAt) hiddenAt = nowMs;
 }
 
 export function resumeStaleClock(nowMs: number = Date.now()) {
   if (!hiddenAt) return;
-  if (fleet.lastOkMs) fleet.lastOkMs += Math.max(0, nowMs - hiddenAt);
+  if (lastOkIsReal && fleet.lastOkMs) fleet.lastOkMs += Math.max(0, nowMs - hiddenAt);
   hiddenAt = 0;
 }
 
@@ -229,6 +238,16 @@ export function startFleetPolling() {
     }
   };
   document.addEventListener("visibilitychange", onVisibility);
+  // A start on a hidden tab is a start that will not poll again: refreshThenArm
+  // declines to arm while hidden, exactly as the visibility handler's disarm
+  // would. The clock has to be told the same thing here, or `hiddenAt` stays 0
+  // through a background load and the resume has nothing to shift — the age
+  // would then have run the whole time the tab sat unopened, and the header
+  // would paint a stale reading for a deck nobody had asked about. One catch-up
+  // read still goes out, so the first paint on return is not an empty deck, and
+  // if it fails the clock resumes against a placeholder it is not allowed to
+  // shift — a Panel that has never answered still reads stale.
+  if (document.hidden) suspendStaleClock();
   void refreshThenArm();
 }
 
@@ -240,11 +259,18 @@ export function stopFleetPolling() {
     document.removeEventListener("visibilitychange", onVisibility);
     onVisibility = undefined;
   }
-  hiddenAt = 0;
+  // Fold any open suspension in rather than dropping it: stopping while hidden
+  // is reachable (a background 401 takes the auth effect through this pair), and
+  // a dropped one leaves the age counting a stretch nobody was looking at.
+  resumeStaleClock();
   // lastOkMs deliberately survives: a stop/start during an outage must not
-  // reset the age that is reporting it. The first-paint guarantee does not —
-  // the next session gets its own complete first read before the deck claims
-  // to be showing the estate.
+  // reset the age that is reporting it. Its *provenance* does not survive — the
+  // next session re-earns the right to carry it across a hidden stretch with
+  // its own successful tick, which errs toward reporting stale, the safe
+  // direction. The first-paint guarantee does not survive either: the next
+  // session gets its own complete first read before the deck claims to be
+  // showing the estate.
+  lastOkIsReal = false;
   everAnswered.servers = false;
   everAnswered.specs = false;
   everAnswered.nodes = false;

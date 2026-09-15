@@ -444,12 +444,12 @@
       : null,
   );
 
-  // Per-row disclosure: undefined means "use the default" — the newest row (index
-  // 0) opens so the detail pattern is discoverable, the rest stay collapsed.
+  // Per-row disclosure: every row starts collapsed — including the newest —
+  // so the list reads as a list. Undefined means "never toggled", i.e. closed.
   let backupOpen = $state<Record<string, boolean>>({});
-  const isBackupOpen = (id: string, i: number): boolean => backupOpen[id] ?? i === 0;
-  function toggleBackup(id: string, i: number) {
-    backupOpen = { ...backupOpen, [id]: !isBackupOpen(id, i) };
+  const isBackupOpen = (id: string): boolean => backupOpen[id] ?? false;
+  function toggleBackup(id: string) {
+    backupOpen = { ...backupOpen, [id]: !isBackupOpen(id) };
   }
 </script>
 
@@ -865,13 +865,13 @@
       <section class="side-block" aria-label="Backups">
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
-          {#each depth.backups as b, i (b.id)}
+          {#each depth.backups as b (b.id)}
             {#if b.state === "pending"}
               <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:60"}><i></i></span></div>
             {:else}
               {@const s = bkState(b)}
               {@const mirror = bkMirror(b.replication, depth.backupMirror)}
-              {@const open = isBackupOpen(b.id, i)}
+              {@const open = isBackupOpen(b.id)}
               <div class="bk">
                 <div class="backup-row">
                   <span class="bk-sum">
@@ -880,7 +880,7 @@
                       aria-expanded={open}
                       aria-controls="bkd-{b.id}"
                       aria-label="{open ? 'Hide' : 'Show'} details for the {b.name} backup"
-                      onclick={() => toggleBackup(b.id, i)}
+                      onclick={() => toggleBackup(b.id)}
                     ><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 4.5 2.5 L 8 6 L 4.5 9.5"/></svg></button>
                     <span>{fmtWhen(b.created_ms)} · {b.name}{b.size ? " · " + fmtSize(b.size) : ""}</span>
                   </span>

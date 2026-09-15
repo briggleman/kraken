@@ -50,6 +50,25 @@ func getServerState(t *testing.T, h http.Handler, token, id string) string {
 	return sv.State
 }
 
+// waitForState polls the server until it reaches want, failing the test if it
+// does not within a few seconds. Several paths here are asynchronous (the
+// install goroutine, the update-on-start pass), so the state is never asserted
+// straight off the response that kicked one off.
+func waitForState(t *testing.T, h http.Handler, token, id, want string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got := getServerState(t, h, token, id)
+		if got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("server %s did not reach %q; state=%s", id, want, got)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 func TestServerLifecycle_CreateInstallStart(t *testing.T) {
 	h := newTestServer(t)
 	token := login(t, h)
@@ -98,25 +117,16 @@ func TestServerLifecycle_CreateInstallStart(t *testing.T) {
 	}
 
 	// Wait for install (fake agent) to flip the server to offline.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if getServerState(t, h, token, created.ID) == "offline" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("server did not reach offline after install; state=%s", getServerState(t, h, token, created.ID))
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitForState(t, h, token, created.ID, "offline")
 
-	// Start it → running.
+	// Start it. The spec does not opt out and the server is not pinned, so the
+	// start re-runs the install pass first (#307): the request returns 202 with
+	// the server already installing, and the pass finishes into running.
 	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/power", token, map[string]string{"action": "start"})
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusAccepted {
 		t.Fatalf("power start: status %d, body %s", rec.Code, rec.Body.String())
 	}
-	if st := getServerState(t, h, token, created.ID); st != "running" {
-		t.Fatalf("expected running after start, got %q", st)
-	}
+	waitForState(t, h, token, created.ID, "running")
 
 	// Stop it → offline.
 	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/power", token, map[string]string{"action": "stop"})

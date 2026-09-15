@@ -9,7 +9,7 @@ A spec is one YAML file under `internal/panel/catalog/bundled/<slug>.yaml`. The 
 `go:embed`s that directory (`internal/panel/catalog/catalog.go`), so **adding a file means
 rebuilding the Panel**; `TestLoadValidates` in `catalog_test.go` runs `spec.Validate()` on every
 bundled file, so a malformed spec fails CI rather than an operator's import. At runtime the Agent
-runs `install.script` once in a throwaway container and `startup.command` in the long-lived one —
+runs `install.script` in a throwaway container and `startup.command` in the long-lived one —
 via `/bin/sh -c` on Linux images and `cmd /S /C` on Windows — with the server's data dir
 bind-mounted at `/data` (Linux) or `C:\data` (Windows) and every port published **1:1**
 (container port = host port = the allocated port your `{{PORT_<NAME>}}` placeholder resolves to).
@@ -117,6 +117,16 @@ Copy the template from [references/schema.md](references/schema.md) and the matc
 - SteamCMD installs are **two-step** (`cmd; cmd` on POSIX, `cmd & cmd` on cmd.exe): the first
   pass against a fresh appinfo cache fails with `Missing configuration`; the Agent's log guard
   keys off the second pass's `Success! App ... fully installed` line.
+- **`install.script` runs before EVERY operator-initiated start/restart, not just at create
+  time** (#307) — that is how a server picks up a depot update. It therefore has to be
+  **idempotent against a fully installed data dir with live saves in it**: `app_update …
+  validate` is (it only touches depot-manifest files), a wipe-and-reseed or an unconditional
+  download of a large unversioned artifact is not. Guard seeding steps (`[ -f … ] ||`) and
+  probe the installed version before downloading (`factorio.yaml` compares `factorio --version`
+  against the version in the `get-download` redirect). Last resort:
+  `install.skip_update_on_start: true` (or `platforms[].skip_update_on_start` for one platform
+  only), which costs that game its updates — no bundled spec sets it. `bepinex_script` is never
+  re-run by the update pass, and the Agent's crash-restart never triggers one.
 - `startup.stop`: declare the **Linux** signal (`SIGINT`/`SIGTERM`) even for Windows-first
   games — it is the only value either agent can actually honour. Windows containers ignore
   custom signals (daemon shutdown event, 30 s, then kill) and a Linux agent drops a non-POSIX

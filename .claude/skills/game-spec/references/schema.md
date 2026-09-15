@@ -44,11 +44,15 @@ platforms:                                # scheduler priority order; each kind 
   #   startup_command: wine-headless /data/<Proj>/Binaries/Win64/<Server>-Win64-Shipping.exe -log -Port={{PORT_GAME}}
 
 install:
+  # Runs before EVERY start, not just at create time (update-on-start) — so it must be
+  # idempotent against an installed data dir with live saves. `app_update … validate` is.
   # Two-step: a fresh SteamCMD fails the first app_update with "Missing configuration";
   # ';' so the second always runs, and its "Success!" line clears the Agent's failure guard.
   script: >-
     steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
     steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+  # skip_update_on_start: true           # LAST RESORT — opt out of the pre-start update pass
+                                          # (script then runs at create + reinstall only)
   # requires_steam_login: true           # Panel injects STEAM_USER/STEAM_PASS/STEAM_GUARD into the
                                           # install env (never persisted); script must use them
   # bepinex_compatible: true             # Unity games only — surfaces the deploy-time toggle
@@ -172,7 +176,14 @@ non-Steam games; `{{APP_ID}}` then stays unrendered, so do not reference it.
   first one, reference them as shell env (`$STEAM_USER` / `%STEAM_USER%`), never as `{{...}}`.
 - `bepinex_compatible` / `bepinex_script`: Unity games only. When the operator opts in at
   deploy, `bepinex_script` is appended after `script` with an OS-aware separator (`\n` on POSIX
-  incl. wine, ` & ` on windows-native).
+  incl. wine, ` & ` on windows-native). It is appended at **create and reinstall only** — the
+  pre-start update pass runs the vanilla `script` alone, so a restart never rewrites a modded
+  server's loader or pulls a newer unpinned BepInEx.
+- `skip_update_on_start`: opts the spec out of re-running the install before every start (#307).
+  Default false — updates run — and no bundled spec sets it. `platforms[].skip_update_on_start`
+  narrows the opt-out to one platform; a platform can only opt out, never opt back in. Reach for
+  it only when a script genuinely cannot be made idempotent: the cost is that the game never
+  updates without a manual reinstall.
 
 ### `startup`
 - `command` required. Runs as the container's PID 1 via the shell entrypoint; cwd is the data

@@ -12,12 +12,32 @@ icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/427
 platforms:
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
 install:
-  script: >-
-    curl -sSL https://factorio.com/get-download/stable/headless/linux64 -o /tmp/factorio.tar.xz &&
-    tar -xJf /tmp/factorio.tar.xz -C /data --strip-components=1 &&
-    rm -f /tmp/factorio.tar.xz &&
-    mkdir -p /data/saves &&
-    { [ -f /data/saves/world.zip ] || /data/bin/x64/factorio --create /data/saves/world.zip; }
+  # This runs before EVERY start (update-on-start), so it must be idempotent —
+  # and cheap when nothing changed. Factorio is not on SteamCMD, so there is no
+  # `app_update … validate` to no-op: instead the two version probes below let a
+  # current tree skip the ~400MB download. `get-download` 302s to a versioned
+  # tarball (…/factorio-headless_linux_2.0.28.tar.xz) and the installed binary
+  # reports its own version, so a match means there is nothing to do. Either
+  # probe coming back empty (no binary yet, no Location header, HEAD refused)
+  # falls through to the unconditional download — the original behaviour, never
+  # a skipped update.
+  script: |-
+    set -e
+    have=""
+    if [ -x /data/bin/x64/factorio ]; then
+      have=$(/data/bin/x64/factorio --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1) || true
+    fi
+    want=$(curl -sSIL https://factorio.com/get-download/stable/headless/linux64 2>/dev/null | tr -d '\r' | grep -i '^location:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1) || true
+    if [ -n "$have" ] && [ "$have" = "$want" ]; then
+      echo "[kraken] factorio $have is the current stable build - nothing to download"
+    else
+      echo "[kraken] installing factorio ${want:-stable} (installed: ${have:-none})"
+      curl -sSL https://factorio.com/get-download/stable/headless/linux64 -o /tmp/factorio.tar.xz
+      tar -xJf /tmp/factorio.tar.xz -C /data --strip-components=1
+      rm -f /tmp/factorio.tar.xz
+    fi
+    mkdir -p /data/saves
+    [ -f /data/saves/world.zip ] || /data/bin/x64/factorio --create /data/saves/world.zip
 startup:
   command: >-
     /data/bin/x64/factorio --start-server /data/saves/world.zip

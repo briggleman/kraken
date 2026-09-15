@@ -65,26 +65,62 @@ func TestPower_StartRejectedWhileInstalling(t *testing.T) {
 	}
 }
 
-// TestReinstall_RejectedFromWrongState — reinstall is scoped to recovery
-// from a failed install. On a fully installed server (offline / running
-// / crashed), the user should Delete + Recreate instead.
-func TestReinstall_RejectedFromWrongState(t *testing.T) {
+// TestReinstall_RejectedWhileInFlight — reinstall runs an install container
+// against the server's data dir, so it is refused from every state where
+// something else may be holding it: an install already running, and a server
+// that is starting, running or stopping.
+func TestReinstall_RejectedWhileInFlight(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)
 	addr := startFakeAgent(t, "node-x")
 	nodeID := registerNode(t, h, token, addr)
+	specID := createSpec(t, h, token, "reinstall-guard")
 
-	sv := &store.Server{
-		ID: "sv-offline", Name: "sv-offline", NodeID: nodeID,
-		State: store.StateOffline, CreatedAt: time.Now(),
+	for _, state := range []store.ServerState{
+		store.StateInstalling, store.StateStarting, store.StateRunning, store.StateStopping,
+	} {
+		sv := &store.Server{
+			ID: "sv-" + string(state), Name: "sv-" + string(state), NodeID: nodeID, SpecID: specID,
+			State: state, CreatedAt: time.Now(),
+		}
+		if err := st.CreateServer(context.Background(), sv); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/reinstall", token, nil)
+		if rec.Code != http.StatusConflict {
+			t.Errorf("reinstall from %s: got %d, want 409; body: %s", state, rec.Code, rec.Body.String())
+		}
 	}
-	if err := st.CreateServer(context.Background(), sv); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+}
 
-	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/reinstall", token, nil)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("reinstall from offline: got %d, want 409; body: %s", rec.Code, rec.Body.String())
+// TestReinstall_AcceptedFromStoppedStates — reinstall doubles as the explicit
+// "update now" for a server the start path does not update (a pinned build, or
+// a spec that opted out of update-on-start), so offline and crashed are
+// accepted alongside the install_failed retry (#307).
+func TestReinstall_AcceptedFromStoppedStates(t *testing.T) {
+	for _, state := range []store.ServerState{store.StateOffline, store.StateCrashed} {
+		t.Run(string(state), func(t *testing.T) {
+			h, st := newTestServerStore(t)
+			token := login(t, h)
+			addr := startFakeAgent(t, "node-x")
+			nodeID := registerNode(t, h, token, addr)
+			specID := createSpec(t, h, token, "reinstall-"+string(state))
+
+			sv := &store.Server{
+				ID: "sv-" + string(state), Name: "sv-" + string(state), NodeID: nodeID, SpecID: specID,
+				State: state, PinBuild: true, CreatedAt: time.Now(),
+			}
+			if err := st.CreateServer(context.Background(), sv); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/reinstall", token, nil)
+			if rec.Code != http.StatusAccepted {
+				t.Fatalf("reinstall from %s: got %d, want 202; body: %s", state, rec.Code, rec.Body.String())
+			}
+			// The fake agent's install succeeds, so the one-shot update lands
+			// the server back at offline rather than leaving it installing.
+			waitForState(t, h, token, sv.ID, "offline")
+		})
 	}
 }
 

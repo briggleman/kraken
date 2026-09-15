@@ -70,6 +70,53 @@ platform it runs on, and the Panel injects `{{APP_ID}}` from the entry that
 matches the placement's OS family (`buildVars` in
 [`internal/panel/api/handlers_server.go`](../../api/handlers_server.go)).
 
+## The install script runs on EVERY start — it MUST be idempotent
+
+Since #307 the Panel re-runs `install.script` (or the platform's
+`install_script`) before every operator-initiated start/restart, not just at
+create time. That is how a server picks up a depot update at all: before it, a
+healthy server stayed on the build SteamCMD pulled the day it was created and
+the only way forward was delete + recreate.
+
+So an install script runs against a **fully installed, fully configured data dir
+holding live save games**, and must be safe there:
+
+- `steamcmd … +app_update <id> validate +quit` already is: a no-op on a current
+  tree, a repair on a damaged one, and it only touches depot-manifest files —
+  so an operator's uploaded mods and the Panel's rendered config survive it.
+- A script that wipes the data dir, re-seeds a config file the operator has
+  since edited, or unconditionally re-downloads a large unversioned artifact is
+  **not**. Rewrite it (guard the seeding step with `[ -f … ] ||`, probe the
+  installed version before downloading — see `factorio.yaml`, which compares
+  `factorio --version` against the version in the `get-download` redirect) or,
+  as a last resort, opt out.
+
+**The opt-out** is `install.skip_update_on_start: true` — the spec then installs
+at create time and on an explicit reinstall only. It is also available per
+platform (`platforms[].skip_update_on_start`) for the case where only one
+platform's install is not idempotent; a platform can only opt out, never opt an
+opted-out spec back in. Default is `false` (updates run) for every spec, and no
+bundled spec sets it today. Setting it costs that game its updates, so treat it
+as a last resort rather than a convenience.
+
+Two things do NOT re-run:
+
+- **`bepinex_script`** — the overlay runs at create and reinstall only. Those
+  scripts copy over the tree (Valheim's `cp -rf …/. /data/` would clobber
+  `BepInEx/config/` on every restart) and pull unpinned `latest` builds, while a
+  SteamCMD `validate` leaves the Doorstop/winhttp files alone anyway.
+- **The Agent's crash-restart** — the watchdog restarts the container directly
+  and never involves the Panel, so a crash loop can't become a download loop.
+
+An operator can pin one server to its current build (the Config tab's "pin
+build" toggle), which skips the pass for that server; `POST
+/servers/{id}/reinstall` is then the explicit "update now", and it now accepts
+`offline` / `crashed` as well as `install_failed`.
+
+Install scripts are rendered with the server's **current** variables on every
+pass, so a variable an install script reads takes effect on the next start
+rather than requiring a reinstall.
+
 ## Dual-platform specs — per-platform overrides and config paths
 
 ### Platform policy

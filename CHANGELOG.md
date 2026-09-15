@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.50.1](https://github.com/briggleman/kraken/compare/v0.50.0...v0.50.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **agent:** treat steamcmd "state is 0x6 after update job" as an install failure ([#310](https://github.com/briggleman/kraken/issues/310)) ([53871d4](https://github.com/briggleman/kraken/commit/53871d4c5e6c4ae6312523635c09447b21d6699c))
+* **web:** clear the updating label and power controls when the server leaves installing ([#312](https://github.com/briggleman/kraken/issues/312)) ([07cb7d1](https://github.com/briggleman/kraken/commit/07cb7d1fd18ac70e2a1d05d40892eac04c6231bb))
+* **web:** collapse every backup row by default ([#316](https://github.com/briggleman/kraken/issues/316)) ([794e683](https://github.com/briggleman/kraken/commit/794e683bd6567fa98788a7efca356169a2891f58))
+
 ## [0.50.0](https://github.com/briggleman/kraken/compare/v0.49.0...v0.50.0) (2026-09-15)
 
 

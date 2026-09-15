@@ -21,6 +21,9 @@
     settingsApply,
     reinstall,
     sftpShow,
+    syncUpdatePass,
+    stateLabel,
+    powerControls,
   } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
@@ -38,20 +41,14 @@
   const installing = $derived(
     server?.state === "installing" || server?.state === "install_failed",
   );
-  // `installing` covers two different events now: the first install of a new
-  // server, and the update pass that re-runs the install script before a start
-  // (#307). The state alone cannot tell them apart, and "installing" over a
-  // server that has been running for a month reads as a wipe — so the panel
-  // watches for the pass's own opening line and says "updating" instead. It
-  // latches: the console ring evicts from the front, so the line it keyed on
-  // does not stay in view for a long pass.
-  let updatePass = $state(false);
+  // Whether this `installing` is the pre-start update pass (#307). The latch
+  // lives in the store and every state push clears it there (syncUpdatePass);
+  // this effect is only the console half — it feeds the pass's opening line in
+  // as the lines arrive, and can never set the label over a state that has
+  // already moved on, because syncUpdatePass checks the state itself.
+  const updatePass = $derived(depth.updatePass);
   $effect(() => {
-    if (server?.state !== "installing") {
-      updatePass = false;
-      return;
-    }
-    if (stream.lines.some((l) => l.text.startsWith("[panel] updating "))) updatePass = true;
+    syncUpdatePass(server?.state, stream.lines);
   });
   // What a stopped server's explicit one-shot install pass is called: a retry
   // after a failed install is a reinstall, on a working server it is an update.
@@ -472,9 +469,10 @@
     </button>
     <h2 class="depth-title" id="depthTitle">{name}</h2>
     <div class="depth-meta">
-      <span>state <b class={running ? "ok-txt" : ""} id="dState">{updatePass
-          ? "updating"
-          : (server?.state.replace("_", " ") ?? "")}</b></span>
+      <span>state <b class={running ? "ok-txt" : ""} id="dState">{stateLabel(
+          server?.state,
+          updatePass,
+        )}</b></span>
       <span>uptime <b>{meta.up}</b></span>
       <span>players <b>{meta.players}</b></span>
       <span>port <b>{meta.port}</b></span>
@@ -766,7 +764,7 @@
         </p>
       {/if}
       <div class="controls-row" id="dControls">
-        {#if running || server?.state === "starting" || server?.state === "stopping"}
+        {#if powerControls(server?.state) === "stop"}
           <button class="ctl ctl-stop" disabled={depth.powerBusy} onclick={() => void power("stop")}>stop</button>
           <button class="ctl ctl-restart" disabled={depth.powerBusy} onclick={() => void power("restart")}>restart</button>
         {:else}

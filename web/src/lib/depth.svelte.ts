@@ -46,6 +46,10 @@ export const depth = $state({
   // that never started, and the install is the only account of why (#280).
   installLog: null as InstallLog | null,
   installLogOpen: false,
+  // Whether this server's current `installing` is the pre-start update pass
+  // (#307) rather than a first install. See syncUpdatePass — the state is the
+  // fact, this is only a finer name for one of its causes.
+  updatePass: false,
   creatingBackup: false,
   restoringBackup: null as string | null,
   powerBusy: false,
@@ -80,6 +84,62 @@ export function streamModeFor(state: Server["state"] | undefined): StreamMode {
   return "replay";
 }
 
+// --- the `updating` label ---------------------------------------------------
+// `installing` covers two different events: the first install of a new server,
+// and the update pass that re-runs the install script before a start (#307).
+// The state alone cannot tell them apart, and "installing" over a server that
+// has been running for a month reads as a wipe — so the drill-in watches for
+// the pass's own opening line and says "updating" instead.
+
+/** The line the Panel writes to the install buffer when a start or restart
+ *  re-runs the install script (handlers_server.go, updateThenStart). */
+export const UPDATE_PASS_LINE = "[panel] updating ";
+
+/** Fold a server state and the console's lines into the `updating` latch.
+ *
+ *  **The store state is authoritative.** A server that is not `installing` is
+ *  not mid-pass, whatever the console holds, so every state that is not
+ *  `installing` clears the latch — and the log line may only *set* it while the
+ *  state still says `installing`.
+ *
+ *  That asymmetry is the fix for #311. The pass's opening line does not leave
+ *  the console when the pass ends: `installing`, `starting` and `running` all
+ *  map to a "live" stream, so `stream.set` never re-targets the socket and
+ *  never clears the ring — the line sits there beside the new container's
+ *  output. A latch that only ever *set* off that line therefore survived into
+ *  `running`, and the header read "updating" over a server that was up. (The
+ *  failure path did not show it: `install_failed` is a "replay" stream, so the
+ *  re-target wiped the ring and took the line with it.)
+ *
+ *  It still latches rather than deriving straight off the line, because the
+ *  ring evicts from the front and a long pass scrolls its own opening line out
+ *  of the buffer. */
+export function syncUpdatePass(
+  state: Server["state"] | undefined,
+  lines: readonly { text: string }[],
+) {
+  if (state !== "installing") {
+    depth.updatePass = false;
+    return;
+  }
+  if (lines.some((l) => l.text.startsWith(UPDATE_PASS_LINE))) depth.updatePass = true;
+}
+
+/** The drill-in's state word. `updating` is only a finer name for `installing`
+ *  — it can never stand in for any other state (#311). */
+export function stateLabel(state: Server["state"] | undefined, updating: boolean): string {
+  if (!state) return "";
+  if (state === "installing" && updating) return "updating";
+  return state.replace("_", " ");
+}
+
+/** Which pair of power controls a state offers: "stop" is stop + restart, and
+ *  "start" is start (+ update, where the state allows it). Keyed off the store
+ *  state and nothing else — never the `updating` label. */
+export function powerControls(state: Server["state"] | undefined): "stop" | "start" {
+  return state === "running" || state === "starting" || state === "stopping" ? "stop" : "start";
+}
+
 export function openDepth(id: string, x: number, y: number, returnTo?: HTMLElement | null) {
   lastFocus = returnTo ?? null;
   depth.origin = {
@@ -97,6 +157,9 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.filesDir = ".";
   depth.installLog = null;
   depth.installLogOpen = false;
+  // A fresh server, and a fresh socket: nothing is latched until this server's
+  // own state and console say so.
+  depth.updatePass = false;
   depth.error = null;
   depth.sftp = null;
   depth.sftpOpen = false;
@@ -105,12 +168,14 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.sftpPassword = null;
   depth.open = true;
   stream.set(id, streamModeFor(depth.server?.state));
+  syncUpdatePass(depth.server?.state, stream.lines);
   void refreshDetail();
   pushRoute(id);
 }
 
 export function surface() {
   depth.open = false;
+  depth.updatePass = false;
   stream.set("", "off");
   stopBackupPoll();
   if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
@@ -187,6 +252,7 @@ async function refreshDetail() {
   if (srv.status === "fulfilled") {
     depth.server = srv.value;
     stream.set(id, streamModeFor(srv.value.state));
+    syncUpdatePass(srv.value.state, stream.lines);
   }
   if (bk.status === "fulfilled") {
     depth.backups = bk.value.backups ?? [];
@@ -220,6 +286,10 @@ export function syncDepthFromFleet() {
     const was = depth.server?.state;
     depth.server = s;
     stream.set(s.id, streamModeFor(s.state));
+    // Folded in here, synchronously with the push that carries the new state,
+    // rather than left to a component effect to notice afterwards: the state is
+    // what decides the label, so the label must not be able to outlive it.
+    syncUpdatePass(s.state, stream.lines);
     // An install that just ended leaves a retained log the open drill-in has
     // never read — and this is exactly the moment it matters, because the
     // console's socket is about to switch to a container that may not start.

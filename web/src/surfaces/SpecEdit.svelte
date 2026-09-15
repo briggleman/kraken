@@ -201,7 +201,10 @@
     spec.steam_app_ids = Object.keys(ids).length ? ids : undefined;
   }
 
-  function setInstallFlag(k: "bepinex_compatible" | "requires_steam_login", on: boolean) {
+  function setInstallFlag(
+    k: "bepinex_compatible" | "requires_steam_login" | "skip_update_on_start",
+    on: boolean,
+  ) {
     if (spec) spec.install = { ...(spec.install ?? {}), [k]: on };
   }
 
@@ -344,6 +347,8 @@
           <div class="cfg">
             <label class="tgl"><input type="checkbox" checked={!!spec.install?.bepinex_compatible} onchange={(e) => setInstallFlag("bepinex_compatible", e.currentTarget.checked)} /><i></i>bepinex compatible — unity games with mod support</label>
             <label class="tgl"><input type="checkbox" checked={!!spec.install?.requires_steam_login} onchange={(e) => setInstallFlag("requires_steam_login", e.currentTarget.checked)} /><i></i>requires steam login — a real account and 2fa, not anonymous</label>
+            <label class="tgl"><input type="checkbox" checked={!!spec.install?.skip_update_on_start} onchange={(e) => setInstallFlag("skip_update_on_start", e.currentTarget.checked)} /><i></i>skip update on start — the install runs at deploy and on an explicit update only</label>
+            <p class="cfg-help">by default the install script re-runs before every start, so servers pick up game updates — which means it has to be safe to run over an installed, played-in data dir. turn the skip on only for a script that cannot be made idempotent; the cost is that this game never updates on its own.</p>
             <p class="cfg-help">anonymous install is the default. turning on steam login means the node needs credentials of its own; kraken never holds them in the browser. the install and startup commands live in the document — edit them in the code view.</p>
           </div>
         </section>

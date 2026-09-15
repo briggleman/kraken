@@ -193,6 +193,14 @@ type Server struct {
 	// BepInEx records that this server was deployed with BepInEx mod support, so
 	// every install/start uses the spec's modded install append + loader command.
 	BepInEx bool `json:"bepinex,omitempty"`
+	// PinBuild pins this server to the build currently on disk: the Panel skips
+	// the install/update pass it otherwise runs before every operator-initiated
+	// start or restart (#307), so the game is never updated underneath a save
+	// that depends on the current build — a modded server, a world mid-season, a
+	// machine on a metered link. Default false (= the server updates on start).
+	// POST /servers/{id}/reinstall remains the explicit "update now" for a
+	// pinned server.
+	PinBuild bool `json:"pin_build,omitempty"`
 	// Players / MaxPlayers / PlayersKnown are the last-known online-player count,
 	// refreshed by the reconciler from the Agent so the fleet list can show it
 	// without an open stats stream. PlayersKnown separates "0 online" from "unknown".

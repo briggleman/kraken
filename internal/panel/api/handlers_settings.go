@@ -26,6 +26,15 @@ type settingsResponse struct {
 	// HotReload mirrors the spec: the game re-reads config files live, so
 	// saved settings (not launch variables) apply without a restart.
 	HotReload bool `json:"hot_reload"`
+	// PinBuild is this server's build pin: true = the Panel skips the install
+	// pass it otherwise runs before every start/restart, so the game stays on
+	// the build currently on disk (#307).
+	PinBuild bool `json:"pin_build"`
+	// UpdatesOnStart is false when this server would not update on start no
+	// matter the pin — its spec opted out (per-spec or per-platform) — so the
+	// UI can say the toggle is moot rather than promising updates that the spec
+	// has turned off.
+	UpdatesOnStart bool `json:"updates_on_start"`
 }
 
 // variableView is a launch variable surfaced on the Settings tab: the spec's
@@ -68,8 +77,10 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, settingsResponse{
 		Groups: groups, Values: values,
-		Variables: variableViews(sp, sv),
-		HotReload: sp.Settings.HotReload,
+		Variables:      variableViews(sp, sv),
+		HotReload:      sp.Settings.HotReload,
+		PinBuild:       sv.PinBuild,
+		UpdatesOnStart: !sp.SkipUpdateOnStartFor(sv.Kind),
 	})
 }
 
@@ -79,6 +90,10 @@ type updateSettingsRequest struct {
 	// stopped — they render into the startup command, so a running container
 	// would silently keep the old values until its next start.
 	Variables map[string]string `json:"variables,omitempty"`
+	// PinBuild toggles this server's build pin (#307). A pointer so an omitted
+	// field leaves the pin alone: every other client of this endpoint (the
+	// settings form's values/variables saves) must not silently unpin a server.
+	PinBuild *bool `json:"pin_build,omitempty"`
 }
 
 func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Request) {
@@ -95,9 +110,12 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 
 	// Launch-variable edits are accepted in any server state — the next start
 	// re-renders the startup command and container env from the stored vars,
-	// so no reinstall is needed (variables referenced by the install script
-	// only take effect after a reinstall). A running server keeps its old
-	// values until restarted; the response's restart_needed says so.
+	// so no reinstall is needed. Variables referenced by the INSTALL script
+	// take effect on the next start too, since the install pass re-renders it
+	// from the current vars (#307) — unless this server pins its build or its
+	// spec opted out of update-on-start, where a reinstall is still the way.
+	// A running server keeps its old values until restarted; the response's
+	// restart_needed says so.
 	varsChanged := false
 	if len(req.Variables) > 0 {
 		if err := sp.ValidateVarOverrides(req.Variables); err != nil {
@@ -152,6 +170,11 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 		merged[k] = v
 	}
 	sv.Settings = merged
+	// The build pin is a property of the server, not a game setting, but it
+	// lives on the Config tab beside them and saves with them.
+	if req.PinBuild != nil {
+		sv.PinBuild = *req.PinBuild
+	}
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save settings")
 		return
@@ -176,6 +199,7 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 		"restart_needed":    restartNeeded,
 		"hot_reload":        sp.Settings.HotReload,
 		"variables_changed": varsChanged,
+		"pin_build":         sv.PinBuild,
 	})
 }
 

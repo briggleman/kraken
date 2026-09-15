@@ -305,6 +305,13 @@ paths:
                 install_bepinex:
                   type: boolean
                   description: Honored only when the spec is bepinex_compatible.
+                pin_build:
+                  type: boolean
+                  description: >-
+                    Pin the server to the build this install pulls: no update
+                    pass runs before later starts. Default false — every
+                    operator-initiated start/restart re-runs the install script
+                    first so the game picks up depot updates.
                 steam_guard_code:
                   type: string
                   description: One-time 2FA code for specs whose install needs an authenticated Steam login. Used for this install only, never persisted.
@@ -337,6 +344,15 @@ paths:
     post:
       tags: [Servers]
       summary: Power action (start/stop/restart/kill)
+      description: >
+        Start and restart re-run the server's install script before launching,
+        so the game picks up depot updates, unless the server pins its build or
+        the spec sets skip_update_on_start. That pass is asynchronous: the
+        response is then 202 with state `installing` (the console streams the
+        install log), and the server continues to `running` on its own. A failed
+        pass lands in `install_failed` with `last_error` set, and start is
+        refused until a reinstall. Stop/kill, and a start that skips the pass,
+        still answer 200 with the new state.
       requestBody:
         required: true
         content:
@@ -351,6 +367,51 @@ paths:
                 type: object
                 properties:
                   state: { $ref: '#/components/schemas/ServerState' }
+        '202':
+          description: Update pass started; the server is installing and will start when it finishes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { $ref: '#/components/schemas/ServerState' }
+                  updating: { type: boolean }
+        '409':
+          description: The server is installing, or its install failed (reinstall first)
+  /servers/{id}/reinstall:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Servers]
+      summary: Re-run the install script once, now
+      description: >
+        Both the retry for a failed install and the explicit "update now" for a
+        server whose start does not update it (a pinned build, or a spec that
+        opted out of update-on-start). Valid from the stopped states —
+        install_failed, offline, crashed — and refused while the server is
+        installing, starting, running or stopping. Runs asynchronously: the
+        server flips to `installing` and the install log streams over the
+        console socket.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                steam_guard_code:
+                  type: string
+                  description: One-time 2FA code for specs whose install needs an authenticated Steam login.
+      responses:
+        '202':
+          description: Install started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { $ref: '#/components/schemas/ServerState' }
+        '409':
+          description: The server is not in a stopped state
   /servers/{id}/install-log:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -406,6 +467,14 @@ paths:
                 values:
                   type: object
                   additionalProperties: { type: string }
+                variables:
+                  type: object
+                  additionalProperties: { type: string }
+                pin_build:
+                  type: boolean
+                  description: >-
+                    The server's build pin. Omit to leave it unchanged — an
+                    ordinary settings save must not unpin a server.
       responses:
         '200': { description: Applied (with any validation errors) }
 
@@ -1107,6 +1176,13 @@ components:
         ports: { type: object, additionalProperties: { type: integer } }
         memory_mb: { type: integer }
         dns: { $ref: '#/components/schemas/ServerDNS' }
+        bepinex: { type: boolean, description: deployed with BepInEx mod support }
+        pin_build:
+          type: boolean
+          description: >-
+            Pinned to the build on disk — the panel skips the install/update
+            pass it otherwise runs before every start or restart.
+        last_error: { type: string, description: why the most recent provisioning attempt failed }
         created_at: { type: string, format: date-time }
     ServerDNS:
       type: object

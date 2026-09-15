@@ -258,8 +258,10 @@ export async function power(action: PowerActionName) {
   }
 }
 
-/** A failed install is a dead end without the retry: provisioning is the one
- *  state the power controls cannot recover from. */
+/** Run the install script once, now. Two jobs, one endpoint: the retry a
+ *  failed install needs (provisioning is the one state the power controls
+ *  cannot recover from), and the "update" act on a stopped server whose start
+ *  does not update it — a pinned build, or a spec that opted out. */
 export async function reinstall() {
   if (!depth.serverId || depth.powerBusy) return;
   depth.powerBusy = true;
@@ -465,13 +467,17 @@ export async function scheduleAdd(input: ScheduleInput): Promise<boolean> {
 export async function settingsApply(
   values: Record<string, string>,
   variables: Record<string, string>,
+  // The build pin, only when the operator touched it: an omitted field leaves
+  // the server's pin alone, so an ordinary settings save cannot unpin it.
+  pinBuild?: boolean,
 ): Promise<string | null> {
   if (!depth.serverId) return null;
   try {
-    const r = await api.updateServerSettings(depth.serverId, values, variables);
+    const r = await api.updateServerSettings(depth.serverId, values, variables, pinBuild);
     if (depth.settings) {
       depth.settings.values = r.values;
       if (r.variables) depth.settings.variables = r.variables;
+      if (r.pin_build !== undefined) depth.settings.pin_build = r.pin_build;
     }
     if (r.applied && r.hot_reload) return "saved — the game re-reads config live";
     return r.restart_needed ? "saved — applies on next restart" : "saved";

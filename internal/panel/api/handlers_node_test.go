@@ -20,15 +20,25 @@ import (
 // and returns its address. It is registered for cleanup.
 func startFakeAgent(t *testing.T, nodeID string) string {
 	t.Helper()
+	addr, _ := startFakeAgentRuntime(t, nodeID)
+	return addr
+}
+
+// startFakeAgentRuntime is startFakeAgent plus the runtime behind it, for tests
+// that assert on what the Panel actually sent the Agent (the install script of
+// each pass) or that need an injected failure.
+func startFakeAgentRuntime(t *testing.T, nodeID string, opts ...agent.FakeOption) (string, *agent.FakeRuntime) {
+	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	rt := agent.NewFakeRuntime(nodeID, "linux", true, "test", opts...)
 	srv := grpc.NewServer()
-	agentpb.RegisterNodeServiceServer(srv, agent.NewService(agent.NewFakeRuntime(nodeID, "linux", true, "test")))
+	agentpb.RegisterNodeServiceServer(srv, agent.NewService(rt))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
-	return lis.Addr().String()
+	return lis.Addr().String(), rt
 }
 
 func registerNode(t *testing.T, h http.Handler, token, addr string) string {

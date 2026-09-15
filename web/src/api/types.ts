@@ -263,6 +263,10 @@ export interface Server {
    *  separates "exited 0" from "no exit was observed". */
   last_exit_code?: number;
   last_exit_code_known?: boolean;
+  /** Build pin: the panel skips the install/update pass it otherwise runs
+   *  before every start or restart, so this server stays on the build now on
+   *  disk. Reinstall is then the explicit "update now". */
+  pin_build?: boolean;
   created_at: string;
 }
 
@@ -314,7 +318,7 @@ export interface Spec {
   variables?: SpecVariable[];
   ports?: SpecPort[];
   resources: { min_memory_mb: number; recommended_memory_mb?: number };
-  install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean };
+  install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean; skip_update_on_start?: boolean };
   /**
    * What a backup of this game captures, as doublestar globs. Omitted means the
    * whole data dir (minus what's unambiguously ephemeral). Drives the backup
@@ -506,6 +510,11 @@ export interface ServerSettings {
   variables?: ServerVariable[];
   /** The game re-reads config files live — saved settings apply without a restart. */
   hot_reload?: boolean;
+  /** This server's build pin — true = no update pass before a start. */
+  pin_build?: boolean;
+  /** False when the spec itself opted out of update-on-start, so the pin is
+   *  moot and the toggle says so instead of promising updates. */
+  updates_on_start?: boolean;
 }
 
 export interface UpdateSettingsResult {
@@ -515,6 +524,7 @@ export interface UpdateSettingsResult {
   restart_needed: boolean;
   hot_reload?: boolean;
   variables_changed?: boolean;
+  pin_build?: boolean;
 }
 
 export interface FileEntry {

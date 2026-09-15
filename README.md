@@ -16,6 +16,11 @@ Kraken is a personal project with the goal of being something I've built to use 
   YAML file. Bundled specs ship for Valheim, V Rising, Palworld, and any
   SteamCMD title from Valve's
   [Dedicated Servers List](https://developer.valvesoftware.com/wiki/Dedicated_Servers_List).
+- **Servers update themselves on start.** Every operator-initiated start or restart
+  re-runs the spec's install script first (a SteamCMD `validate` pass), so a server
+  picks up game updates instead of staying on the build it was created with. A
+  per-server "pin build" toggle opts one server out; `skip_update_on_start` opts a
+  whole spec out; the Update action re-runs it on demand.
 - **Cross-OS.** Linux and native-Windows nodes (Windows containers). The scheduler
   prefers a Linux dedicated server when one exists, and falls back to Windows.
 - **Steam auth.** Anonymous installs by default; per-node encrypted Steam credentials

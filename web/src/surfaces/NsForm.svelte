@@ -20,6 +20,7 @@
   let steamGuard = $state("");
   let memMb = $state("");
   let bepinex = $state(false);
+  let pinBuild = $state(false);
   let startAfter = $state(true);
   let nightlyBackup = $state(true);
   let busy = $state(false);
@@ -60,6 +61,7 @@
     vars = v;
     steamGuard = "";
     bepinex = false;
+    pinBuild = false;
     memMb = String(s.resources.recommended_memory_mb || s.resources.min_memory_mb || 0);
     err = null;
   }
@@ -114,6 +116,7 @@
         node_id: node?.id,
         steam_guard_code: steamGuard.trim() || undefined,
         install_bepinex: bepinex || undefined,
+        pin_build: pinBuild || undefined,
         // Only when the operator moved it off the spec's figure — otherwise let
         // the panel decide, so a spec edit is picked up rather than pinned to
         // whatever this sheet last rendered.
@@ -245,6 +248,14 @@
         <label class="tgl"><input type="checkbox" bind:checked={nightlyBackup} /><i></i>nightly backup at 04:00</label>
         {#if spec?.install?.bepinex_compatible}
           <label class="tgl"><input type="checkbox" bind:checked={bepinex} /><i></i>install bepinex (mod loader)</label>
+        {/if}
+        <!-- Off by default: a server updates on every start unless the operator
+             says otherwise. The spec can have opted out already, in which case
+             the pin is moot and saying so beats offering a dead switch. -->
+        {#if !spec?.install?.skip_update_on_start}
+          <label class="tgl"><input type="checkbox" bind:checked={pinBuild} /><i></i>pin build — skip the update pass before each start</label>
+        {:else}
+          <p class="cfg-help">this spec does not update on start — its install runs at deploy and on reinstall only.</p>
         {/if}
         {#if spec?.install?.requires_steam_login}
           <div class="cfg-row">

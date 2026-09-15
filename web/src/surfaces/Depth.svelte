@@ -38,6 +38,24 @@
   const installing = $derived(
     server?.state === "installing" || server?.state === "install_failed",
   );
+  // `installing` covers two different events now: the first install of a new
+  // server, and the update pass that re-runs the install script before a start
+  // (#307). The state alone cannot tell them apart, and "installing" over a
+  // server that has been running for a month reads as a wipe — so the panel
+  // watches for the pass's own opening line and says "updating" instead. It
+  // latches: the console ring evicts from the front, so the line it keyed on
+  // does not stay in view for a long pass.
+  let updatePass = $state(false);
+  $effect(() => {
+    if (server?.state !== "installing") {
+      updatePass = false;
+      return;
+    }
+    if (stream.lines.some((l) => l.text.startsWith("[panel] updating "))) updatePass = true;
+  });
+  // What a stopped server's explicit one-shot install pass is called: a retry
+  // after a failed install is a reinstall, on a working server it is an update.
+  const canUpdateNow = $derived(server?.state === "offline" || server?.state === "crashed");
   // The Panel refuses a restore unless the server is stopped — the agent swaps
   // out the very files a running game holds open — so the button carries the
   // reason instead of offering a click that comes back 409.
@@ -224,26 +242,37 @@
   // settings — editable copies of the real values/variables
   let edited = $state<Record<string, string>>({});
   let editedVars = $state<Record<string, string>>({});
+  // The build pin is a server property, not a game setting, but it saves with
+  // the form. null = untouched, which is what the panel needs to hear: an
+  // ordinary settings save must never unpin a server as a side effect.
+  let editedPin = $state<boolean | null>(null);
   let settingsNote = $state<string | null>(null);
   $effect(() => {
     depth.settings; // reset edits when a new server's settings load
     edited = {};
     editedVars = {};
+    editedPin = null;
     settingsNote = null;
   });
+  const pinBuild = $derived(editedPin ?? depth.settings?.pin_build ?? false);
+  // False only when the SPEC opted out — then the pin changes nothing and the
+  // panel says so rather than offering a switch with no effect.
+  const specUpdatesOnStart = $derived(depth.settings?.updates_on_start !== false);
   function fieldValue(key: string, fallback: string | undefined): string {
     return edited[key] ?? depth.settings?.values[key] ?? fallback ?? "";
   }
   async function applySettings() {
-    settingsNote = await settingsApply({ ...edited }, { ...editedVars });
+    settingsNote = await settingsApply({ ...edited }, { ...editedVars }, editedPin ?? undefined);
     if (settingsNote) {
       edited = {};
       editedVars = {};
+      editedPin = null;
     }
   }
   function revertSettings() {
     edited = {};
     editedVars = {};
+    editedPin = null;
     settingsNote = null;
   }
 
@@ -443,7 +472,9 @@
     </button>
     <h2 class="depth-title" id="depthTitle">{name}</h2>
     <div class="depth-meta">
-      <span>state <b class={running ? "ok-txt" : ""} id="dState">{server?.state.replace("_", " ") ?? ""}</b></span>
+      <span>state <b class={running ? "ok-txt" : ""} id="dState">{updatePass
+          ? "updating"
+          : (server?.state.replace("_", " ") ?? "")}</b></span>
       <span>uptime <b>{meta.up}</b></span>
       <span>players <b>{meta.players}</b></span>
       <span>port <b>{meta.port}</b></span>
@@ -533,6 +564,29 @@
         </div>
         <div class="stn-panel p-settings">
           <div class="cfg">
+            <!-- The build pin sits above the game's own settings: it governs
+                 what the next start DOES, which is the first question an
+                 operator has on this tab. -->
+            {#if specUpdatesOnStart}
+              <label class="tgl">
+                <input
+                  type="checkbox"
+                  checked={pinBuild}
+                  onchange={(e) => (editedPin = e.currentTarget.checked)}
+                /><i></i>pin build — skip the update pass before each start</label
+              >
+              <p class="cfg-help">
+                off (default): every start re-runs the game's install script first, so the
+                server picks up updates — on a large steam tree that validate pass adds time
+                to the start. on: this server stays on the build now on disk; use update in
+                the controls to move it deliberately.
+              </p>
+            {:else}
+              <p class="cfg-help">
+                this game's spec does not update on start — its install runs at deploy and on
+                an explicit update only, so there is no pass to pin.
+              </p>
+            {/if}
             {#if depth.settings}
               {#each depth.settings.groups as group (group.id)}
                 {#each group.fields as field (field.key)}
@@ -676,8 +730,13 @@
     <div class="depth-side">
       {#if server?.state === "installing"}
         <p class="depth-notice" role="status">
-          <b>installing — the game files are downloading on the node. this can take a while for a
-            large game; the install log reads live in the console pane.</b>
+          {#if updatePass}
+            <b>updating — the game's install script is re-running on the node so the server picks
+              up any new build before it starts. the log reads live in the console pane.</b>
+          {:else}
+            <b>installing — the game files are downloading on the node. this can take a while for a
+              large game; the install log reads live in the console pane.</b>
+          {/if}
         </p>
       {/if}
       {#if server?.state === "install_failed"}
@@ -716,6 +775,18 @@
             disabled={depth.powerBusy || server?.state === "installing"}
             onclick={() => void power("start")}>start</button
           >
+          <!-- The same endpoint as the install_failed retry, under the name it
+               has on a working server: run the install script once, now. It is
+               the only way to move a pinned server (or one whose spec opted
+               out) onto a new build, and it works without starting the server. -->
+          {#if canUpdateNow}
+            <button
+              class="ctl ctl-restart"
+              disabled={depth.powerBusy}
+              title="re-run the game's install script now, without starting the server"
+              onclick={() => void reinstall()}>update</button
+            >
+          {/if}
         {/if}
       </div>
       <section class="side-block" aria-label="Players online">

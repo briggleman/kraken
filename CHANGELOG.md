@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.0](https://github.com/briggleman/kraken/compare/v0.49.0...v0.50.0) (2026-09-15)
+
+
+### Features
+
+* re-run the install pass on every start so servers update ([#308](https://github.com/briggleman/kraken/issues/308)) ([bac742c](https://github.com/briggleman/kraken/commit/bac742cf164cda86958ad6c9442dfc6c80071b9e))
+
 ## [0.49.0](https://github.com/briggleman/kraken/compare/v0.48.0...v0.49.0) (2026-09-14)
 
 

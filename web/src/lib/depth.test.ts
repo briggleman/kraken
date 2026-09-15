@@ -7,6 +7,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   UPDATE_PASS_LINE,
+  canShowInstallLog,
+  consoleRepin,
   depth,
   powerControls,
   stateLabel,
@@ -160,6 +162,80 @@ describe("syncDepthFromFleet", () => {
     depth.updatePass = true;
     surface();
     expect(depth.updatePass).toBe(false);
+  });
+});
+
+// The INSTALL LOG chip and the console viewport it swaps (#314). Both buffers
+// are 500-line rings, so the case that broke is the one where nothing about the
+// render *size* changes across the swap.
+describe("consoleRepin", () => {
+  const CAP = 500;
+
+  it("re-pins on a buffer swap even when both are at the ring cap", () => {
+    // The exact shape of the bug: a full live buffer, a full retained install
+    // log, and an effect that could only see the count.
+    const live = { buffer: "live", count: CAP } as const;
+    const install = { buffer: "install", count: CAP } as const;
+    expect(consoleRepin(live, install)).toBe("force");
+    expect(consoleRepin(install, live)).toBe("force");
+  });
+
+  it("re-pins on a swap at any length, equal or not", () => {
+    expect(consoleRepin({ buffer: "live", count: 12 }, { buffer: "install", count: 12 })).toBe(
+      "force",
+    );
+    expect(consoleRepin({ buffer: "live", count: 12 }, { buffer: "install", count: 400 })).toBe(
+      "force",
+    );
+    expect(consoleRepin(null, { buffer: "live", count: 0 })).toBe("force");
+  });
+
+  it("defers to the operator's scroll position while one buffer grows", () => {
+    // A new line on the same buffer must not drag someone who scrolled back.
+    expect(consoleRepin({ buffer: "live", count: 41 }, { buffer: "live", count: 42 })).toBe(
+      "if-pinned",
+    );
+    // ...including once the ring starts evicting, where the count holds still
+    // but the content moves.
+    expect(consoleRepin({ buffer: "live", count: CAP }, { buffer: "live", count: CAP })).toBe("no");
+  });
+});
+
+describe("canShowInstallLog", () => {
+  it("offers the chip on a server whose console is a container log", () => {
+    // running / starting / offline / crashed: the pane is tailing a container,
+    // so the retained install log is the one thing it cannot reach.
+    expect(
+      canShowInstallLog({ installing: false, retainedLines: 120, consoleHasInstallOutput: true }),
+    ).toBe(true);
+    expect(
+      canShowInstallLog({ installing: false, retainedLines: 120, consoleHasInstallOutput: false }),
+    ).toBe(true);
+  });
+
+  it("stays away while the console pane IS the install log", () => {
+    // installing / install_failed with the stream serving the same in-memory
+    // buffer: a chip here would swap a live tail for an older copy of itself.
+    expect(
+      canShowInstallLog({ installing: true, retainedLines: 120, consoleHasInstallOutput: true }),
+    ).toBe(false);
+  });
+
+  it("appears mid-install when the console has nothing to show", () => {
+    // The socket never came up, or the drill-in was opened after a Panel
+    // restart: the REST read still has the lines, and that pane is blank.
+    expect(
+      canShowInstallLog({ installing: true, retainedLines: 120, consoleHasInstallOutput: false }),
+    ).toBe(true);
+  });
+
+  it("never offers an empty log", () => {
+    expect(
+      canShowInstallLog({ installing: false, retainedLines: 0, consoleHasInstallOutput: false }),
+    ).toBe(false);
+    expect(
+      canShowInstallLog({ installing: true, retainedLines: 0, consoleHasInstallOutput: false }),
+    ).toBe(false);
   });
 });
 

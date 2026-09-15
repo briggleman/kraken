@@ -140,6 +140,62 @@ export function powerControls(state: Server["state"] | undefined): "stop" | "sta
   return state === "running" || state === "starting" || state === "stopping" ? "stop" : "start";
 }
 
+// --- the console pane's two buffers -----------------------------------------
+// The console renders either the container's live log or the retained install
+// log, and the INSTALL LOG chip swaps between them. Both are rings capped at
+// 500 lines, which is what made the swap look broken (#314): the autoscroll
+// effect was keyed on the rendered line *count* alone, so toggling between two
+// full buffers changed nothing it could see and the viewport stayed exactly
+// where the old buffer had been left. The log had swapped; the pane had not
+// moved. These two helpers carry that reasoning as logic rather than as an
+// effect's dependency list.
+
+/** Which of the two the console is rendering. */
+export type ConsoleBuffer = "live" | "install";
+
+export interface ConsoleView {
+  buffer: ConsoleBuffer;
+  /** How many lines that buffer currently renders. */
+  count: number;
+}
+
+/** What the console viewport owes the next render.
+ *
+ *  - `force` — a different buffer is on screen. It is a different document, so
+ *    it opens at its tail whatever the operator had scrolled the last one to.
+ *  - `if-pinned` — the same buffer, longer. Honour the pin: someone reading
+ *    back through a noisy install must not be dragged to the bottom by the next
+ *    line.
+ *  - `no` — nothing changed; do not touch scrollTop, and do not pay for the
+ *    forced layout that reading scrollHeight costs (#279). */
+export function consoleRepin(prev: ConsoleView | null, next: ConsoleView): "no" | "if-pinned" | "force" {
+  if (!prev || prev.buffer !== next.buffer) return "force";
+  return next.count === prev.count ? "no" : "if-pinned";
+}
+
+/** Whether the INSTALL LOG chip has anything to offer.
+ *
+ *  It needs a retained log to show, and it must not be offered while the
+ *  console pane is *already* that log: during `installing` and `install_failed`
+ *  the Panel's stream gate serves the same in-memory install buffer this chip
+ *  snapshots (handlers_stream.go serveInstallStream, and the REST read, both
+ *  read the one entry), so the chip would swap a live tail for an older copy of
+ *  itself — which is the very "the toggle does nothing" complaint.
+ *
+ *  The gate is therefore on the console *actually carrying* that output, not on
+ *  the state alone. A pass whose socket never came up, or a drill-in opened
+ *  after a Panel restart, leaves the pane blank in a state where the retained
+ *  read still has the lines — and there the chip is exactly what is wanted, so
+ *  it appears. */
+export function canShowInstallLog(opts: {
+  installing: boolean;
+  retainedLines: number;
+  consoleHasInstallOutput: boolean;
+}): boolean {
+  if (opts.retainedLines === 0) return false;
+  return !(opts.installing && opts.consoleHasInstallOutput);
+}
+
 export function openDepth(id: string, x: number, y: number, returnTo?: HTMLElement | null) {
   lastFocus = returnTo ?? null;
   depth.origin = {

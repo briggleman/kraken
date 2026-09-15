@@ -24,7 +24,10 @@
     syncUpdatePass,
     stateLabel,
     powerControls,
+    canShowInstallLog,
+    consoleRepin,
   } from "@/lib/depth.svelte";
+  import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
@@ -89,8 +92,18 @@
   // still be read. Offered once the install phase is over — during it the
   // console is already showing them live.
   const installLines = $derived(depth.installLog?.lines ?? []);
-  const canShowInstallLog = $derived(!installing && installLines.length > 0);
-  const showingInstall = $derived(canShowInstallLog && depth.installLogOpen);
+  // Offered whenever the console pane is not already the install log itself —
+  // see canShowInstallLog in the store for why that is the gate rather than the
+  // state (#314). haveInstallLog above is the same question the failure notice
+  // asks: are those lines in hand, or is the socket still working on them.
+  const showInstallChip = $derived(
+    canShowInstallLog({
+      installing,
+      retainedLines: installLines.length,
+      consoleHasInstallOutput: haveInstallLog,
+    }),
+  );
+  const showingInstall = $derived(showInstallChip && depth.installLogOpen);
   // Both sources share the console's row shape so one keyed `{#each}` renders
   // either. The retained install log is a static snapshot, so its index is a
   // stable key; live lines carry their own seq because the ring evicts from the
@@ -132,9 +145,28 @@
     if (!consoleLog) return;
     pinned = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < PIN_SLACK_PX;
   }
+  // Keyed on which buffer is rendered as well as on how many lines it has: both
+  // rings cap at 500, so a toggle between two full buffers is invisible to a
+  // length alone and the viewport was left sitting where the *previous* log had
+  // been scrolled to — which reads as the chip having done nothing (#314). A
+  // swap re-pins unconditionally: the operator asked for this log, so it opens
+  // at its tail whatever they had scrolled the last one to.
+  let shown: ConsoleView | null = null;
+  let shownEl: HTMLDivElement | undefined;
   $effect(() => {
-    logLines.length;
-    if (consoleLog && pinned) consoleLog.scrollTop = consoleLog.scrollHeight;
+    const el = consoleLog;
+    const next: ConsoleView = {
+      buffer: showingInstall ? "install" : "live",
+      count: logLines.length,
+    };
+    // A fresh pane element is a fresh document too — drilling into another
+    // server remounts the keyed console, and its scrollTop starts at 0.
+    const want = el !== shownEl ? "force" : consoleRepin(shown, next);
+    shown = next;
+    shownEl = el;
+    if (!el || want === "no") return;
+    if (want === "force") pinned = true;
+    if (pinned) el.scrollTop = el.scrollHeight;
   });
 
   // A clamped line still holds its original text; the affordance hands that over
@@ -493,7 +525,7 @@
                installed "successfully" and then never started has no container
                log to tail, so without this the console is blank for exactly the
                failure that is hardest to diagnose (#280). -->
-          {#if canShowInstallLog}
+          {#if showInstallChip}
             <button
               type="button"
               class="stn-chip"
@@ -752,7 +784,7 @@
            means. -->
       {#if server?.state === "crashed" && crashExit}
         <p class="depth-notice bad" role="alert">
-          <b>crashed — {crashExit}{canShowInstallLog
+          <b>crashed — {crashExit}{showInstallChip
               ? ". the install log is still readable in the console pane."
               : ""}</b>
         </p>

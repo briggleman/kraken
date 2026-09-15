@@ -3,9 +3,9 @@
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
-  import { fleet, fleetHealth, fmtAge } from "@/lib/fleet.svelte";
+  import { fleet, fleetHealth } from "@/lib/fleet.svelte";
   import { logout } from "@/lib/auth.svelte";
-  import { fmtHm } from "@/lib/fmt";
+  import { fmtAge, fmtHm } from "@/lib/fmt";
 
   // the events floor shows the audit tail — the four most recent entries
   const recent = $derived(fleet.audit.slice(0, 4));

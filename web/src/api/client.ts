@@ -67,6 +67,14 @@ export class ApiError extends Error {
   }
 }
 
+/** What a caught value says for itself. A `catch` binding is `unknown` and a
+ *  rejected promise can carry anything, so every call site that puts a failure
+ *  on screen has to answer this — it lives here, beside the error the answer is
+ *  usually about, rather than being re-typed at each of them. */
+export function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();

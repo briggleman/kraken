@@ -1,9 +1,10 @@
 // The fleet poll's failure behaviour (#313). The poll reads three independent
 // resources on one tick, and the bug was that it treated them as one: a single
 // rejected sibling discarded the whole tick, so every server state froze on the
-// last good snapshot and nothing on screen said so. These tests pin the three
-// halves of the fix — what survives a partial failure, when the header stops
-// calling the deck live, and what re-polls it off-cadence.
+// last good snapshot and nothing on screen said so. These tests pin what
+// survives a partial failure, what "ping" and "loaded" are allowed to mean
+// afterwards, when the header stops calling the deck live, and the cadence that
+// keeps a transition from waiting out a resting interval.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,18 +20,21 @@ vi.mock("@/api/client", () => ({
     listNodes: () => listNodes(),
     listAudit: () => listAudit(),
   },
+  errMsg: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
 import {
-  PANEL_LINE_PREFIX,
   STALE_AFTER_MS,
   fleet,
   fleetHealth,
-  fmtAge,
-  notePanelLifecycle,
+  fleetPollMs,
   refreshFleet,
-  resetLifecycleWatch,
+  resumeStaleClock,
+  startFleetPolling,
+  stopFleetPolling,
+  suspendStaleClock,
 } from "./fleet.svelte";
+import { fmtAge } from "./fmt";
 import type { Node, Server, Spec } from "@/api/types";
 
 function server(id: string, state: Server["state"]): Server {
@@ -58,16 +62,24 @@ function allOk() {
   listAudit.mockResolvedValue({ entries: [] });
 }
 
+/** A promise that resolves only when the test says so. */
+function deferred<T>() {
+  let settle!: (v: T) => void;
+  const promise = new Promise<T>((res) => (settle = res));
+  return { promise, settle };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
-  resetLifecycleWatch();
+  // Also the reset hook for the first-paint guarantee and the hidden clock.
+  stopFleetPolling();
   fleet.servers = [];
   fleet.specs = [];
   fleet.nodes = [];
   fleet.audit = [];
   fleet.panelVersion = "";
-  fleet.failed = [];
+  fleet.pingMs = 0;
   fleet.lastError = null;
   fleet.lastOkMs = 0;
   fleet.loaded = false;
@@ -80,7 +92,6 @@ describe("refreshFleet", () => {
     expect(fleet.servers[0].state).toBe("installing");
     expect(fleet.specs).toHaveLength(1);
     expect(fleet.nodes).toHaveLength(1);
-    expect(fleet.failed).toEqual([]);
 
     // The next tick: /nodes falls over while the server finishes its pass.
     // Before the fix the whole tick was discarded and the card stayed
@@ -93,7 +104,6 @@ describe("refreshFleet", () => {
     expect(fleet.specs).toHaveLength(1);
     expect(fleet.nodes).toEqual([NODE]); // the previous value, not an empty fleet
     expect(fleet.panelVersion).toBe("0.50.1");
-    expect(fleet.failed).toEqual(["nodes"]);
     expect(fleet.lastError).toContain("nodes: 502 bad gateway");
   });
 
@@ -103,21 +113,20 @@ describe("refreshFleet", () => {
     await refreshFleet();
 
     expect(fleet.servers).toHaveLength(1);
-    expect(fleet.failed).toEqual(["specs", "nodes"]);
-    expect(fleet.loaded).toBe(true); // the servers read is what that line gates
+    expect(fleet.lastError).toContain("specs: timeout");
+    expect(fleet.lastError).toContain("nodes: timeout");
   });
 
   it("clears the error and re-stamps freshness once a whole tick lands", async () => {
     listNodes.mockRejectedValue(new Error("502"));
     await refreshFleet();
-    const stamped = fleet.lastOkMs;
     expect(fleet.lastError).not.toBeNull();
+    expect(fleet.lastOkMs).toBe(0); // a partial tick is not a fresh one
 
     allOk();
     await refreshFleet();
-    expect(fleet.failed).toEqual([]);
     expect(fleet.lastError).toBeNull();
-    expect(fleet.lastOkMs).toBeGreaterThanOrEqual(stamped);
+    expect(fleet.lastOkMs).toBeGreaterThan(0);
   });
 
   it("never counts audit against freshness — a viewer may not be allowed to read it", async () => {
@@ -125,8 +134,66 @@ describe("refreshFleet", () => {
     // rejection that gets past a caller who did not wrap it.
     listAudit.mockRejectedValue(new Error("403 forbidden"));
     await expect(refreshFleet()).resolves.toBeUndefined();
-    expect(fleet.failed).toEqual([]);
     expect(fleet.lastError).toBeNull();
+    expect(fleet.lastOkMs).toBeGreaterThan(0);
+  });
+
+  it("only calls it a ping when the whole tick answered", async () => {
+    await refreshFleet();
+    const good = fleet.pingMs;
+    expect(good).toBeLessThan(50);
+
+    // A read that sits out its timeout and then rejects measures the failure,
+    // not the link. Rendering that as "live · ping 20.0s" reports a round trip
+    // the header is not showing the result of.
+    listSpecs.mockImplementation(
+      () => new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 120)),
+    );
+    await refreshFleet();
+    expect(fleet.lastError).toContain("specs: timeout");
+    expect(fleet.pingMs).toBe(good); // still the last honest measurement
+  });
+
+  it("discards a slow older response instead of letting it undo a newer one", async () => {
+    // Two ticks in flight at once — the timer and an imperative caller. The
+    // first is slower, and used to land last and write `starting` back over the
+    // `running` the second had already applied.
+    const slow = deferred<{ servers: Server[] }>();
+    listServers.mockReturnValueOnce(slow.promise);
+    const first = refreshFleet();
+
+    listServers.mockResolvedValue({ servers: [server("srv-1", "running")] });
+    await refreshFleet();
+    expect(fleet.servers[0].state).toBe("running");
+    const fresh = fleet.lastOkMs;
+
+    slow.settle({ servers: [server("srv-1", "starting")] });
+    await first;
+    expect(fleet.servers[0].state).toBe("running");
+    expect(fleet.lastOkMs).toBe(fresh); // and it does not re-stamp freshness either
+  });
+});
+
+describe("fleet.loaded", () => {
+  it("waits for servers, specs and nodes to each have answered once", async () => {
+    // The empty-roster line points at a node band's New Server as the only way
+    // to create anything, and a card with no spec renders a raw UUID — so a
+    // first paint with either read missing offers an instruction the screen
+    // cannot carry out.
+    listNodes.mockRejectedValue(new Error("502"));
+    await refreshFleet();
+    expect(fleet.servers).toHaveLength(1);
+    expect(fleet.loaded).toBe(false);
+
+    allOk();
+    await refreshFleet();
+    expect(fleet.loaded).toBe(true);
+
+    // Once the deck has been painted, a later partial failure keeps it — the
+    // previous values are still on screen, which is the point of the change.
+    listNodes.mockRejectedValue(new Error("502"));
+    await refreshFleet();
+    expect(fleet.loaded).toBe(true);
   });
 });
 
@@ -151,6 +218,37 @@ describe("fleetHealth", () => {
     expect(fleetHealth(Date.now()).stale).toBe(false);
   });
 
+  it("holds the clock still while the tab is hidden", () => {
+    // Polling disarms while hidden, so an age that ran on through a lunch break
+    // would paint "stale · 2h" on return — a lie about the panel, which was
+    // never asked.
+    const t0 = 1_000_000;
+    fleet.lastOkMs = t0;
+    suspendStaleClock(t0 + 1_000);
+    resumeStaleClock(t0 + 1_000 + 40 * 60_000);
+    expect(fleetHealth(t0 + 1_000 + 40 * 60_000).stale).toBe(false);
+    expect(fleetHealth(t0 + 1_000 + 40 * 60_000).ageMs).toBe(1_000);
+  });
+
+  it("does not let a stop/start cycle hide a real outage", async () => {
+    // The auth effect toggles the pair, and re-stamping on every start would
+    // buy the outage another full budget of silence.
+    listServers.mockRejectedValue(new Error("down"));
+    listSpecs.mockRejectedValue(new Error("down"));
+    listNodes.mockRejectedValue(new Error("down"));
+    const t0 = Date.now() - (STALE_AFTER_MS + 5_000);
+    fleet.lastOkMs = t0;
+
+    startFleetPolling();
+    expect(fleet.lastOkMs).toBe(t0);
+    expect(fleetHealth().stale).toBe(true);
+    stopFleetPolling();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fleet.lastOkMs).toBe(t0); // and stopping does not clear it either
+    expect(fleetHealth().stale).toBe(true);
+  });
+
   it("writes the age the way the readouts do", () => {
     expect(fmtAge(45_000)).toBe("45s");
     expect(fmtAge(59_999)).toBe("59s");
@@ -160,42 +258,41 @@ describe("fleetHealth", () => {
   });
 });
 
-describe("notePanelLifecycle", () => {
-  function line(seq: number, text: string) {
-    return { seq, text };
-  }
+describe("startFleetPolling / stopFleetPolling", () => {
+  it("takes its visibilitychange listener back down", async () => {
+    // The auth effect toggles the pair on every sign-in and sign-out, so a
+    // listener left behind accumulates one more disarm/rearm racer per cycle.
+    const add = vi.spyOn(document, "addEventListener");
+    const remove = vi.spyOn(document, "removeEventListener");
+    try {
+      startFleetPolling();
+      const registered = add.mock.calls.filter((c) => c[0] === "visibilitychange");
+      expect(registered).toHaveLength(1);
 
-  it("re-polls on a lifecycle line and coalesces the burst behind it", async () => {
-    vi.useFakeTimers();
-    const lines = [line(1, "LogInit: Display: BuildId 240163")];
-    expect(notePanelLifecycle(lines)).toBe(false); // container output is not a phase
-
-    lines.push(line(2, PANEL_LINE_PREFIX + "update complete — starting dragonwilds-01"));
-    expect(notePanelLifecycle(lines)).toBe(true);
-    lines.push(line(3, PANEL_LINE_PREFIX + "install complete — dragonwilds-01 is ready to start"));
-    expect(notePanelLifecycle(lines)).toBe(true);
-
-    expect(listServers).not.toHaveBeenCalled(); // still coalescing
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(listServers).toHaveBeenCalledTimes(1); // two lines, one request
-    vi.useRealTimers();
+      stopFleetPolling();
+      const removed = remove.mock.calls.filter((c) => c[0] === "visibilitychange");
+      expect(removed).toHaveLength(1);
+      expect(removed[0][1]).toBe(registered[0][1]); // the same function, not a new closure
+      await Promise.resolve();
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+      stopFleetPolling();
+    }
   });
+});
 
-  it("does not re-arm on lines it has already seen", async () => {
-    vi.useFakeTimers();
-    const lines = [line(7, PANEL_LINE_PREFIX + "provisioning dragonwilds-01 on abyss-win")];
-    expect(notePanelLifecycle(lines)).toBe(true);
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(listServers).toHaveBeenCalledTimes(1);
+describe("fleetPollMs", () => {
+  it("speeds up while anything is mid-transition and rests otherwise", () => {
+    const resting = fleetPollMs([server("a", "running"), server("b", "offline")]);
+    expect(resting).toBe(10_000);
 
-    // The same buffer re-read on a repaint, and an older line arriving behind
-    // it: the seq is monotonic, so neither is new.
-    expect(notePanelLifecycle(lines)).toBe(false);
-    expect(notePanelLifecycle([line(3, PANEL_LINE_PREFIX + "updating dragonwilds-01"), ...lines])).toBe(
-      false,
-    );
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(listServers).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
+    for (const st of ["installing", "starting", "stopping"] as Server["state"][]) {
+      expect(fleetPollMs([server("a", "running"), server("b", st)]), st).toBeLessThan(resting);
+    }
+    // A settled fleet of failures is not a transition — nothing resolves on its
+    // own, so there is nothing to watch for.
+    expect(fleetPollMs([server("a", "crashed"), server("b", "install_failed")])).toBe(resting);
+    expect(fleetPollMs([])).toBe(resting);
   });
 });

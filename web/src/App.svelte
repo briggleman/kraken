@@ -19,21 +19,9 @@
   import Setup from "@/surfaces/Setup.svelte";
   import { startSim, ui, closeSheet, closeConfirm } from "@/lib/state.svelte";
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
-  import {
-    fleet,
-    notePanelLifecycle,
-    startFleetPolling,
-    stopFleetPolling,
-  } from "@/lib/fleet.svelte";
+  import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
-  import {
-    depth,
-    surface,
-    syncDepthFromFleet,
-    sftpHide,
-    bootDeepLinks,
-    stream,
-  } from "@/lib/depth.svelte";
+  import { depth, surface, syncDepthFromFleet, sftpHide, bootDeepLinks } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
   startSim();
@@ -65,17 +53,6 @@
   $effect(() => {
     fleet.servers;
     syncDepthFromFleet();
-  });
-
-  // ...and the console socket that is already open keeps the poll honest in the
-  // other direction. The Panel writes its own `[panel]` lines as a run changes
-  // phase, so one of those arriving is the earliest notice the client has that
-  // a state flip is due — it asks for a refresh rather than letting the flip
-  // wait on the next timer tick landing (#313). Pushing the state itself over
-  // this socket would be a Panel change; this is the client-side half.
-  $effect(() => {
-    stream.lines.length;
-    notePanelLifecycle(stream.lines);
   });
 
   // Escape routing, top layer first (The Topmost Closes Last Rule):

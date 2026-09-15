@@ -1,27 +1,30 @@
-// Fleet data — servers, specs, and nodes polled together every 10s, exactly
-// the old Fleet page's cadence, pausing while the tab is hidden and catching
-// up immediately on return.
+// Fleet data — servers, specs, and nodes polled together, pausing while the
+// tab is hidden and catching up immediately on return.
 
-import { api } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 import type { AuditEntry, Node, Server, Spec } from "@/api/types";
 
+/** The resting cadence, and the old Fleet page's. */
 const POLL_MS = 10_000;
 
-// How many poll intervals may pass with no *fully* successful refresh before
-// the header stops claiming the deck is live. Three is one tick for the blip
-// itself plus two for a retry to land — short enough that an operator watching
-// an install pass sees the freeze inside half a minute, long enough that a
-// single slow /nodes call does not flicker the indicator (#313).
+// ...and the cadence while anything in the fleet is mid-transition. These
+// states resolve on their own within seconds to minutes, and 10s of them is
+// long enough that a finished install still reads as running — which is the
+// stale-card complaint in #313 arriving by a second road. Watching the state
+// itself covers the fleet grid and the drill-in alike, and needs no console log
+// to parse. Every imperative act (power, reinstall, create, delete) already
+// refreshes off its own response, so this is only about transitions the Panel
+// makes on its own.
+const TRANSIENT_POLL_MS = 2_500;
+const TRANSIENT_STATES: readonly Server["state"][] = ["installing", "starting", "stopping"];
+
+// How many resting poll intervals may pass with no *fully* successful refresh
+// before the header stops claiming the deck is live. Three is one tick for the
+// blip itself plus two for a retry to land — short enough that an operator
+// watching an install pass sees the freeze inside half a minute, long enough
+// that a single slow /nodes call does not flicker the indicator (#313).
 export const STALE_POLLS = 3;
 export const STALE_AFTER_MS = STALE_POLLS * POLL_MS;
-
-// After a poke (a Panel lifecycle line, see pokeFleet) the fleet is re-read
-// off-cadence. Bursts of lines arrive together, so they coalesce into one
-// request on this delay rather than one request per line.
-const POKE_MS = 400;
-
-/** Which of the poll's three required reads failed on the last tick. */
-export type FleetSource = "servers" | "specs" | "nodes";
 
 export const fleet = $state({
   servers: [] as Server[],
@@ -36,13 +39,14 @@ export const fleet = $state({
   panelAgentSha: {} as Record<string, string>,
   pingMs: 0,
   loaded: false,
+  // The reads that failed on the most recent tick, each named, or null when the
+  // tick was whole. The header hands this to the operator as the title on its
+  // stale reading — it is the only account of *what* went quiet.
   lastError: null as string | null,
-  // Which reads failed on the most recent tick, and when the most recent tick
-  // in which *none* of them failed completed. A poll that loses one sibling
-  // keeps the other two, so "the deck is current" is no longer the same
-  // question as "the last request succeeded" — this is the pair that answers
-  // it (#313).
-  failed: [] as FleetSource[],
+  // When the most recent tick in which nothing failed completed. A poll that
+  // loses one sibling keeps the other two, so "the deck is current" stopped
+  // being the same question as "the last request succeeded" — this is what
+  // answers it (#313).
   lastOkMs: 0,
 });
 
@@ -54,18 +58,35 @@ export function nodeOf(server: Server): Node | undefined {
   return fleet.nodes.find((n) => n.id === server.node_id);
 }
 
-function why(r: PromiseRejectedResult): string {
-  const e = r.reason;
-  return e instanceof Error ? e.message : String(e);
+/** How often the fleet should be re-read right now. */
+export function fleetPollMs(servers: readonly Server[]): number {
+  return servers.some((s) => TRANSIENT_STATES.includes(s.state)) ? TRANSIENT_POLL_MS : POLL_MS;
 }
+
+// Every read must have answered at least once before the deck is called loaded:
+// the empty-roster line points at a node band's New Server as the only way to
+// create anything, so rendering it with a failed /nodes read offers an
+// instruction the screen cannot carry out, and a failed /specs read renders
+// every card's spec as a raw UUID. Subsequent partial failures keep the
+// previous values, which is the whole point of the change — this is only about
+// the very first paint.
+const everAnswered = { servers: false, specs: false, nodes: false };
+
+// Responses are applied in issue order, not arrival order. The timer, the
+// visibility catch-up and a dozen imperative callers overlap freely, and a slow
+// older response landing last would write `starting` back over `running` and
+// re-stamp freshness with data from before the flip.
+let issued = 0;
+let appliedGen = 0;
 
 /** One poll tick. Partial-failure tolerant on purpose: the three reads are
  *  independent resources, and a rejected `/nodes` used to discard the servers
  *  the same tick had already fetched — so every server state froze on the last
  *  good snapshot with nothing on screen saying so (#313). Whatever answered is
  *  applied; whatever did not keeps its previous value and is named in
- *  `fleet.failed`, which is what turns the header's live dot amber. */
+ *  `fleet.lastError`, and only a whole tick re-stamps freshness. */
 export async function refreshFleet(): Promise<void> {
+  const gen = ++issued;
   const t0 = performance.now();
   const [s, sp, n, a] = await Promise.allSettled([
     api.listServers(),
@@ -73,43 +94,44 @@ export async function refreshFleet(): Promise<void> {
     api.listNodes(),
     api.listAudit().catch(() => ({ entries: null })), // viewers may lack audit read
   ]);
-  fleet.pingMs = Math.round(performance.now() - t0);
+  if (gen <= appliedGen) return; // a newer tick already landed; this one is history
+  appliedGen = gen;
 
-  const failed: FleetSource[] = [];
   const errors: string[] = [];
 
-  if (s.status === "fulfilled") {
-    fleet.servers = s.value.servers ?? [];
-    // The empty-roster line is about the servers read and nothing else, so it
-    // unblocks as soon as that one answers.
-    fleet.loaded = true;
-  } else {
-    failed.push("servers");
-    errors.push("servers: " + why(s));
+  /** Apply one read, or account for why it is missing. */
+  function take<T>(name: keyof typeof everAnswered, r: PromiseSettledResult<T>, apply: (v: T) => void) {
+    if (r.status === "fulfilled") {
+      apply(r.value);
+      everAnswered[name] = true;
+      return;
+    }
+    errors.push(name + ": " + errMsg(r.reason));
   }
 
-  if (sp.status === "fulfilled") {
-    fleet.specs = sp.value.specs ?? [];
-  } else {
-    failed.push("specs");
-    errors.push("specs: " + why(sp));
-  }
-
-  if (n.status === "fulfilled") {
-    fleet.nodes = n.value.nodes ?? [];
-    fleet.panelVersion = n.value.panel_version ?? "";
-    fleet.panelAgentSha = n.value.panel_agent_sha ?? {};
-  } else {
-    failed.push("nodes");
-    errors.push("nodes: " + why(n));
-  }
+  take("servers", s, (v) => {
+    fleet.servers = v.servers ?? [];
+  });
+  take("specs", sp, (v) => {
+    fleet.specs = v.specs ?? [];
+  });
+  take("nodes", n, (v) => {
+    fleet.nodes = v.nodes ?? [];
+    fleet.panelVersion = v.panel_version ?? "";
+    fleet.panelAgentSha = v.panel_agent_sha ?? {};
+  });
 
   // Audit is already best-effort above (a viewer may not be allowed to read
   // it), so it never counts against freshness.
   if (a.status === "fulfilled") fleet.audit = a.value.entries ?? [];
 
-  fleet.failed = failed;
-  if (failed.length === 0) {
+  if (everAnswered.servers && everAnswered.specs && everAnswered.nodes) fleet.loaded = true;
+
+  if (errors.length === 0) {
+    // Only a whole tick is a round trip worth reporting. A rejection can come
+    // back in a millisecond or sit out a 20s timeout, and either one rendered
+    // as "ping" describes the failure rather than the link.
+    fleet.pingMs = Math.round(performance.now() - t0);
     fleet.lastOkMs = Date.now();
     fleet.lastError = null;
   } else {
@@ -127,104 +149,86 @@ export function fleetHealth(nowMs: number = Date.now()): { stale: boolean; ageMs
   return { stale: ageMs > STALE_AFTER_MS, ageMs };
 }
 
-/** The age beside a stale dot, in the readouts' voice: 45s, 4m, 2h. Coarse on
- *  purpose — the number is there to say "older than you think", not to be
- *  read to the second. */
-export function fmtAge(ms: number): string {
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return sec + "s";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + "m";
-  return Math.floor(min / 60) + "h";
+// --- the staleness clock across a hidden tab --------------------------------
+// Polling disarms while the tab is hidden, so without this the age would run on
+// through a lunch break and the header would paint "stale · 2h" on return for
+// the moment before the catch-up poll lands. That is a lie about the panel: the
+// deck is not out of date, it was not being asked. The clock holds still for
+// exactly as long as nobody is looking.
+
+let hiddenAt = 0;
+
+export function suspendStaleClock(nowMs: number = Date.now()) {
+  if (!hiddenAt) hiddenAt = nowMs;
 }
 
-// --- lifecycle pokes --------------------------------------------------------
-// The Panel writes its own lines into a server's install buffer as a run moves
-// through its phases, and those lines reach the browser over the console
-// socket that is already open. They are the earliest notice the client gets
-// that a server's state is about to change — earlier than the next poll, and
-// available even when that poll fails — so a lifecycle line asks for a refresh
-// instead of leaving the flip to the timer (#313).
-
-/** The prefix the Panel puts on every line it writes itself (handlers_server.go
- *  — provisioning, install complete, updating, update complete, install
- *  failed). Container output never carries it. */
-export const PANEL_LINE_PREFIX = "[panel] ";
-
-let pokeTimer: ReturnType<typeof setTimeout> | undefined;
-let seenLifecycleSeq = -1;
-
-/** Re-poll shortly, coalescing a burst of callers into one request. */
-export function pokeFleet() {
-  if (pokeTimer !== undefined) return;
-  pokeTimer = setTimeout(() => {
-    pokeTimer = undefined;
-    void refreshFleet();
-  }, POKE_MS);
+export function resumeStaleClock(nowMs: number = Date.now()) {
+  if (!hiddenAt) return;
+  if (fleet.lastOkMs) fleet.lastOkMs += Math.max(0, nowMs - hiddenAt);
+  hiddenAt = 0;
 }
 
-/** Fold the console's current lines into the poke. Returns whether this call
- *  found a lifecycle line it had not seen before — the seq is monotonic per
- *  stream instance, so a replayed buffer re-arms nothing and a poke costs one
- *  request per phase, not one per repaint. */
-export function notePanelLifecycle(lines: readonly { seq: number; text: string }[]): boolean {
-  let newest = seenLifecycleSeq;
-  for (const l of lines) {
-    if (l.seq > newest && l.text.startsWith(PANEL_LINE_PREFIX)) newest = l.seq;
-  }
-  if (newest === seenLifecycleSeq) return false;
-  seenLifecycleSeq = newest;
-  pokeFleet();
-  return true;
-}
-
-/** Forget which lifecycle lines have been seen — a different server's stream is
- *  a different account of a different run. */
-export function resetLifecycleWatch() {
-  seenLifecycleSeq = -1;
-  if (pokeTimer !== undefined) {
-    clearTimeout(pokeTimer);
-    pokeTimer = undefined;
-  }
-}
-
-let timer: ReturnType<typeof setInterval> | undefined;
+let timer: ReturnType<typeof setTimeout> | undefined;
 let started = false;
+let onVisibility: (() => void) | undefined;
+
+function disarm() {
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    timer = undefined;
+  }
+}
+
+// A chained timeout rather than an interval: the cadence is a function of what
+// the fleet is doing, so it has to be re-decided after every tick.
+function arm() {
+  disarm();
+  timer = setTimeout(() => void tick(), fleetPollMs(fleet.servers));
+}
+
+async function tick() {
+  timer = undefined;
+  await refreshFleet();
+  if (started && !document.hidden) arm();
+}
 
 export function startFleetPolling() {
   if (started) return;
   started = true;
-  // The clock starts now, not at the first success: a session whose very first
-  // poll never lands is exactly the case that must go stale rather than sit on
-  // an empty deck claiming to be live.
-  fleet.lastOkMs = Date.now();
-  const arm = () => {
-    if (timer === undefined) timer = setInterval(() => void refreshFleet(), POLL_MS);
-  };
-  const disarm = () => {
-    if (timer !== undefined) {
-      clearInterval(timer);
-      timer = undefined;
-    }
-  };
-  document.addEventListener("visibilitychange", () => {
+  // Only on the very first start. Re-stamping on every start would let the
+  // auth effect's stop/start cycle hide a real outage for another 30 seconds.
+  if (!fleet.lastOkMs) fleet.lastOkMs = Date.now();
+  onVisibility = () => {
     if (document.hidden) {
       disarm();
+      suspendStaleClock();
     } else {
+      resumeStaleClock();
       void refreshFleet(); // catch up immediately on return, then resume
       arm();
     }
-  });
+  };
+  document.addEventListener("visibilitychange", onVisibility);
   void refreshFleet();
   arm();
 }
 
 export function stopFleetPolling() {
-  if (timer !== undefined) {
-    clearInterval(timer);
-    timer = undefined;
+  disarm();
+  if (onVisibility) {
+    // The auth effect toggles this pair, so a listener left behind accumulates
+    // one more disarm/rearm racer per sign-out.
+    document.removeEventListener("visibilitychange", onVisibility);
+    onVisibility = undefined;
   }
-  resetLifecycleWatch();
-  fleet.lastOkMs = 0;
+  hiddenAt = 0;
+  // lastOkMs deliberately survives: a stop/start during an outage must not
+  // reset the age that is reporting it. The first-paint guarantee does not —
+  // the next session gets its own complete first read before the deck claims
+  // to be showing the estate.
+  everAnswered.servers = false;
+  everAnswered.specs = false;
+  everAnswered.nodes = false;
+  fleet.loaded = false;
   started = false;
 }

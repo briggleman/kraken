@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.51.0](https://github.com/briggleman/kraken/compare/v0.50.2...v0.51.0) (2026-09-15)
+
+
+### Features
+
+* **panel:** stream file downloads through a short-lived token ([#323](https://github.com/briggleman/kraken/issues/323)) ([776ae66](https://github.com/briggleman/kraken/commit/776ae66c7a9d3fddd0b3bcaa0b30fdf7ad5ac194))
+
+
+### Bug Fixes
+
+* **web:** console key, stale clock on hidden start, and shared error formatting ([#321](https://github.com/briggleman/kraken/issues/321)) ([d5e99b9](https://github.com/briggleman/kraken/commit/d5e99b9bcceaea30db17b0726b496f0332e71df6))
+
 ## [0.50.2](https://github.com/briggleman/kraken/compare/v0.50.1...v0.50.2) (2026-09-15)
 
 

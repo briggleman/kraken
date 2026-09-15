@@ -231,7 +231,7 @@ export const api = {
   getServer(id: string): Promise<Server> {
     return request("GET", `/servers/${id}`);
   },
-  createServer(input: { spec_id: string; name: string; variables?: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean; node_id?: string; memory_mb?: number }): Promise<Server> {
+  createServer(input: { spec_id: string; name: string; variables?: Record<string, string>; steam_guard_code?: string; install_bepinex?: boolean; pin_build?: boolean; node_id?: string; memory_mb?: number }): Promise<Server> {
     return request("POST", "/servers", input);
   },
   powerServer(id: string, action: PowerActionName): Promise<{ state: string }> {
@@ -358,8 +358,13 @@ export const api = {
     id: string,
     values: Record<string, string>,
     variables?: Record<string, string>, // launch-variable edits: stopped servers only, apply on next start
+    pinBuild?: boolean, // build pin: omitted leaves it alone, so an ordinary save never unpins
   ): Promise<UpdateSettingsResult> {
-    return request("PUT", `/servers/${id}/settings`, { values, ...(variables && Object.keys(variables).length ? { variables } : {}) });
+    return request("PUT", `/servers/${id}/settings`, {
+      values,
+      ...(variables && Object.keys(variables).length ? { variables } : {}),
+      ...(pinBuild === undefined ? {} : { pin_build: pinBuild }),
+    });
   },
 
   listSpecs(): Promise<{ specs: Spec[] | null }> {

@@ -31,7 +31,7 @@ LDFLAGS := -s -w \
 
 .DEFAULT_GOAL := build
 .PHONY: help build build-web build-go proto embed-agents \
-        test test-race fmt vet staticcheck lint check \
+        test test-race test-web fmt vet staticcheck lint check \
         db-up db-down db-reset \
         dev-panel dev-agent dev-web seed \
         image-panel image-agent images \
@@ -73,6 +73,10 @@ test:
 test-race:
 	go test -race ./...
 
+## Web unit tests (vitest, store/logic level).
+test-web:
+	npm --prefix web test
+
 ## Fail if any file needs gofmt. Matches the CI check.
 fmt:
 	@out="$$(gofmt -l internal cmd)"; \
@@ -91,7 +95,7 @@ staticcheck:
 lint: fmt vet staticcheck
 
 ## Everything CI runs (equivalent to a green ci.yml go job).
-check: build-web fmt vet staticcheck test-race
+check: build-web test-web fmt vet staticcheck test-race
 
 # ---- postgres ------------------------------------------------------------
 

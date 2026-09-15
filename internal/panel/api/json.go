@@ -28,10 +28,21 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorBody{Error: msg})
 }
 
+// maxJSONBody caps every JSON request body the API will read. Sized off the
+// largest legitimate one: the in-browser editor saves a file through
+// POST /files/write, and it will load a file up to maxEditBytes (1 MiB), which
+// JSON string-escaping can inflate several times over. 4 MiB clears that with
+// room to spare while still bounding what one request can make the Panel hold.
+// Bulk paths do not come through here — a spec upload reads its own limited
+// body, and file uploads are multipart.
+const maxJSONBody = 4 << 20
+
 // decodeJSON decodes the request body into v, rejecting unknown fields and
-// reporting a 400-friendly error on failure.
+// reporting a 400-friendly error on failure. The body is capped at
+// maxJSONBody: without it any authenticated caller could pin arbitrary Panel
+// memory with one request, since json.Decoder reads until the body ends.
 func decodeJSON(r *http.Request, v any) error {
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxJSONBody))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }

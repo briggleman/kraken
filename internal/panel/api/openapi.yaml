@@ -500,15 +500,113 @@ paths:
     get:
       tags: [Files]
       summary: Download a single file (raw bytes)
-      parameters: [ { name: path, in: query, required: true, schema: { type: string } } ]
+      description: >
+        Streams the file. Authenticate either with the ordinary session bearer,
+        or with a one-time `token` from /files/download-token — the token form
+        is what lets a plain download link carry the authorization, so the
+        browser streams to disk instead of buffering the payload in memory.
+        When `token` is present the Authorization header is not consulted at
+        all, and `path` must be exactly the path the token was minted for.
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: >
+            The file to stream. Required on the session-authenticated form; on
+            the token form it may be omitted, since the token already names the
+            path — supplied, it must match that path exactly or the request is
+            refused.
+          schema: { type: string }
+        - $ref: '#/components/parameters/DownloadToken'
       responses:
         '200': { description: Raw file stream }
+        '400': { description: No path was supplied on the session-authenticated form }
+        '401': { description: The download token is unknown, expired, already used, or not valid for this server or path }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '502': { description: The node could not serve the file — a missing file included; the body is a JSON error, never a file }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Files]
+      summary: Download a token's path set as a zip
+      description: >
+        The GET twin of the zip route, for a plain download link. It carries no
+        body: the paths come from the one-time `token`, which is also the only
+        thing that authorizes it. Required — without a token there is nothing
+        to stream.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: >
+            A one-time download token from POST
+            /servers/{id}/files/download-token. Required here: it is both the
+            authorization and the only source of the paths.
+          schema: { type: string }
+      responses:
+        '200': { description: Zip stream }
+        '400': { description: No token was supplied }
+        '401': { description: The download token is unknown, expired, already used, or not valid for this server }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '502': { description: The node could not serve the zip; the body is a JSON error, never a file }
     post:
       tags: [Files]
       summary: Download selected paths as a zip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paths: { type: array, items: { type: string } }
       responses: { '200': { description: Zip stream } }
+  /servers/{id}/files/download-token:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Files]
+      summary: Mint a one-time download token
+      description: >
+        Issues an opaque token that authorizes exactly one download of exactly
+        one path set on this one server, for 60 seconds, on behalf of the
+        calling user. It is redeemed on GET /files/raw or GET /files/download
+        and deleted on first use; the user's permission is re-checked at
+        redemption, so a revoked role takes effect immediately. The token is
+        held in the Panel's memory only, never persisted, and never a session
+        credential. Requires server.files.read — the same permission the raw
+        route carries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Exactly one of `path` (raw route) or `paths` (zip route).
+              properties:
+                path:
+                  type: string
+                  description: One file, for a token redeemable on GET /files/raw.
+                paths:
+                  type: array
+                  items: { type: string }
+                  description: A path set, for a token redeemable on GET /files/download.
+      responses:
+        '201':
+          description: Token minted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: The tokenised URL to navigate to.
+                  token: { type: string }
+                  kind: { type: string, enum: [raw, zip] }
+                  expires_at: { type: string, format: date-time }
+                  expires_in_seconds: { type: integer }
+        '400': { description: No path, both shapes at once, or a path that escapes the tree }
+        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
   /servers/{id}/files/mkdir:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post: { tags: [Files], summary: Create a directory, responses: { '200': { description: Created } } }
@@ -1103,6 +1201,17 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    DownloadToken:
+      name: token
+      in: query
+      required: false
+      description: >
+        A one-time download token from POST /servers/{id}/files/download-token.
+        Single-use, 60 seconds, bound to one server, one exact path set and the
+        user who minted it. Present, it is the whole authority for the request
+        and no Authorization header is read; absent, the route authenticates as
+        it always has.
+      schema: { type: string }
   responses:
     BadRequest:
       description: Invalid request

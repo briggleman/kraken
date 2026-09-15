@@ -65,7 +65,11 @@ violation). Regression/exploit test: `internal/shared/spec/security_test.go`
 - **Token out of the URL** — the stream WS now carries the session token in the
   `kraken.token` WebSocket subprotocol instead of a `?token=` query param, so it
   never lands in URLs, access logs, or browser history. (`streamToken`, and the
-  frontend `useServerStream` subprotocol.)
+  frontend `useServerStream` subprotocol.) This is about the **session** token
+  and remains absolute: a session credential never goes in a URL. It is not a
+  blanket ban on every token — see *Tokenised file downloads (2026-09-15)*,
+  where a single-use, 60-second, path-scoped grant that is not a session
+  credential does ride in a URL, deliberately and with its own argument.
 - **Secure-by-default agent pool** — `api.New` derives the pool from config: mTLS
   when certs are present, insecure only with a loud warning. No more
   insecure-by-default footgun (`defaultNodePool`).
@@ -497,3 +501,140 @@ only from operator-configured/trusted inputs:
   on any Kraken call path (all file ops + backups are native Go over bind mounts).
 
 `npm audit` (web) unchanged — 0 vulnerabilities.
+
+## Tokenised file downloads (2026-09-15)
+
+The Files tab's `download` pill used to fetch a file — or a folder's zip — with
+the session's Bearer header and hand the bytes to the browser as a Blob through
+a throwaway anchor. That is the only shape a Bearer-authenticated client has
+without a cookie, and it is the wrong one for anything large: the whole payload
+sits in tab memory before the save dialog appears, with no progress, and a
+multi-GB install tree exhausts the tab. The Panel already streamed; the
+buffering was entirely browser-side, forced by the auth model (#304).
+
+A download now goes through a short-lived token instead:
+`POST /servers/{id}/files/download-token` (permission `server.files.read`, the
+same one the raw route carries) mints one, and `GET /files/raw?token=…` or
+`GET /files/download?token=…` redeems it, so a plain `<a download href>` can
+carry the authorization and the browser streams to disk with its own progress
+UI. The token table is `internal/panel/api/filedownloadtokens.go`; the route
+logic is `handlers_filedownloadtoken.go`.
+
+**Why a token in a URL is acceptable here.** It is not a session credential and
+cannot be turned into one. Concretely, each token is:
+
+- **Single-use.** The grant is deleted the moment it is looked up — before any
+  validation and long before a byte streams — so a replayed URL finds nothing
+  whether or not the first attempt succeeded.
+- **60 seconds.** Expiry is checked at redemption, not merely promised at mint,
+  and issuing sweeps grants that have aged out.
+- **Scoped to one server and one exact path set.** The server id must match the
+  one it was minted for, and the route kind must match (a raw token is not a
+  zip token). The Panel canonicalises the path — Windows separators, redundant
+  separators and `.`/`..` segments collapsed, an upward escape refused — and
+  *pins* that spelling into the grant; a redemption naming a different path is
+  refused rather than served. Downstream only ever sees the pinned path,
+  because the query is rewritten from the grant rather than trusted as it
+  arrived, so the token cannot be widened. The jail itself is unchanged and is
+  not the Panel's: the Agent's `safePath` confines every request to the
+  server's data root regardless of how it was authorized.
+- **Bound to the issuing user, re-validated at redemption.** The minting user
+  must still exist, still be enabled, still hold `server.files.read` and still
+  pass the ownership scope on that server (`mayAccessServer`, called in
+  `redeemDownloadToken` and again by `agentForServer` on the way through). A
+  role revoked, an account deleted or a server handed to another owner inside
+  the 60-second window takes effect on the download.
+- **Never a Bearer alternative.** With `token` present the Authorization header
+  is not consulted at all, so a live session can never rescue an invalid token;
+  with it absent, the routes behave exactly as they did before.
+- **Never persisted and never logged.** Generated from `crypto/rand` and
+  looked up by its SHA-256 digest in an in-memory table a Panel restart
+  empties; the secret itself is never stored and never written to Postgres.
+  The audit log records the
+  mint and the redemption with the server, the user and the path *count*; the
+  token itself appears in no log line, and a rejected redemption is a `Warn`
+  line rather than an audit row, so an unauthenticated caller with a bad token
+  cannot amplify writes into the audit table. The redemption row carries the
+  request's **outcome** status, not an assumed 200 — a redemption the node
+  could not serve is on the record as the 502 it was, rather than as a
+  download that never happened. It is written from a deferred call, so a
+  stream that aborts mid-way is recorded rather than unwound past, and the
+  append runs on a `context.WithoutCancel` copy of the request context (with a
+  deadline of its own): the rows most worth having are the ones where the
+  client hung up first, and on the request context the store would drop
+  exactly those.
+
+Three things the browser-side change forced, all of which touch the
+already-shipped session-authenticated routes too:
+
+- **A failed download must not arrive as a file.** Both stream handlers used to
+  set `Content-Type` and `Content-Disposition: attachment` *before* the first
+  chunk came back from the Agent. `writeError` cannot unset them, so a stream
+  that failed on its first `Recv` sent its JSON 502 under the attachment
+  header. With a `fetch` in front that was invisible; with a real anchor
+  navigation the browser saves it — a 40-byte "saves.zip" holding an error
+  message, and nothing on screen to say so, because no JS is watching a
+  navigation's outcome. `streamChunks` now reads the first chunk as a
+  lookahead and only then commits headers. A failure *after* the first chunk
+  has no status left to change, so it aborts the connection
+  (`http.ErrAbortHandler`, which chi's Recoverer re-panics by design) and
+  logs a `download truncated mid-stream` warning: returning normally would let
+  net/http finish the chunked response and hand the operator half a save file
+  as a completed download. That is detection by connection reset, not by
+  content: the Agent's `FileChunk` carries no total size, so the Panel cannot
+  set a `Content-Length` for the browser to check the transfer against.
+  Positive truncation detection is tracked as **#324**.
+- **Content-Disposition filenames are sanitised on both halves.** The zip's
+  name now comes from a path segment — a folder name anyone with
+  `server.files.write` or SFTP chose — rather than from the server record.
+  C0/C1 controls and the Unicode bidi overrides (U+200E/F, U+061C,
+  U+202A–U+202E, U+2066–U+2069) are dropped, so a name cannot render reversed
+  in a save prompt; the `filename=` parameter is ASCII-only, and the real name
+  rides in a percent-encoded RFC 5987 `filename*=` that escapes every
+  non-ASCII byte.
+- **Every JSON request body is capped** at 4 MiB (`maxJSONBody`, applied inside
+  `decodeJSON`). The Panel had no `http.MaxBytesReader` anywhere, so any
+  authenticated caller could pin arbitrary Panel memory with one request —
+  `json.Decoder` reads until the body ends. The cap is sized off the largest
+  legitimate body (the in-browser editor saving a 1 MiB file, JSON-escaped).
+  A download token additionally caps its path set at 256 paths of 4096 bytes,
+  since a mint holds that set in memory for 60 seconds.
+
+The browser has **no Blob fallback**. One was written, then removed: the Panel
+embeds this bundle with `//go:embed`, so a UI that knows the mint route is by
+construction served by a Panel that has it, and the version skew a fallback
+guards against cannot occur. Keeping it would have meant a real refusal (no
+permission, server gone, node unreachable) silently triggering a second,
+buffering request instead of being shown. The dead `downloadFileRaw` /
+`downloadFilesZip` client helpers went with it.
+
+**What it does not protect against.** The URL — token included — sits in the
+browser's history, and on some platforms in the download manager's record, for
+as long as the browser keeps it. Anyone with the victim's browser profile can
+read it there. What they get is nothing: by then the token has been redeemed
+(deleted) and, failing that, has expired within the minute. The same URL can
+also be shoulder-surfed or captured by anything sitting between browser and
+Panel that a plain-HTTP LAN deployment already exposes (the session Bearer is
+equally exposed there, and is the far better prize). It is not a bearer token
+for the session, a server, or the file tree — only for one download of one path
+set that the holder had permission to take anyway.
+
+Covered by `TestDownloadTokenRegistrySingleUse`,
+`TestDownloadTokenRegistryExpiryAndUnknown`,
+`TestDownloadTokenRegistrySweepsExpired`, `TestCanonicalFilePath`,
+`TestDownloadTokenMintRequiresFilesReadPermission`,
+`TestDownloadTokenMintRejectsBadPaths`,
+`TestDownloadTokenStreamsOnceThenIsGone`, `TestDownloadTokenStreamsZip`,
+`TestDownloadTokenExpiredIsRejected`, `TestDownloadTokenIsBoundToItsServer`,
+`TestDownloadTokenRejectsPathAndRouteWidening`,
+`TestDownloadTokenRevalidatesTheMintingUser`,
+`TestDownloadTokenRejectedAfterServerIsReOwned`,
+`TestFilesRawWithoutTokenIsUnchanged`,
+`TestDownloadTokenAuditsMintAndRedemption`,
+`TestDownloadTokenAuditsTheOutcomeNotTheIntent`,
+`TestDownloadFailureDoesNotArriveAsAFile`,
+`TestDownloadFilenameIsSanitised`, `TestStreamChunksWholePayload`,
+`TestStreamChunksFirstChunkFailure`,
+`TestStreamChunksAbortsOnMidStreamFailure` and
+`TestAuditAppendOutlivesACancelledRequest` (`internal/panel/api`), plus
+`web/src/lib/depth.download.test.ts` for the browser's side.

@@ -129,44 +129,15 @@ async function requestRaw<T>(method: string, path: string, body: string): Promis
   return (await res.json()) as T;
 }
 
-/** A downloaded payload: the bytes plus the filename the Panel chose for them. */
-export interface Download {
-  blob: Blob;
-  filename: string;
-}
-
-// requestBlob fetches a binary response. It exists because a download cannot be
-// a plain <a download> link: the session rides as a Bearer header, never a
-// cookie, so the browser's own navigation would arrive unauthenticated. The
-// bytes come back as a Blob for the caller to hand to the browser; the filename
-// is read from Content-Disposition, which the Panel sanitises, so the operator
-// saves "banlist.txt", not "raw".
-async function requestBlob(method: string, path: string, body?: unknown, fallbackName = "download"): Promise<Download> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 401) clearToken();
-  if (!res.ok) {
-    let msg = res.statusText || `HTTP ${res.status}`;
-    let code: string | undefined;
-    try {
-      const data = await res.json();
-      if (data?.error) msg = data.error;
-      if (data?.code) code = data.code;
-    } catch {
-      /* a streamed error has no JSON body */
-    }
-    throw new ApiError(res.status, msg, code);
-  }
-  const cd = res.headers.get("Content-Disposition") ?? "";
-  const m = /filename="([^"]*)"/.exec(cd);
-  return { blob: await res.blob(), filename: m?.[1] || fallbackName };
+/** A minted file-download token: the URL to navigate to, and how long it lives.
+ *  Single-use and scoped to exactly the paths it was minted for — it is not a
+ *  session credential and cannot be replayed. */
+export interface DownloadToken {
+  url: string;
+  token: string;
+  kind: "raw" | "zip";
+  expires_at: string;
+  expires_in_seconds: number;
 }
 
 export const api = {
@@ -287,14 +258,13 @@ export const api = {
   deleteFiles(id: string, paths: string[]): Promise<{ status: string }> {
     return request("POST", `/servers/${id}/files/delete`, { paths });
   },
-  /** One file's raw bytes, streamed from the node. */
-  downloadFile(id: string, path: string): Promise<Download> {
-    const name = path.split("/").filter(Boolean).pop() || "file";
-    return requestBlob("GET", `/servers/${id}/files/raw?path=${encodeURIComponent(path)}`, undefined, name);
-  },
-  /** The selected paths as one zip — how a folder is downloaded. */
-  downloadZip(id: string, paths: string[], fallbackName = "files.zip"): Promise<Download> {
-    return requestBlob("POST", `/servers/${id}/files/download`, { paths }, fallbackName);
+  /** Mint a one-time, 60-second download token for one file or one path set.
+   *  The Panel answers with the tokenised URL to navigate to, which is how a
+   *  download streams to disk instead of through a Blob in tab memory (#304).
+   *  The URL it returns is the whole of a download: the browser navigates to
+   *  it and streams to disk itself, so nothing here ever holds the bytes. */
+  mintDownloadToken(id: string, target: { path: string } | { paths: string[] }): Promise<DownloadToken> {
+    return request("POST", `/servers/${id}/files/download-token`, target);
   },
   moveFile(id: string, src: string, dst: string): Promise<{ status: string }> {
     return request("POST", `/servers/${id}/files/move`, { src, dst });
@@ -323,44 +293,6 @@ export const api = {
       }
       throw new ApiError(res.status, msg);
     }
-  },
-  async downloadFileRaw(id: string, path: string): Promise<Blob> {
-    const headers: Record<string, string> = {};
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`/api/v1/servers/${id}/files/raw?path=${encodeURIComponent(path)}`, { headers });
-    if (!res.ok) {
-      let msg = res.statusText;
-      try {
-        const d = await res.json();
-        if (d?.error) msg = d.error;
-      } catch {
-        /* ignore */
-      }
-      throw new ApiError(res.status, msg);
-    }
-    return res.blob();
-  },
-  async downloadFilesZip(id: string, paths: string[]): Promise<Blob> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`/api/v1/servers/${id}/files/download`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ paths }),
-    });
-    if (!res.ok) {
-      let msg = res.statusText;
-      try {
-        const d = await res.json();
-        if (d?.error) msg = d.error;
-      } catch {
-        /* ignore */
-      }
-      throw new ApiError(res.status, msg);
-    }
-    return res.blob();
   },
   updateServerSettings(
     id: string,

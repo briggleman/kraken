@@ -84,6 +84,11 @@ type Server struct {
 	// Always non-nil so the endpoint can serve (an empty map) before the poller
 	// has been started — see telemetry.go.
 	telemetry *telemetryCache
+
+	// downloads holds the one-time, 60-second file-download tokens that let a
+	// plain <a download href> stream a file without a session header. In memory
+	// and never persisted — see filedownloadtokens.go.
+	downloads *downloadTokenRegistry
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -129,6 +134,7 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		lastRotate: map[string]time.Time{},
 		installs:   newInstallLog(),
 		telemetry:  newTelemetryCache(),
+		downloads:  newDownloadTokenRegistry(),
 	}
 	for _, o := range opts {
 		o(s)
@@ -372,6 +378,17 @@ func (s *Server) routes() chi.Router {
 		// Live console + stats WebSocket. Authenticates from the ?token= query
 		// param (the browser can't set Authorization on a WS handshake).
 		r.Get("/servers/{id}/stream/ws", s.handleServerStream)
+
+		// File downloads. A plain <a download href> cannot set an Authorization
+		// header, so both of these also accept a one-time ?token= (60 s, bound
+		// to one server, one exact path set and the minting user — see
+		// handlers_filedownloadtoken.go). They sit outside the session group
+		// because the token path has no session at all; without a token they run
+		// exactly the chain that group applies, so Bearer behaviour is unchanged.
+		// The zip route's POST twin (paths in the body) stays in the group below.
+		r.Get("/servers/{id}/files/raw", s.downloadEntry(downloadKindRaw, s.handleDownloadFile,
+			s.sessionRoute(rbac.PermServerFilesRead, s.handleDownloadFile)))
+		r.Get("/servers/{id}/files/download", s.downloadEntry(downloadKindZip, s.handleDownloadFilesByToken, nil))
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
 			r.Use(s.auditMiddleware)
@@ -451,8 +468,10 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerConfig)).Put("/servers/{id}/settings", s.handleUpdateServerSettings)
 			r.With(s.requirePermission(rbac.PermServerFilesRead)).Get("/servers/{id}/files", s.handleListFiles)
 			r.With(s.requirePermission(rbac.PermServerFilesRead)).Get("/servers/{id}/files/content", s.handleReadFile)
-			r.With(s.requirePermission(rbac.PermServerFilesRead)).Get("/servers/{id}/files/raw", s.handleDownloadFile)
 			r.With(s.requirePermission(rbac.PermServerFilesRead)).Post("/servers/{id}/files/download", s.handleDownloadFiles)
+			// Mints the one-time token the GET download routes above redeem.
+			r.With(s.requirePermission(rbac.PermServerFilesRead)).
+				Post("/servers/{id}/files/download-token", s.handleCreateDownloadToken)
 			r.With(s.requirePermission(rbac.PermServerFilesWrite)).Post("/servers/{id}/files/mkdir", s.handleMakeDir)
 			r.With(s.requirePermission(rbac.PermServerFilesWrite)).Post("/servers/{id}/files/move", s.handleMovePath)
 			r.With(s.requirePermission(rbac.PermServerFilesWrite)).Post("/servers/{id}/files/copy", s.handleCopyPath)

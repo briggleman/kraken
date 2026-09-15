@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -61,14 +62,47 @@ func (s *Server) auditMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		note := &auditNote{}
+		r = r.WithContext(context.WithValue(r.Context(), ctxKeyAuditNote, note))
 		next.ServeHTTP(rec, r)
+		// A handler that wrote its own, richer entry (recordAuditDetail) has
+		// already said everything this one would — one request, one row.
+		if note.claimed {
+			return
+		}
 		s.recordAudit(r, rec.status, "")
 	})
+}
+
+// auditNote lets a handler tell the middleware that it wrote the request's
+// audit entry itself. Carried by pointer in the request context.
+type auditNote struct{ claimed bool }
+
+// recordAuditDetail appends one audit entry with a caller-supplied action
+// string — how a handler says more than "POST /some/path" (which paths a
+// download token covers, that one was redeemed). Inside the audit middleware
+// it also claims the request's entry, so an enriched mint is one row, not two.
+func (s *Server) recordAuditDetail(r *http.Request, status int, action string) {
+	// Claim the middleware's row only once this one is actually on the record:
+	// a store that refused the write must still leave the generic entry to be
+	// written, rather than trading one row for none.
+	if s.appendAudit(r, status, "", action) {
+		if n, _ := r.Context().Value(ctxKeyAuditNote).(*auditNote); n != nil {
+			n.claimed = true
+		}
+	}
 }
 
 // recordAudit appends one audit entry. actorOverride is used for pre-auth events
 // (login) where there is no user in context; otherwise the ctx user is used.
 func (s *Server) recordAudit(r *http.Request, status int, actorOverride string) {
+	s.appendAudit(r, status, actorOverride, "")
+}
+
+// appendAudit is the one writer. actionOverride replaces the derived
+// "METHOD /route" action when a handler has something more specific to say.
+// It reports whether the entry reached the store.
+func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionOverride string) bool {
 	actor, actorID := "anonymous", ""
 	if u := userFrom(r.Context()); u != nil {
 		actor, actorID = u.Username, u.ID
@@ -83,12 +117,17 @@ func (s *Server) recordAudit(r *http.Request, status int, actorOverride string) 
 	}
 	short := strings.TrimPrefix(pattern, "/api/v1")
 
+	action := r.Method + " " + short
+	if actionOverride != "" {
+		action = actionOverride
+	}
+
 	e := &store.AuditEntry{
 		ID:         uuid.NewString(),
 		Time:       time.Now(),
 		ActorID:    actorID,
 		Actor:      actor,
-		Action:     r.Method + " " + short,
+		Action:     action,
 		Method:     r.Method,
 		Path:       r.URL.Path,
 		TargetType: targetType(short),
@@ -97,9 +136,20 @@ func (s *Server) recordAudit(r *http.Request, status int, actorOverride string) 
 		IP:         clientIP(r),
 	}
 	metricsAuditTotal.Add(1)
-	if err := s.store.AppendAudit(r.Context(), e); err != nil {
+	// The append does NOT inherit the request's cancellation. An entry is
+	// written after the response — and the cases most worth recording are
+	// exactly the ones where the client hung up first: a cancelled multi-GB
+	// download, an abandoned POST. On the request context those rows would be
+	// dropped to a Warn by the store. Values (and so any request-scoped
+	// tracing) are kept; a short deadline of its own keeps a wedged store from
+	// pinning the handler goroutine now that the client cannot free it.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer cancel()
+	if err := s.store.AppendAudit(ctx, e); err != nil {
 		s.logger.Warn("audit: append failed", "err", err)
+		return false
 	}
+	return true
 }
 
 func targetType(short string) string {

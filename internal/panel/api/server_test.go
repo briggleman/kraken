@@ -34,6 +34,15 @@ func newTestServer(t *testing.T) http.Handler {
 // deploy flow.
 func newTestServerStore(t *testing.T) (http.Handler, *memory.Store) {
 	t.Helper()
+	srv, st := newTestAPI(t)
+	return srv.Handler(), st
+}
+
+// newTestAPI is newTestServerStore before .Handler() — for the few tests that
+// need the API server itself (e.g. to reach in-memory state the HTTP surface
+// deliberately does not expose, like the download-token table).
+func newTestAPI(t *testing.T) (*api.Server, *memory.Store) {
+	t.Helper()
 	st := memory.New()
 	cfg := &config.Config{
 		Env:                    "test",
@@ -52,7 +61,7 @@ func newTestServerStore(t *testing.T) (http.Handler, *memory.Store) {
 	// security). Clear it here so the broader test suite exercises its endpoints
 	// directly; the gate itself is covered by dedicated tests in handlers_setup_test.go.
 	clearMustChangePassword(t, st, testAdmin)
-	return api.New(cfg, st, logger).Handler(), st
+	return api.New(cfg, st, logger), st
 }
 
 // clearMustChangePassword removes the first-run password-change gate from the

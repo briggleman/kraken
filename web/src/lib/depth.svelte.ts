@@ -1,7 +1,7 @@
 // Drill-in data: one server's live detail — stream, settings, files, backups,
 // schedules, DNS — fetched on open and kept fresh while the overlay is up.
 
-import { api, errMsg } from "@/api/client";
+import { ApiError, api, errMsg } from "@/api/client";
 import type {
   Backup,
   FileEntry,
@@ -14,7 +14,7 @@ import type {
   ServerSettings,
   SftpStatus,
 } from "@/api/types";
-import type { ScheduleInput } from "@/api/client";
+import type { DownloadToken, ScheduleInput } from "@/api/client";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 
@@ -545,32 +545,59 @@ export async function filesDelete(p: string): Promise<boolean> {
   return ok;
 }
 
+/** Offer `href` to the browser as a save, through a throwaway anchor. */
+function saveThroughAnchor(href: string, name: string) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** Hand one entry to the browser as a download: a file as its raw bytes, a
- *  folder as the zip the Panel builds for it. The session rides as a Bearer
- *  header, so this cannot be a plain link — the bytes are fetched into a Blob
- *  and offered through a throwaway anchor, which means the whole payload sits
- *  in browser memory first. Fine for configs and saves; a multi-GB install
- *  tree wants a streamed, tokenised URL instead (#304). One download at a time
- *  per pane: `depth.downloading` holds the path in flight so its pill can say
- *  so, and a refusal lands in the pane's notice like every other file op. */
+ *  folder as the zip the Panel builds for it.
+ *
+ *  The session rides as a Bearer header, so the obvious `<a download href>`
+ *  would arrive unauthenticated. The Panel's answer is a one-time, 60-second
+ *  download token bound to this server, this exact path and the asking user
+ *  (#304): mint one, navigate the anchor to the URL it returns, and the
+ *  browser streams to disk with its own progress UI — nothing buffers in tab
+ *  memory, so a multi-GB install tree is a download rather than a crashed tab.
+ *
+ *  A Panel from before the token route answers 404; that falls back to the old
+ *  Blob path, which is also what a genuinely missing server lands on — it
+ *  refuses again there, honestly, rather than being guessed at here.
+ *
+ *  One download at a time per pane: `depth.downloading` holds the path in
+ *  flight so its pill can say so, and a refusal lands in the pane's notice like
+ *  every other file op. */
 export async function filesDownload(f: FileEntry) {
   if (!depth.serverId || depth.downloading) return;
+  const id = depth.serverId;
   depth.downloading = f.path;
   try {
+    let minted: DownloadToken | null = null;
+    try {
+      minted = await api.mintDownloadToken(id, f.is_dir ? { paths: [f.path] } : { path: f.path });
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 404) throw e;
+    }
+    if (minted) {
+      saveThroughAnchor(minted.url, f.is_dir ? `${f.name}.zip` : f.name);
+      return;
+    }
+    // Fallback: fetch the bytes with the session header and hand over a Blob.
     const dl = f.is_dir
-      ? await api.downloadZip(depth.serverId, [f.path], `${f.name}.zip`)
-      : await api.downloadFile(depth.serverId, f.path);
+      ? await api.downloadZip(id, [f.path], `${f.name}.zip`)
+      : await api.downloadFile(id, f.path);
     const url = URL.createObjectURL(dl.blob);
-    const a = document.createElement("a");
-    a.href = url;
     // A file keeps the name the Panel put in Content-Disposition. A folder's
-    // zip is named by the Panel after the SERVER ("midgard-files.zip"), which
-    // says nothing about which folder it holds — so it is saved as the folder.
-    a.download = f.is_dir ? `${f.name}.zip` : dl.filename;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    // zip is named by the old POST route after the SERVER ("midgard-files.zip"),
+    // which says nothing about which folder it holds — so it is saved as the
+    // folder.
+    saveThroughAnchor(url, f.is_dir ? `${f.name}.zip` : dl.filename);
     // Revoke on the next tick: the click has to have started the save first.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (e) {

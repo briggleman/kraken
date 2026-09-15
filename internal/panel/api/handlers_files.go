@@ -342,27 +342,60 @@ type downloadFilesRequest struct {
 }
 
 // handleDownloadFiles streams a zip of the selected paths from the Agent straight
-// to the browser.
+// to the browser. The paths ride in a JSON body, so this is the session-
+// authenticated route; its GET twin takes them from a download token instead
+// (handleDownloadFilesByToken).
 func (s *Server) handleDownloadFiles(w http.ResponseWriter, r *http.Request) {
 	var req downloadFilesRequest
 	if err := decodeJSON(r, &req); err != nil || len(req.Paths) == 0 {
 		writeError(w, http.StatusBadRequest, "paths are required")
 		return
 	}
+	// The POST route's zip is named after the server, as it always has been.
+	s.streamZip(w, r, req.Paths, false)
+}
+
+// handleDownloadFilesByToken is the zip route a plain <a download href> can
+// reach: there is no body, so the paths come from the one-time token the
+// dispatcher already redeemed and bound into the request (see
+// handlers_filedownloadtoken.go).
+func (s *Server) handleDownloadFilesByToken(w http.ResponseWriter, r *http.Request) {
+	paths := downloadPathsFrom(r.Context())
+	if len(paths) == 0 {
+		writeError(w, http.StatusBadRequest, "paths are required")
+		return
+	}
+	// A tokenised download is a real navigation, so Content-Disposition is the
+	// only thing that names the save — a one-path zip is named after that path,
+	// which is what the Files tab's pill has always shown for a folder.
+	s.streamZip(w, r, paths, true)
+}
+
+// streamZip asks the hosting Agent for a zip of paths and pipes it to the
+// browser as it arrives — the Panel never holds the archive.
+func (s *Server) streamZip(w http.ResponseWriter, r *http.Request, paths []string, nameAfterPath bool) {
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
-	stream, err := client.DownloadFiles(ctx, &agentpb.DownloadFilesRequest{ServerId: sv.ID, Paths: req.Paths})
+	stream, err := client.DownloadFiles(ctx, &agentpb.DownloadFilesRequest{ServerId: sv.ID, Paths: paths})
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
 		return
 	}
 
+	// The server name is operator-supplied, so it goes through the same
+	// quoted-string sanitizer a filename does.
+	name := sanitizeFilename(sv.Name) + "-files.zip"
+	if nameAfterPath && len(paths) == 1 {
+		if base := path.Base(paths[0]); base != "" && base != "/" && base != "." {
+			name = sanitizeFilename(base) + ".zip"
+		}
+	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+sv.Name+`-files.zip"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	flusher, _ := w.(http.Flusher)
 
 	wroteHeader := false

@@ -15,6 +15,13 @@ type ctxKey int
 const (
 	ctxKeyUser ctxKey = iota
 	ctxKeyRole
+	// ctxKeyAuditNote carries the audit middleware's per-request note, which a
+	// handler claims when it writes a richer entry itself (see audit.go).
+	ctxKeyAuditNote
+	// ctxKeyDownloadPaths carries the exact path set a redeemed download token
+	// authorized, for the GET zip route that has no body to read them from
+	// (see handlers_filedownloadtoken.go).
+	ctxKeyDownloadPaths
 )
 
 // authError classifies a session-resolution failure with the HTTP status the

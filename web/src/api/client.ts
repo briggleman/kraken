@@ -129,6 +129,17 @@ async function requestRaw<T>(method: string, path: string, body: string): Promis
   return (await res.json()) as T;
 }
 
+/** A minted file-download token: the URL to navigate to, and how long it lives.
+ *  Single-use and scoped to exactly the paths it was minted for — it is not a
+ *  session credential and cannot be replayed. */
+export interface DownloadToken {
+  url: string;
+  token: string;
+  kind: "raw" | "zip";
+  expires_at: string;
+  expires_in_seconds: number;
+}
+
 /** A downloaded payload: the bytes plus the filename the Panel chose for them. */
 export interface Download {
   blob: Blob;
@@ -286,6 +297,14 @@ export const api = {
   },
   deleteFiles(id: string, paths: string[]): Promise<{ status: string }> {
     return request("POST", `/servers/${id}/files/delete`, { paths });
+  },
+  /** Mint a one-time, 60-second download token for one file or one path set.
+   *  The Panel answers with the tokenised URL to navigate to, which is how a
+   *  download streams to disk instead of through a Blob in tab memory (#304).
+   *  Throws ApiError(404) on a Panel too old to know the route — the caller's
+   *  cue to fall back to the Blob path. */
+  mintDownloadToken(id: string, target: { path: string } | { paths: string[] }): Promise<DownloadToken> {
+    return request("POST", `/servers/${id}/files/download-token`, target);
   },
   /** One file's raw bytes, streamed from the node. */
   downloadFile(id: string, path: string): Promise<Download> {

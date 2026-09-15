@@ -497,3 +497,73 @@ only from operator-configured/trusted inputs:
   on any Kraken call path (all file ops + backups are native Go over bind mounts).
 
 `npm audit` (web) unchanged — 0 vulnerabilities.
+
+## Tokenised file downloads (2026-09-15)
+
+The Files tab's `download` pill used to fetch a file — or a folder's zip — with
+the session's Bearer header and hand the bytes to the browser as a Blob through
+a throwaway anchor. That is the only shape a Bearer-authenticated client has
+without a cookie, and it is the wrong one for anything large: the whole payload
+sits in tab memory before the save dialog appears, with no progress, and a
+multi-GB install tree exhausts the tab. The Panel already streamed; the
+buffering was entirely browser-side, forced by the auth model (#304).
+
+A download now goes through a short-lived token instead:
+`POST /servers/{id}/files/download-token` (permission `server.files.read`, the
+same one the raw route carries) mints one, and `GET /files/raw?token=…` or
+`GET /files/download?token=…` redeems it, so a plain `<a download href>` can
+carry the authorization and the browser streams to disk with its own progress
+UI. The token table is `internal/panel/api/filedownloadtokens.go`; the route
+logic is `handlers_filedownloadtoken.go`.
+
+**Why a token in a URL is acceptable here.** It is not a session credential and
+cannot be turned into one. Concretely, each token is:
+
+- **Single-use.** The grant is deleted the moment it is looked up — before any
+  validation and long before a byte streams — so a replayed URL finds nothing
+  whether or not the first attempt succeeded.
+- **60 seconds.** Expiry is checked at redemption, not merely promised at mint,
+  and issuing sweeps grants that have aged out.
+- **Scoped to one server and one exact path set.** The server id must match the
+  one it was minted for, the route kind must match (a raw token is not a zip
+  token), and the requested path is canonicalised and compared for equality —
+  no widening, no traversal. Downstream only ever sees the bound path: the
+  query is rewritten from the grant rather than trusted as it arrived.
+- **Bound to the issuing user, re-validated at redemption.** The minting user
+  must still exist, still be enabled, still hold `server.files.read` and still
+  be allowed to reach that server. A role revoked or an account deleted inside
+  the 60-second window takes effect on the download.
+- **Never a Bearer alternative.** With `token` present the Authorization header
+  is not consulted at all, so a live session can never rescue an invalid token;
+  with it absent, the routes behave exactly as they did before.
+- **Never persisted and never logged.** Generated from `crypto/rand`, stored
+  only as its SHA-256 in an in-memory table (compared in constant time) that a
+  Panel restart empties, never written to Postgres. The audit log records the
+  mint and the redemption with the server, the user and the path *count*; the
+  token itself appears in no log line, and a rejected redemption is a `Warn`
+  line rather than an audit row, so an unauthenticated caller with a bad token
+  cannot amplify writes into the audit table.
+
+**What it does not protect against.** The URL — token included — sits in the
+browser's history, and on some platforms in the download manager's record, for
+as long as the browser keeps it. Anyone with the victim's browser profile can
+read it there. What they get is nothing: by then the token has been redeemed
+(deleted) and, failing that, has expired within the minute. The same URL can
+also be shoulder-surfed or captured by anything sitting between browser and
+Panel that a plain-HTTP LAN deployment already exposes (the session Bearer is
+equally exposed there, and is the far better prize). It is not a bearer token
+for the session, a server, or the file tree — only for one download of one path
+set that the holder had permission to take anyway.
+
+Covered by `TestDownloadTokenRegistrySingleUse`,
+`TestDownloadTokenRegistryExpiryAndUnknown`,
+`TestDownloadTokenRegistrySweepsExpired`, `TestCanonicalFilePath`,
+`TestDownloadTokenMintRequiresFilesReadPermission`,
+`TestDownloadTokenMintRejectsBadPaths`,
+`TestDownloadTokenStreamsOnceThenIsGone`, `TestDownloadTokenStreamsZip`,
+`TestDownloadTokenExpiredIsRejected`, `TestDownloadTokenIsBoundToItsServer`,
+`TestDownloadTokenRejectsPathAndRouteWidening`,
+`TestDownloadTokenRevalidatesTheMintingUser`,
+`TestFilesRawWithoutTokenIsUnchanged` and
+`TestDownloadTokenAuditsMintAndRedemption` (`internal/panel/api`), plus
+`web/src/lib/depth.download.test.ts` for the browser's side of the decision.

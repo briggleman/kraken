@@ -283,6 +283,18 @@ func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ i
 	return ff.data, int64(len(ff.data)), false, false, nil
 }
 
+// StatFile reports the size of a seeded file, so the fake Agent announces a
+// total on its first chunk exactly as the real one does.
+func (f *FakeRuntime) StatFile(_ context.Context, serverID string, p string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ff, ok := f.tree(serverID)[fakePath(p)]
+	if !ok || ff.entry.IsDir {
+		return 0, fmt.Errorf("fake: %s: no such file", p)
+	}
+	return int64(len(ff.data)), nil
+}
+
 func (f *FakeRuntime) DownloadFile(_ context.Context, serverID string, p string, w io.Writer) error {
 	data, _, _, _, err := f.ReadFile(context.Background(), serverID, p, 0)
 	if err != nil {

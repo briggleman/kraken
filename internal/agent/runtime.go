@@ -39,6 +39,12 @@ type Runtime interface {
 	// DownloadFile writes the raw (unzipped) bytes of a single file to w.
 	DownloadFile(ctx context.Context, serverID, path string, w io.Writer) error
 
+	// StatFile reports the size in bytes of a single file in the volume. It is
+	// what lets DownloadFile announce a total before the first byte goes out,
+	// so the Panel can set Content-Length and the browser can tell a truncated
+	// save from a complete one. Directories and missing paths are errors.
+	StatFile(ctx context.Context, serverID, path string) (int64, error)
+
 	// ReadFile returns the contents of a single file (capped at maxBytes), its
 	// total size on disk, whether the content was truncated, and whether it looks
 	// binary (contains NUL bytes).

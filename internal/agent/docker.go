@@ -1317,6 +1317,24 @@ func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxByt
 	return buf, size, truncated, binary, nil
 }
 
+// StatFile reports a single file's size on disk. Same containment as every
+// other file op — safePath first, then the host mapping — and OS-agnostic:
+// os.Stat is the same call on a Linux node and a Windows one.
+func (d *DockerRuntime) StatFile(_ context.Context, serverID, p string) (int64, error) {
+	fp, err := d.safePath(p)
+	if err != nil {
+		return 0, err
+	}
+	st, err := os.Stat(d.localOf(serverID, fp))
+	if err != nil {
+		return 0, fmt.Errorf("docker: %s not found", p)
+	}
+	if st.IsDir() {
+		return 0, fmt.Errorf("docker: %s is a directory", p)
+	}
+	return st.Size(), nil
+}
+
 // DownloadFile streams a single file's raw bytes to w (no zip wrapper).
 func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io.Writer) error {
 	fp, err := d.safePath(p)

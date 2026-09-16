@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,14 +110,30 @@ func contentDisposition(name string) string {
 // finish the chunked response cleanly, and a truncated file would arrive as a
 // complete 200 — the browser reports a finished download and the operator has
 // a half a save file with nothing anywhere saying so.
-func (s *Server) streamChunks(w http.ResponseWriter, recv func() ([]byte, error), contentType, filename string, about ...any) {
-	first, err := recv()
+//
+// recv returns each chunk's bytes plus the total size of the whole payload,
+// which the Agent puts on the FIRST chunk only (0 everywhere else, and 0
+// throughout for a zip, whose size is not known until it is written). A size
+// greater than zero becomes Content-Length, so the browser can check the
+// transfer against a number rather than trusting a clean end of stream. An
+// Agent older than that field sends 0 and this behaves exactly as it did
+// before: no Content-Length, detection by connection reset alone.
+//
+// `Accept-Ranges: none` goes out either way. Resume is structurally impossible
+// here — a download token is single-use, so the second request 401s — and a
+// browser that is told nothing may offer a resume that cannot work.
+func (s *Server) streamChunks(w http.ResponseWriter, recv func() ([]byte, int64, error), contentType, filename string, about ...any) {
+	first, size, err := recv()
 	if err != nil && err != io.EOF {
 		writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", contentDisposition(filename))
+	w.Header().Set("Accept-Ranges", "none")
+	if size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
 	w.WriteHeader(http.StatusOK)
 	if err == io.EOF { // an empty file is an honest, empty 200
 		return
@@ -135,7 +152,7 @@ func (s *Server) streamChunks(w http.ResponseWriter, recv func() ([]byte, error)
 		if ferr := rc.Flush(); ferr != nil && !errors.Is(ferr, http.ErrNotSupported) {
 			return
 		}
-		next, rerr := recv()
+		next, _, rerr := recv()
 		if rerr == io.EOF {
 			return // the whole payload is out
 		}
@@ -426,12 +443,14 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.streamChunks(w, func() ([]byte, error) {
+	s.streamChunks(w, func() ([]byte, int64, error) {
 		chunk, rerr := stream.Recv()
 		if rerr != nil {
-			return nil, rerr
+			return nil, 0, rerr
 		}
-		return chunk.Data, nil
+		// Size rides on the first chunk and is 0 thereafter; an Agent older
+		// than that field sends 0 throughout, which simply means "unknown".
+		return chunk.Data, chunk.Size, nil
 	}, "application/octet-stream", path.Base(p), "server", sv.ID, "paths", 1)
 }
 
@@ -493,11 +512,13 @@ func (s *Server) streamZip(w http.ResponseWriter, r *http.Request, paths []strin
 			name = base + ".zip"
 		}
 	}
-	s.streamChunks(w, func() ([]byte, error) {
+	s.streamChunks(w, func() ([]byte, int64, error) {
 		chunk, rerr := stream.Recv()
 		if rerr != nil {
-			return nil, rerr
+			return nil, 0, rerr
 		}
-		return chunk.Data, nil
+		// A zip carries no size: the Agent is writing the archive as it streams
+		// it, so there is no total to announce and no Content-Length to set.
+		return chunk.Data, chunk.Size, nil
 	}, "application/zip", name, "server", sv.ID, "paths", len(paths))
 }

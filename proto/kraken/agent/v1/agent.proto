@@ -286,6 +286,14 @@ message DownloadFileRequest {
 
 message FileChunk {
   bytes data = 1;
+  // size is the total byte count of the payload being streamed, carried on the
+  // FIRST chunk only and 0 ("unknown") on every later one. DownloadFile stats
+  // the file and announces it so the Panel can set Content-Length and a browser
+  // can tell a truncated save from a complete one; DownloadFiles (zip) leaves it
+  // 0, because the archive's size is not known until it has been written.
+  // An Agent older than this field sends 0 everywhere, which the Panel treats
+  // exactly as it treated every stream before: no Content-Length.
+  int64 size = 2;
 }
 
 message ReadFileRequest {

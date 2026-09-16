@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"runtime"
@@ -273,22 +274,58 @@ func (s *Service) ReadFile(ctx context.Context, req *agentpb.ReadFileRequest) (*
 	return &agentpb.ReadFileResponse{Content: content, Size: size, Truncated: truncated, IsBinary: binary}, nil
 }
 
+// DownloadFile streams one file's raw bytes, announcing the total on the FIRST
+// chunk so the Panel can set Content-Length and the browser can tell a
+// truncated save from a complete one.
+//
+// The announcement is a promise, so it is kept: the file is stat'd before the
+// first byte goes out and the stream then refuses to disagree with what it
+// said. A file that GREW since the stat is cut off at the announced length and
+// the RPC fails; one that SHRANK hits EOF short and the RPC fails too. Either
+// way the Panel sees an error mid-stream and aborts the connection, which is
+// the one signal a browser reads as "this download did not finish" — far better
+// than serving a payload that does not match its own header.
+//
+// A stat that fails is not itself fatal: size stays 0 ("unknown"), the download
+// proceeds exactly as it did before this field existed, and the real error
+// surfaces from the read below if the path is genuinely unusable.
 func (s *Service) DownloadFile(req *agentpb.DownloadFileRequest, stream agentpb.NodeService_DownloadFileServer) error {
+	var size int64
+	if n, err := s.rt.StatFile(stream.Context(), req.ServerId, req.Path); err == nil {
+		size = n
+	}
 	pr, pw := io.Pipe()
 	go func() {
 		err := s.rt.DownloadFile(stream.Context(), req.ServerId, req.Path, pw)
 		_ = pw.CloseWithError(err)
 	}()
 	buf := make([]byte, 64*1024)
+	var sent int64
+	first := true
 	for {
 		n, err := pr.Read(buf)
 		if n > 0 {
-			if serr := stream.Send(&agentpb.FileChunk{Data: buf[:n]}); serr != nil {
+			if size > 0 && sent+int64(n) > size {
+				grew := fmt.Errorf("agent: %s grew past the %d bytes announced for it", req.Path, size)
+				_ = pr.CloseWithError(grew)
+				return grew
+			}
+			chunk := &agentpb.FileChunk{Data: buf[:n]}
+			if first {
+				chunk.Size = size // first chunk only; 0 means "unknown"
+				first = false
+			}
+			if serr := stream.Send(chunk); serr != nil {
 				_ = pr.CloseWithError(serr)
 				return serr
 			}
+			sent += int64(n)
 		}
 		if err == io.EOF {
+			if size > 0 && sent < size {
+				_ = pr.CloseWithError(io.ErrUnexpectedEOF)
+				return fmt.Errorf("agent: %s ended after %d of the %d bytes announced for it", req.Path, sent, size)
+			}
 			return nil
 		}
 		if err != nil {

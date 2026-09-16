@@ -2,6 +2,14 @@ package api
 
 import "time"
 
+// DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
+// a test in the black-box package can walk up to the edge of one without
+// restating the number.
+const (
+	DownloadRedeemBurstForTest = downloadRedeemBurst
+	LoginBurstForTest          = loginBurst
+)
+
 // ExpireDownloadTokensForTest backdates every outstanding file-download token
 // so a test can exercise the expiry branch without waiting out the 60-second
 // TTL. It lives in a _test.go file, so it is compiled only into the test

@@ -17,9 +17,15 @@ import (
 
 func newClient(t *testing.T) agentpb.NodeServiceClient {
 	t.Helper()
+	return newClientFor(t, agent.NewFakeRuntime("abyss-node-01", "linux", true, "test"))
+}
+
+// newClientFor is newClient over a caller-supplied runtime, for tests that need
+// a runtime that misbehaves in a specific way.
+func newClientFor(t *testing.T, rt agent.Runtime) agentpb.NodeServiceClient {
+	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
-	rt := agent.NewFakeRuntime("abyss-node-01", "linux", true, "test")
 	agentpb.RegisterNodeServiceServer(srv, agent.NewService(rt))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)

@@ -49,6 +49,10 @@ type downloadGrant struct {
 	kind     string
 	paths    []string // canonical, in mint order; the exact set that may stream
 	expires  time.Time
+	// sessionHash is the digest of the session that minted this grant (never
+	// the session token). A grant is no stronger than the session behind it:
+	// logging out, or having the session revoked, kills it at redemption.
+	sessionHash string
 }
 
 // downloadTokenRegistry holds one-time file-download tokens in memory, keyed by
@@ -71,7 +75,7 @@ func newDownloadTokenRegistry() *downloadTokenRegistry {
 
 // issue mints a token for the given grant and returns the opaque secret plus
 // its expiry. The secret is returned once and never stored.
-func (d *downloadTokenRegistry) issue(serverID, userID, kind string, paths []string, ttl time.Duration) (string, time.Time, error) {
+func (d *downloadTokenRegistry) issue(serverID, userID, sessionHash, kind string, paths []string, ttl time.Duration) (string, time.Time, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", time.Time{}, err
@@ -81,11 +85,12 @@ func (d *downloadTokenRegistry) issue(serverID, userID, kind string, paths []str
 	exp := time.Now().Add(ttl)
 	d.mu.Lock()
 	d.grants[hex.EncodeToString(sum[:])] = downloadGrant{
-		serverID: serverID,
-		userID:   userID,
-		kind:     kind,
-		paths:    slices.Clone(paths),
-		expires:  exp,
+		serverID:    serverID,
+		userID:      userID,
+		kind:        kind,
+		paths:       slices.Clone(paths),
+		expires:     exp,
+		sessionHash: sessionHash,
 	}
 	// Opportunistically sweep anything that has aged out, so an idle Panel does
 	// not hold grants for tokens nobody can redeem any more.

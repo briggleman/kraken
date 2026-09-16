@@ -18,7 +18,22 @@ var (
 	metricsReqMu      sync.Mutex
 	metricsReqTotal   = map[reqKey]int64{}
 	metricsAuditTotal atomic.Int64
+	// metricsDownloadTokenRejected counts redemptions refused at the door
+	// (unknown, expired, already used, wrong server, dead session…). The log
+	// line for these is Debug on purpose — an unauthenticated caller writes it —
+	// so this counter is how an operator sees a probe without turning the whole
+	// Panel's log level down.
+	metricsDownloadTokenRejected atomic.Int64
+	// metricsRateLimited counts 429s per limiter ("download", "login").
+	metricsRateLimitMu    sync.Mutex
+	metricsRateLimitTotal = map[string]int64{}
 )
+
+func incRateLimited(name string) {
+	metricsRateLimitMu.Lock()
+	metricsRateLimitTotal[name]++
+	metricsRateLimitMu.Unlock()
+}
 
 type reqKey struct {
 	method string
@@ -104,6 +119,26 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP kraken_audit_events_total Audit events recorded since start.\n")
 	fmt.Fprintf(w, "# TYPE kraken_audit_events_total counter\n")
 	fmt.Fprintf(w, "kraken_audit_events_total %d\n", metricsAuditTotal.Load())
+
+	// Refused download-token redemptions, and 429s per limiter. Both cover
+	// things an unauthenticated caller does, which is exactly why they are
+	// counters here rather than log lines an operator has to go looking for.
+	fmt.Fprintf(w, "# HELP kraken_download_tokens_rejected_total Download-token redemptions refused.\n")
+	fmt.Fprintf(w, "# TYPE kraken_download_tokens_rejected_total counter\n")
+	fmt.Fprintf(w, "kraken_download_tokens_rejected_total %d\n", metricsDownloadTokenRejected.Load())
+
+	fmt.Fprintf(w, "# HELP kraken_rate_limited_total Requests refused by a per-client rate limiter.\n")
+	fmt.Fprintf(w, "# TYPE kraken_rate_limited_total counter\n")
+	metricsRateLimitMu.Lock()
+	limiters := make([]string, 0, len(metricsRateLimitTotal))
+	for name := range metricsRateLimitTotal {
+		limiters = append(limiters, name)
+	}
+	sort.Strings(limiters)
+	for _, name := range limiters {
+		fmt.Fprintf(w, "kraken_rate_limited_total{limiter=%q} %d\n", name, metricsRateLimitTotal[name])
+	}
+	metricsRateLimitMu.Unlock()
 
 	// HTTP requests by method + code.
 	fmt.Fprintf(w, "# HELP kraken_http_requests_total HTTP requests by method and status code.\n")

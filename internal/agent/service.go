@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"runtime"
@@ -273,22 +274,74 @@ func (s *Service) ReadFile(ctx context.Context, req *agentpb.ReadFileRequest) (*
 	return &agentpb.ReadFileResponse{Content: content, Size: size, Truncated: truncated, IsBinary: binary}, nil
 }
 
+// DownloadFile streams one file's raw bytes, announcing the total on the FIRST
+// chunk so the Panel can set Content-Length and the browser can tell a
+// truncated save from a complete one.
+//
+// The announcement is a promise, so it is kept, and the two ways a live file
+// can break it are not the same failure:
+//
+//   - GREW since the stat — a running game server appending to the log or save
+//     the operator is downloading, which is the ordinary case, not an attack.
+//     The stream stops at exactly the announced length and ends cleanly. The
+//     download is then a consistent prefix of the file, which is what
+//     Content-Length already promised the browser it would be.
+//   - SHRANK since the stat — EOF arrives early, the announced length can no
+//     longer be delivered, and the RPC fails so the Panel aborts the connection.
+//     That is the one signal a browser reads as "this download did not finish",
+//     and it is far better than serving a payload short of its own header.
+//
+// A stat that fails is not itself fatal: size stays 0 ("unknown"), the download
+// proceeds exactly as it did before this field existed, and the real error
+// surfaces from the read below if the path is genuinely unusable. It is logged
+// at Debug so a silently missing Content-Length is diagnosable.
 func (s *Service) DownloadFile(req *agentpb.DownloadFileRequest, stream agentpb.NodeService_DownloadFileServer) error {
+	var size int64
+	if n, err := s.rt.StatFile(stream.Context(), req.ServerId, req.Path); err == nil {
+		size = n
+	} else {
+		slog.Debug("agent: could not stat a download; streaming without an announced size",
+			"server", req.ServerId, "path", req.Path, "err", err)
+	}
 	pr, pw := io.Pipe()
 	go func() {
 		err := s.rt.DownloadFile(stream.Context(), req.ServerId, req.Path, pw)
 		_ = pw.CloseWithError(err)
 	}()
 	buf := make([]byte, 64*1024)
+	var sent int64
+	first := true
 	for {
 		n, err := pr.Read(buf)
 		if n > 0 {
-			if serr := stream.Send(&agentpb.FileChunk{Data: buf[:n]}); serr != nil {
+			last := false
+			if size > 0 && sent+int64(n) >= size {
+				// The file grew while we streamed it (a live log, a save being
+				// written). Deliver exactly what was announced and stop — a
+				// consistent prefix, which is what Content-Length promised.
+				n = int(size - sent)
+				last = true
+			}
+			chunk := &agentpb.FileChunk{Data: buf[:n]}
+			if first {
+				chunk.Size = size // first chunk only; 0 means "unknown"
+				first = false
+			}
+			if serr := stream.Send(chunk); serr != nil {
 				_ = pr.CloseWithError(serr)
 				return serr
 			}
+			sent += int64(n)
+			if last {
+				_ = pr.CloseWithError(nil) // stop the writer; we have our bytes
+				return nil
+			}
 		}
 		if err == io.EOF {
+			if size > 0 && sent < size {
+				_ = pr.CloseWithError(io.ErrUnexpectedEOF)
+				return fmt.Errorf("agent: %s ended after %d of the %d bytes announced for it", req.Path, sent, size)
+			}
 			return nil
 		}
 		if err != nil {

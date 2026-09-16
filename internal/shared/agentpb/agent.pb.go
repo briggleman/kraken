@@ -1542,8 +1542,16 @@ func (x *DownloadFileRequest) GetPath() string {
 }
 
 type FileChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Data  []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	// size is the total byte count of the payload being streamed, carried on the
+	// FIRST chunk only and 0 ("unknown") on every later one. DownloadFile stats
+	// the file and announces it so the Panel can set Content-Length and a browser
+	// can tell a truncated save from a complete one; DownloadFiles (zip) leaves it
+	// 0, because the archive's size is not known until it has been written.
+	// An Agent older than this field sends 0 everywhere, which the Panel treats
+	// exactly as it treated every stream before: no Content-Length.
+	Size          int64 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1583,6 +1591,13 @@ func (x *FileChunk) GetData() []byte {
 		return x.Data
 	}
 	return nil
+}
+
+func (x *FileChunk) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
 }
 
 type ReadFileRequest struct {
@@ -4620,9 +4635,10 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x05paths\x18\x02 \x03(\tR\x05paths\"F\n" +
 	"\x13DownloadFileRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\"\x1f\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"3\n" +
 	"\tFileChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\"_\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\"_\n" +
 	"\x0fReadFileRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1b\n" +

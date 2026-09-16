@@ -10,7 +10,7 @@ import (
 // stops working when it ages out, and leaves nothing behind either way.
 func TestDownloadTokenRegistrySingleUse(t *testing.T) {
 	reg := newDownloadTokenRegistry()
-	tok, exp, err := reg.issue("srv-1", "user-1", downloadKindRaw, []string{"/data/server.cfg"}, downloadTokenTTL)
+	tok, exp, err := reg.issue("srv-1", "user-1", "sess-hash", downloadKindRaw, []string{"/data/server.cfg"}, downloadTokenTTL)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -30,6 +30,11 @@ func TestDownloadTokenRegistrySingleUse(t *testing.T) {
 	}
 	if g.serverID != "srv-1" || g.userID != "user-1" || g.kind != downloadKindRaw {
 		t.Fatalf("grant = %+v, want the values it was minted with", g)
+	}
+	// The session that minted it is part of the grant: the redemption checks
+	// the session is still alive before it serves a byte.
+	if g.sessionHash != "sess-hash" {
+		t.Fatalf("grant session = %q, want the minting session's digest", g.sessionHash)
 	}
 	if len(g.paths) != 1 || g.paths[0] != "/data/server.cfg" {
 		t.Fatalf("grant paths = %v, want the bound path", g.paths)
@@ -58,7 +63,7 @@ func backdate(reg *downloadTokenRegistry) {
 
 func TestDownloadTokenRegistryExpiryAndUnknown(t *testing.T) {
 	reg := newDownloadTokenRegistry()
-	tok, _, err := reg.issue("srv-1", "user-1", downloadKindZip, []string{"/data/saves"}, downloadTokenTTL)
+	tok, _, err := reg.issue("srv-1", "user-1", "sess-hash", downloadKindZip, []string{"/data/saves"}, downloadTokenTTL)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -82,12 +87,12 @@ func TestDownloadTokenRegistryExpiryAndUnknown(t *testing.T) {
 func TestDownloadTokenRegistrySweepsExpired(t *testing.T) {
 	reg := newDownloadTokenRegistry()
 	for range 5 {
-		if _, _, err := reg.issue("srv-1", "user-1", downloadKindRaw, []string{"/data/x"}, downloadTokenTTL); err != nil {
+		if _, _, err := reg.issue("srv-1", "user-1", "sess-hash", downloadKindRaw, []string{"/data/x"}, downloadTokenTTL); err != nil {
 			t.Fatalf("issue: %v", err)
 		}
 	}
 	backdate(reg)
-	if _, _, err := reg.issue("srv-1", "user-1", downloadKindRaw, []string{"/data/x"}, downloadTokenTTL); err != nil {
+	if _, _, err := reg.issue("srv-1", "user-1", "sess-hash", downloadKindRaw, []string{"/data/x"}, downloadTokenTTL); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
 	if n := reg.count(); n != 1 {

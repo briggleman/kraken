@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,15 +24,25 @@ func testAPI(st store.Store) *Server {
 }
 
 // chunker returns a recv func that yields each of chunks in turn and then err.
-func chunker(chunks []string, err error) func() ([]byte, error) {
+// size rides on the first chunk only, exactly as the Agent sends it; 0 means
+// "unknown", which is what a zip — and any Agent older than the field — sends.
+func chunker(chunks []string, err error) func() ([]byte, int64, error) {
+	return sizedChunker(chunks, 0, err)
+}
+
+func sizedChunker(chunks []string, size int64, err error) func() ([]byte, int64, error) {
 	i := 0
-	return func() ([]byte, error) {
+	return func() ([]byte, int64, error) {
 		if i < len(chunks) {
 			c := chunks[i]
+			var s int64
+			if i == 0 {
+				s = size
+			}
 			i++
-			return []byte(c), nil
+			return []byte(c), s, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
 }
 
@@ -49,6 +60,43 @@ func TestStreamChunksWholePayload(t *testing.T) {
 	}
 	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="saves.zip"` {
 		t.Fatalf("Content-Disposition = %q", cd)
+	}
+}
+
+// A size announced on the first chunk becomes Content-Length, so the browser
+// can check the transfer against a number instead of trusting a clean end of
+// stream. Resume is refused outright either way: a download token is
+// single-use, so a ranged second request could only 401.
+func TestStreamChunksSetsContentLengthFromTheAnnouncedSize(t *testing.T) {
+	s := testAPI(memory.New())
+	rec := httptest.NewRecorder()
+	s.streamChunks(rec, sizedChunker([]string{"abc", "def"}, 6, io.EOF), "application/octet-stream", "server.cfg")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if cl := rec.Header().Get("Content-Length"); cl != "6" {
+		t.Fatalf("Content-Length = %q, want the announced total", cl)
+	}
+	if ar := rec.Header().Get("Accept-Ranges"); ar != "none" {
+		t.Fatalf("Accept-Ranges = %q, want none — resume cannot work on a single-use token", ar)
+	}
+}
+
+// Size 0 means "unknown": a zip, or an Agent older than the field. The stream
+// then behaves exactly as it did before — chunked, no Content-Length — rather
+// than announcing a length it cannot stand behind.
+func TestStreamChunksOmitsContentLengthWhenSizeIsUnknown(t *testing.T) {
+	s := testAPI(memory.New())
+	rec := httptest.NewRecorder()
+	s.streamChunks(rec, sizedChunker([]string{"abc", "def"}, 0, io.EOF), "application/zip", "saves.zip")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if cl := rec.Header().Get("Content-Length"); cl != "" {
+		t.Fatalf("Content-Length = %q, want none when the Agent announced no size", cl)
+	}
+	if got := rec.Body.String(); got != "abcdef" {
+		t.Fatalf("body = %q, want the whole payload", got)
 	}
 }
 
@@ -121,4 +169,62 @@ func TestAuditAppendOutlivesACancelledRequest(t *testing.T) {
 	if rec.sawCancelled {
 		t.Fatal("the store was handed an already-cancelled context — a real store would drop the row")
 	}
+}
+
+// contentLengthWriter is net/http's behaviour in miniature: once a
+// Content-Length has gone out, writes past it are dropped and answered with
+// http.ErrContentLength. httptest.ResponseRecorder does not enforce that, and
+// the failure being tested here only exists because the real server does.
+type contentLengthWriter struct {
+	*httptest.ResponseRecorder
+	remaining int64
+	limited   bool
+}
+
+func (c *contentLengthWriter) WriteHeader(code int) {
+	if cl := c.Header().Get("Content-Length"); cl != "" {
+		n, err := strconv.ParseInt(cl, 10, 64)
+		if err == nil {
+			c.remaining, c.limited = n, true
+		}
+	}
+	c.ResponseRecorder.WriteHeader(code)
+}
+
+func (c *contentLengthWriter) Write(b []byte) (int, error) {
+	if !c.limited {
+		return c.ResponseRecorder.Write(b)
+	}
+	if int64(len(b)) > c.remaining {
+		if c.remaining > 0 {
+			_, _ = c.ResponseRecorder.Write(b[:c.remaining])
+			c.remaining = 0
+		}
+		return 0, http.ErrContentLength
+	}
+	c.remaining -= int64(len(b))
+	return c.ResponseRecorder.Write(b)
+}
+
+// A stream that delivers MORE than it announced is the same failure as one that
+// delivers less, and it is the one this feature exists to remove. net/http
+// drops the excess and hands back http.ErrContentLength — which, read as "the
+// client went away", would end the response cleanly and let the browser save
+// exactly N bytes as a complete download. It has to tear the connection down
+// instead.
+func TestStreamChunksAbortsWhenAStreamOverrunsItsContentLength(t *testing.T) {
+	s := testAPI(memory.New())
+	rec := &contentLengthWriter{ResponseRecorder: httptest.NewRecorder()}
+	defer func() {
+		rvr := recover()
+		if rvr == nil {
+			t.Fatal("over-delivery returned normally — the truncated body would arrive as a clean 200")
+		}
+		if rvr != http.ErrAbortHandler {
+			t.Fatalf("panicked with %v, want http.ErrAbortHandler", rvr)
+		}
+	}()
+	// Announces 3 bytes, then hands over 6.
+	s.streamChunks(rec, sizedChunker([]string{"abc", "def"}, 3, io.EOF),
+		"application/octet-stream", "server.cfg", "server", "srv-1", "paths", 1)
 }

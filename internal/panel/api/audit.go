@@ -133,7 +133,7 @@ func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionO
 		TargetType: targetType(short),
 		TargetID:   chi.URLParam(r, "id"),
 		Status:     status,
-		IP:         clientIP(r),
+		IP:         s.clientIP(r),
 	}
 	metricsAuditTotal.Add(1)
 	// The append does NOT inherit the request's cancellation. An entry is
@@ -167,16 +167,6 @@ func targetType(short string) string {
 	default:
 		return ""
 	}
-}
-
-// clientIP returns the peer IP from the TCP connection. It deliberately ignores
-// X-Forwarded-For / X-Real-IP — those are client-spoofable when the panel isn't
-// behind a trusted proxy, and audit-log integrity depends on the real peer.
-func clientIP(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -121,6 +123,45 @@ type Config struct {
 	// KRAKEN_SFTP_PROXY=off to disable the proxy.
 	SFTPProxy         string
 	SFTPProxyBasePort int
+
+	// TrustedProxies lists the CIDRs (bare IPs allowed) of reverse proxies
+	// whose forwarding headers the Panel may believe. EMPTY BY DEFAULT: with no
+	// trusted set, `X-Forwarded-For` is attacker-supplied and the Panel uses
+	// the real TCP peer for everything. Set it when the Panel sits behind
+	// Caddy/nginx/Traefik or a Cloudflare Tunnel — otherwise every request
+	// looks like it came from the proxy, which collapses the per-IP rate
+	// limiters into one shared bucket and files every audit row under the
+	// proxy's address. See clientIP in internal/panel/api.
+	TrustedProxies []string
+
+	// RateLimits is the escape hatch for the per-IP limiters on login and the
+	// token-redemption downloads: "off" disables both (logged loudly at
+	// startup). Anything else leaves them on, which is the default.
+	RateLimits string
+
+	// LogLevel is the Panel's slog level: debug, info (default), warn, error.
+	// Several diagnostics — a rejected download token, for one — are Debug on
+	// purpose, because they are writable by an unauthenticated caller; this is
+	// how an operator turns them on when actually diagnosing something.
+	LogLevel string
+}
+
+// RateLimitsEnabled reports whether the per-IP limiters should run.
+func (c *Config) RateLimitsEnabled() bool { return !strings.EqualFold(c.RateLimits, "off") }
+
+// SlogLevel maps LogLevel onto a slog level, defaulting to Info for anything
+// unrecognized — a typo must not silence the Panel.
+func (c *Config) SlogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // TunnelEnabled reports whether the reverse-tunnel listener should run.
@@ -158,6 +199,22 @@ func DefaultSetupAllowedCIDRs() []string {
 	}
 }
 
+// ValidateCIDRList reports the first entry that is neither a CIDR nor a bare
+// IP. Hostnames are refused on purpose: a name is not source-verifiable, and a
+// list of trusted addresses cannot depend on what DNS says today.
+func ValidateCIDRList(entries []string) error {
+	for _, e := range entries {
+		if _, _, err := net.ParseCIDR(e); err == nil {
+			continue
+		}
+		if ip := net.ParseIP(e); ip != nil {
+			continue
+		}
+		return fmt.Errorf("%q is not a CIDR or IP address (hostnames are not source-verifiable)", e)
+	}
+	return nil
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	// KRAKEN_STATE_DIR groups all Panel-owned state (config file, secrets
@@ -187,9 +244,21 @@ func Load() (*Config, error) {
 		CSPMode:                strings.ToLower(strings.TrimSpace(env("KRAKEN_CSP", CSPEnforce))),
 		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
 		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),
+		TrustedProxies:         envList("KRAKEN_TRUSTED_PROXIES"),
+		RateLimits:             env("KRAKEN_RATE_LIMITS", "on"),
+		LogLevel:               env("KRAKEN_LOG_LEVEL", "info"),
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()
+	}
+	// A bad trusted-proxy entry is fatal, unlike the setup allowlist's
+	// skip-and-warn. The difference is which way each list fails: a dropped
+	// setup CIDR denies access, while a dropped trusted proxy leaves the Panel
+	// RUNNING and quietly wrong — /setup/* seeing a tunnel's loopback for the
+	// whole internet, both rate limiters back in one shared bucket — with
+	// nothing on screen to say so. A typo here has to stop the process.
+	if err := ValidateCIDRList(c.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("KRAKEN_TRUSTED_PROXIES: %w", err)
 	}
 	// An unrecognized mode falls back to enforcing rather than silently serving
 	// no policy: a typo in KRAKEN_CSP must not disable a security header.

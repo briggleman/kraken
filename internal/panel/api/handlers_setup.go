@@ -190,15 +190,15 @@ func (s *Server) handleDismissSetup(w http.ResponseWriter, r *http.Request) {
 // It is gated on a loopback source IP: an off-host caller cannot reach it, so no
 // arbitrary host can mint an enrollment token this way.
 func (s *Server) handleLocalEnroll(w http.ResponseWriter, r *http.Request) {
-	if !isLoopback(clientIP(r)) {
+	if !isLoopback(s.clientIP(r)) {
 		s.logger.Warn("local-enroll rejected: source IP is not loopback "+
 			"(a containerized Agent reaching the Panel over a bridge network trips this gate)",
-			"ip", clientIP(r), "remote_addr", r.RemoteAddr)
+			"ip", s.clientIP(r), "remote_addr", r.RemoteAddr)
 		writeError(w, http.StatusForbidden, "local enrollment is only available from the Panel host")
 		return
 	}
 	if s.caCert == nil {
-		s.logger.Warn("local-enroll rejected: no CA signing material configured", "ip", clientIP(r))
+		s.logger.Warn("local-enroll rejected: no CA signing material configured", "ip", s.clientIP(r))
 		writeError(w, http.StatusServiceUnavailable, "agent enrollment is not configured")
 		return
 	}

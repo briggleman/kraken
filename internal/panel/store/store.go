@@ -359,6 +359,12 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, s *Session) error
 	GetSession(ctx context.Context, token string) (*Session, error)
 	DeleteSession(ctx context.Context, token string) error
+	// SessionExistsByHash reports whether a live (unexpired) session with this
+	// token digest is still on record. Sessions are already stored by digest
+	// (see HashToken), so this is the lookup GetSession does without the token:
+	// it lets a caller holding only a session's identity — never its secret —
+	// ask whether that session is still alive.
+	SessionExistsByHash(ctx context.Context, hash string) (bool, error)
 }
 
 // CAStore persists the Panel's self-generated Agent-enrollment CA (a single

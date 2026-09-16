@@ -3,6 +3,11 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,4 +171,76 @@ func waitBackupReady(t *testing.T, d *DockerRuntime, sid, id string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("backup %s not ready in time", id)
+}
+
+// A stat failure is reported against the LOGICAL path and nothing else.
+// Whatever these return reaches an API client verbatim as "agent error: …", and
+// an *os.PathError carries the resolved host path — so returning it as-is would
+// hand anyone with server.files.read the node's storage layout. The distinction
+// between the failures survives; the filename that came with it does not.
+func TestStatErrorsDoNotLeakTheHostPath(t *testing.T) {
+	d := newFileOpsRuntime(t)
+	ctx := context.Background()
+	const sid = "s1"
+	if err := d.Create(ctx, mkSpec(sid)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("%s: expected an error", what)
+		}
+		if strings.Contains(err.Error(), d.dataDir) {
+			t.Fatalf("%s: error names the host path (%q): %v", what, d.dataDir, err)
+		}
+		if !strings.Contains(err.Error(), "missing.txt") {
+			t.Fatalf("%s: error does not name the logical path: %v", what, err)
+		}
+	}
+
+	_, serr := d.StatFile(ctx, sid, "missing.txt")
+	check("StatFile", serr)
+	check("DownloadFile", d.DownloadFile(ctx, sid, "missing.txt", &bytes.Buffer{}))
+	_, _, _, _, rerr := d.ReadFile(ctx, sid, "missing.txt", 1<<20)
+	check("ReadFile", rerr)
+
+	// The kind of failure still comes through: "not found" is not the same
+	// answer as "permission denied", and an operator chasing one must not be
+	// told the other.
+	if !strings.Contains(serr.Error(), "not found") {
+		t.Fatalf("a missing file reported as %v, want a not-found message", serr)
+	}
+	if got := statError("cfg.ini", &os.PathError{Op: "stat", Path: "/host/secret/cfg.ini", Err: os.ErrPermission}); !strings.Contains(got.Error(), "permission denied") ||
+		strings.Contains(got.Error(), "/host/secret") {
+		t.Fatalf("permission error rendered as %v", got)
+	}
+	if got := statError("cfg.ini", &os.PathError{Op: "stat", Path: "/host/secret/cfg.ini", Err: errors.New("some syscall failure")}); strings.Contains(got.Error(), "/host/secret") {
+		t.Fatalf("an unrecognized error leaked the host path: %v", got)
+	}
+	// The open failure after a successful stat goes through the same
+	// renderer: an *os.PathError from os.Open also carries the host path.
+	if got := statError("cfg.ini", &os.PathError{Op: "open", Path: "/host/secret/cfg.ini", Err: os.ErrPermission}); !strings.Contains(got.Error(), "permission denied") ||
+		strings.Contains(got.Error(), "/host/secret") {
+		t.Fatalf("open error rendered as %v", got)
+	}
+
+	// End to end on a file that stats fine but cannot be opened. POSIX only:
+	// on Windows the mode bits do not gate reads, so 0o000 opens anyway.
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		host := filepath.Join(d.localDir(sid), "locked.ini")
+		if err := os.WriteFile(host, []byte("secret"), 0o000); err != nil {
+			t.Fatalf("write locked file: %v", err)
+		}
+		_, _, _, _, rerr := d.ReadFile(ctx, sid, "locked.ini", 1<<20)
+		if rerr == nil {
+			t.Fatalf("ReadFile on a 0o000 file: expected an error")
+		}
+		if strings.Contains(rerr.Error(), d.dataDir) || !strings.Contains(rerr.Error(), "locked.ini") || !strings.Contains(rerr.Error(), "permission denied") {
+			t.Fatalf("ReadFile open failure rendered as %v", rerr)
+		}
+		if derr := d.DownloadFile(ctx, sid, "locked.ini", &bytes.Buffer{}); derr == nil || strings.Contains(derr.Error(), d.dataDir) {
+			t.Fatalf("DownloadFile open failure rendered as %v", derr)
+		}
+	}
 }

@@ -183,7 +183,7 @@ func (s *Server) handleCreateBootstrapToken(w http.ResponseWriter, r *http.Reque
 	if req.Replaces != "" {
 		revoked = s.bootstrap.revoke(req.Replaces)
 	}
-	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", clientIP(r),
+	s.logger.Info("bootstrap token issued", "node", req.NodeName, "expires_at", exp, "ip", s.clientIP(r),
 		"replaced_a_live_token", revoked)
 	// The CA fingerprint rides along so the Add Node dialog can embed a pin in
 	// the generated install command: the agent verifies the CA it receives
@@ -239,7 +239,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeName, err := s.bootstrap.redeem(req.Token)
 	if err != nil {
-		s.logger.Warn("agent enrollment rejected", "err", err, "ip", clientIP(r))
+		s.logger.Warn("agent enrollment rejected", "err", err, "ip", s.clientIP(r))
 		s.recordAudit(r, http.StatusUnauthorized, "enroll")
 		writeError(w, http.StatusUnauthorized, "invalid bootstrap token: "+err.Error())
 		return
@@ -252,7 +252,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	tunnelID := uuid.NewString()
 	certPEM, err := mtls.SignAgentCSRWithIdentity(s.caCert, s.caKey, []byte(req.CSR), mtls.DefaultAgentCertTTL, tunnelID)
 	if err != nil {
-		s.logger.Warn("agent enrollment: CSR rejected", "node", nodeName, "ip", clientIP(r), "err", err)
+		s.logger.Warn("agent enrollment: CSR rejected", "node", nodeName, "ip", s.clientIP(r), "err", err)
 		writeError(w, http.StatusBadRequest, "could not sign CSR: "+err.Error())
 		return
 	}
@@ -260,8 +260,8 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if port <= 0 || port > 65535 {
 		port = 9090
 	}
-	s.bootstrap.recordRedeemed(req.Token, nodeName, clientIP(r), enrollHosts(certPEM), port, tunnelID)
-	s.logger.Info("agent enrolled", "node", nodeName, "ip", clientIP(r), "tunnel_id", tunnelID,
+	s.bootstrap.recordRedeemed(req.Token, nodeName, s.clientIP(r), enrollHosts(certPEM), port, tunnelID)
+	s.logger.Info("agent enrolled", "node", nodeName, "ip", s.clientIP(r), "tunnel_id", tunnelID,
 		"issued_cert", mtls.SummarizePEM(certPEM), "ca_sha256", mtls.FingerprintPEM(s.caCert))
 	s.recordAudit(r, http.StatusOK, "enroll:"+nodeName)
 	writeJSON(w, http.StatusOK, map[string]string{

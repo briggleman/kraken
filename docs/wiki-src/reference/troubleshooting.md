@@ -1,0 +1,154 @@
+---
+title: Troubleshooting
+description: Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid.
+section: reference
+order: 64
+---
+
+Four failures that happened, each written the way you will meet it: the symptom
+first, because that is all you have at the time.
+
+## Every install ends with `state is 0x6`
+
+**Symptom.** The install log runs, SteamCMD reports progress, and the pass ends
+with
+
+```text
+Error! App '4019830' state is 0x6 after update job.
+```
+
+on every attempt, including a reinstall. Before 0.50.1 this was worse than a
+failure: the Agent did not recognise the line, treated the pass as fine, and
+started the server on the **old** build, so the symptom was a server that
+refused to update and never said why.
+
+**Cause.** A stale download state from an earlier failed attempt. SteamCMD keeps
+`steamapps/appmanifest_<appid>.acf` and a `steamapps/downloading/` directory
+between runs, and when they disagree with what the depot now holds, every
+subsequent `app_update` gives up in the same place. Validating does not clear
+it, because validation trusts the manifest.
+
+**Fix.** Delete both, then run the install again.
+
+1. Open the server's **Files** tab, or connect over SFTP.
+2. Delete `steamapps/appmanifest_<appid>.acf`.
+3. Delete the `steamapps/downloading/` directory.
+4. Start the server, or reinstall if it is in `install_failed`.
+
+The saves are not in either of those; they are wherever the spec's backup globs
+point. Since 0.50.1 the Agent treats the `state is 0x…` family as an install
+failure, so a repeat lands in `install_failed` with the line as `last_error`
+instead of quietly relaunching the old build.
+
+## Every node goes offline at once
+
+**Symptom.** The whole fleet reads `offline` at the same moment, which is not
+how real outages usually arrive. The Panel is up and serving the UI. A node's
+`agent.log` repeats a dial failure against the Panel's tunnel port:
+
+```text
+dial tcp <panel-address>:9443: connectex: No connection could be made because
+the target machine actively refused it.
+```
+
+**Cause.** The Panel's `9443` is not published or not reachable. The usual way
+to get there is hardening: binding the Panel's HTTP port to loopback so a
+reverse proxy can front it, and binding the tunnel listener the same way while
+you are in the file. Tunnel mode is the default for new nodes, so every tunnel
+node loses the Panel at once.
+
+Enrollment succeeding proves nothing about this. Enrollment is an outbound HTTP
+call to the Panel's HTTP port; the tunnel is a separate connection to `9443`.
+
+**Fix.** Publish `9443` again and make sure it is reachable from where your
+Agents are.
+
+- In Compose, check that the port is in the Panel service's `ports` (or that the
+  service is on host networking) and that nothing bound it to `127.0.0.1`.
+- Raw mTLS cannot be proxied, so `9443` cannot live behind Nginx, Caddy or a
+  Cloudflare Tunnel the way the HTTP port can. Give it its own address or DNS
+  name.
+- Confirm from a node, not from the Panel host.
+
+The nodes come back on their own once the listener is reachable; there is no
+re-enrollment step. [Ports and firewall](/wiki/configure/network/) has the full
+table of who is allowed to reach what.
+
+## `containers N running · 1 untracked` that will not clear
+
+**Symptom.** A node's band reads one more running container than the Panel has
+`running` rows for, and it stays that way. The server in question shows
+`install_failed`, or `offline`, while players are still connected to it.
+
+**Cause.** A restart that failed at the *stop before update* step while the
+Agent was unreachable. The 0.50.0 update pass is stop, install, start. When the
+stop could not be delivered, the Panel recorded the failure as
+`install_failed` even though nothing on the node had changed: the container kept
+running throughout, and the Agent adopted it again when it came back.
+
+That is a state lie rather than a data problem. `install_failed` means "the
+install tree is suspect", and a stop that never arrived says nothing about the
+tree. It also locks start and restart behind a reinstall, which is the part you
+feel.
+
+**Fix.** Get the Agent back first, then reinstall the server once the node is
+online. The reinstall runs the pass properly and the badge clears when the row
+and the node agree again.
+
+This one is a product bug, not an operator error, and it is tracked as
+[#328](https://github.com/briggleman/kraken/issues/328): a failed pre-update
+stop should leave the server in the state it was already in, record the reason,
+and refuse the pass up front when the node has no live session.
+
+:::note
+A transient `1 untracked` during an install or update pass is **normal**. The
+one-shot install container carries the same managed label the game container
+does, so while it runs the node is running one more than the Panel counts. It
+clears when the pass ends. It is only the badge that persists that means
+something.
+:::
+
+## Cloudflare returns 400 `The SSL certificate error`
+
+**Symptom.** With Authenticated Origin Pulls enabled, every request through
+Cloudflare comes back `400` with a body reading *The SSL certificate error*. The
+proxy's error log is empty, which makes it look like the requests are not
+arriving at all.
+
+**Cause.** The wrong certificate authority is installed on the origin. Two
+different objects arrive from the Cloudflare dashboard as a `.pem`:
+
+- an **Origin Certificate**, which is a server certificate for your origin, and
+- the **public Origin Pull CA**, which is what signs the client certificate
+  Cloudflare presents.
+
+`ssl_client_certificate` wants the second one. With the first one in that slot,
+nginx cannot verify Cloudflare's client certificate and refuses the connection.
+The empty error log is the other half of the trap: nginx records a client
+certificate verify failure at **info** level, so a proxy logging at error, which
+Nginx Proxy Manager does by default, shows nothing at all.
+
+**Fix.** Read the 400's body rather than the log, then replace the file with
+Cloudflare's public Origin Pull CA from
+`https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem`
+and reload the proxy. The exact configuration block is on [behind a reverse
+proxy](/wiki/configure/reverse-proxy/).
+
+## When it is none of these
+
+Three places to look, in this order:
+
+1. **The install log.** It is kept after the install finishes, success included,
+   until the server is deleted or reinstalled. It does not survive a Panel
+   restart, and the API says `retained: false` when it is gone rather than
+   showing you an empty pane.
+2. **The audit log.** Filter to failures. A screen of 4xx is somebody getting a
+   request wrong; a screen of 5xx is the Panel or a node.
+3. **`agent.log` on the node**, JSON, rotated at 10 MiB, in the Agent's state
+   directory. On Windows, `restart-helper.log` beside it is what a self-update's
+   relaunch wrote, step by step.
+
+And one thing to check before anything else if the whole UI looks wrong: the
+header's `stale` mark. A stale fleet view is a browser that cannot reach the
+Panel, not a fleet that stopped working. Servers keep running and schedules keep
+firing while your tab is out of date.

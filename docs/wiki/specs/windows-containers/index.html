@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Windows containers — Kraken wiki</title>
+<meta name="description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<link rel="canonical" href="https://krakenserver.io/wiki/specs/windows-containers/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/specs/windows-containers/" />
+<meta property="og:title" content="Windows containers — Kraken wiki" />
+<meta property="og:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Windows containers — Kraken wiki" />
+<meta name="twitter:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link is-here" href="/wiki/specs/windows-containers/" aria-current="page">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><a href="/wiki/specs/">The spec catalog</a><i aria-hidden="true">/</i><span aria-current="page">Windows containers</span></nav>
+    <h1>Windows containers</h1>
+    <p class="lede">What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#hyper-v-isolation-by-default">Hyper-V isolation, by default</a>
+<a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
+<a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
+<a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
+<a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>
+</div></details>
+    <article class="prose">
+<p>A Windows node runs Windows containers, which are a different animal from Linux
+ones in four specific ways. Everything else about a <code>windows-native</code> placement
+is the same: the same lifecycle, the same bind-mounted data directory, the same
+file and backup paths.</p>
+<p>The data root is mounted at <code>C:\data</code> rather than <code>/data</code>. Specs still write the
+logical <code>/data</code> in <code>config_files</code>, and the Agent maps it.</p>
+<h2 id="hyper-v-isolation-by-default">Hyper-V isolation, by default <a class="hlink" href="#hyper-v-isolation-by-default" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>KRAKEN_WINDOWS_ISOLATION</code> defaults to <code>hyperv</code>.</p>
+<p>Process isolation requires the host&#39;s build and the container image&#39;s build to
+match. Running an <code>ltsc2022</code> image on a Windows 11 host, which is the common
+homelab case, fails <code>CreateComputeSystem</code> with <code>The request is not supported</code>.
+Hyper-V isolation works across that mismatch, which is why it is the default
+rather than the faster option.</p>
+<p>On a Windows Server host whose build matches the image, set
+<code>KRAKEN_WINDOWS_ISOLATION=process</code> for a lighter container, or <code>default</code> to
+defer to the daemon. On anything else, leave it alone.</p>
+<h2 id="bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form <a class="hlink" href="#bind-mounts-use-the--v-form" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Agent mounts a server&#39;s data directory with Docker&#39;s <code>Binds</code> field, the
+<code>source:target</code> form, rather than the structured <code>Mounts</code> API. Under Hyper-V
+isolation the structured form fails <code>CreateComputeSystem</code> with the same <em>request
+is not supported</em>. This is internal, and it is here because it is the kind of
+thing somebody reads the code and tries to modernise.</p>
+<h2 id="missing-dlls">Missing DLLs <a class="hlink" href="#missing-dlls" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Server Core base image is not desktop Windows. A game that links against
+something the image lacks does not start, and it does not explain itself: the
+container exits with <code>0xC0000135</code>, <code>STATUS_DLL_NOT_FOUND</code>, and nothing in the
+log.</p>
+<p>Kraken translates the code for you in the drill-in, so a crashed server reads
+<code>exit 3221225781 / 0xC0000135</code> with the explanation beside it. Its sibling
+<code>0xC0000139</code> means a DLL is present but the wrong build, with an export missing,
+and <code>0xC000007B</code> is a 32/64-bit mismatch.</p>
+<p><strong>Fix it in the image, not next to the exe.</strong> The path is to scan the binary&#39;s
+import table inside the container, find what is unresolved, and add it to
+<a href="https://github.com/briggleman/kraken/blob/main/images/steam-win/Dockerfile"><code>images/steam-win/Dockerfile</code></a>.
+Copying a DLL from a desktop Windows machine next to the executable does not
+work reliably; that copy has its own dependencies the image also lacks, and you
+end up chasing the chain one file at a time.</p>
+<h2 id="the-steamcmd-self-update-trap">The SteamCMD self-update trap <a class="hlink" href="#the-steamcmd-self-update-trap" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>This one is worth understanding even though the Agent handles it, because the
+failure it produces looks like success.</p>
+<p><code>steamcmd.exe</code> never updates itself in place. When Valve ships a newer client,
+the running bootstrapper <strong>spawns the new binary and exits</strong>. A <code>windows-native</code>
+install script runs as <code>cmd /S /C &quot;&lt;script&gt;&quot;</code>, so <code>cmd</code> is PID 1: it sees that
+first <code>steamcmd.exe</code> return, walks the rest of the <code>&amp;</code> chain, reaches the end,
+and the container dies while the relaunched downloader is still writing
+<code>steamapps/downloading</code>. Exit code 0, no game files, no error line, and a Panel
+showing an offline server over an empty data directory.</p>
+<p><strong>The Agent guards this.</strong> On a Windows node, and only when the install script
+mentions <code>steamcmd</code>, it rewrites the script to:</p>
+<ul>
+<li>prepend a bare <code>steamcmd.exe +quit</code> prime, which triggers the self-update
+before any real <code>app_update</code> pass can be cut short by it;</li>
+<li>follow the prime, each <code>steamcmd</code> segment of the <code>&amp;</code> chain, and the end of the
+chain with a wait that blocks until no <code>steamcmd</code> process remains, so the
+relaunched child&#39;s <code>Success! App … fully installed</code> line still reaches the log
+stream and the existing success and failure patterns still decide the outcome.</li>
+</ul>
+<p>An install-log line records that it fired:
+<code>[kraken] windows SteamCMD guard applied: …</code>. Per-segment insertion is skipped,
+with the prime and a trailing wait still applied, when the chain contains <code>&quot;</code>,
+<code>^</code>, <code>(</code>, <code>)</code>, <code>&lt;</code>, <code>&gt;</code>, <code>|</code> or <code>&amp;&amp;</code>, any of which makes splitting on <code>&amp;</code> unsafe.</p>
+<p>So <strong>write the plain two-step script</strong> and do not hand-roll the wait. Linux
+scripts and non-Steam scripts are never touched.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>If you ever do write a wait by hand, it cannot be <code>powershell -Command &quot;…&quot;</code>.
+Docker&#39;s Windows argument escaping rewrites inner double quotes as <code>\&quot;</code>, so
+PowerShell receives the loop as a quoted string literal, echoes it, and exits 0,
+having done nothing at all and said nothing about it. It has to go through
+<code>powershell -NoProfile -NonInteractive -EncodedCommand &lt;UTF-16LE base64&gt;</code>, which
+carries no quotes. Put the decoded command in a comment beside it.</p>
+</div>
+</aside>
+
+
+<h2 id="writing-a-windows-startup-command">Writing a Windows startup command <a class="hlink" href="#writing-a-windows-startup-command" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>One line, <code>cmd</code> syntax.</strong> <code>&amp;</code> to chain. Do not rely on <code>&amp;&amp;</code> across newlines.</li>
+<li><strong>Launch the shipping binary directly.</strong> For an Unreal game that is
+<code>&lt;Project&gt;\Binaries\Win64\&lt;Project&gt;Server-Win64-Shipping.exe</code>. The root
+wrapper is UE&#39;s bootstrapper and hangs on an invisible prerequisite dialog
+under Server Core.</li>
+<li><strong>Pin the user directory.</strong> <code>-UserDir=C:\data\&lt;Project&gt;</code> keeps UE&#39;s <code>Saved/</code>
+inside the bind mount, which is what makes backups and the file browser see
+it.</li>
+<li><strong>Declare the Linux stop signal anyway.</strong> A Windows daemon ignores custom stop
+signals and sends its own shutdown event, waits, then kills. A Windows-only
+signal name is dead weight on a Linux Agent.</li>
+</ul>
+<p>One log line that is not a failure: headless V Rising prints <code>EOS session creation failed! NotFound</code>. That is the server-browser listing, not the server.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/specs/platforms/"><span class="pg-k">previous</span><span class="pg-t">Platforms</span></a>
+      <a class="pg next" href="/wiki/security/"><span class="pg-k">next</span><span class="pg-t">Security<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/specs/windows-containers.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/specs/windows-containers.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#hyper-v-isolation-by-default">Hyper-V isolation, by default</a>
+<a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
+<a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
+<a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
+<a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

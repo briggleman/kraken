@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Writing a spec — Kraken wiki</title>
+<meta name="description" content="The Game Spec schema field by field, the idempotency rule an install script now has to satisfy, the two-step SteamCMD pattern and why it exists, and what the validator refuses to save." />
+<link rel="canonical" href="https://krakenserver.io/wiki/specs/writing/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/specs/writing/" />
+<meta property="og:title" content="Writing a spec — Kraken wiki" />
+<meta property="og:description" content="The Game Spec schema field by field, the idempotency rule an install script now has to satisfy, the two-step SteamCMD pattern and why it exists, and what the validator refuses to save." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Writing a spec — Kraken wiki" />
+<meta name="twitter:description" content="The Game Spec schema field by field, the idempotency rule an install script now has to satisfy, the two-step SteamCMD pattern and why it exists, and what the validator refuses to save." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link is-here" href="/wiki/specs/writing/" aria-current="page">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><a href="/wiki/specs/">The spec catalog</a><i aria-hidden="true">/</i><span aria-current="page">Writing a spec</span></nav>
+    <h1>Writing a spec</h1>
+    <p class="lede">The Game Spec schema field by field, the idempotency rule an install script now has to satisfy, the two-step SteamCMD pattern and why it exists, and what the validator refuses to save.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-shape">The shape</a>
+<a class="toc-link lvl-3" href="#platforms">Platforms</a>
+<a class="toc-link lvl-3" href="#variables-and-settings">Variables and settings</a>
+<a class="toc-link lvl-3" href="#config-files">Config files</a>
+<a class="toc-link lvl-2" href="#the-rule-that-changed">The rule that changed</a>
+<a class="toc-link lvl-2" href="#the-two-step-steamcmd-pattern">The two-step SteamCMD pattern</a>
+<a class="toc-link lvl-2" href="#the-query-block">The query block</a>
+<a class="toc-link lvl-2" href="#the-backup-block">The backup block</a>
+<a class="toc-link lvl-2" href="#validating">Validating</a>
+</div></details>
+    <article class="prose">
+<p>A spec is one YAML file. The Panel validates it on save, so most mistakes are
+caught before a server ever exists; the ones that are not are the subject of the
+second half of this page.</p>
+<p>The canonical reference for the conventions the bundled catalog follows is
+<a href="https://github.com/briggleman/kraken/blob/main/internal/panel/catalog/bundled/SPECS.md"><code>internal/panel/catalog/bundled/SPECS.md</code></a>.
+This page is the orientation.</p>
+<h2 id="the-shape">The shape <a class="hlink" href="#the-shape" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>name</b><span class="p">:</span> <i>Valheim</i></span><span class="l"><b>slug</b><span class="p">:</span> <i>valheim</i></span><span class="l"><b>description</b><span class="p">:</span> <i>&gt;-</i></span><span class="l">  <i>One or two sentences. Shown on the catalog card.</i></span><span class="l"><b>banner_url</b><span class="p">:</span> <i>https://…</i>       <em># library hero art</em></span><span class="l"><b>icon_url</b><span class="p">:</span> <i>https://…</i>         <em># community icon</em></span><span class="l"><b>steam_app_ids</b><span class="p">:</span></span><span class="l">  <b>linux</b><span class="p">:</span> <span class="n">896660</span></span><span class="l">&#8203;</span><span class="l"><b>platforms</b><span class="p">:</span></span><span class="l">  <span class="p">-</span> <b>{ kind</b><span class="p">:</span> <i>linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }</i></span><span class="l">&#8203;</span><span class="l"><b>install</b><span class="p">:</span></span><span class="l">  <b>script</b><span class="p">:</span> <i>&gt;-</i></span><span class="l">    <i>steamcmd +force_install_dir /data +login anonymous +app_update <span class="t">{{APP_ID}}</span> validate +quit</i></span><span class="l">&#8203;</span><span class="l"><b>startup</b><span class="p">:</span></span><span class="l">  <b>command</b><span class="p">:</span> <i>&gt;-</i></span><span class="l">    <i>cd /data &amp;&amp; ./valheim_server.x86_64 -nographics -batchmode</i></span><span class="l">    <i>-name "<span class="t">{{SERVER_NAME}}</span>" -port <span class="t">{{PORT_GAME}}</span> -savedir /data/save</i></span><span class="l">  <b>stop</b><span class="p">:</span> <i>{ type: signal, value: SIGINT }</i></span><span class="l">  <b>restart</b><span class="p">:</span> <i>{ on_crash: true, max_retries: 3 }</i></span><span class="l">&#8203;</span><span class="l"><b>variables</b><span class="p">:</span></span><span class="l">  <span class="p">-</span> <b>{ key</b><span class="p">:</span> <i>SERVER_NAME, label: Server name, default: "Kraken Valheim", rules: "string", user_editable: true }</i></span><span class="l">&#8203;</span><span class="l"><b>ports</b><span class="p">:</span></span><span class="l">  <span class="p">-</span> <b>{ name</b><span class="p">:</span> <i>game,  protocol: udp, default: 2456, required: true }</i></span><span class="l">  <span class="p">-</span> <b>{ name</b><span class="p">:</span> <i>query, protocol: udp, default: 2457, required: true }</i></span><span class="l">&#8203;</span><span class="l"><b>resources</b><span class="p">:</span></span><span class="l">  <b>min_memory_mb</b><span class="p">:</span> <span class="n">2048</span></span><span class="l">  <b>recommended_memory_mb</b><span class="p">:</span> <span class="n">4096</span></span></pre></div>
+<p>Two placeholders are injected for you rather than declared. <code>{{APP_ID}}</code> is the
+Steam appid for the placement&#39;s OS family, taken from <code>steam_app_ids</code>, and
+<code>{{PORT_&lt;NAME&gt;}}</code> is the allocated host port for each declared port, with the
+name upper-cased: a port called <code>game</code> is <code>{{PORT_GAME}}</code>. Everything else in
+<code>{{…}}</code> comes from <code>variables</code>.</p>
+<p>Required, and refused without: <code>name</code>, <code>slug</code>, at least one platform (each with
+a valid <code>kind</code> and an <code>image</code>, and no kind twice), <code>install.script</code>,
+<code>startup.command</code>, a <code>startup.stop</code> of type <code>signal</code> or <code>command</code> with a value,
+and at least one port. Every port needs a unique name, a <code>tcp</code> or <code>udp</code>
+protocol, and a default inside 1 to 65535.</p>
+<p>The optional blocks are <code>variables</code>, <code>settings</code>, <code>config_files</code>, <code>query</code> and
+<code>backup</code>.</p>
+<h3 id="platforms">Platforms <a class="hlink" href="#platforms" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><code>linux-native</code>, <code>windows-native</code> and <code>linux-wine</code>. The list order is <strong>scheduler
+priority</strong>, so native kinds go before <code>linux-wine</code>: Wine is the fallback for a
+game with no Linux build, never a preference. Each entry may override
+<code>install_script</code> and <code>startup_command</code>, and may set <code>skip_update_on_start</code> for
+itself. <a href="/wiki/specs/platforms/">Platforms</a> has the whole policy.</p>
+<h3 id="variables-and-settings">Variables and settings <a class="hlink" href="#variables-and-settings" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>They are different things, and picking the wrong one is the most common
+authoring error.</p>
+<p><strong>Variables</strong> are substituted into the install script, the startup command and
+the container environment. They are baked in when the container is created, so a
+change takes effect on the next start and never sooner. A variable marked
+<code>user_editable</code> can be overridden per server, and its <code>rules</code> are enforced.
+Rules are pipe-separated: <code>string</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>min:N</code>, <code>max:N</code> and
+<code>in:a,b,c</code>, so <code>int|min:0|max:30</code> is a whole clamp in one field. On top of them
+sits a hard rejection of shell metacharacters and control characters, which is
+neither optional nor configurable, because the value ends up in a shell command.</p>
+<p><strong>Settings</strong> render into the game&#39;s own config files. They are grouped, typed
+(<code>string</code>, <code>text</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>enum</code>, <code>password</code>), and can carry
+<code>min</code>, <code>max</code>, <code>pattern</code>, <code>options</code> and <code>help</code>. A setting never reaches the shell
+command; it reaches a file. That is why the bundled specs expose almost
+everything as settings and almost nothing as an editable variable.</p>
+<p><code>settings.hot_reload</code> declares that the game re-reads its config while running.
+It changes only what the Panel tells the operator after a save. The files are
+written either way.</p>
+<h3 id="config-files">Config files <a class="hlink" href="#config-files" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>One entry per file, each with a <code>path</code> under the logical <code>/data</code> root, and a
+<code>format</code>:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>format</th>
+<th>what it writes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>template</code></td>
+<td>your <code>template</code> string, rendered. Needs the template.</td>
+</tr>
+<tr>
+<td><code>ini</code></td>
+<td><code>[section]</code> then <code>key=value</code></td>
+</tr>
+<tr>
+<td><code>properties</code> / <code>keyvalue</code></td>
+<td><code>key=value</code></td>
+</tr>
+<tr>
+<td><code>env</code></td>
+<td><code>KEY=value</code></td>
+</tr>
+<tr>
+<td><code>json</code></td>
+<td>a JSON object</td>
+</tr>
+<tr>
+<td><code>source-cvar</code></td>
+<td><code>key &quot;value&quot;</code></td>
+</tr>
+</tbody></table>
+</div>
+<p><code>bindings</code> map a file key to a setting key, with an optional value <code>map</code> for the
+cases where the game spells a boolean <code>1</code>/<code>0</code> or an enum differently from the
+dropdown you want to show.</p>
+<h2 id="the-rule-that-changed">The rule that changed <a class="hlink" href="#the-rule-that-changed" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>The install script runs on every operator-initiated start, so it must be
+idempotent.</strong> It runs against a fully installed, fully configured data directory
+holding live save games.</p>
+<p><code>steamcmd … +app_update &lt;id&gt; validate +quit</code> already satisfies this: a no-op on
+a current tree, a repair on a damaged one, and it only touches depot-manifest
+files, so uploaded mods and rendered config survive it.</p>
+<p>A script that wipes the data directory, re-seeds a config file the operator has
+since edited, or unconditionally re-downloads a large unversioned artifact does
+not. Rewrite it: guard the seeding step with <code>[ -f … ] ||</code>, and probe the
+installed version before downloading. The Factorio spec is the worked example,
+comparing <code>factorio --version</code> against the version in the download redirect.</p>
+<p><code>install.skip_update_on_start: true</code> is the opt-out, and it costs that game its
+updates. I would treat it as a last resort rather than a convenience.</p>
+</div>
+</aside>
+
+
+<p>Two things never re-run on that pass: <code>bepinex_script</code>, because those overlays
+copy over the tree and pull unpinned builds, and the Agent&#39;s crash-restart,
+which never involves the Panel at all.</p>
+<h2 id="the-two-step-steamcmd-pattern">The two-step SteamCMD pattern <a class="hlink" href="#the-two-step-steamcmd-pattern" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Write <code>app_update</code> <strong>twice</strong>.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
+steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit</code></pre></div>
+<p>A fresh SteamCMD fails the first pass against an empty appinfo cache with
+<code>Missing configuration</code> and exits non-zero; the second pass succeeds. Every
+Kraken install runs in a fresh container, so both passes run every time. The
+separator matters: <code>;</code> under <code>/bin/sh</code>, <code>&amp;</code> under <code>cmd.exe</code>, because both mean
+&quot;run the next one regardless&quot; in their own shell while <code>&amp;&amp;</code> does not.</p>
+<p>A single manual run that worked is luck rather than proof. Write the two-step.</p>
+<p>On a Windows node there is a second problem and <strong>the Agent solves it for you</strong>:
+<code>steamcmd.exe</code> never updates itself in place, it spawns the new binary and
+exits, which a <code>cmd</code> chain reads as &quot;that step finished&quot;. The Agent rewrites a
+Windows install script that mentions <code>steamcmd</code> to prime the self-update first
+and to wait for the downloader between segments, and logs a line saying it did.
+Write the plain two-step script and do not hand-roll the wait.
+<a href="/wiki/specs/windows-containers/">Windows containers</a> has the detail.</p>
+<h2 id="the-query-block">The query block <a class="hlink" href="#the-query-block" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Optional, and validated. <code>a2s</code> needs a <code>port</code> naming a <strong>spec port</strong>;
+<code>palworld-rest</code> needs a <code>port</code> and a <code>password</code> naming <strong>setting keys</strong>; <code>log</code>
+needs a join and a leave regex that compile as RE2 and capture at least one of
+<code>(?P&lt;name&gt;…)</code> or <code>(?P&lt;id&gt;…)</code>. An unknown method is refused.</p>
+<p>Derive log patterns from a real server log, quote the line you saw in a comment
+above the block with the date, and prefer the most specific prefix the game
+prints. A regex that also matches a chat line invents players.
+<a href="/wiki/operate/players/">Who is online</a> covers the runtime behaviour.</p>
+<h2 id="the-backup-block">The backup block <a class="hlink" href="#the-backup-block" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Data-directory-relative POSIX globs, never <code>C:\data\…</code> and never a leading <code>/</code>.
+<code>include</code> selects, <code>exclude</code> filters, an exclude wins.</p>
+<p><strong>Omit the block when you are not sure.</strong> A spec with no block gets the Panel&#39;s
+built-in policy, the whole data directory minus an ephemeral-only exclude list.
+An include list that misses the saves produces a green backup with no save in
+it, which is the worst outcome in the system; capturing too much is only slow.</p>
+<p>Declaring the block <strong>replaces</strong> that policy rather than adding to it, so a save
+tree that carries logs needs its own log excludes. Derive the paths from
+something the spec already proves: a <code>config_files</code> path under the save tree, a
+<code>-savedir</code> argument, a rendered <code>saveDirectory</code>. Leave a comment naming the
+source. And include operator-uploaded content a reinstall would not restore, a
+mods folder or a BepInEx <code>plugins/</code> tree, because that is not install tree.</p>
+<h2 id="validating">Validating <a class="hlink" href="#validating" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel validates on <code>POST /specs</code> and on <code>PUT /specs/{id}</code>, and an update
+increments the version. Both accept JSON or YAML, and a <code>400</code> names the field.</p>
+<p>Before you ship one, deploy from it on a real node and watch the install log.
+The validator can tell you the spec is well-formed. Only a real install can tell
+you the script was idempotent.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/specs/"><span class="pg-k">previous</span><span class="pg-t">The spec catalog</span></a>
+      <a class="pg next" href="/wiki/specs/platforms/"><span class="pg-k">next</span><span class="pg-t">Platforms<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/specs/writing.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/specs/writing.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-shape">The shape</a>
+<a class="toc-link lvl-3" href="#platforms">Platforms</a>
+<a class="toc-link lvl-3" href="#variables-and-settings">Variables and settings</a>
+<a class="toc-link lvl-3" href="#config-files">Config files</a>
+<a class="toc-link lvl-2" href="#the-rule-that-changed">The rule that changed</a>
+<a class="toc-link lvl-2" href="#the-two-step-steamcmd-pattern">The two-step SteamCMD pattern</a>
+<a class="toc-link lvl-2" href="#the-query-block">The query block</a>
+<a class="toc-link lvl-2" href="#the-backup-block">The backup block</a>
+<a class="toc-link lvl-2" href="#validating">Validating</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

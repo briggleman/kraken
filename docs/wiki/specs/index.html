@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The spec catalog — Kraken wiki</title>
+<meta name="description" content="The Game Specs bundled into the Panel binary, what each one targets, how the one-time first-boot seed differs from a one-click import, and what happens to running servers when you edit a spec." />
+<link rel="canonical" href="https://krakenserver.io/wiki/specs/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/specs/" />
+<meta property="og:title" content="The spec catalog — Kraken wiki" />
+<meta property="og:description" content="The Game Specs bundled into the Panel binary, what each one targets, how the one-time first-boot seed differs from a one-click import, and what happens to running servers when you edit a spec." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="The spec catalog — Kraken wiki" />
+<meta name="twitter:description" content="The Game Specs bundled into the Panel binary, what each one targets, how the one-time first-boot seed differs from a one-click import, and what happens to running servers when you edit a spec." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link is-here" href="/wiki/specs/" aria-current="page">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span aria-current="page">The spec catalog</span></nav>
+    <h1>The spec catalog</h1>
+    <p class="lede">The Game Specs bundled into the Panel binary, what each one targets, how the one-time first-boot seed differs from a one-click import, and what happens to running servers when you edit a spec.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#what-ships">What ships</a>
+<a class="toc-link lvl-2" href="#seeding-and-importing">Seeding, and importing</a>
+<a class="toc-link lvl-2" href="#editing-a-spec">Editing a spec</a>
+</div></details>
+    <article class="prose">
+<p>A <strong>Game Spec</strong> is the declarative definition of a game: how it installs, which
+image it runs in, how it starts and stops, which ports it needs, which settings
+it exposes, what its config files look like, what a backup captures, and how to
+ask it who is online. It is the &quot;egg&quot; equivalent, and it is one YAML file.</p>
+<p>Nine specs are embedded in the Panel binary. They are a starting library, not a
+closed set: import one, edit it, or write your own.</p>
+<h2 id="what-ships">What ships <a class="hlink" href="#what-ships" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>spec</th>
+<th>what it targets</th>
+<th>platforms</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Abiotic Factor</strong></td>
+<td>SteamCMD app 2857200, a UE5 Windows build. Name, world save, player cap and password are launch options.</td>
+<td><code>windows-native</code>, <code>linux-wine</code></td>
+</tr>
+<tr>
+<td><strong>Enshrouded</strong></td>
+<td>SteamCMD app 2278520, a Windows build, live-validated under Wine 10. Everything configures through <code>enshrouded_server.json</code>; joining is gated by per-role passwords. Memory-hungry: 16 GB for a full 16-slot group.</td>
+<td><code>windows-native</code>, <code>linux-wine</code></td>
+</tr>
+<tr>
+<td><strong>Factorio</strong></td>
+<td>The headless build, not on SteamCMD. The install pulls the current stable from factorio.com and creates a world if none exists. Admin lists and map-gen tweaks go through Files or SFTP.</td>
+<td><code>linux-native</code></td>
+</tr>
+<tr>
+<td><strong>Palworld</strong></td>
+<td>SteamCMD app 2394010, with the full <code>PalWorldSettings.ini</code> option set.</td>
+<td><code>linux-native</code></td>
+</tr>
+<tr>
+<td><strong>RuneScape Dragonwilds</strong></td>
+<td>SteamCMD app 4019830, shipped for both operating systems from one appid. Six-player cap. It refuses to start until the <code>OwnerId</code> field carries your in-game Player ID.</td>
+<td><code>linux-native</code>, <code>windows-native</code></td>
+</tr>
+<tr>
+<td><strong>V Rising</strong></td>
+<td>SteamCMD app 1829350, Windows-only. <code>ServerHostSettings.json</code> for identity and network, a preset for gameplay rules. BepInEx-capable.</td>
+<td><code>windows-native</code></td>
+</tr>
+<tr>
+<td><strong>Valheim</strong></td>
+<td>SteamCMD app 896660. Name, world, password and public listing are launch options. No <code>ready_regex</code>, so it reads running once the process is up. BepInEx-capable.</td>
+<td><code>linux-native</code></td>
+</tr>
+<tr>
+<td><strong>Windrose</strong></td>
+<td>SteamCMD app 4129620, Windows-only. The server rewrites its own <code>ServerDescription.json</code> at runtime, so Kraken deliberately does not template it: boot once, then edit through Files or SFTP.</td>
+<td><code>windows-native</code></td>
+</tr>
+<tr>
+<td><strong>Windows Demo Server</strong></td>
+<td>Not a game. A nanoserver image and a <code>cmd</code> loop, so you can watch the Windows container lifecycle end to end without a 30 GB download.</td>
+<td><code>windows-native</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>Specs with a <code>query:</code> block report who is online: Valheim over A2S, Palworld
+over its REST API, Enshrouded and Dragonwilds from their console logs. Specs
+with a <code>backup:</code> block capture their saves rather than the install tree; Abiotic
+Factor, Windrose and the demo have no block and fall back to the Panel&#39;s
+built-in policy. See <a href="/wiki/operate/players/">Who is online</a> and
+<a href="/wiki/operate/backups/">Backups</a>.</p>
+<!-- SCREENSHOT: the catalog screen with the bundled specs as cards, one marked as already imported -->
+<p class="shot"><em>screenshot: the catalog screen with the bundled specs as cards, one marked as already imported</em></p>
+
+
+<h2 id="seeding-and-importing">Seeding, and importing <a class="hlink" href="#seeding-and-importing" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>These are two different things and the difference matters on an upgrade.</p>
+<p><strong>The first-boot seed.</strong> On a genuinely fresh install, the Panel imports the
+whole bundled catalog once, so a headless or API-first deployment does not start
+with an empty spec table. It is latched by a setting, so it runs once ever, and
+it seeds <strong>only into an empty spec table</strong>. An existing deployment reaching that
+code for the first time gets the latch set and nothing imported, because
+injecting new bundled entries into a curated fleet would be a surprise rather
+than a convenience.</p>
+<p><strong>The one-click import.</strong> <code>POST /catalog/{id}/import</code> copies one bundled spec
+into your catalog. The catalog listing flags entries you already hold by slug,
+so the UI can stop you importing the same game twice. An import that collides
+with an existing slug is a <code>409</code>.</p>
+<p>Either way, what lands in your catalog is a <strong>copy</strong>. Upgrading Kraken does not
+update an imported spec, and editing one does not change the bundled file. That
+is the trade: your edits are safe from a release, and a fix to a bundled spec is
+yours to take by hand.</p>
+<h2 id="editing-a-spec">Editing a spec <a class="hlink" href="#editing-a-spec" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>PUT /specs/{id}</code>, or the spec editor in the UI, takes JSON or YAML and
+validates before it saves. Every successful update <strong>increments the spec&#39;s
+version</strong>, which is the number a server card shows beside the slug.</p>
+<p>An edit does not reach into running servers. A server picks up its spec&#39;s
+current install script on its next update pass, its current startup command and
+environment on its next start, and its current config templates on the next
+settings save or start. Nothing is rewritten under a running game.</p>
+<p>Deleting a spec is a <code>204</code>. Do not delete one that servers are deployed from.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>Authoring is its own page: <a href="/wiki/specs/writing/">Writing a spec</a> walks the
+schema and the rules that are not obvious, starting with the one that matters
+most, which is that an install script now runs on every start and therefore has
+to be idempotent.</p>
+</div>
+</aside>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/audit/"><span class="pg-k">previous</span><span class="pg-t">The audit log</span></a>
+      <a class="pg next" href="/wiki/specs/writing/"><span class="pg-k">next</span><span class="pg-t">Writing a spec<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/specs/index.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/specs/index.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#what-ships">What ships</a>
+<a class="toc-link lvl-2" href="#seeding-and-importing">Seeding, and importing</a>
+<a class="toc-link lvl-2" href="#editing-a-spec">Editing a spec</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

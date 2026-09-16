@@ -1,5 +1,10 @@
 # Security Audit — 2026-06-24
 
+> This file is canonical. The operator-facing summary, including the hardening
+> checklist for an internet-facing Panel, is at
+> [krakenserver.io/wiki/security/](https://krakenserver.io/wiki/security/), and
+> it quotes this document rather than restating it.
+
 Static review of the Kraken codebase (Go panel + agent, Svelte UI) covering
 authentication & credential handling, injection (SQL / command / path), transport
 security, and authorization.

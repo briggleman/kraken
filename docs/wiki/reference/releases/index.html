@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Releases — Kraken wiki</title>
+<meta name="description" content="Every Kraken release and what landed in it, rendered from CHANGELOG.md — plus how a release is cut, what the version number promises while the project is pre-1.0, and the one ordering rule that matters to an operator." />
+<link rel="canonical" href="https://krakenserver.io/wiki/reference/releases/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/reference/releases/" />
+<meta property="og:title" content="Releases — Kraken wiki" />
+<meta property="og:description" content="Every Kraken release and what landed in it, rendered from CHANGELOG.md — plus how a release is cut, what the version number promises while the project is pre-1.0, and the one ordering rule that matters to an operator." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Releases — Kraken wiki" />
+<meta name="twitter:description" content="Every Kraken release and what landed in it, rendered from CHANGELOG.md — plus how a release is cut, what the version number promises while the project is pre-1.0, and the one ordering rule that matters to an operator." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link is-here" href="/wiki/reference/releases/" aria-current="page">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">Releases</span></nav>
+    <h1>Releases</h1>
+    <p class="lede">Every Kraken release and what landed in it, rendered from CHANGELOG.md — plus how a release is cut, what the version number promises while the project is pre-1.0, and the one ordering rule that matters to an operator.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#what-a-version-number-promises">What a version number promises</a>
+<a class="toc-link lvl-2" href="#every-release">Every release</a>
+</div></details>
+    <article class="prose">
+<p>Releases are cut by <a href="https://github.com/googleapis/release-please">release-please</a>
+from the commit subjects on <code>main</code>. Every pull request is squash-merged, so its
+title becomes one commit, and that commit&#39;s Conventional-Commits type decides
+both the version bump and the section it lands in below. Nothing on this page is
+written by hand.</p>
+<p>Each release publishes the binaries with their <code>SHA256SUMS</code> on the GitHub
+release, and container images to <code>ghcr.io/briggleman/kraken-panel</code> and
+<code>ghcr.io/briggleman/kraken-agent</code>.</p>
+<h2 id="what-a-version-number-promises">What a version number promises <a class="hlink" href="#what-a-version-number-promises" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Kraken is pre-1.0, so the middle number carries the weight:</p>
+<ul>
+<li><strong><code>feat:</code></strong> — a new user-facing capability. Minor bump.</li>
+<li><strong><code>fix:</code></strong> — a user-facing bug fix. Patch bump.</li>
+<li><strong><code>feat!:</code></strong>, or a <code>BREAKING CHANGE:</code> footer — a breaking change. While the
+major is still 0 that is a minor bump, which is SemVer working as designed
+rather than the change being small.</li>
+<li><strong><code>docs:</code>, <code>chore:</code>, <code>ci:</code>, <code>refactor:</code>, <code>test:</code>, <code>build:</code>, <code>perf:</code>,
+<code>style:</code>, <code>revert:</code></strong> — no bump, still in the notes.</li>
+</ul>
+<p>Pre-1.0 means the surface can move between minors. Read the entry before you
+upgrade a fleet you care about, and read
+<a href="/wiki/install/upgrade/">Upgrading</a> before your first one.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>Agents before Panels.</strong> The Panel↔Agent protocol is versioned by tolerance,
+not negotiation: a new field arrives in a shape where an older Agent&#39;s zero
+value means &quot;unknown&quot; and the Panel falls back to its previous behaviour. Get
+the order wrong and nothing breaks — you simply do not get the new behaviour
+until both halves are current. Announced download lengths are the worked
+example, and <a href="/wiki/install/upgrade/">Upgrading</a> has the rest.</p>
+</div>
+</aside>
+
+
+<h2 id="every-release">Every release <a class="hlink" href="#every-release" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Each version below is a link target of its own — <code>#v0-52-0</code> for 0.52.0 — so a
+release can be cited directly.</p>
+<div class="rel" id="v0-52-0"><div class="rel-h"><span class="rel-v">0.52.0</span><span class="rel-d">2026-09-16</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.51.0...v0.52.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> harden download tokens with content-length, session binding, one auth chain, and rate limits (<a href="https://github.com/briggleman/kraken/issues/325">#325</a>) (<a href="https://github.com/briggleman/kraken/commit/412ae928ff0385777a805bbaf70101b228e9d9eb">412ae92</a>)</li></ul></div>
+
+<div class="rel" id="v0-51-0"><div class="rel-h"><span class="rel-v">0.51.0</span><span class="rel-d">2026-09-15</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.50.2...v0.51.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> stream file downloads through a short-lived token (<a href="https://github.com/briggleman/kraken/issues/323">#323</a>) (<a href="https://github.com/briggleman/kraken/commit/776ae66c7a9d3fddd0b3bcaa0b30fdf7ad5ac194">776ae66</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> console key, stale clock on hidden start, and shared error formatting (<a href="https://github.com/briggleman/kraken/issues/321">#321</a>) (<a href="https://github.com/briggleman/kraken/commit/d5e99b9bcceaea30db17b0726b496f0332e71df6">d5e99b9</a>)</li></ul></div>
+
+<div class="rel" id="v0-50-2"><div class="rel-h"><span class="rel-v">0.50.2</span><span class="rel-d">2026-09-15</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.50.1...v0.50.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> keep fleet state fresh when one poll request fails and show when it is stale (<a href="https://github.com/briggleman/kraken/issues/317">#317</a>) (<a href="https://github.com/briggleman/kraken/commit/776c008021bf33302bdd93f15613574dde4767ac">776c008</a>)</li><li><strong>web:</strong> re-pin the console when switching to the install log and allow it while installing (<a href="https://github.com/briggleman/kraken/issues/318">#318</a>) (<a href="https://github.com/briggleman/kraken/commit/228ba819233b5fe284cf64048d8dd1febfbe0b42">228ba81</a>)</li></ul></div>
+
+<div class="rel" id="v0-50-1"><div class="rel-h"><span class="rel-v">0.50.1</span><span class="rel-d">2026-09-15</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.50.0...v0.50.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> treat steamcmd &quot;state is 0x6 after update job&quot; as an install failure (<a href="https://github.com/briggleman/kraken/issues/310">#310</a>) (<a href="https://github.com/briggleman/kraken/commit/53871d4c5e6c4ae6312523635c09447b21d6699c">53871d4</a>)</li><li><strong>web:</strong> clear the updating label and power controls when the server leaves installing (<a href="https://github.com/briggleman/kraken/issues/312">#312</a>) (<a href="https://github.com/briggleman/kraken/commit/07cb7d1fd18ac70e2a1d05d40892eac04c6231bb">07cb7d1</a>)</li><li><strong>web:</strong> collapse every backup row by default (<a href="https://github.com/briggleman/kraken/issues/316">#316</a>) (<a href="https://github.com/briggleman/kraken/commit/794e683bd6567fa98788a7efca356169a2891f58">794e683</a>)</li></ul></div>
+
+<div class="rel" id="v0-50-0"><div class="rel-h"><span class="rel-v">0.50.0</span><span class="rel-d">2026-09-15</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.49.0...v0.50.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>re-run the install pass on every start so servers update (<a href="https://github.com/briggleman/kraken/issues/308">#308</a>) (<a href="https://github.com/briggleman/kraken/commit/bac742cf164cda86958ad6c9442dfc6c80071b9e">bac742c</a>)</li></ul></div>
+
+<div class="rel" id="v0-49-0"><div class="rel-h"><span class="rel-v">0.49.0</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.48.0...v0.49.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> download files and folders from the files tab (<a href="https://github.com/briggleman/kraken/issues/305">#305</a>) (<a href="https://github.com/briggleman/kraken/commit/cf587a07fc01d773570657d957b5a4e63dfcf1a2">cf587a0</a>)</li></ul></div>
+
+<div class="rel" id="v0-48-0"><div class="rel-h"><span class="rel-v">0.48.0</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.47.2...v0.48.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> weekly prune of dangling game-server images (<a href="https://github.com/briggleman/kraken/issues/303">#303</a>) (<a href="https://github.com/briggleman/kraken/commit/75775777c8fe1ccf1870c7c4484ce6e857d04b27">7577577</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> derive --service start/status paths from the registered service command line (<a href="https://github.com/briggleman/kraken/issues/301">#301</a>) (<a href="https://github.com/briggleman/kraken/commit/36e1064752b622e3cc924971ca0cdb5026efeec6">36e1064</a>)</li><li><strong>agent:</strong> pull the image on install and start, falling back to the local copy (<a href="https://github.com/briggleman/kraken/issues/300">#300</a>) (<a href="https://github.com/briggleman/kraken/commit/c5e6bb2c6213134bd0999401e773fadaad3f36c1">c5e6bb2</a>)</li></ul></div>
+
+<div class="rel" id="v0-47-2"><div class="rel-h"><span class="rel-v">0.47.2</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.47.1...v0.47.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> reconnect the console stream after a server restart (<a href="https://github.com/briggleman/kraken/issues/298">#298</a>) (<a href="https://github.com/briggleman/kraken/commit/9191825ad689f85d1eb9c089e9cd7d0797b7271c">9191825</a>)</li></ul></div>
+
+<div class="rel" id="v0-47-1"><div class="rel-h"><span class="rel-v">0.47.1</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.47.0...v0.47.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>specs:</strong> key the dragonwilds roster on the matcher session lines (<a href="https://github.com/briggleman/kraken/issues/296">#296</a>) (<a href="https://github.com/briggleman/kraken/commit/a6256ff4b717b6c9533f01b45ae8227e77107b23">a6256ff</a>)</li></ul></div>
+
+<div class="rel" id="v0-47-0"><div class="rel-h"><span class="rel-v">0.47.0</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.46.0...v0.47.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>specs:</strong> read the dragonwilds roster from its console log (<a href="https://github.com/briggleman/kraken/issues/293">#293</a>) (<a href="https://github.com/briggleman/kraken/commit/def0575c56b335533be23dc6241762f0540a7293">def0575</a>)</li><li><strong>specs:</strong> read the enshrouded roster from its console log (<a href="https://github.com/briggleman/kraken/issues/295">#295</a>) (<a href="https://github.com/briggleman/kraken/commit/dec9f44b86e2cf12bdf9da72ef8796f6b86e60a8">dec9f44</a>)</li></ul></div>
+
+<div class="rel" id="v0-46-0"><div class="rel-h"><span class="rel-v">0.46.0</span><span class="rel-d">2026-09-14</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.45.0...v0.46.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> delete files and folders from the files tab (<a href="https://github.com/briggleman/kraken/issues/291">#291</a>) (<a href="https://github.com/briggleman/kraken/commit/22490f2effb728dbdcd92bd04ae8aba026714a64">22490f2</a>)</li></ul></div>
+
+<div class="rel" id="v0-45-0"><div class="rel-h"><span class="rel-v">0.45.0</span><span class="rel-d">2026-09-12</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.44.1...v0.45.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> keep the install log after completion and surface the crash exit code (<a href="https://github.com/briggleman/kraken/commit/11ef5402c3f7954020c76cb721e381ee61aab182">11ef540</a>)</li><li><strong>specs:</strong> add windows-native platform to the dragonwilds spec (<a href="https://github.com/briggleman/kraken/commit/b8c1f50436de54015aa1643d35e14fb6e6aa1add">b8c1f50</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> guard windows steamcmd installs against the self-update relaunch (<a href="https://github.com/briggleman/kraken/commit/3890ae46f411bd1e78dfe4e0d790e79da1bb8895">3890ae4</a>)</li><li><strong>web:</strong> keep long console and spec lines from stalling the main thread (<a href="https://github.com/briggleman/kraken/commit/54b5f5d81d04d0394092123c48f8bfc9aa770d8d">54b5f5d</a>)</li><li><strong>web:</strong> keep new-server edits across fleet refreshes (<a href="https://github.com/briggleman/kraken/issues/277">#277</a>) (<a href="https://github.com/briggleman/kraken/commit/3bd5b2e73940c65f9928f2e0e93333553658b586">3bd5b2e</a>)</li></ul></div>
+
+<div class="rel" id="v0-44-1"><div class="rel-h"><span class="rel-v">0.44.1</span><span class="rel-d">2026-09-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.44.0...v0.44.1">compare</a></div><div class="rel-k">Performance Improvements</div><ul class="rel-l"><li><strong>web:</strong> take the per-frame blur and blend passes out of the ambient backdrop (<a href="https://github.com/briggleman/kraken/issues/274">#274</a>) (<a href="https://github.com/briggleman/kraken/commit/576f2eed745cbf856c02698ba008ec2188a7fbb8">576f2ee</a>)</li></ul></div>
+
+<div class="rel" id="v0-44-0"><div class="rel-h"><span class="rel-v">0.44.0</span><span class="rel-d">2026-09-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.43.0...v0.44.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> colour the spec editor&#39;s punctuation as a green scaffold (<a href="https://github.com/briggleman/kraken/issues/270">#270</a>) (<a href="https://github.com/briggleman/kraken/commit/fd1aaa91c46599a99e8a5dd07080fa332d8b3f74">fd1aaa9</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> relaunch the windows service after self-update with our own helper (<a href="https://github.com/briggleman/kraken/issues/272">#272</a>) (<a href="https://github.com/briggleman/kraken/commit/73e9bc36f3c27efe7f6138ac4eab3e777784bdb6">73e9bc3</a>)</li><li><strong>web:</strong> keep the json|yaml switch above the spec editor overlay (<a href="https://github.com/briggleman/kraken/issues/268">#268</a>) (<a href="https://github.com/briggleman/kraken/commit/1bd7b2eca186ab7897db16c06041f536dd0137cd">1bd7b2e</a>)</li></ul></div>
+
+<div class="rel" id="v0-43-0"><div class="rel-h"><span class="rel-v">0.43.0</span><span class="rel-d">2026-09-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.42.0...v0.43.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> denser node-band meters (72 cols) + spec-editor syntax palette (<a href="https://github.com/briggleman/kraken/issues/265">#265</a>) (<a href="https://github.com/briggleman/kraken/commit/a71db4bdd5c4886ff3195a4471b8a3aa5b3642a7">a71db4b</a>)</li><li><strong>web:</strong> render the abyssal syntax highlight in the spec code editor (<a href="https://github.com/briggleman/kraken/issues/267">#267</a>) (<a href="https://github.com/briggleman/kraken/commit/8558c99473e13788634a6e2ef814d69e8f2c93c1">8558c99</a>)</li></ul></div>
+
+<div class="rel" id="v0-42-0"><div class="rel-h"><span class="rel-v">0.42.0</span><span class="rel-d">2026-09-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.41.0...v0.42.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>backup retention (keep 5) and drill-in depth for <a href="https://github.com/briggleman/kraken/issues/126">#126</a> (<a href="https://github.com/briggleman/kraken/issues/261">#261</a>) (<a href="https://github.com/briggleman/kraken/commit/d9cee4308fa599974e18dbcc09901f2751afc268">d9cee43</a>)</li><li>node link metric, occupancy heat rails, full-width specs footer (<a href="https://github.com/briggleman/kraken/issues/256">#256</a>) (<a href="https://github.com/briggleman/kraken/commit/abd40a0c535fc61d6f6b794bab78299d07746e98">abd40a0</a>)</li><li><strong>web:</strong> backup detail shows captured globs and the mirror target (<a href="https://github.com/briggleman/kraken/issues/263">#263</a>) (<a href="https://github.com/briggleman/kraken/commit/4203073a76c3004a33c00fbcc5fb70997b391d03">4203073</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>deps:</strong> bump x/crypto to v0.56.0 for two reachable SSH DoS advisories (<a href="https://github.com/briggleman/kraken/issues/260">#260</a>) (<a href="https://github.com/briggleman/kraken/commit/7615816a03d061dfd338f51ad848ba71bff13e63">7615816</a>)</li></ul></div>
+
+<div class="rel" id="v0-41-0"><div class="rel-h"><span class="rel-v">0.41.0</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.40.0...v0.41.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> deep-linkable server URLs (<a href="https://github.com/briggleman/kraken/issues/254">#254</a>) (<a href="https://github.com/briggleman/kraken/commit/97b15e94aa1478a96c4321e041f3db4c78badf02">97b15e9</a>)</li></ul></div>
+
+<div class="rel" id="v0-40-0"><div class="rel-h"><span class="rel-v">0.40.0</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.39.1...v0.40.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> seed the bundled catalog on first boot (<a href="https://github.com/briggleman/kraken/issues/251">#251</a>) (<a href="https://github.com/briggleman/kraken/commit/f326e8428ac4431cf69398480da1992d4fd0929e">f326e84</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> restore reproduces the archived state — stop-guarded, staged, mode-preserving (<a href="https://github.com/briggleman/kraken/issues/252">#252</a>) (<a href="https://github.com/briggleman/kraken/commit/500e9e12ee3ce7c869d71feadf39218233b592a6">500e9e1</a>)</li></ul></div>
+
+<div class="rel" id="v0-39-1"><div class="rel-h"><span class="rel-v">0.39.1</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.39.0...v0.39.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> restore the json|yaml switch in the spec code editor (<a href="https://github.com/briggleman/kraken/issues/249">#249</a>) (<a href="https://github.com/briggleman/kraken/commit/8302be33af7a80296669392064429aecefb980bd">8302be3</a>)</li></ul></div>
+
+<div class="rel" id="v0-39-0"><div class="rel-h"><span class="rel-v">0.39.0</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.38.2...v0.39.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>specs:</strong> per-spec backup globs — capture saves, not the install tree (<a href="https://github.com/briggleman/kraken/issues/247">#247</a>) (<a href="https://github.com/briggleman/kraken/commit/6dad11d301f867a8c4429b76e5790f87860e1a73">6dad11d</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> persist backup-failure records across agent restarts (<a href="https://github.com/briggleman/kraken/issues/246">#246</a>) (<a href="https://github.com/briggleman/kraken/commit/cc608ce3f4585eec1bfb89fa72f7210b0ce63021">cc608ce</a>)</li><li><strong>agent:</strong> verify backup targets on operator save, not on every reconcile (<a href="https://github.com/briggleman/kraken/issues/244">#244</a>) (<a href="https://github.com/briggleman/kraken/commit/5c509ef6cbd9d224c6e4c647abdb3f5b7667e7fb">5c509ef</a>)</li></ul></div>
+
+<div class="rel" id="v0-38-2"><div class="rel-h"><span class="rel-v">0.38.2</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.38.1...v0.38.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> tunnel-mode agents survive inbound-port conflicts and report them (<a href="https://github.com/briggleman/kraken/issues/241">#241</a>) (<a href="https://github.com/briggleman/kraken/commit/1b8d1b7ac708aedf7e18cbb1cb518b9f0d5423bd">1b8d1b7</a>)</li></ul></div>
+
+<div class="rel" id="v0-38-1"><div class="rel-h"><span class="rel-v">0.38.1</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.38.0...v0.38.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> self-update restart no longer depends on the SCM failure budget (<a href="https://github.com/briggleman/kraken/issues/240">#240</a>) (<a href="https://github.com/briggleman/kraken/commit/3ee34bb090e64f7dc40edac6b0c5ad08c28be1e9">3ee34bb</a>)</li></ul></div>
+
+<div class="rel" id="v0-38-0"><div class="rel-h"><span class="rel-v">0.38.0</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.6...v0.38.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> smb backup target and replication mirror (<a href="https://github.com/briggleman/kraken/issues/238">#238</a>) (<a href="https://github.com/briggleman/kraken/commit/863d7744c63a4db28ae864a6aa27bde2b51d8697">863d774</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-6"><div class="rel-h"><span class="rel-v">0.37.6</span><span class="rel-d">2026-09-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.5...v0.37.6">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> don&#39;t adopt the panel&#39;s own NAT gateway as a node&#39;s LAN host (<a href="https://github.com/briggleman/kraken/issues/234">#234</a>) (<a href="https://github.com/briggleman/kraken/commit/92aa5a362c789569696efb3b76dc409bd6dfa259">92aa5a3</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-5"><div class="rel-h"><span class="rel-v">0.37.5</span><span class="rel-d">2026-09-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.4...v0.37.5">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> track the node&#39;s LAN host; stop forwarding to a stale public_host (<a href="https://github.com/briggleman/kraken/issues/232">#232</a>) (<a href="https://github.com/briggleman/kraken/commit/79ed817bc7ebc64089c70fab32eba7574fc68aa9">79ed817</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-4"><div class="rel-h"><span class="rel-v">0.37.4</span><span class="rel-d">2026-09-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.3...v0.37.4">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> make dns hostname/srv fields editable and resync toggles on failure (<a href="https://github.com/briggleman/kraken/issues/230">#230</a>) (<a href="https://github.com/briggleman/kraken/commit/8e7a1c8ee23c1cced1729abc971c7e650bf7a040">8e7a1c8</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-3"><div class="rel-h"><span class="rel-v">0.37.3</span><span class="rel-d">2026-09-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.2...v0.37.3">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> archive live and symlinked data dirs without failing (<a href="https://github.com/briggleman/kraken/issues/228">#228</a>) (<a href="https://github.com/briggleman/kraken/commit/bc372456120bf9dc969d36e2a9b94b63d8754ba5">bc37245</a>)</li><li><strong>agent:</strong> report why a backup failed (<a href="https://github.com/briggleman/kraken/issues/227">#227</a>) (<a href="https://github.com/briggleman/kraken/commit/a648b270831df5963208b9fdeb2534f71898c9af">a648b27</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-2"><div class="rel-h"><span class="rel-v">0.37.2</span><span class="rel-d">2026-09-07</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.1...v0.37.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>specs:</strong> enshrouded auth via userGroups and the single-port config (<a href="https://github.com/briggleman/kraken/issues/216">#216</a>) (<a href="https://github.com/briggleman/kraken/commit/1c440b58f45d90fa3042526f31eced76181bdc65">1c440b5</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-1"><div class="rel-h"><span class="rel-v">0.37.1</span><span class="rel-d">2026-09-07</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.37.0...v0.37.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>specs:</strong> point the seed specs at the real steam images (<a href="https://github.com/briggleman/kraken/issues/209">#209</a>) (<a href="https://github.com/briggleman/kraken/commit/9cc594005dfc97c32d08aca236a64d9ea9a512ab">9cc5940</a>)</li><li><strong>web:</strong> stack sheets by open order and make the spec editor actually save (<a href="https://github.com/briggleman/kraken/issues/208">#208</a>) (<a href="https://github.com/briggleman/kraken/commit/8391cf357ca0054b7251d6d6932d6e6a39348082">8391cf3</a>)</li></ul></div>
+
+<div class="rel" id="v0-37-0"><div class="rel-h"><span class="rel-v">0.37.0</span><span class="rel-d">2026-09-01</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.36.0...v0.37.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> the wizard drops its manual catalog step and promotes every skip (<a href="https://github.com/briggleman/kraken/issues/205">#205</a>) (<a href="https://github.com/briggleman/kraken/commit/06a34f9f3a31c3b2eafe711f3d5c3701016b951c">06a34f9</a>)</li></ul></div>
+
+<div class="rel" id="v0-36-0"><div class="rel-h"><span class="rel-v">0.36.0</span><span class="rel-d">2026-09-01</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.35.0...v0.36.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> make the SCM config inspectable with --service status (<a href="https://github.com/briggleman/kraken/issues/199">#199</a>) (<a href="https://github.com/briggleman/kraken/commit/252f7f53ee212adc7d840eb479757361bca90492">252f7f5</a>)</li></ul></div>
+
+<div class="rel" id="v0-35-0"><div class="rel-h"><span class="rel-v">0.35.0</span><span class="rel-d">2026-09-01</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.5...v0.35.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> a resting metric gives up its ink (<a href="https://github.com/briggleman/kraken/issues/191">#191</a>) (<a href="https://github.com/briggleman/kraken/commit/68389bfa808b88a5d7df00063b95740b020b2d04">68389bf</a>)</li><li><strong>web:</strong> determinate progress fill for the pushing chip (<a href="https://github.com/briggleman/kraken/issues/187">#187</a>) (<a href="https://github.com/briggleman/kraken/commit/292e6c483959f933eef64e66af4745ed920ac416">292e6c4</a>)</li></ul></div>
+
+<div class="rel" id="v0-34-5"><div class="rel-h"><span class="rel-v">0.34.5</span><span class="rel-d">2026-09-01</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.4...v0.34.5">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> re-assert windows service recovery on every install run (<a href="https://github.com/briggleman/kraken/issues/188">#188</a>) (<a href="https://github.com/briggleman/kraken/commit/a384dffdd40edf60c5308940c16626c0451adecd">a384dff</a>)</li></ul></div>
+
+<div class="rel" id="v0-34-4"><div class="rel-h"><span class="rel-v">0.34.4</span><span class="rel-d">2026-09-01</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.3...v0.34.4">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> restore SHA-aware agent-update preflight (<a href="https://github.com/briggleman/kraken/issues/186">#186</a>) (<a href="https://github.com/briggleman/kraken/commit/02fac4dcf928b992229821addb1be3ee23a7e688">02fac4d</a>)</li></ul></div>
+
+<div class="rel" id="v0-34-3"><div class="rel-h"><span class="rel-v">0.34.3</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.2...v0.34.3">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> a wordless refusal must still look failed (<a href="https://github.com/briggleman/kraken/issues/182">#182</a>) (<a href="https://github.com/briggleman/kraken/commit/d7fee11cf173c528649608414fde46e281ca5432">d7fee11</a>), closes <a href="https://github.com/briggleman/kraken/issues/159">#159</a></li></ul></div>
+
+<div class="rel" id="v0-34-2"><div class="rel-h"><span class="rel-v">0.34.2</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.1...v0.34.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> report visible traffic when no interface classifies as physical (<a href="https://github.com/briggleman/kraken/issues/180">#180</a>) (<a href="https://github.com/briggleman/kraken/commit/eb767eeb94e8f648687b44c019cb7cdbf4fe8e14">eb767ee</a>)</li></ul></div>
+
+<div class="rel" id="v0-34-1"><div class="rel-h"><span class="rel-v">0.34.1</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.34.0...v0.34.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> reset the agent chip&#39;s phase when its drift episode ends (<a href="https://github.com/briggleman/kraken/issues/176">#176</a>) (<a href="https://github.com/briggleman/kraken/commit/1388fdb3498cd348e9981b59a471102b716bd40c">1388fdb</a>), closes <a href="https://github.com/briggleman/kraken/issues/159">#159</a></li></ul></div>
+
+<div class="rel" id="v0-34-0"><div class="rel-h"><span class="rel-v">0.34.0</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.33.0...v0.34.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> the agent chip gets its five states (<a href="https://github.com/briggleman/kraken/issues/174">#174</a>) (<a href="https://github.com/briggleman/kraken/commit/bb610bec79143653792a50ea1df37efd3b6fb11c">bb610be</a>), closes <a href="https://github.com/briggleman/kraken/issues/159">#159</a></li></ul></div>
+
+<div class="rel" id="v0-33-0"><div class="rel-h"><span class="rel-v">0.33.0</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.32.0...v0.33.0">compare</a></div><div class="rel-k">⚠ BREAKING CHANGES</div><ul class="rel-l"><li><strong>panel:</strong> POST /nodes/{id}/agent-update returns 202 with a job body ({job_id, phase, bytes_sent, bytes_total}) instead of 200 with {from_version, to_version, restarting}. POST /nodes/agent-update-all is removed.</li></ul><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> agent-update answers 202 and streams in the background (<a href="https://github.com/briggleman/kraken/issues/172">#172</a>) (<a href="https://github.com/briggleman/kraken/commit/d6a1e5ab526d78c95bb6831a68ee6eb4d446c5a5">d6a1e5a</a>), closes <a href="https://github.com/briggleman/kraken/issues/163">#163</a></li></ul></div>
+
+<div class="rel" id="v0-32-0"><div class="rel-h"><span class="rel-v">0.32.0</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.31.0...v0.32.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> lock a node to hold new placements (<a href="https://github.com/briggleman/kraken/issues/171">#171</a>) (<a href="https://github.com/briggleman/kraken/commit/49b81329a1d712d2cf93f7d977b31e37194804da">49b8132</a>), closes <a href="https://github.com/briggleman/kraken/issues/167">#167</a></li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> refuse to delete a node that still owns servers (<a href="https://github.com/briggleman/kraken/issues/169">#169</a>) (<a href="https://github.com/briggleman/kraken/commit/a6db82ba4dc28850e3c3aa8701b4df9e3d7930ad">a6db82b</a>), closes <a href="https://github.com/briggleman/kraken/issues/166">#166</a></li></ul></div>
+
+<div class="rel" id="v0-31-0"><div class="rel-h"><span class="rel-v">0.31.0</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.30.2...v0.31.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> delete a node, and re-mint an enrollment token (<a href="https://github.com/briggleman/kraken/issues/165">#165</a>) (<a href="https://github.com/briggleman/kraken/commit/61c5a4007d6a46f10f503bbe859849cd8d1da272">61c5a40</a>)</li></ul></div>
+
+<div class="rel" id="v0-30-2"><div class="rel-h"><span class="rel-v">0.30.2</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.30.1...v0.30.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>deploy:</strong> let the agent replace its own binary (<a href="https://github.com/briggleman/kraken/issues/162">#162</a>) (<a href="https://github.com/briggleman/kraken/commit/6119ade5694f434bb24585dbc598841194cf4dce">6119ade</a>), closes <a href="https://github.com/briggleman/kraken/issues/114">#114</a></li></ul></div>
+
+<div class="rel" id="v0-30-1"><div class="rel-h"><span class="rel-v">0.30.1</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.30.0...v0.30.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>panel:</strong> report the agent&#39;s refusal, not &quot;stream binary: EOF&quot; (<a href="https://github.com/briggleman/kraken/issues/160">#160</a>) (<a href="https://github.com/briggleman/kraken/commit/0169b098a7d09c0a6987ddaf2ff09c85635feb24">0169b09</a>), closes <a href="https://github.com/briggleman/kraken/issues/114">#114</a></li></ul></div>
+
+<div class="rel" id="v0-30-0"><div class="rel-h"><span class="rel-v">0.30.0</span><span class="rel-d">2026-08-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.29.0...v0.30.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> flag nodes whose agent the panel has outrun (<a href="https://github.com/briggleman/kraken/issues/156">#156</a>) (<a href="https://github.com/briggleman/kraken/commit/3c518928f10d67e6db6942561e3bf8b7cb220a80">3c51892</a>)</li></ul></div>
+
+<div class="rel" id="v0-29-0"><div class="rel-h"><span class="rel-v">0.29.0</span><span class="rel-d">2026-08-28</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.28.0...v0.29.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> animate the events floor as a continuous ticker (<a href="https://github.com/briggleman/kraken/issues/152">#152</a>) (<a href="https://github.com/briggleman/kraken/commit/53450e345f9c86fcd80f1fcd1af3415ddba46ef9">53450e3</a>)</li><li><strong>web:</strong> sftp connection details from the station strip (<a href="https://github.com/briggleman/kraken/issues/155">#155</a>) (<a href="https://github.com/briggleman/kraken/commit/cd9bf0f9d7f11cebb23da04b9d7a052616c718ee">cd9bf0f</a>)</li></ul></div>
+
+<div class="rel" id="v0-28-0"><div class="rel-h"><span class="rel-v">0.28.0</span><span class="rel-d">2026-08-28</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.27.0...v0.28.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>rename a node from node settings (<a href="https://github.com/briggleman/kraken/issues/148">#148</a>) (<a href="https://github.com/briggleman/kraken/commit/5179f0c00e4969b4d76e1b8ddcb8fed375ce9dd4">5179f0c</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li>honor memory_mb when creating a server (<a href="https://github.com/briggleman/kraken/issues/149">#149</a>) (<a href="https://github.com/briggleman/kraken/commit/739b886d547a628207ee1263a1f35df26a0f6bb2">739b886</a>)</li></ul></div>
+
+<div class="rel" id="v0-27-0"><div class="rel-h"><span class="rel-v">0.27.0</span><span class="rel-d">2026-08-28</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.26.1...v0.27.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>report real node host vitals on the node bands (<a href="https://github.com/briggleman/kraken/issues/142">#142</a>) (<a href="https://github.com/briggleman/kraken/commit/995e41f86ab7a3f8a019276ba35337b3e9c285ea">995e41f</a>), closes <a href="https://github.com/briggleman/kraken/issues/128">#128</a></li></ul></div>
+
+<div class="rel" id="v0-26-1"><div class="rel-h"><span class="rel-v">0.26.1</span><span class="rel-d">2026-08-27</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.26.0...v0.26.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> reject peer-agent certs on the gRPC listener (<a href="https://github.com/briggleman/kraken/issues/138">#138</a>) (<a href="https://github.com/briggleman/kraken/commit/6ddd8bed0a2aa9b62c583f5ad8de3d9f76e215b5">6ddd8be</a>)</li></ul></div>
+
+<div class="rel" id="v0-26-0"><div class="rel-h"><span class="rel-v">0.26.0</span><span class="rel-d">2026-08-27</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.25.1...v0.26.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> port the panel UI to Svelte 5, generated from the design mock (<a href="https://github.com/briggleman/kraken/issues/134">#134</a>) (<a href="https://github.com/briggleman/kraken/commit/135e123c2e4615daeca61bd027bfc24412f0b101">135e123</a>)</li></ul></div>
+
+<div class="rel" id="v0-25-1"><div class="rel-h"><span class="rel-v">0.25.1</span><span class="rel-d">2026-08-27</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.25.0...v0.25.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>images:</strong> add xz-utils to steam-base so Factorio can install (<a href="https://github.com/briggleman/kraken/commit/30a5928ee8c84c522f005e106b997f44b7fd3a92">30a5928</a>), closes <a href="https://github.com/briggleman/kraken/issues/132">#132</a></li></ul></div>
+
+<div class="rel" id="v0-25-0"><div class="rel-h"><span class="rel-v">0.25.0</span><span class="rel-d">2026-08-20</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.24.0...v0.25.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>specs:</strong> enable Enshrouded on Linux nodes via Wine (<a href="https://github.com/briggleman/kraken/issues/120">#120</a>) (<a href="https://github.com/briggleman/kraken/commit/c73d81c06a9b7d671155ffaa2e32afc5b47af251">c73d81c</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>deploy:</strong> embed all agent platforms in the panel image (<a href="https://github.com/briggleman/kraken/issues/123">#123</a>) (<a href="https://github.com/briggleman/kraken/commit/5c3a77cbe8958c4444416ae3ab903a702f26a184">5c3a77c</a>)</li><li><strong>panel:</strong> drop the racy first-contact reconcile on node registration (<a href="https://github.com/briggleman/kraken/issues/121">#121</a>) (<a href="https://github.com/briggleman/kraken/commit/eefe53c479be1aa51e365360360f9327e516e4ef">eefe53c</a>)</li></ul></div>
+
+<div class="rel" id="v0-24-0"><div class="rel-h"><span class="rel-v">0.24.0</span><span class="rel-d">2026-08-20</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.23.1...v0.24.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>cordon nodes, fleet agent updates, tunnel SFTP proxy, and skew/registration/stream fixes (<a href="https://github.com/briggleman/kraken/issues/118">#118</a>) (<a href="https://github.com/briggleman/kraken/commit/d5c9243b09873882fb37d1ecbc4b87d5338c161e">d5c9243</a>)</li></ul></div>
+
+<div class="rel" id="v0-23-1"><div class="rel-h"><span class="rel-v">0.23.1</span><span class="rel-d">2026-08-20</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.23.0...v0.23.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> make SCM recovery restart the service on error exits (<a href="https://github.com/briggleman/kraken/issues/114">#114</a>) (<a href="https://github.com/briggleman/kraken/commit/36c7b5f5d87db955c269c9a23c01060f6a805f7a">36c7b5f</a>)</li><li><strong>web:</strong> register tunnel nodes with the OS chosen in the add-node dialog (<a href="https://github.com/briggleman/kraken/issues/117">#117</a>) (<a href="https://github.com/briggleman/kraken/commit/27975c26690321a8b357bd39929c0a566e6e5605">27975c2</a>)</li><li><strong>web:</strong> resolve the add-node flow when the node lands partial (<a href="https://github.com/briggleman/kraken/issues/116">#116</a>) (<a href="https://github.com/briggleman/kraken/commit/53fa99d96d03647016dbae01d3f3fe4907fb655a">53fa99d</a>)</li></ul></div>
+
+<div class="rel" id="v0-23-0"><div class="rel-h"><span class="rel-v">0.23.0</span><span class="rel-d">2026-08-20</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.22.2...v0.23.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> confirm node onboarding success with a clear done state (<a href="https://github.com/briggleman/kraken/issues/113">#113</a>) (<a href="https://github.com/briggleman/kraken/commit/04057e0e5e220e934d102e23ab43e8b66856bcc1">04057e0</a>)</li><li><strong>web:</strong> default new node enrollment to tunnel mode (<a href="https://github.com/briggleman/kraken/issues/110">#110</a>) (<a href="https://github.com/briggleman/kraken/commit/0ca2e71d49fa5c6baa950b8b5383fa9dc774d6b9">0ca2e71</a>)</li></ul></div>
+
+<div class="rel" id="v0-22-2"><div class="rel-h"><span class="rel-v">0.22.2</span><span class="rel-d">2026-08-20</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.22.1...v0.22.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> drop navbar duplicates from the user menu (<a href="https://github.com/briggleman/kraken/issues/108">#108</a>) (<a href="https://github.com/briggleman/kraken/commit/5b8771083212280ef1f72d2be268ad86ca1cbf20">5b87710</a>)</li></ul></div>
+
+<div class="rel" id="v0-22-1"><div class="rel-h"><span class="rel-v">0.22.1</span><span class="rel-d">2026-08-19</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.22.0...v0.22.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li>surface install failures and make placement pinning real (<a href="https://github.com/briggleman/kraken/issues/103">#103</a>) (<a href="https://github.com/briggleman/kraken/commit/0c6f8b651b7daa4e9c2ba36eaa167088f76603fc">0c6f8b6</a>)</li></ul></div>
+
+<div class="rel" id="v0-22-0"><div class="rel-h"><span class="rel-v">0.22.0</span><span class="rel-d">2026-08-19</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.21.0...v0.22.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>flip an existing node between direct and tunnel modes (<a href="https://github.com/briggleman/kraken/issues/101">#101</a>) (<a href="https://github.com/briggleman/kraken/commit/46c7ccf4f881a149c0fdf7f79cf6befdc4117810">46c7ccf</a>)</li></ul></div>
+
+<div class="rel" id="v0-21-0"><div class="rel-h"><span class="rel-v">0.21.0</span><span class="rel-d">2026-08-19</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.20.0...v0.21.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>reverse-connection tunnel mode - nodes need zero inbound ports (<a href="https://github.com/briggleman/kraken/issues/85">#85</a>) (<a href="https://github.com/briggleman/kraken/commit/4d436299065d7257461ae2f309a60743d202d69b">4d43629</a>)</li></ul></div>
+
+<div class="rel" id="v0-20-0"><div class="rel-h"><span class="rel-v">0.20.0</span><span class="rel-d">2026-08-19</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.19.0...v0.20.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>web:</strong> fleet header nav with live status cluster and instrument surfaces (<a href="https://github.com/briggleman/kraken/issues/82">#82</a>) (<a href="https://github.com/briggleman/kraken/commit/026132901f42d9154baa509ba36dad9b9d438b21">0261329</a>)</li></ul></div>
+
+<div class="rel" id="v0-19-0"><div class="rel-h"><span class="rel-v">0.19.0</span><span class="rel-d">2026-08-18</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.18.0...v0.19.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>panel-pushed agent self-update with automatic rollback (<a href="https://github.com/briggleman/kraken/issues/80">#80</a>) (<a href="https://github.com/briggleman/kraken/commit/aa0bb2ee032a30a99ad46af4c13a13eb6f2129c7">aa0bb2e</a>)</li></ul></div>
+
+<div class="rel" id="v0-18-0"><div class="rel-h"><span class="rel-v">0.18.0</span><span class="rel-d">2026-08-18</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.17.0...v0.18.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>one-command Windows agent install (<a href="https://github.com/briggleman/kraken/issues/77">#77</a>) (<a href="https://github.com/briggleman/kraken/commit/acfa86d613da367cdff8113c94ea683be38e0d42">acfa86d</a>)</li></ul></div>
+
+<div class="rel" id="v0-17-0"><div class="rel-h"><span class="rel-v">0.17.0</span><span class="rel-d">2026-08-18</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.16.0...v0.17.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> run as a native Windows service (<a href="https://github.com/briggleman/kraken/issues/76">#76</a>) (<a href="https://github.com/briggleman/kraken/commit/a15127fb75526ccdf15b9e7a075cea368dd5491b">a15127f</a>)</li></ul></div>
+
+<div class="rel" id="v0-16-0"><div class="rel-h"><span class="rel-v">0.16.0</span><span class="rel-d">2026-08-18</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.15.2...v0.16.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>single-command remote agent enrollment (<a href="https://github.com/briggleman/kraken/issues/74">#74</a>) (<a href="https://github.com/briggleman/kraken/commit/c1f69c069135ba7aa9296e7fc7783694a48afbe0">c1f69c0</a>)</li></ul></div>
+
+<div class="rel" id="v0-15-2"><div class="rel-h"><span class="rel-v">0.15.2</span><span class="rel-d">2026-08-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.15.1...v0.15.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>deps:</strong> bump grpc-go to 1.82.1 and x/text to 0.39.0 (<a href="https://github.com/briggleman/kraken/issues/71">#71</a>) (<a href="https://github.com/briggleman/kraken/commit/7750c3fa0e1174b539bb79d9eb0918f35c7ae329">7750c3f</a>)</li></ul></div>
+
+<div class="rel" id="v0-15-1"><div class="rel-h"><span class="rel-v">0.15.1</span><span class="rel-d">2026-08-11</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.15.0...v0.15.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>web:</strong> bump react-router to 7.18.2 and clear npm advisories (<a href="https://github.com/briggleman/kraken/issues/70">#70</a>) (<a href="https://github.com/briggleman/kraken/commit/543c2229c7cb3eea37b8b4cbe22faddd43e1d7e9">543c222</a>)</li></ul></div>
+
+<div class="rel" id="v0-15-0"><div class="rel-h"><span class="rel-v">0.15.0</span><span class="rel-d">2026-08-03</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.14.2...v0.15.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> content security policy and hardened response headers (<a href="https://github.com/briggleman/kraken/issues/67">#67</a>) (<a href="https://github.com/briggleman/kraken/commit/ba8bb355e72ddc6ef20a2ac299376cf1dc201550">ba8bb35</a>)</li><li><strong>ui:</strong> self-host the brand faces instead of fetching Google Fonts (<a href="https://github.com/briggleman/kraken/issues/68">#68</a>) (<a href="https://github.com/briggleman/kraken/commit/2c11530c7cabeb6591a3360b18bd0cd126834e92">2c11530</a>)</li></ul></div>
+
+<div class="rel" id="v0-14-2"><div class="rel-h"><span class="rel-v">0.14.2</span><span class="rel-d">2026-08-03</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.14.1...v0.14.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>ui:</strong> show a crashed server&#39;s last output instead of a dead end (<a href="https://github.com/briggleman/kraken/issues/65">#65</a>) (<a href="https://github.com/briggleman/kraken/commit/a20ac1b308aaa730572cf0705654a5ec2709184b">a20ac1b</a>)</li></ul></div>
+
+<div class="rel" id="v0-14-1"><div class="rel-h"><span class="rel-v">0.14.1</span><span class="rel-d">2026-08-03</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.14.0...v0.14.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>ui:</strong> stop the fleet dashboard reporting state it does not have (<a href="https://github.com/briggleman/kraken/issues/63">#63</a>) (<a href="https://github.com/briggleman/kraken/commit/897e3e7f4aac76ae5dd6ee06935c923664ab5aaa">897e3e7</a>)</li></ul></div>
+
+<div class="rel" id="v0-14-0"><div class="rel-h"><span class="rel-v">0.14.0</span><span class="rel-d">2026-07-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.13.0...v0.14.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>ui:</strong> show agent version on /nodes and a panel version stamp (<a href="https://github.com/briggleman/kraken/issues/57">#57</a>) (<a href="https://github.com/briggleman/kraken/commit/5b0a91d46dc77c6585cb3d373966ba5d170b2e0a">5b0a91d</a>)</li></ul></div>
+
+<div class="rel" id="v0-13-0"><div class="rel-h"><span class="rel-v">0.13.0</span><span class="rel-d">2026-07-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.12.0...v0.13.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>nodes:</strong> tri-state health (online/partial/offline) + watchdog re-adoption (<a href="https://github.com/briggleman/kraken/issues/52">#52</a>) (<a href="https://github.com/briggleman/kraken/issues/55">#55</a>) (<a href="https://github.com/briggleman/kraken/commit/f0c288303d6d6b5d18da0d14c8f6ec74ebe237b4">f0c2883</a>)</li></ul></div>
+
+<div class="rel" id="v0-12-0"><div class="rel-h"><span class="rel-v">0.12.0</span><span class="rel-d">2026-07-31</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.11.1...v0.12.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> config file, flags, and a --root layout (<a href="https://github.com/briggleman/kraken/issues/49">#49</a>) (<a href="https://github.com/briggleman/kraken/issues/51">#51</a>) (<a href="https://github.com/briggleman/kraken/commit/06b936555e2c935808a6025c9d21f50fc0237611">06b9365</a>)</li></ul></div>
+
+<div class="rel" id="v0-11-1"><div class="rel-h"><span class="rel-v">0.11.1</span><span class="rel-d">2026-07-30</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.11.0...v0.11.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> resolve bind-mount sources against the host, not the Agent (<a href="https://github.com/briggleman/kraken/issues/48">#48</a>) (<a href="https://github.com/briggleman/kraken/commit/a51c80db2bf4087b9dc0ab36733f063ccb39f6ba">a51c80d</a>)</li></ul></div>
+
+<div class="rel" id="v0-11-0"><div class="rel-h"><span class="rel-v">0.11.0</span><span class="rel-d">2026-07-30</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.10.0...v0.11.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>specs list view with hero art and neutral platform marks (<a href="https://github.com/briggleman/kraken/issues/45">#45</a>) (<a href="https://github.com/briggleman/kraken/commit/55cf798e666b7272dde8a0a0922514bfa4d14b29">55cf798</a>)</li></ul></div>
+
+<div class="rel" id="v0-10-0"><div class="rel-h"><span class="rel-v">0.10.0</span><span class="rel-d">2026-07-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.9.0...v0.10.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>uniform create wizard, unified settings tab with hot_reload-aware messaging (<a href="https://github.com/briggleman/kraken/issues/42">#42</a>) (<a href="https://github.com/briggleman/kraken/commit/6b8d96734c3826fa5009df1616ad7d6ecb7cd155">6b8d967</a>)</li></ul></div>
+
+<div class="rel" id="v0-9-0"><div class="rel-h"><span class="rel-v">0.9.0</span><span class="rel-d">2026-07-10</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.8.3...v0.9.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>node capacity editing, eligible-node placement filter, default port ranges, per-node scheduler errors (<a href="https://github.com/briggleman/kraken/issues/40">#40</a>) (<a href="https://github.com/briggleman/kraken/commit/9ad7125ff7603df6ec05a4ac2a377bf8a34bdd8c">9ad7125</a>)</li></ul></div>
+
+<div class="rel" id="v0-8-3"><div class="rel-h"><span class="rel-v">0.8.3</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.8.2...v0.8.3">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>enroll:</strong> agent reports its port; registration prefill is IP-first (<a href="https://github.com/briggleman/kraken/issues/37">#37</a>) (<a href="https://github.com/briggleman/kraken/commit/6d2c42925111d619801fc580fe8fb424174acb71">6d2c429</a>)</li></ul></div>
+
+<div class="rel" id="v0-8-2"><div class="rel-h"><span class="rel-v">0.8.2</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.8.1...v0.8.2">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>ui:</strong> unified node-connect flow, FontAwesome platform icons, footer kraken (<a href="https://github.com/briggleman/kraken/issues/35">#35</a>) (<a href="https://github.com/briggleman/kraken/commit/ed55dcabcf0f37e332f3782f30730f81ad39a7bd">ed55dca</a>)</li></ul></div>
+
+<div class="rel" id="v0-8-1"><div class="rel-h"><span class="rel-v">0.8.1</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.8.0...v0.8.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>setup:</strong> latch onboarding completion + restrict /setup to internal networks (<a href="https://github.com/briggleman/kraken/issues/33">#33</a>) (<a href="https://github.com/briggleman/kraken/commit/c0541e2b602b900e649781be4365cc235ccfb42f">c0541e2</a>)</li></ul></div>
+
+<div class="rel" id="v0-8-0"><div class="rel-h"><span class="rel-v">0.8.0</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.7.0...v0.8.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>wine:</strong> steam-wine image — Windows-only games on Linux nodes (<a href="https://github.com/briggleman/kraken/issues/30">#30</a>) (<a href="https://github.com/briggleman/kraken/commit/2c26cd804ca4706a3290f76a5e67234489932987">2c26cd8</a>)</li></ul></div>
+
+<div class="rel" id="v0-7-0"><div class="rel-h"><span class="rel-v">0.7.0</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.6.0...v0.7.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>mtls:</strong> automatic agent cert rotation over the reconcile channel (<a href="https://github.com/briggleman/kraken/issues/28">#28</a>) (<a href="https://github.com/briggleman/kraken/commit/6e477465092bbcfb835ebe5cab0dbe5ec9f07e69">6e47746</a>)</li></ul></div>
+
+<div class="rel" id="v0-6-0"><div class="rel-h"><span class="rel-v">0.6.0</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.5.1...v0.6.0">compare</a></div><div class="rel-k">⚠ BREAKING CHANGES</div><ul class="rel-l"><li><strong>setup:</strong> the gRPC package renamed cthulhu.agent.v1 → kraken.agent.v1, changing every Panel↔Agent RPC path. Upgrade the Panel and all Agents together; mixed versions fail with &#39;unknown method&#39;. Certificates and persisted data are unaffected.</li></ul><div class="rel-k">Features</div><ul class="rel-l"><li><strong>setup:</strong> remote-node onboarding overhaul + mTLS debug logging (<a href="https://github.com/briggleman/kraken/commit/295186751d058d6a9afc43d96f6304726921b4f1">2951867</a>)</li></ul></div>
+
+<div class="rel" id="v0-5-1"><div class="rel-h"><span class="rel-v">0.5.1</span><span class="rel-d">2026-07-09</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.5.0...v0.5.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>deploy:</strong> panel-state volume must be nonroot-owned (<a href="https://github.com/briggleman/kraken/issues/23">#23</a>) (<a href="https://github.com/briggleman/kraken/commit/bcf372f95382e91c449a9ea58524b4b308ff7c01">bcf372f</a>)</li><li><strong>panel:</strong> keep auto-signed client cert in memory, drop panel-init sidecar (<a href="https://github.com/briggleman/kraken/issues/25">#25</a>) (<a href="https://github.com/briggleman/kraken/commit/d0199b1aa9d1f3e85a05567cc618236d8ff5a02e">d0199b1</a>)</li></ul></div>
+
+<div class="rel" id="v0-5-0"><div class="rel-h"><span class="rel-v">0.5.0</span><span class="rel-d">2026-07-08</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.4.0...v0.5.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>panel:</strong> auto-sign Panel client cert so mTLS is on by default (<a href="https://github.com/briggleman/kraken/issues/21">#21</a>) (<a href="https://github.com/briggleman/kraken/commit/a3522d18a27ac8bf368e76a6c1eb4f11c978b51a">a3522d1</a>)</li><li><strong>web:</strong> merge Wine into platform dropdown + tabbed agent-install docs (<a href="https://github.com/briggleman/kraken/issues/22">#22</a>) (<a href="https://github.com/briggleman/kraken/commit/737b0275462da705f5dc4f885418dcfa778f3b67">737b027</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>ci:</strong> chain release-binaries + release-images inline from release-please (<a href="https://github.com/briggleman/kraken/issues/18">#18</a>) (<a href="https://github.com/briggleman/kraken/commit/c55e65d54496daeda5f5bee55c3a401406af12ee">c55e65d</a>)</li></ul></div>
+
+<div class="rel" id="v0-4-0"><div class="rel-h"><span class="rel-v">0.4.0</span><span class="rel-d">2026-07-08</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.3.1...v0.4.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>agent:</strong> auto-enroll co-located Agent so mTLS is on by default (<a href="https://github.com/briggleman/kraken/issues/16">#16</a>) (<a href="https://github.com/briggleman/kraken/commit/c4c62cb2bf935aab53a937aec4cbbbe3e89240ca">c4c62cb</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>server:</strong> gate power actions on install state + add reinstall endpoint (<a href="https://github.com/briggleman/kraken/issues/14">#14</a>) (<a href="https://github.com/briggleman/kraken/commit/7512b52b8cca5ed04beaa06168289164b2bd5c03">7512b52</a>)</li></ul></div>
+
+<div class="rel" id="v0-3-1"><div class="rel-h"><span class="rel-v">0.3.1</span><span class="rel-d">2026-07-08</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.3.0...v0.3.1">compare</a></div><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>agent:</strong> refuse plaintext gRPC on non-loopback + safe-by-default binds (<a href="https://github.com/briggleman/kraken/issues/11">#11</a>) (<a href="https://github.com/briggleman/kraken/commit/2194f20400461890b79892569468bc81d05a2137">2194f20</a>)</li></ul></div>
+
+<div class="rel" id="v0-3-0"><div class="rel-h"><span class="rel-v">0.3.0</span><span class="rel-d">2026-07-08</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.2.0...v0.3.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li>simplify deployment (single-binary, docker compose, install.sh) (<a href="https://github.com/briggleman/kraken/issues/7">#7</a>) (<a href="https://github.com/briggleman/kraken/commit/2c624e3f057914e288cb53bcbbeb30c3fd52f250">2c624e3</a>)</li></ul></div>
+
+<div class="rel" id="v0-2-0"><div class="rel-h"><span class="rel-v">0.2.0</span><span class="rel-d">2026-07-07</span><a class="rel-c" href="https://github.com/briggleman/kraken/compare/v0.1.0...v0.2.0">compare</a></div><div class="rel-k">Features</div><ul class="rel-l"><li><strong>ci:</strong> release-binaries workflow + social preview + branch guidance (<a href="https://github.com/briggleman/kraken/commit/ccea13a1c5e1c3fdb34e730a9843c7f6d0cb7bed">ccea13a</a>)</li><li><strong>ci:</strong> release-binaries workflow + social preview + branch guidance (<a href="https://github.com/briggleman/kraken/commit/ccea13a1c5e1c3fdb34e730a9843c7f6d0cb7bed">ccea13a</a>)</li><li><strong>ci:</strong> release-binaries workflow + social preview + branch guidance (<a href="https://github.com/briggleman/kraken/commit/cbea48e885614b7d700167095d6f3c09d477cd54">cbea48e</a>)</li><li>expand catalog, redesign add-a-game wizard, and automate releases (<a href="https://github.com/briggleman/kraken/commit/3cd2fbcc83832c7c04ecffd7310604beb271b12b">3cd2fbc</a>)</li></ul><div class="rel-k">Bug Fixes</div><ul class="rel-l"><li><strong>security:</strong> resolve high-severity CodeQL alerts (<a href="https://github.com/briggleman/kraken/commit/b8ebd0b9dd468345290301bcbb2e0933bcfdf509">b8ebd0b</a>)</li><li><strong>security:</strong> resolve high-severity CodeQL alerts (<a href="https://github.com/briggleman/kraken/commit/b8ebd0b9dd468345290301bcbb2e0933bcfdf509">b8ebd0b</a>)</li><li><strong>security:</strong> resolve high-severity CodeQL alerts (<a href="https://github.com/briggleman/kraken/commit/7ac3905ff689adee661ffe846b14ad1884a424c9">7ac3905</a>)</li></ul></div>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/reference/cli/"><span class="pg-k">previous</span><span class="pg-t">krakenctl</span></a>
+      <a class="pg next" href="/wiki/reference/design/"><span class="pg-k">next</span><span class="pg-t">Design documents<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/reference/releases.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/reference/releases.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#what-a-version-number-promises">What a version number promises</a>
+<a class="toc-link lvl-2" href="#every-release">Every release</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

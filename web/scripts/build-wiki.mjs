@@ -15,9 +15,13 @@
 //      Abyssal design language (see docs/wiki/assets/wiki.css)
 //   3. derives the sidebar nav, the breadcrumb, the on-page TOC, and the
 //      prev/next pager from the source tree + front-matter
-//   4. injects the GENERATED Panel env-var reference, parsed out of
-//      internal/panel/config/config.go, wherever a page carries the
-//      <!-- generated:panel-env --> marker
+//   4. injects the three GENERATED references wherever a page carries the
+//      matching marker:
+//        <!-- generated:panel-env -->   the Panel's KRAKEN_* variables, parsed
+//                                       out of internal/panel/config/config.go
+//        <!-- generated:api -->         the REST surface, parsed out of
+//                                       internal/panel/api/openapi.yaml
+//        <!-- generated:changelog -->   the release history, from CHANGELOG.md
 //   5. writes docs/wiki/sitemap.xml
 //
 // Determinism is load-bearing: no timestamps, no build ids, stable ordering,
@@ -30,6 +34,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
+import YAML from "yaml";
 
 // The wiki's YAML and JSON blocks are coloured by the SAME tokenizer the Panel's
 // spec editor uses, imported straight from the app rather than reimplemented:
@@ -52,6 +57,8 @@ const srcDir = resolve(repoRoot, "docs", "wiki-src");
 const outDir = resolve(repoRoot, "docs", "wiki");
 const configGo = resolve(repoRoot, "internal", "panel", "config", "config.go");
 const versionGo = resolve(repoRoot, "internal", "shared", "version", "version.go");
+const openapiYaml = resolve(repoRoot, "internal", "panel", "api", "openapi.yaml");
+const changelogMd = resolve(repoRoot, "CHANGELOG.md");
 
 const SITE = "https://krakenserver.io";
 const BASE = "/wiki/";
@@ -73,6 +80,17 @@ const esc = (s) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+
+/**
+ * Inline markdown from a source file that is not this wiki's own prose: an
+ * OpenAPI description, a changelog line. Escaped FIRST, so any markup that came
+ * along with it lands on the page as the text it is, and only then parsed — the
+ * escape touches `& < > "` and none of markdown's own punctuation, so links and
+ * emphasis still render. marked leaves the resulting entities alone, so the two
+ * passes compose; the one cost is that an entity already written in the source
+ * comes out doubly encoded, which no source this reads has ever had.
+ */
+const inlineSafe = (s) => marked.parseInline(esc(String(s ?? "").trim()));
 
 /** Walk a directory, returning POSIX-ish relative paths, sorted. */
 function walk(dir, base = dir) {
@@ -420,6 +438,281 @@ function panelEnvMarkdown() {
   return out.join("\n");
 }
 
+// ------------------------------------------------- GENERATED: API reference
+//
+// internal/panel/api/openapi.yaml is the published contract, so it is also the
+// reference: writing the endpoint list by hand would only create a second
+// version of it to keep in step. The renderer is deliberately small and pure —
+// document in, string out, no network, no schema validation — and it obeys two
+// of DESIGN.md's Named Rules rather than the colour-per-verb a generated
+// reference reaches for by default:
+//
+//   the Verb-Risk Rule   a read is unlit, every method that writes takes the
+//                        lumen, DELETE alone takes crisis
+//   the Whose-Fault Rule a 2xx is gold, a 4xx is caution (the caller got it
+//                        wrong), a 5xx is crisis (we did)
+//
+// Everything that reaches the page is escaped before it is wrapped in markup.
+
+const METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
+
+/** The Verb-Risk Rule, as a class. */
+const verbClass = (m) => (m === "delete" ? "is-del" : m === "get" || m === "head" ? "is-read" : "is-write");
+
+/** The Whose-Fault Rule, as a class. */
+const statusClass = (code) => {
+  const n = Number(code);
+  if (!Number.isFinite(n)) return "is-any";
+  if (n < 300) return "is-ok";
+  if (n < 500) return "is-caution";
+  return "is-crisis";
+};
+
+const anchorFor = (name) => "schema-" + String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+/** Resolve a local `#/components/...` pointer. Anything else stays as it is. */
+function deref(doc, node) {
+  let seen = 0;
+  while (node && typeof node === "object" && typeof node.$ref === "string") {
+    if (++seen > 8) return {}; // a cycle in the document is not our problem to solve
+    const parts = node.$ref.replace(/^#\//, "").split("/");
+    let at = doc;
+    for (const p of parts) at = at?.[p];
+    if (at === undefined) return {};
+    node = at;
+  }
+  return node ?? {};
+}
+
+/** A schema as a short phrase plus, for an object, its properties. */
+function schemaHtml(doc, schema, depth = 0) {
+  if (!schema || typeof schema !== "object") return "";
+  if (typeof schema.$ref === "string") {
+    const name = schema.$ref.split("/").pop();
+    return `<a class="api-ref" href="#${esc(anchorFor(name))}">${esc(name)}</a>`;
+  }
+  if (Array.isArray(schema.allOf)) {
+    return schema.allOf.map((s) => schemaHtml(doc, s, depth)).filter(Boolean).join('<span class="api-amp"> + </span>');
+  }
+  if (schema.type === "array") {
+    return `<span class="api-t">array of</span> ${schemaHtml(doc, schema.items, depth)}`;
+  }
+  const props = schema.properties;
+  if (props && depth < 3) {
+    const rows = Object.keys(props).map((key) => {
+      const p = props[key];
+      const required = Array.isArray(schema.required) && schema.required.includes(key);
+      const kind = typeof p?.$ref === "string" || p?.type === "array" || (p?.properties && depth + 1 < 3)
+        ? schemaHtml(doc, p, depth + 1)
+        : typeHtml(p);
+      const note = p?.description ? `<span class="api-d">${inlineSafe(p.description)}</span>` : "";
+      return (
+        `<li><code>${esc(key)}</code>${required ? '<span class="api-req">required</span>' : ""}` +
+        `${kind ? " " + kind : ""}${note}</li>`
+      );
+    });
+    return `<ul class="api-props">${rows.join("")}</ul>`;
+  }
+  return typeHtml(schema);
+}
+
+/** A leaf schema: its type, format and enum, with nothing invented. */
+function typeHtml(schema) {
+  if (!schema || typeof schema !== "object") return "";
+  const bits = [];
+  if (schema.type) bits.push(schema.type);
+  if (schema.format) bits.push(schema.format);
+  let out = bits.length ? `<span class="api-t">${esc(bits.join(" · "))}</span>` : "";
+  if (Array.isArray(schema.enum)) {
+    out += `<span class="api-enum">${schema.enum.map((v) => `<code>${esc(v === "" ? '""' : v)}</code>`).join("")}</span>`;
+  }
+  return out;
+}
+
+/** One operation, as a single line of HTML (marked treats a blank line inside
+ *  an HTML block as the end of it). */
+function operationHtml(doc, path, method, op, inherited) {
+  const out = [];
+  out.push('<div class="api-op">');
+  out.push(
+    `<div class="api-head"><span class="vb ${verbClass(method)}">${esc(method.toUpperCase())}</span>` +
+      `<code class="api-route">${esc(path)}</code>` +
+      (Array.isArray(op.security) && op.security.length === 0 ? '<span class="api-open">no auth</span>' : "") +
+      "</div>",
+  );
+  if (op.summary) out.push(`<p class="api-sum">${inlineSafe(op.summary)}</p>`);
+  if (op.description) out.push(`<p class="api-desc">${inlineSafe(op.description)}</p>`);
+
+  const params = [...(inherited ?? []), ...(op.parameters ?? [])].map((p) => deref(doc, p));
+  if (params.length) {
+    out.push('<div class="api-k">parameters</div><ul class="api-props">');
+    for (const p of params) {
+      out.push(
+        `<li><code>${esc(p.name ?? "")}</code><span class="api-in">${esc(p.in ?? "")}</span>` +
+          (p.required ? '<span class="api-req">required</span>' : "") +
+          (p.schema ? " " + typeHtml(p.schema) : "") +
+          (p.description ? `<span class="api-d">${inlineSafe(p.description)}</span>` : "") +
+          "</li>",
+      );
+    }
+    out.push("</ul>");
+  }
+
+  const body = op.requestBody;
+  if (body?.content) {
+    for (const ct of Object.keys(body.content)) {
+      out.push(`<div class="api-k">request body<span class="api-ct">${esc(ct)}</span>`);
+      if (body.required) out.push('<span class="api-req">required</span>');
+      out.push("</div>");
+      out.push(schemaHtml(doc, body.content[ct].schema) || "");
+    }
+  }
+
+  const responses = op.responses ?? {};
+  const codes = Object.keys(responses).sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return Number.isFinite(na) ? -1 : Number.isFinite(nb) ? 1 : a < b ? -1 : 1;
+  });
+  if (codes.length) {
+    out.push('<div class="api-k">responses</div><ul class="api-res">');
+    for (const code of codes) {
+      const r = deref(doc, responses[code]);
+      const schema = r.content ? Object.values(r.content)[0]?.schema : null;
+      out.push(
+        `<li><span class="st ${statusClass(code)}">${esc(code)}</span>` +
+          `<span class="api-d">${r.description ? inlineSafe(r.description) : ""}</span>` +
+          (schema ? schemaHtml(doc, schema, 2) : "") +
+          "</li>",
+      );
+    }
+    out.push("</ul>");
+  }
+  out.push("</div>");
+  return out.join("");
+}
+
+function apiMarkdown() {
+  const doc = YAML.parse(lf(readFileSync(openapiYaml, "utf8")));
+  if (!doc?.paths) die("internal/panel/api/openapi.yaml: no paths — the API renderer has nothing to render");
+
+  // Tag order comes from the document's own `tags:` list; a tag that only
+  // appears on an operation is appended, sorted, so a new one shows up rather
+  // than disappearing.
+  const declared = (doc.tags ?? []).map((t) => t.name);
+  const groups = new Map(declared.map((t) => [t, []]));
+  const extra = new Set();
+
+  for (const path of Object.keys(doc.paths)) {
+    const item = doc.paths[path] ?? {};
+    for (const method of METHODS) {
+      const op = item[method];
+      if (!op) continue;
+      const tag = (op.tags ?? [])[0] ?? "Other";
+      if (!groups.has(tag)) {
+        groups.set(tag, []);
+        extra.add(tag);
+      }
+      groups.get(tag).push({ path, method, op, inherited: item.parameters });
+    }
+  }
+
+  const order = [...declared, ...[...extra].sort()];
+  const out = [];
+  for (const tag of order) {
+    const ops = groups.get(tag);
+    if (!ops?.length) continue;
+    out.push(`## ${tag}`, "");
+    for (const o of ops) out.push(operationHtml(doc, o.path, o.method, o.op, o.inherited), "");
+  }
+
+  const schemas = doc.components?.schemas ?? {};
+  const names = Object.keys(schemas).sort();
+  if (names.length) {
+    out.push("## Schemas", "");
+    for (const name of names) {
+      const s = schemas[name];
+      out.push(
+        `<div class="api-schema" id="${esc(anchorFor(name))}">` +
+          `<div class="api-schema-h"><code>${esc(name)}</code></div>` +
+          (s.description ? `<p class="api-desc">${inlineSafe(s.description)}</p>` : "") +
+          (schemaHtml(doc, s) || "") +
+          "</div>",
+        "",
+      );
+    }
+  }
+  return out.join("\n");
+}
+
+// ------------------------------------------ GENERATED: the release history
+//
+// CHANGELOG.md is written by release-please from the squashed commit subjects,
+// so the page is that file rendered rather than a second account of it. The
+// version headings become stable `#v0-52-0` anchors and are deliberately NOT
+// collected into the on-this-page rail: eighty-odd releases is a list nobody
+// navigates by.
+
+function changelogMarkdown() {
+  const src = lf(readFileSync(changelogMd, "utf8"));
+  const lines = src.split("\n");
+  const releases = [];
+  let rel = null;
+  let group = null;
+
+  for (const line of lines) {
+    const head = /^## \[?([0-9][^\]\s]*)\]?(?:\(([^)]+)\))?\s*(?:\(([^)]+)\))?\s*$/.exec(line);
+    if (head) {
+      rel = { version: head[1], compare: head[2] ?? "", date: head[3] ?? "", groups: [] };
+      releases.push(rel);
+      group = null;
+      continue;
+    }
+    if (!rel) continue;
+    const sub = /^###+\s+(.*\S)\s*$/.exec(line);
+    if (sub) {
+      group = { title: sub[1], items: [] };
+      rel.groups.push(group);
+      continue;
+    }
+    const item = /^\s*[*-]\s+(.*\S)\s*$/.exec(line);
+    if (item) {
+      if (!group) {
+        group = { title: "", items: [] };
+        rel.groups.push(group);
+      }
+      group.items.push(item[1]);
+    }
+  }
+  if (!releases.length) die("CHANGELOG.md: no version headings found — the release renderer has nothing to render");
+
+  const out = [];
+  for (const r of releases) {
+    const id = "v" + r.version.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    // Only an absolute https URL becomes a link. The source is release-please's
+    // own output, but an href is the one place on this page where a string from
+    // a file would become a scheme, and "compare" has exactly one shape.
+    const compare = /^https:\/\/[^\s"'<>]+$/.test(r.compare) ? r.compare : "";
+    const parts = [`<div class="rel" id="${esc(id)}">`];
+    parts.push(
+      `<div class="rel-h"><span class="rel-v">${esc(r.version)}</span>` +
+        (r.date ? `<span class="rel-d">${esc(r.date)}</span>` : "") +
+        (compare ? `<a class="rel-c" href="${esc(compare)}">compare</a>` : "") +
+        "</div>",
+    );
+    for (const g of r.groups) {
+      if (g.title) parts.push(`<div class="rel-k">${esc(g.title)}</div>`);
+      parts.push("<ul class=\"rel-l\">");
+      for (const item of g.items) parts.push(`<li>${inlineSafe(item)}</li>`);
+      parts.push("</ul>");
+    }
+    parts.push("</div>");
+    out.push(parts.join(""), "");
+  }
+  return out.join("\n");
+}
+
 // ------------------------------------------------------------- markdown
 
 /**
@@ -638,8 +931,12 @@ function renderPage({ page, nav, byUrl, version }) {
   const inline = (md) => marked.parse(md, { renderer, async: false });
 
   let body = page.body;
-  if (body.includes("<!-- generated:panel-env -->")) {
-    body = body.replace("<!-- generated:panel-env -->", panelEnvMarkdown());
+  for (const [marker, build] of [
+    ["<!-- generated:panel-env -->", panelEnvMarkdown],
+    ["<!-- generated:api -->", apiMarkdown],
+    ["<!-- generated:changelog -->", changelogMarkdown],
+  ]) {
+    if (body.includes(marker)) body = body.replace(marker, build());
   }
   body = renderDirectives(body, (t) => marked.parse(t, { renderer: new marked.Renderer(), async: false }));
   const article = inline(body);

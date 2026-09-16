@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The fleet view — Kraken wiki</title>
+<meta name="description" content="How to read the one screen Kraken is built around — node bands and the five host metrics, the three health states, server cards, the container-drift badge, and the live-or-stale mark in the header." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/fleet/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/fleet/" />
+<meta property="og:title" content="The fleet view — Kraken wiki" />
+<meta property="og:description" content="How to read the one screen Kraken is built around — node bands and the five host metrics, the three health states, server cards, the container-drift badge, and the live-or-stale mark in the header." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="The fleet view — Kraken wiki" />
+<meta name="twitter:description" content="How to read the one screen Kraken is built around — node bands and the five host metrics, the three health states, server cards, the container-drift badge, and the live-or-stale mark in the header." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link is-here" href="/wiki/operate/fleet/" aria-current="page">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">The fleet view</span></nav>
+    <h1>The fleet view</h1>
+    <p class="lede">How to read the one screen Kraken is built around — node bands and the five host metrics, the three health states, server cards, the container-drift badge, and the live-or-stale mark in the header.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#a-node-band">A node band</a>
+<a class="toc-link lvl-3" href="#three-health-states-and-a-fourth-that-is-a-decision">Three health states, and a fourth that is a decision</a>
+<a class="toc-link lvl-2" href="#the-container-drift-badge">The container-drift badge</a>
+<a class="toc-link lvl-2" href="#server-cards">Server cards</a>
+<a class="toc-link lvl-2" href="#live-or-stale">live, or stale</a>
+</div></details>
+    <article class="prose">
+<p>The fleet view is the whole product on one screen. Node bands across the top,
+server cards beneath them, an identity strip that says whether what you are
+looking at is current. It is designed to be parked on a second monitor and read
+in a glance rather than studied, so most of this page is about what a glance
+should tell you.</p>
+<!-- SCREENSHOT: the fleet view with two node bands and four server cards, one running, one installing and one crashed -->
+<p class="shot"><em>screenshot: the fleet view with two node bands and four server cards, one running, one installing and one crashed</em></p>
+
+
+<h2 id="a-node-band">A node band <a class="hlink" href="#a-node-band" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>One band per node, full width, carrying the node&#39;s name and five host metrics.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>metric</th>
+<th>what it measures</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>cpu</code></td>
+<td>host CPU across all cores, 0 to 100. Blank until the Agent has taken two samples.</td>
+</tr>
+<tr>
+<td><code>memory</code></td>
+<td>physical memory in use: total minus available, so reclaimable cache is not counted as used.</td>
+</tr>
+<tr>
+<td><code>disk</code></td>
+<td>the filesystem holding the Agent&#39;s data directory, not every mount on the box.</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>bytes per second across the host&#39;s physical interfaces.</td>
+</tr>
+<tr>
+<td><code>link</code></td>
+<td>the round trip of the gRPC call that fetched this very reading.</td>
+</tr>
+</tbody></table>
+</div>
+<p>The rate metrics are sampled by the Agent over its own fixed interval, so they
+do not skew with how often the Panel asks. The Panel refreshes the telemetry
+cache every 5 seconds.</p>
+<p><strong><code>link</code> is the one metric that is not about the host.</strong> It is the Panel&#39;s own
+timing of the gRPC round trip, in milliseconds, which makes it the only reading
+on the band that measures the relationship rather than the machine. It has no
+&quot;known&quot; flag, because the entry existing is the proof that the round trip
+happened. The track runs 0 to 20 ms, with its guide marks at 10 and 15, so a
+LAN node sits near the floor and a tunnel node on the other side of a
+consumer uplink sits visibly higher without that being a fault. I read it as a
+weather report, not an alarm: what matters is the shape changing, not the
+number.</p>
+<h3 id="three-health-states-and-a-fourth-that-is-a-decision">Three health states, and a fourth that is a decision <a class="hlink" href="#three-health-states-and-a-fourth-that-is-a-decision" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>status</th>
+<th>what it means</th>
+<th>schedulable</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>online</code></td>
+<td>the Agent answers and its container runtime answers</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>the Agent answers, its container runtime does not</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>offline</code></td>
+<td>the Agent cannot be reached at all</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>cordoned</code></td>
+<td>reachable and healthy, deliberately excluded from new placements</td>
+<td>no</td>
+</tr>
+</tbody></table>
+</div>
+<p><code>partial</code> is the one worth learning before you meet it. The Agent is alive, its
+file operations still work, and you can still browse and back up the data
+directory. What it cannot do is install, start or observe a container, so the
+node is not schedulable, because nothing placed there could start. The runtime&#39;s
+own error comes back with the status and is shown on the band. An Agent that
+starts without Docker comes up this way and promotes itself when Docker appears,
+with no restart and no re-enrollment.</p>
+<p><code>cordoned</code> is not a health state at all, it is you saying &quot;not here&quot;. It never
+masks a real problem: a cordoned node that goes partial or offline reads partial
+or offline. The band shows the padlock and keeps printing <code>online</code> on its meta
+line, which is the honest reading, since the node is fine and the exclusion is
+yours.</p>
+<p>The <strong>port pool</strong> is not on the band. It lives in the node&#39;s settings sheet as a
+start and an end, and <code>28000–28999</code> is the reference range rather than a default
+you inherit. Changing the range never touches a running server; ports already
+allocated stay reserved. A node with no range registers fine and reads online,
+then refuses every deploy with &quot;no node can host this spec&quot; while the fleet
+looks healthy, which is a confusing half hour. Set the range when you register
+the node.</p>
+<h2 id="the-container-drift-badge">The container-drift badge <a class="hlink" href="#the-container-drift-badge" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>When a node&#39;s band reads <code>containers 4 running · 1 untracked</code>, the Panel is
+telling you that its own books and the node&#39;s disagree, and by how much.</p>
+<p>The Agent counts containers carrying the <code>kraken.managed=true</code> label that are
+running right now. The Panel counts its own server rows on that node in state
+<code>running</code>. The badge appears only when those two numbers differ, and only for a
+node that is not offline and has been contacted at least once.</p>
+<ul>
+<li><strong><code>untracked</code></strong> means the node is running more than the Panel expects. Some
+container is up that no <code>running</code> row accounts for.</li>
+<li><strong><code>missing</code></strong> means the Panel expects more than the node has. A row says
+<code>running</code> over a container that is not.</li>
+</ul>
+<p><strong><code>1 untracked</code> during an install or an update pass is normal and transient.</strong>
+The one-shot install container is named <code>kraken_&lt;server-id&gt;_install</code> and carries
+the same managed label the game container does, quite deliberately, so the
+Agent&#39;s adoption scan and its cleanup both find it. While it runs, the node is
+running one more managed container than the Panel has <code>running</code> rows for, and
+the badge says so. It clears when the pass ends.</p>
+<p>A badge that does <em>not</em> clear is worth acting on. The usual cause is a
+restart that failed at the &quot;stop before update&quot; step while the Agent was
+unreachable: the Panel marked the row <code>install_failed</code> while the container kept
+running. <a href="/wiki/reference/troubleshooting/">Troubleshooting</a> has that one written
+out.</p>
+<h2 id="server-cards">Server cards <a class="hlink" href="#server-cards" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Below the bands, one card per server, and clicking one opens the full-screen
+drill-in where the real instruments live.</p>
+<p>A card carries the spec&#39;s banner art, the owning node above the server name, and
+a metadata line reading <code>spec-slug · vN · :port</code> with the state appended when the
+server is not running. The state chip is lit for <code>running</code> and <code>starting</code> and
+dim for everything else, which is the house rule that a stopped thing loses its
+light rather than being painted as a crisis.</p>
+<p>A <strong>running</strong> card adds the player readout with its occupancy rail: <code>n / max</code>,
+labelled <code>players online</code>, or an em dash and <code>players unknown</code> when the game has
+no query support or the count has not arrived yet. The card&#39;s cpu and memory
+tracks are motion rather than measurement; real per-server numbers exist only on
+the drill-in&#39;s live WebSocket, and I would rather the card animate than invent a
+number for a chart.</p>
+<p>A <strong>stopped</strong> card says why in one line:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>line</th>
+<th>what happened</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>installing — first start follows</code></td>
+<td>the install is running; the server starts itself when it lands</td>
+</tr>
+<tr>
+<td><code>install failed · &lt;reason&gt;</code></td>
+<td>the install pass failed and left the reason</td>
+</tr>
+<tr>
+<td><code>crashed · logs held until next start</code></td>
+<td>the process exited unexpectedly</td>
+</tr>
+<tr>
+<td><code>stopped · world saved on shutdown</code></td>
+<td>you stopped it</td>
+</tr>
+</tbody></table>
+</div>
+<h2 id="live-or-stale">live, or stale <a class="hlink" href="#live-or-stale" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The header carries a dot and one of two readings: <code>live · ping Nms</code>, or <code>stale</code>
+with the age of the last good answer.</p>
+<p>The fleet polls on a chained timer rather than a fixed interval, and re-decides
+the gap after every tick. At rest it is <strong>10 seconds</strong>. While any server is in a
+transient state — <code>installing</code>, <code>starting</code> or <code>stopping</code> — it tightens to <strong>2.5
+seconds</strong>, because those are exactly the moments you are watching the screen
+waiting for something to change.</p>
+<p>The header flips to <strong>stale after three missed polls</strong>, which is 30 seconds. The
+clock is anchored to the resting interval rather than the transient one on
+purpose: the threshold should mean the same thing whatever the page happens to
+be doing. The age only restarts when <em>every</em> read in a tick succeeded, so a poll
+that half-worked does not reset it, and the last error is on the mark&#39;s tooltip.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p><code>stale</code> is about the browser&#39;s connection to the Panel, not about your fleet.
+Servers keep running, schedules keep firing and the Agents keep working while a
+browser tab cannot reach the Panel. What has stopped is your view.</p>
+</div>
+</aside>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/limits-and-logging/"><span class="pg-k">previous</span><span class="pg-t">Limits and logging</span></a>
+      <a class="pg next" href="/wiki/operate/servers/"><span class="pg-k">next</span><span class="pg-t">Servers<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/fleet.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/fleet.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#a-node-band">A node band</a>
+<a class="toc-link lvl-3" href="#three-health-states-and-a-fourth-that-is-a-decision">Three health states, and a fourth that is a decision</a>
+<a class="toc-link lvl-2" href="#the-container-drift-badge">The container-drift badge</a>
+<a class="toc-link lvl-2" href="#server-cards">Server cards</a>
+<a class="toc-link lvl-2" href="#live-or-stale">live, or stale</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

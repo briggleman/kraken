@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>krakenctl — Kraken wiki</title>
+<meta name="description" content="The admin CLI — two subcommands, what each writes and where, and the one thing to get right about the hosts you give an enrolling Agent." />
+<link rel="canonical" href="https://krakenserver.io/wiki/reference/cli/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/reference/cli/" />
+<meta property="og:title" content="krakenctl — Kraken wiki" />
+<meta property="og:description" content="The admin CLI — two subcommands, what each writes and where, and the one thing to get right about the hosts you give an enrolling Agent." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="krakenctl — Kraken wiki" />
+<meta name="twitter:description" content="The admin CLI — two subcommands, what each writes and where, and the one thing to get right about the hosts you give an enrolling Agent." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link is-here" href="/wiki/reference/cli/" aria-current="page">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">krakenctl</span></nav>
+    <h1>krakenctl</h1>
+    <p class="lede">The admin CLI — two subcommands, what each writes and where, and the one thing to get right about the hosts you give an enrolling Agent.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#krakenctl-enroll"><code>krakenctl enroll</code></a>
+<a class="toc-link lvl-2" href="#krakenctl-gen-certs"><code>krakenctl gen-certs</code></a>
+<a class="toc-link lvl-2" href="#krakenctl-version"><code>krakenctl version</code></a>
+<a class="toc-link lvl-2" href="#what-it-does-not-do">What it does not do</a>
+</div></details>
+    <article class="prose">
+<p><code>krakenctl</code> is deliberately small. It does the mutual-TLS material for the
+Panel↔Agent channel and nothing else: two subcommands, plus <code>version</code>.</p>
+<p>It is built alongside the Panel and Agent, so <code>make build</code> puts it in <code>bin/</code>,
+and the installers place it on a node beside the Agent.</p>
+<h2 id="krakenctl-enroll"><code>krakenctl enroll</code> <a class="hlink" href="#krakenctl-enroll" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The normal path. Generates a key and a CSR on this host, exchanges a one-time
+bootstrap token for a signed Agent certificate, and writes the bundle.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>krakenctl enroll -panel URL -token TOKEN [-hosts h1,h2,…] [-port N] [-out DIR]</code></pre></div>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-panel</code></td>
+<td>the Panel base URL, for example <code>http://panel:8080</code></td>
+</tr>
+<tr>
+<td><code>-token</code></td>
+<td>the one-time bootstrap token from the Add node dialog</td>
+</tr>
+<tr>
+<td><code>-hosts</code></td>
+<td>IPs and DNS names the Panel can dial this Agent at. They go into the certificate SAN and prefill the node registration.</td>
+</tr>
+<tr>
+<td><code>-port</code></td>
+<td>this Agent&#39;s gRPC port, default <code>9090</code>, so the registration is prefilled with the right one</td>
+</tr>
+<tr>
+<td><code>-out</code></td>
+<td>output directory, default <code>./certs</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>It writes three files: <code>agent-key.pem</code> at mode <code>0600</code>, and <code>agent.pem</code> and
+<code>ca.pem</code> at <code>0644</code>. A complete bundle under <code>&lt;root&gt;/certs</code> is adopted by the
+Agent without configuring any TLS paths, which is why <code>-out &lt;root&gt;/certs</code> is the
+usual invocation.</p>
+<p>Re-run it with a fresh token to rotate the certificate.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>Give <code>-hosts</code> real addresses.</strong> A bare computer name does not resolve from a
+remote Panel, and the failure arrives later as a node that enrolled fine and
+then reads offline. This only matters in direct mode, where the Panel dials in.
+A tunnel node dials out and needs no reachable address at all.</p>
+</div>
+</aside>
+
+
+<h2 id="krakenctl-gen-certs"><code>krakenctl gen-certs</code> <a class="hlink" href="#krakenctl-gen-certs" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The manual path, for a setup that is not using enrollment: it generates a CA, a
+Panel client certificate and an Agent server certificate as PEM files.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>krakenctl gen-certs [-out DIR] [-agent-hosts h1,h2,…]</code></pre></div>
+<p><code>-out</code> defaults to <code>./certs</code>. <code>-agent-hosts</code> adds extra DNS names and IPs to the
+Agent certificate&#39;s SAN; <code>localhost</code> and <code>127.0.0.1</code> are always included.</p>
+<p>Enrollment is the better path for anything beyond a single host. This one exists
+because the trust model should be inspectable without a running Panel, and
+because a development stack needs certificates before it needs an Agent.</p>
+<h2 id="krakenctl-version"><code>krakenctl version</code> <a class="hlink" href="#krakenctl-version" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Prints the build. <code>-version</code> and <code>--version</code> do the same.</p>
+<h2 id="what-it-does-not-do">What it does not do <a class="hlink" href="#what-it-does-not-do" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>There is no <code>krakenctl</code> for servers, specs, backups or users. Those are the
+REST API, and the Panel&#39;s own UI is a client of it like any other. If you want
+to script something, the <a href="/wiki/reference/api/">API reference</a> is the surface,
+and a session token from <code>POST /auth/login</code> is the whole authentication story.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/reference/api/"><span class="pg-k">previous</span><span class="pg-t">API reference</span></a>
+      <a class="pg next" href="/wiki/reference/releases/"><span class="pg-k">next</span><span class="pg-t">Releases<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/reference/cli.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/reference/cli.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#krakenctl-enroll"><code>krakenctl enroll</code></a>
+<a class="toc-link lvl-2" href="#krakenctl-gen-certs"><code>krakenctl gen-certs</code></a>
+<a class="toc-link lvl-2" href="#krakenctl-version"><code>krakenctl version</code></a>
+<a class="toc-link lvl-2" href="#what-it-does-not-do">What it does not do</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

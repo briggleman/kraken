@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Security — Kraken wiki</title>
+<meta name="description" content="What Kraken protects and how, in the audit's own words — passwords, sessions, transport, secrets at rest and RBAC — plus the seven steps for a Panel reachable from the internet, what is deliberately not protected, and how to report something." />
+<link rel="canonical" href="https://krakenserver.io/wiki/security/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/security/" />
+<meta property="og:title" content="Security — Kraken wiki" />
+<meta property="og:description" content="What Kraken protects and how, in the audit's own words — passwords, sessions, transport, secrets at rest and RBAC — plus the seven steps for a Panel reachable from the internet, what is deliberately not protected, and how to report something." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Security — Kraken wiki" />
+<meta name="twitter:description" content="What Kraken protects and how, in the audit's own words — passwords, sessions, transport, secrets at rest and RBAC — plus the seven steps for a Panel reachable from the internet, what is deliberately not protected, and how to report something." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link is-here" href="/wiki/security/" aria-current="page">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span aria-current="page">Security</span></nav>
+    <h1>Security</h1>
+    <p class="lede">What Kraken protects and how, in the audit's own words — passwords, sessions, transport, secrets at rest and RBAC — plus the seven steps for a Panel reachable from the internet, what is deliberately not protected, and how to report something.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-posture">The posture</a>
+<a class="toc-link lvl-2" href="#roles">Roles</a>
+<a class="toc-link lvl-2" href="#hardening-a-panel-the-internet-can-reach">Hardening a Panel the internet can reach</a>
+<a class="toc-link lvl-2" href="#what-is-deliberately-not-protected">What is deliberately not protected</a>
+<a class="toc-link lvl-2" href="#reporting-something">Reporting something</a>
+</div></details>
+    <article class="prose">
+<p>The canonical document is
+<a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">SECURITY.md</a>,
+which is an audit history rather than a marketing page: every claim on it is
+tied to a file, a test name, or a triage decision with a date. This page
+summarises it and quotes it, because a security property paraphrased is a
+security property weakened.</p>
+<h2 id="the-posture">The posture <a class="hlink" href="#the-posture" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Passwords.</strong> &quot;argon2id (<code>internal/panel/auth/password.go</code>) with a
+<code>crypto/rand</code> 16-byte salt, PHC-encoded, verified with
+<code>subtle.ConstantTimeCompare</code>. Hashes are never stored in plaintext, never
+logged, and <code>User.PasswordHash</code> is <code>json:&quot;-&quot;</code> so it cannot serialize to
+clients. Login is timing-safe (dummy verify on unknown user) to resist user
+enumeration.&quot;</p>
+<p><strong>Sessions.</strong> &quot;32 bytes from <code>crypto/rand</code>, opaque, URL-safe; sessions expire
+and are deleted on expiry. Stored as a <strong>SHA-256 digest</strong> at rest … so a
+database dump cannot be replayed as live sessions.&quot; The session token never
+goes in a URL: the console WebSocket carries it in a subprotocol instead, and
+that rule &quot;remains absolute: a session credential never goes in a URL.&quot;</p>
+<p><strong>Transport, Panel to Agent.</strong> &quot;mutual TLS with a pinned server name
+(<code>mtls.ClientTLS</code>); no <code>InsecureSkipVerify</code>. TLS 1.2 minimum.&quot; Identity is
+enforced in both directions: only the Panel may drive an Agent&#39;s gRPC listener,
+because <code>mtls.RequirePeerCN</code> checks the verified client leaf&#39;s subject against
+the Panel&#39;s name, and &quot;the CN is authoritative because the signer sets it …
+so an enrollee cannot forge it.&quot; The reverse-tunnel listener accepts Agent
+certs, which is what it is for, and authorizes them by their per-node URI-SAN
+identity.</p>
+<p><strong>Secrets at rest.</strong> Every reversible secret the Panel persists is sealed with
+AES-256-GCM before it reaches Postgres: &quot;the Cloudflare API token, UniFi API
+key, the Agent-enrollment <strong>CA private key</strong>, and each node&#39;s <strong>SFTP backup
+credentials and Steam password</strong>&quot;. The master key is <code>KRAKEN_SECRETS_KEY</code>,
+base64 of 32 bytes, or an auto-generated key persisted to the config file at
+mode <code>0600</code>, <strong>outside the database it protects</strong>. A startup warning names the
+auto-generated case.</p>
+<p>Two things are deliberately <em>not</em> encrypted, and SECURITY.md says why. A
+password hash &quot;is the correct at-rest form, so it is not additionally
+encrypted.&quot; A server&#39;s game settings, including a game&#39;s own join password, are
+&quot;low-sensitivity <em>game config</em> … not infrastructure credentials&quot;, stored in the
+clear and &quot;<strong>accepted as low-risk</strong>&quot;.</p>
+<p><strong>SQL and paths.</strong> &quot;every query in <code>internal/panel/store/postgres</code> is
+parameterized (<code>$1,$2,…</code>); no string-built SQL.&quot; The Agent&#39;s <code>safePath()</code>
+&quot;cleans and prefix-checks against <code>/data</code>; <code>..</code>, absolute paths, and
+<code>/data/../x</code> escapes are all rejected post-<code>path.Clean</code>.&quot;</p>
+<p><strong>Browser headers.</strong> A Content-Security-Policy with <code>script-src &#39;self&#39;</code> and
+<code>style-src &#39;self&#39;</code>, both without <code>&#39;unsafe-inline&#39;</code>, plus <code>frame-ancestors &#39;none&#39;</code>, <code>Referrer-Policy: no-referrer</code>, <code>X-Content-Type-Options: nosniff</code> and
+<code>X-Frame-Options: DENY</code>. <code>img-src</code> is deliberately permissive, because Game
+Specs carry operator-supplied artwork URLs.</p>
+<h2 id="roles">Roles <a class="hlink" href="#roles" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Four built-in roles, and a permission model of <code>&lt;domain&gt;.&lt;action&gt;</code> strings where
+a trailing <code>.*</code> is a domain wildcard.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>role</th>
+<th>holds</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Owner</strong></td>
+<td><code>*</code>. Everything.</td>
+</tr>
+<tr>
+<td><strong>Admin</strong></td>
+<td><code>server.*</code>, <code>spec.*</code>, <code>node.*</code>, <code>backup.*</code>, <code>settings.*</code>, <code>user.manage</code>, <code>audit.view</code></td>
+</tr>
+<tr>
+<td><strong>Operator</strong></td>
+<td>view, create, power, console read and command, files read and write, server config, <code>backup.manage</code>, <code>spec.view</code>, <code>node.view</code></td>
+</tr>
+<tr>
+<td><strong>Read-only</strong></td>
+<td><code>server.view</code>, <code>server.console.read</code>, <code>spec.view</code>, <code>node.view</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>On top of that sits object-level ownership. A server records the user who
+created it, and every server-scoped route checks it after loading the row.
+Owner and Admin hold <code>server.any</code> through their wildcards; Operator and
+Read-only do not, so they are scoped to servers they created. Lists are filtered
+to what you may see, and a denial is <strong>404, not 403</strong>, &quot;so another user&#39;s server
+isn&#39;t revealed to exist.&quot;</p>
+<h2 id="hardening-a-panel-the-internet-can-reach">Hardening a Panel the internet can reach <a class="hlink" href="#hardening-a-panel-the-internet-can-reach" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Seven steps. None of them is optional if the Panel has a public hostname.</p>
+<p><strong>1. Name your proxy.</strong> Set <code>KRAKEN_TRUSTED_PROXIES</code> to the CIDRs of whatever is
+in front. Without it the peer is the proxy on every request, &quot;so every audit row
+records the proxy and both limiters collapse into a single shared bucket that
+one stranger can exhaust for everybody.&quot; An unparseable entry is a startup
+error, deliberately, because &quot;a misconfiguration that looks like a working
+Panel&quot; is worse than a refusal to start.</p>
+<p><strong>2. Keep the HTTP port off the public interface.</strong> Bind the Panel&#39;s HTTP
+listener, <code>8080</code> by default, to loopback and let the proxy reach it there.
+<strong>Leave <code>9443</code> reachable from your Agents.</strong> Raw mTLS cannot be proxied, and
+binding the tunnel listener to loopback alongside the HTTP port takes the whole
+fleet offline at once. It is the single most common way to break a working
+install while hardening it.</p>
+<p><strong>3. Authenticate the origin.</strong> Behind Cloudflare, turn on Authenticated Origin
+Pulls so your origin only answers Cloudflare, not anyone who learned its
+address. <a href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a> has the exact
+configuration, and the failure mode that looks like a certificate problem and is
+not.</p>
+<p><strong>4. Leave the rate limiters on.</strong> <code>KRAKEN_RATE_LIMITS</code> defaults to <code>on</code>:
+login at 20 a minute with a burst of 20, download-token redemption at 30 a
+minute with a burst of 10, keyed per client with &quot;<strong>IPv6 … aggregated to the
+/64</strong>&quot;. Turn them off only for an edge that already does this, and know the
+Panel logs that loudly at startup when you do.</p>
+<p><strong>5. Decide your log level.</strong> <code>KRAKEN_LOG_LEVEL</code> defaults to <code>info</code>. Rejected
+download-token redemptions log at <code>debug</code> on purpose, since &quot;an unauthenticated
+caller chooses when they are written&quot;, and they are counted at every level as
+<code>kraken_download_tokens_rejected_total</code>. Turn <code>debug</code> on when you are
+investigating, not as a standing setting.</p>
+<p><strong>6. Set your origins.</strong> <code>KRAKEN_ALLOWED_ORIGINS</code> is what cross-origin
+WebSocket upgrades are checked against. Same-origin is always allowed; the
+default is the localhost development origins, which is not your public hostname.</p>
+<p><strong>7. Scope the setup surface.</strong> <code>KRAKEN_SETUP_ALLOWED_CIDRS</code> gates the whole
+<code>/setup/*</code> group, and &quot;external sources receive 403 regardless of credentials.&quot;
+Behind a co-located tunnel the Panel would otherwise see <code>127.0.0.1</code> for the
+entire public internet, which is the second reason step 1 matters.</p>
+<p>Two more that are not on the checklist because they are not about the Panel&#39;s
+configuration: keep SFTP, <code>:2022</code> on a node and the Panel&#39;s SFTP proxy ports, on
+your LAN or a VPN, and do not publish an Agent&#39;s gRPC port. &quot;Agent gRPC has no
+application-level auth; mTLS is the whole trust boundary, and it fronts the
+Docker socket.&quot;</p>
+<h2 id="what-is-deliberately-not-protected">What is deliberately not protected <a class="hlink" href="#what-is-deliberately-not-protected" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>A download URL lives in browser history.</strong> &quot;The URL — token included — sits in
+the browser&#39;s history, and on some platforms in the download manager&#39;s record,
+for as long as the browser keeps it. Anyone with the victim&#39;s browser profile
+can read it there. What they get is nothing: by then the token has been redeemed
+(deleted) and, failing that, has expired within the minute.&quot;</p>
+<p><strong>Plain HTTP on a LAN is a first-class deployment.</strong> There is no
+<code>upgrade-insecure-requests</code> in the CSP, and the Panel does not assert HSTS:
+&quot;The Panel serves plaintext HTTP on a LAN by design, so it is the wrong layer to
+assert HSTS.&quot; Whatever terminates TLS should set it.</p>
+<p><strong>Agent certificates share one logical identity.</strong> Every Agent cert carries
+<code>CN=kraken-agent</code>, which the Panel pins for all nodes, so they are mutually
+interchangeable as <em>server</em> certs. This &quot;is acceptable when all nodes are
+equally trusted&quot;, and it is a standing open recommendation to bind per-node
+identity for mixed-trust fleets. Its worst consequence is already closed: since
+the cross-node fix, an Agent cert is not accepted as a <em>client</em> by a peer Agent
+at all.</p>
+<p><strong>Node-local secrets are not sealed on the node.</strong> A server&#39;s runtime spec and
+its rendered config files live on the node at mode <code>0600</code> and <code>0644</code>, and they
+can carry admin or RCON passwords. &quot;Both live on a host whose Docker socket the
+Agent controls — an attacker with file access there has already won.&quot; Encrypting
+them &quot;would require a node-local key sitting next to the ciphertext, which buys
+nothing.&quot;</p>
+<p><strong>Three dependency advisories are accepted with monitoring</strong>, all with no
+upstream fix: two Docker Engine SDK advisories, reachable only from the Agent
+and only through file-copy functions &quot;not on any Kraken call path&quot;, and one in
+an SMB client reached by dialling an operator-configured backup target.</p>
+<h2 id="reporting-something">Reporting something <a class="hlink" href="#reporting-something" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Use the repository&#39;s <strong>Security</strong> tab on
+<a href="https://github.com/briggleman/kraken">github.com/briggleman/kraken</a> and report
+it privately if the option is offered there. If it is not, open an issue that
+says you have a security report and asks for a private channel, and keep the
+exploit detail out of it until you have one.</p>
+<p>Kraken is a single-maintainer project, so expect a human timescale rather than a
+corporate one. The detail that helps most is the same one SECURITY.md&#39;s own
+entries lead with: which call path reaches it.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/specs/windows-containers/"><span class="pg-k">previous</span><span class="pg-t">Windows containers</span></a>
+      <a class="pg next" href="/wiki/reference/api/"><span class="pg-k">next</span><span class="pg-t">API reference<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/security/index.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/security/index.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-posture">The posture</a>
+<a class="toc-link lvl-2" href="#roles">Roles</a>
+<a class="toc-link lvl-2" href="#hardening-a-panel-the-internet-can-reach">Hardening a Panel the internet can reach</a>
+<a class="toc-link lvl-2" href="#what-is-deliberately-not-protected">What is deliberately not protected</a>
+<a class="toc-link lvl-2" href="#reporting-something">Reporting something</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

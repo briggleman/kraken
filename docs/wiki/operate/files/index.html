@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Files and SFTP — Kraken wiki</title>
+<meta name="description" content="Reaching a server's data directory — the Files tab, the upload cap, how a tokenised download works and what it records, and per-server SFTP with its chroot, its two auth methods and the one time its password exists on screen." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/files/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/files/" />
+<meta property="og:title" content="Files and SFTP — Kraken wiki" />
+<meta property="og:description" content="Reaching a server's data directory — the Files tab, the upload cap, how a tokenised download works and what it records, and per-server SFTP with its chroot, its two auth methods and the one time its password exists on screen." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Files and SFTP — Kraken wiki" />
+<meta name="twitter:description" content="Reaching a server's data directory — the Files tab, the upload cap, how a tokenised download works and what it records, and per-server SFTP with its chroot, its two auth methods and the one time its password exists on screen." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link is-here" href="/wiki/operate/files/" aria-current="page">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Files and SFTP</span></nav>
+    <h1>Files and SFTP</h1>
+    <p class="lede">Reaching a server's data directory — the Files tab, the upload cap, how a tokenised download works and what it records, and per-server SFTP with its chroot, its two auth methods and the one time its password exists on screen.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-files-tab">The Files tab</a>
+<a class="toc-link lvl-2" href="#downloads">Downloads</a>
+<a class="toc-link lvl-3" href="#what-the-audit-records">What the audit records</a>
+<a class="toc-link lvl-2" href="#sftp">SFTP</a>
+<a class="toc-link lvl-3" href="#tunnel-nodes">Tunnel nodes</a>
+</div></details>
+    <article class="prose">
+<p>A server&#39;s data directory is a plain host directory, bind-mounted into the
+container at <code>/data</code> on Linux and <code>C:\data</code> on Windows. Every file operation and
+every backup is native Go against that directory rather than the Docker archive
+API, which is why they behave the same on both operating systems and why they
+keep working while a node is <code>partial</code>.</p>
+<p>Two ways in: the Files tab in the drill-in, and SFTP.</p>
+<h2 id="the-files-tab">The Files tab <a class="hlink" href="#the-files-tab" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<!-- SCREENSHOT: the Files tab showing a breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on a row -->
+<p class="shot"><em>screenshot: the Files tab showing a breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on a row</em></p>
+
+
+<p>Breadcrumb navigation, one row per entry with its size and modified time, and
+two per-row actions:</p>
+<ul>
+<li><strong>download</strong> on every row. A file downloads as itself; a directory downloads
+as a <code>.zip</code>. It needs only <code>server.files.read</code>, which anyone who can see the
+tab holds.</li>
+<li><strong>delete</strong>, shown only with <code>server.files.write</code>.</li>
+</ul>
+<p><strong>Upload</strong> is in the footer, also behind <code>server.files.write</code>, and drops into
+the directory you are looking at. The Panel caps a single upload request at <strong>64
+MiB</strong> plus a megabyte of multipart framing, and answers <code>413</code> past it. That cap
+exists because <code>ParseMultipartForm</code>&#39;s argument is only the in-memory threshold:
+everything past it spills to temp files, unbounded, so one authenticated request
+could otherwise fill the Panel&#39;s disk.</p>
+<p>There is no in-browser editor today. The API has the read and write routes, with
+a <strong>1 MiB</strong> ceiling on a read — past it, or for a binary file, the response says
+<code>too_large</code> or <code>is_binary</code> and returns no content rather than handing a
+megabyte-and-a-half of save data to a text box. For editing a config by hand,
+SFTP is the path I would take, and for most settings the Settings tab is the one
+you want instead: it renders the game&#39;s config files from the spec, so a hand
+edit to a templated file is overwritten on the next save.</p>
+<h2 id="downloads">Downloads <a class="hlink" href="#downloads" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A download used to be a <code>fetch</code> with the session&#39;s Bearer header, handing the
+bytes to the browser as a Blob. That is the only shape a Bearer-authenticated
+client has without a cookie, and it is the wrong one for anything large: the
+whole payload sits in tab memory before the save dialog appears, with no
+progress, and a multi-GB install tree exhausts the tab.</p>
+<p>Since 0.51.0 a download goes through a short-lived token, so a plain anchor can
+carry the authorization and the browser streams to disk with its own progress
+UI. What the token is, in SECURITY.md&#39;s words:</p>
+<ul>
+<li>&quot;<strong>Single-use.</strong> The grant is deleted the moment it is looked up — before any
+validation and long before a byte streams — so a replayed URL finds nothing
+whether or not the first attempt succeeded.&quot;</li>
+<li>&quot;<strong>60 seconds.</strong> Expiry is checked at redemption, not merely promised at
+mint.&quot;</li>
+<li>&quot;<strong>Scoped to one server and one exact path set.</strong>&quot; The Panel canonicalises the
+path, pins that spelling into the grant, and rewrites the query from the grant
+at redemption, &quot;so the token cannot be widened.&quot;</li>
+<li>&quot;<strong>Bound to the issuing user and session, re-validated at redemption.</strong>&quot; A
+revoked role, a deleted account, a server handed to another owner, a logout or
+an admin-revoked session inside the 60-second window all take effect on the
+download.</li>
+<li>&quot;<strong>Never a Bearer alternative.</strong> With <code>token</code> present the Authorization header
+is not consulted at all.&quot;</li>
+</ul>
+<p>0.52.0 added the announced length. The Agent sets a file&#39;s size on the first
+chunk from a stat taken before the first byte goes out, and the Panel turns a
+non-zero size into <code>Content-Length</code>, &quot;so a truncated transfer is something the
+browser can <em>detect</em> rather than something it reports as a finished download&quot;.
+A zip announces nothing, because an archive&#39;s size is not known until it has
+been written. Both routes send <code>Accept-Ranges: none</code>: resume is structurally
+impossible on a single-use token, and a browser told nothing may offer a resume
+that cannot work. Click again is the resume story.</p>
+<p><strong>Agents roll out before Panels</strong> for this one, though nothing breaks if they do
+not: an Agent older than the size field sends 0 throughout and the Panel behaves
+precisely as it did before.</p>
+<h3 id="what-the-audit-records">What the audit records <a class="hlink" href="#what-the-audit-records" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>&quot;The audit log records the mint and the redemption with the server, the user and
+the path <em>count</em>; the token itself appears in no log line, and a rejected
+redemption is a <code>Debug</code> line rather than an audit row, so an unauthenticated
+caller with a bad token cannot amplify writes into the audit table.&quot;</p>
+<p>The redemption row carries &quot;the request&#39;s <strong>outcome</strong> status, not an assumed
+200&quot;, written from a deferred call on a context that outlives the request, so a
+stream that aborts mid-way is on the record rather than missing from it.
+Rejected redemptions are counted instead, as
+<code>kraken_download_tokens_rejected_total</code>.</p>
+<p>Redemption is rate limited at 30 a minute with a burst of 10 per client. The
+limit sits on the token branch only: an ordinary session-authenticated download
+is not what it is for, and &quot;an operator must not be refused for sharing a NAT
+address with somebody probing tokens.&quot;</p>
+<aside class="callout is-security">
+<span class="callout-k">security</span>
+<div class="callout-b"><p><strong>What it does not protect against.</strong> &quot;The URL — token included — sits in the
+browser&#39;s history, and on some platforms in the download manager&#39;s record, for
+as long as the browser keeps it. Anyone with the victim&#39;s browser profile can
+read it there. What they get is nothing: by then the token has been redeemed
+(deleted) and, failing that, has expired within the minute.&quot; On a plain-HTTP LAN
+deployment the URL can also be captured in transit, where &quot;the session Bearer is
+equally exposed there, and is the far better prize.&quot;</p>
+</div>
+</aside>
+
+
+<h2 id="sftp">SFTP <a class="hlink" href="#sftp" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Every server gets its own SFTP account on the node that runs it. The Agent
+serves it directly on <code>:2022</code> by default, which is <code>KRAKEN_SFTP_ADDR</code>.</p>
+<ul>
+<li><strong>The username is the server&#39;s id.</strong> One account per server, not per person.</li>
+<li><strong>Each connection is chrooted to that server&#39;s data directory.</strong> Client paths
+are cleaned against <code>/</code> and then joined to the root, which is the same
+containment the Panel&#39;s file routes get, and symlink creation is refused, so
+there is no escaping the jail by making one.</li>
+<li><strong>Password or public key.</strong> The Panel generates the password, bcrypt-hashes
+it, and pushes only the hash to the Agent, which verifies against it. Public
+keys are stored in <code>authorized_keys</code> form and compared by their marshalled
+bytes.</li>
+<li><strong>The plaintext password is shown exactly once</strong>, on reset, and is never
+stored. The Panel keeps only the hash, so that screen is the one time it
+exists. Copy it then.</li>
+<li>The host key is a persisted ed25519 key, generated on first run, at
+<code>KRAKEN_SFTP_HOST_KEY</code> under the Agent&#39;s state directory.</li>
+</ul>
+<!-- SCREENSHOT: the SFTP card on a server showing host, port, username and the one-time password after a reset -->
+<p class="shot"><em>screenshot: the SFTP card on a server showing host, port, username and the one-time password after a reset</em></p>
+
+
+<p>Reading credentials needs <code>server.files.read</code>; resetting the password, setting
+keys and disabling access all need <code>server.config</code>.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><code>:2022</code> is authenticated, but it is a listener on the node, and it is password
+auth as well as key auth. Keep it on your LAN or behind a VPN. SECURITY.md&#39;s
+standing note is to &quot;expose the SFTP port (<code>:2022</code>) only to trusted networks /
+behind a firewall&quot;.</p>
+</div>
+</aside>
+
+
+<h3 id="tunnel-nodes">Tunnel nodes <a class="hlink" href="#tunnel-nodes" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>A tunnel-mode node has no inbound ports at all, so the Panel fronts its SFTP
+instead. Each tunnel node gets a Panel-side port of its own, allocated upward
+from <code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default <code>2222</code>) and persisted on the node
+record, and the Panel forwards the raw SSH byte stream to the Agent.</p>
+<p>The Panel never terminates SSH, so credentials and host keys stay Agent-side.
+Each node gets its own port rather than one shared endpoint because raw SSH
+carries no routing header a pass-through proxy could read. The SFTP card shows
+the endpoint you should actually connect to, proxied or not, and the in-browser
+Files tab behaves identically either way.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/servers/"><span class="pg-k">previous</span><span class="pg-t">Servers</span></a>
+      <a class="pg next" href="/wiki/operate/backups/"><span class="pg-k">next</span><span class="pg-t">Backups<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/files.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/files.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-files-tab">The Files tab</a>
+<a class="toc-link lvl-2" href="#downloads">Downloads</a>
+<a class="toc-link lvl-3" href="#what-the-audit-records">What the audit records</a>
+<a class="toc-link lvl-2" href="#sftp">SFTP</a>
+<a class="toc-link lvl-3" href="#tunnel-nodes">Tunnel nodes</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

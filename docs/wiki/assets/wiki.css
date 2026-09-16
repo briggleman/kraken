@@ -414,6 +414,129 @@ table.envs td:last-child{min-width:34ch;white-space:normal}
 }
 .shot em{font-style:italic}
 
+/* ============================================================
+   API REFERENCE — generated from internal/panel/api/openapi.yaml.
+
+   Two of DESIGN.md's Named Rules are the whole colour scheme here,
+   and nothing else on the page is allowed to spend these hues:
+
+   The Verb-Risk Rule. A method is lit by what the call can do to
+   you, not by which verb it happens to be. A read is unlit Sand
+   Faint because nothing happens; everything that writes takes
+   Sodium Lumen; DELETE alone takes Crisis Magenta, because it is
+   the only one you cannot take back.
+
+   The Whose-Fault Rule. A status is coloured by its family: 2xx
+   Status Gold, 4xx Caution Violet — the caller got it wrong — and
+   5xx Crisis Magenta, meaning we did.
+   ============================================================ */
+.api-op{
+  margin-top:20px;padding:15px 16px;
+  border:1px solid var(--edge);border-left-width:2px;border-radius:6px;
+  background:rgba(5,13,20,.5);
+}
+.api-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+
+/* The Wire Token: centred in a pill sized for DELETE, so every route
+   beside them holds one left edge down the whole list. */
+.vb{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:58px;padding:3px 0;border-radius:3px;
+  font-family:var(--mono);font-weight:500;font-size:10px;letter-spacing:.08em;
+  border:1px solid currentColor;
+}
+.vb.is-read{color:var(--ink-3)}
+.vb.is-write{color:var(--lumen);background:var(--lumen-soft)}
+.vb.is-del{color:var(--crisis);background:rgba(var(--crisis-rgb),.07)}
+.api-route{
+  font-family:var(--mono);font-weight:400;font-size:13px;color:var(--ink);
+  overflow-wrap:anywhere;min-width:0;
+}
+.api-open{
+  font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--caution);border:1px solid rgba(var(--caution-rgb),.45);border-radius:3px;padding:2px 7px;
+}
+.prose .api-sum{margin-top:10px;color:var(--ink);font-weight:600;font-size:14.5px}
+.prose .api-desc{margin-top:8px;color:var(--ink-2);font-size:14px}
+.api-k{
+  margin-top:16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  font-size:9.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--ink-3);
+}
+.api-ct{font-family:var(--mono);font-weight:300;letter-spacing:.04em;text-transform:none;font-size:11px}
+
+.prose ul.api-props,.prose ul.api-res{list-style:none;padding-left:0;margin-top:8px}
+.prose ul.api-props li,.prose ul.api-res li{margin-top:7px;font-size:13.5px;line-height:1.55}
+.prose .api-props li > code{
+  background:none;border:none;padding:0;color:var(--ink);font-size:12.5px;
+}
+.api-props .api-props{margin-top:6px;padding-left:16px;border-left:1px solid rgba(var(--ink-3-rgb),.22)}
+.api-t{font-family:var(--mono);font-weight:300;font-size:11.5px;color:var(--ink-3);margin-left:6px}
+.api-in{
+  margin-left:7px;font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);
+}
+.api-req{
+  margin-left:7px;font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--caution);
+}
+.api-d{display:block;margin-top:2px;color:var(--ink-2);font-size:13px}
+.api-enum{display:inline-flex;flex-wrap:wrap;gap:5px;margin-left:7px;vertical-align:middle}
+.prose .api-enum code{
+  background:rgba(var(--lumen-rgb),.07);border:1px solid rgba(var(--lumen-rgb),.13);
+  border-radius:3px;padding:0 5px;font-size:11px;color:var(--ink-2);
+}
+.prose a.api-ref{
+  font-family:var(--mono);font-weight:300;font-size:12px;color:var(--ink-2);
+  border-bottom:1px solid rgba(var(--lumen-rgb),.3);margin-left:6px;
+}
+.api-amp{color:var(--ink-3)}
+
+/* The Whose-Fault Rule. */
+.st{
+  display:inline-flex;align-items:center;justify-content:center;min-width:42px;
+  font-family:var(--mono);font-weight:500;font-size:11px;
+  border:1px solid currentColor;border-radius:3px;padding:1px 6px;margin-right:9px;
+}
+.st.is-ok{color:var(--ok)}
+.st.is-caution{color:var(--caution)}
+.st.is-crisis{color:var(--crisis)}
+.st.is-any{color:var(--ink-3)}
+.api-res .api-d{display:inline;margin-left:0}
+
+.api-schema{
+  margin-top:18px;padding:14px 16px;
+  border:1px solid rgba(var(--ink-3-rgb),.22);border-radius:6px;background:rgba(5,13,20,.4);
+}
+.api-schema-h{padding-bottom:9px;border-bottom:1px solid var(--edge)}
+.prose .api-schema-h code{
+  background:none;border:none;padding:0;color:var(--lumen);font-size:13px;
+}
+
+/* ---------- the release history ----------
+   Generated from CHANGELOG.md. A release is a dated block, not a
+   heading, so eighty-odd of them do not flood the contents rail. */
+.rel{margin-top:22px;padding-top:16px;border-top:1px solid rgba(var(--ink-3-rgb),.16)}
+.rel:first-of-type{border-top:none;padding-top:0}
+.rel-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.rel-v{
+  font-family:var(--mono);font-weight:500;font-size:17px;color:var(--lumen);
+  font-variant-numeric:tabular-nums;
+}
+.rel-d{font-family:var(--mono);font-weight:300;font-size:12px;color:var(--ink-3)}
+.prose a.rel-c{
+  margin-left:auto;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink-3);border-bottom:1px solid transparent;
+}
+.prose a.rel-c:hover{color:var(--lumen);border-bottom-color:var(--lumen)}
+.rel-k{
+  margin-top:12px;font-size:9.5px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--ink-3);
+}
+.prose ul.rel-l{list-style:none;padding-left:0;margin-top:7px}
+.prose ul.rel-l li{
+  margin-top:6px;padding-left:14px;position:relative;font-size:13.5px;color:var(--ink-2);line-height:1.55;
+}
+.prose ul.rel-l li::before{
+  content:'';position:absolute;left:0;top:.62em;width:5px;height:1px;background:rgba(var(--lumen-rgb),.5);
+}
+
 /* ---------- pager + page footer ---------- */
 .pager{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;

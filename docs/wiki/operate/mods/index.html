@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mods (BepInEx) — Kraken wiki</title>
+<meta name="description" content="BepInEx support for Unity games — the spec flag, the deploy-time toggle, how the install and startup branch when it is on, why the update pass deliberately skips the overlay, and the two bundled specs that use it." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/mods/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/mods/" />
+<meta property="og:title" content="Mods (BepInEx) — Kraken wiki" />
+<meta property="og:description" content="BepInEx support for Unity games — the spec flag, the deploy-time toggle, how the install and startup branch when it is on, why the update pass deliberately skips the overlay, and the two bundled specs that use it." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Mods (BepInEx) — Kraken wiki" />
+<meta name="twitter:description" content="BepInEx support for Unity games — the spec flag, the deploy-time toggle, how the install and startup branch when it is on, why the update pass deliberately skips the overlay, and the two bundled specs that use it." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link is-here" href="/wiki/operate/mods/" aria-current="page">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/design/">Design documents</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Mods (BepInEx)</span></nav>
+    <h1>Mods (BepInEx)</h1>
+    <p class="lede">BepInEx support for Unity games — the spec flag, the deploy-time toggle, how the install and startup branch when it is on, why the update pass deliberately skips the overlay, and the two bundled specs that use it.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-three-pieces-in-a-spec">The three pieces in a spec</a>
+<a class="toc-link lvl-2" href="#what-branches-and-where">What branches, and where</a>
+<a class="toc-link lvl-2" href="#the-update-pass-does-not-re-run-the-overlay">The update pass does not re-run the overlay</a>
+<a class="toc-link lvl-2" href="#the-two-bundled-specs">The two bundled specs</a>
+</div></details>
+    <article class="prose">
+<p>BepInEx is a mod loader for Unity games, and that is the boundary: a game that
+is not Unity has no BepInEx, whatever its modding scene looks like. Kraken does
+not try to detect this. A spec declares whether the game supports it, and the
+Panel honours the deploy toggle only for a spec that does.</p>
+<h2 id="the-three-pieces-in-a-spec">The three pieces in a spec <a class="hlink" href="#the-three-pieces-in-a-spec" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>field</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>install.bepinex_compatible</code></td>
+<td>declares that this game supports BepInEx. Without it the deploy toggle is not shown, and an <code>install_bepinex</code> in the API is ignored.</td>
+</tr>
+<tr>
+<td><code>install.bepinex_script</code></td>
+<td>the overlay: the script that installs the loader on top of the game.</td>
+</tr>
+<tr>
+<td><code>startup.bepinex_command</code></td>
+<td>an alternative startup command for a modded server. Optional.</td>
+</tr>
+</tbody></table>
+</div>
+<p>At deploy time the toggle is <code>install bepinex (mod loader)</code>, and it appears only
+when the selected spec sets <code>bepinex_compatible</code>. What you choose is stored on
+the server, not on the spec, so two servers from one spec can differ.</p>
+<!-- SCREENSHOT: the deploy sheet for a BepInEx-compatible spec with the mod-loader toggle visible under the operations group -->
+<p class="shot"><em>screenshot: the deploy sheet for a BepInEx-compatible spec with the mod-loader toggle visible under the operations group</em></p>
+
+
+<h2 id="what-branches-and-where">What branches, and where <a class="hlink" href="#what-branches-and-where" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Install.</strong> The Panel builds the install script by concatenating the spec&#39;s
+ordinary install script with the BepInEx overlay: <code>\n</code> between them on Linux,
+<code>&amp;</code> on a Windows node, since a <code>windows-native</code> script is a <code>cmd</code> chain. The
+whole thing is then rendered with the server&#39;s variables, so the overlay sees
+the same values the rest of the install does.</p>
+<p><strong>Startup.</strong> If the server was deployed with BepInEx and the spec declares a
+<code>bepinex_command</code>, that command replaces the ordinary one. If it does not, the
+ordinary command is used, which is correct for a loader that hooks itself in
+without needing the launch line changed: V Rising&#39;s <code>winhttp.dll</code> is loaded by
+the game automatically, so there is nothing to override.</p>
+<p><strong>Mods themselves go in through the Files tab or SFTP</strong>, into the plugins
+directory the overlay created. Kraken has no mod manager and no Thunderstore
+browser; it installs the loader and gets out of the way. Do include the plugins
+tree in the spec&#39;s backup globs, because a reinstall does not restore it.</p>
+<h2 id="the-update-pass-does-not-re-run-the-overlay">The update pass does not re-run the overlay <a class="hlink" href="#the-update-pass-does-not-re-run-the-overlay" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Since 0.50.0 every operator-initiated start re-runs the install script. It runs
+the <strong>vanilla</strong> script only. The overlay runs at create and reinstall, never on
+the pre-start pass, and this is deliberate on two counts:</p>
+<ul>
+<li><strong>These scripts copy over the tree.</strong> Valheim&#39;s <code>cp -rf …/. /data/</code> would
+clobber <code>BepInEx/config/</code> on every restart, taking your mod configuration with
+it.</li>
+<li><strong>They pull unpinned builds.</strong> V Rising&#39;s overlay asks Thunderstore for the
+<em>latest</em> package. A loader silently moving under a running fleet, on every
+restart, is not an update story I would want.</li>
+</ul>
+<p>A SteamCMD <code>validate</code> leaves the Doorstop and <code>winhttp</code> files alone anyway, so
+the overlay has nothing to repair after an ordinary update. When you do want the
+loader refreshed, <strong>reinstall</strong> is the action: it re-runs the overlay for a
+server that was deployed with it.</p>
+<h2 id="the-two-bundled-specs">The two bundled specs <a class="hlink" href="#the-two-bundled-specs" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Valheim</strong> (Mono, so BepInEx 5). The overlay downloads a <strong>pinned</strong> Thunderstore
+package, unpacks it over the data directory, and creates <code>BepInEx/plugins</code>. The
+modded startup command sets the Doorstop environment: <code>DOORSTOP_ENABLE</code>, the
+preloader DLL path, a corlib override and <code>LD_PRELOAD</code> for the Doorstop shared
+object. That last part is why Valheim needs the alternative command and V Rising
+does not.</p>
+<p><strong>V Rising</strong> (IL2CPP, so BepInEx 6). The overlay is a single PowerShell line
+that resolves the latest Thunderstore download for the BepInEx IL2CPP pack and
+for <code>ServerLaunchFix</code>, expands both into <code>C:\data</code>, and copies the launch-fix
+DLLs into <code>BepInEx\plugins</code>. No startup override: the game loads <code>winhttp.dll</code>
+on its own.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>V Rising&#39;s overlay resolves <code>latest</code> at install time rather than pinning a
+version, so two servers created a month apart can land on different loader
+builds. If you care about that, reinstall them together, or fork the spec and
+pin the URL.</p>
+</div>
+</aside>
+
+
+<p>BepInEx under Wine is not validated. A <code>linux-wine</code> placement of a modded
+Windows game may work and may not; the bundled Windows-only spec that uses
+BepInEx targets a Windows node.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/backups/"><span class="pg-k">previous</span><span class="pg-t">Backups</span></a>
+      <a class="pg next" href="/wiki/operate/players/"><span class="pg-k">next</span><span class="pg-t">Who is online<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/mods.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/mods.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-three-pieces-in-a-spec">The three pieces in a spec</a>
+<a class="toc-link lvl-2" href="#what-branches-and-where">What branches, and where</a>
+<a class="toc-link lvl-2" href="#the-update-pass-does-not-re-run-the-overlay">The update pass does not re-run the overlay</a>
+<a class="toc-link lvl-2" href="#the-two-bundled-specs">The two bundled specs</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

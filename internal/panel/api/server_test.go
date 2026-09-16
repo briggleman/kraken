@@ -29,6 +29,15 @@ func newTestServer(t *testing.T) http.Handler {
 	return h
 }
 
+// newTestServerWith is newTestServer with the config tweaked before the API is
+// built — for the handful of behaviours that are configuration, not code
+// (KRAKEN_RATE_LIMITS=off, trusted proxies).
+func newTestServerWith(t *testing.T, tweak func(*config.Config)) http.Handler {
+	t.Helper()
+	srv, _ := newTestAPIWith(t, tweak)
+	return srv.Handler()
+}
+
 // newTestServerStore is newTestServer but also returns the backing store, so
 // tests can seed records (e.g. a server) that would otherwise require a full
 // deploy flow.
@@ -43,6 +52,11 @@ func newTestServerStore(t *testing.T) (http.Handler, *memory.Store) {
 // deliberately does not expose, like the download-token table).
 func newTestAPI(t *testing.T) (*api.Server, *memory.Store) {
 	t.Helper()
+	return newTestAPIWith(t, nil)
+}
+
+func newTestAPIWith(t *testing.T, tweak func(*config.Config)) (*api.Server, *memory.Store) {
+	t.Helper()
 	st := memory.New()
 	cfg := &config.Config{
 		Env:                    "test",
@@ -52,6 +66,9 @@ func newTestAPI(t *testing.T) (*api.Server, *memory.Store) {
 		// httptest requests arrive from 192.0.2.1 (TEST-NET-1, public) — allow
 		// it so the /setup internal-network gate doesn't 403 the whole suite.
 		SetupAllowedCIDRs: []string{"192.0.2.0/24"},
+	}
+	if tweak != nil {
+		tweak(cfg)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	if err := panel.Seed(context.Background(), st, cfg, logger); err != nil {

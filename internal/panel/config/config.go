@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -121,6 +122,45 @@ type Config struct {
 	// KRAKEN_SFTP_PROXY=off to disable the proxy.
 	SFTPProxy         string
 	SFTPProxyBasePort int
+
+	// TrustedProxies lists the CIDRs (bare IPs allowed) of reverse proxies
+	// whose forwarding headers the Panel may believe. EMPTY BY DEFAULT: with no
+	// trusted set, `X-Forwarded-For` is attacker-supplied and the Panel uses
+	// the real TCP peer for everything. Set it when the Panel sits behind
+	// Caddy/nginx/Traefik or a Cloudflare Tunnel — otherwise every request
+	// looks like it came from the proxy, which collapses the per-IP rate
+	// limiters into one shared bucket and files every audit row under the
+	// proxy's address. See clientIP in internal/panel/api.
+	TrustedProxies []string
+
+	// RateLimits is the escape hatch for the per-IP limiters on login and the
+	// token-redemption downloads: "off" disables both (logged loudly at
+	// startup). Anything else leaves them on, which is the default.
+	RateLimits string
+
+	// LogLevel is the Panel's slog level: debug, info (default), warn, error.
+	// Several diagnostics — a rejected download token, for one — are Debug on
+	// purpose, because they are writable by an unauthenticated caller; this is
+	// how an operator turns them on when actually diagnosing something.
+	LogLevel string
+}
+
+// RateLimitsEnabled reports whether the per-IP limiters should run.
+func (c *Config) RateLimitsEnabled() bool { return !strings.EqualFold(c.RateLimits, "off") }
+
+// SlogLevel maps LogLevel onto a slog level, defaulting to Info for anything
+// unrecognized — a typo must not silence the Panel.
+func (c *Config) SlogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // TunnelEnabled reports whether the reverse-tunnel listener should run.
@@ -187,6 +227,9 @@ func Load() (*Config, error) {
 		CSPMode:                strings.ToLower(strings.TrimSpace(env("KRAKEN_CSP", CSPEnforce))),
 		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
 		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),
+		TrustedProxies:         envList("KRAKEN_TRUSTED_PROXIES"),
+		RateLimits:             env("KRAKEN_RATE_LIMITS", "on"),
+		LogLevel:               env("KRAKEN_LOG_LEVEL", "info"),
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()

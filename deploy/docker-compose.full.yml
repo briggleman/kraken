@@ -58,6 +58,29 @@ services:
       KRAKEN_ALLOWED_ORIGINS: ${KRAKEN_ALLOWED_ORIGINS:-}
       KRAKEN_QUICKSTART: "true"
       KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
+      # Reverse proxies whose forwarding headers the Panel may believe. LEAVE
+      # THIS EMPTY unless a proxy really does front the Panel: with it set, a
+      # caller that can reach the Panel directly from one of these networks can
+      # name any client address it likes.
+      #
+      # Set it when there IS one. Behind Caddy, nginx, Traefik or a Cloudflare
+      # Tunnel the Panel sees the PROXY as the client on every request — so
+      # every audit row records the proxy, and the per-client rate limiters on
+      # login and download-token redemption collapse into a single shared
+      # bucket that one stranger can exhaust for everybody. With the proxy
+      # named here, the Panel reads the real client from CF-Connecting-IP or
+      # the rightmost untrusted X-Forwarded-For hop instead.
+      #
+      # A cloudflared sidecar on the host, or any proxy on this machine:
+      #   KRAKEN_TRUSTED_PROXIES: 127.0.0.0/8,::1/128
+      # A proxy elsewhere on the LAN: name its address, e.g. 10.0.0.5/32
+      KRAKEN_TRUSTED_PROXIES: ${KRAKEN_TRUSTED_PROXIES:-}
+      # debug|info|warn|error. Debug surfaces the per-request diagnostics that
+      # are deliberately quiet, including refused download-token redemptions.
+      KRAKEN_LOG_LEVEL: ${KRAKEN_LOG_LEVEL:-info}
+      # Escape hatch: "off" disables the per-client limiters on login and
+      # download-token redemption (for an edge that already rate limits).
+      KRAKEN_RATE_LIMITS: ${KRAKEN_RATE_LIMITS:-on}
     volumes:
       - panel-state:/var/lib/kraken
 

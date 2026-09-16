@@ -183,6 +183,22 @@ services:
       # Uncomment for reverse-proxy / public hostname setups:
       # KRAKEN_ALLOWED_ORIGINS: "https://kraken.example.com"
 
+      # Behind a reverse proxy or a Cloudflare Tunnel, name it here — the
+      # Panel otherwise sees the proxy as the client on every request, which
+      # files every audit row under the proxy and turns the per-client rate
+      # limiters into one bucket a single stranger can exhaust for everybody.
+      # A cloudflared sidecar (or any proxy) on this host:
+      # KRAKEN_TRUSTED_PROXIES: "127.0.0.0/8,::1/128"
+      # A proxy elsewhere on the LAN: name its address, e.g. "10.0.0.5/32".
+
+      # debug|info|warn|error. debug surfaces refused download-token
+      # redemptions and the other deliberately quiet per-request diagnostics.
+      # KRAKEN_LOG_LEVEL: "debug"
+
+      # "off" disables the per-client limiters on login and download-token
+      # redemption, for an edge that already rate limits.
+      # KRAKEN_RATE_LIMITS: "off"
+
       KRAKEN_QUICKSTART: "true"
       KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
     volumes:

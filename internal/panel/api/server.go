@@ -89,6 +89,11 @@ type Server struct {
 	// plain <a download href> stream a file without a session header. In memory
 	// and never persisted — see filedownloadtokens.go.
 	downloads *downloadTokenRegistry
+
+	// Per-IP limiters on the two surfaces an unauthenticated stranger can
+	// reach: the token-redemption downloads and login (see ratelimit.go).
+	downloadLimit *rateLimiter
+	loginLimit    *rateLimiter
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -135,6 +140,9 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		installs:   newInstallLog(),
 		telemetry:  newTelemetryCache(),
 		downloads:  newDownloadTokenRegistry(),
+
+		downloadLimit: newRateLimiter(downloadRedeemPerMinute, downloadRedeemBurst),
+		loginLimit:    newRateLimiter(loginPerMinute, loginBurst),
 	}
 	for _, o := range opts {
 		o(s)
@@ -363,8 +371,11 @@ func (s *Server) routes() chi.Router {
 	r.Get("/metrics", s.handleMetrics)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Auth: login is public; logout/me require a valid session.
-		r.Post("/auth/login", s.handleLogin)
+		// Auth: login is public; logout/me require a valid session. Public and
+		// password-checking, so it is rate limited per source IP — generously,
+		// because a whole team can share one NAT address and being locked out
+		// of your own Panel is worse than the guessing being slowed.
+		r.With(s.loginLimit.middleware).Post("/auth/login", s.handleLogin)
 
 		// Agent enrollment: authenticated by a one-time bootstrap token (the Agent
 		// has no session/cert yet), so this is intentionally outside requireAuth.
@@ -381,14 +392,25 @@ func (s *Server) routes() chi.Router {
 
 		// File downloads. A plain <a download href> cannot set an Authorization
 		// header, so both of these also accept a one-time ?token= (60 s, bound
-		// to one server, one exact path set and the minting user — see
-		// handlers_filedownloadtoken.go). They sit outside the session group
-		// because the token path has no session at all; without a token they run
-		// exactly the chain that group applies, so Bearer behaviour is unchanged.
-		// The zip route's POST twin (paths in the body) stays in the group below.
-		r.Get("/servers/{id}/files/raw", s.downloadEntry(downloadKindRaw, s.handleDownloadFile,
-			s.sessionRoute(rbac.PermServerFilesRead, s.handleDownloadFile)))
-		r.Get("/servers/{id}/files/download", s.downloadEntry(downloadKindZip, s.handleDownloadFilesByToken, nil))
+		// to one server, one exact path set, the minting user and the session
+		// that minted it — see handlers_filedownloadtoken.go). They sit outside
+		// the session group because the token path has no session at all; the
+		// tokenOrSession middleware resolves identity from either source and
+		// then runs the same chain the group applies, so Bearer behaviour is
+		// unchanged and there is nothing to drift. The zip route's POST twin
+		// (paths in the body) stays in the group below.
+		//
+		// Both are reachable with no credentials, so both are rate limited per
+		// source IP: a bad token costs an attacker a request and the Panel a
+		// registry lock, and nothing else should be free.
+		r.Group(func(r chi.Router) {
+			r.Use(s.downloadLimit.middleware)
+			r.With(s.tokenOrSession(downloadKindRaw, true)).
+				Get("/servers/{id}/files/raw", s.handleDownloadFile)
+			// Zip: token only. Its paths exist nowhere but the grant.
+			r.With(s.tokenOrSession(downloadKindZip, false)).
+				Get("/servers/{id}/files/download", s.handleDownloadFilesByToken)
+		})
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
 			r.Use(s.auditMiddleware)

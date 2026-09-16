@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -35,4 +36,34 @@ func TestOpenAPISpecValid(t *testing.T) {
 			t.Errorf("openapi.yaml missing path %q", p)
 		}
 	}
+}
+
+// A YAML flow mapping ends its value at the first comma, so an unquoted
+// `{ description: A, B }` parses as a truncated description plus a key named
+// "B" with no value — valid YAML, silently wrong document, and invisible in a
+// rendered reference until someone reads the missing half. Nothing in the
+// document legitimately has a null value, so that is the thing to assert.
+func TestOpenAPIHasNoTruncatedFlowValues(t *testing.T) {
+	var doc map[string]any
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	var walk func(any, string)
+	walk = func(n any, path string) {
+		switch v := n.(type) {
+		case map[string]any:
+			for k, val := range v {
+				if val == nil {
+					t.Errorf("openapi.yaml: %s/%s has no value — an unquoted comma in a flow mapping truncated it", path, k)
+					continue
+				}
+				walk(val, path+"/"+k)
+			}
+		case []any:
+			for i, val := range v {
+				walk(val, fmt.Sprintf("%s[%d]", path, i))
+			}
+		}
+	}
+	walk(doc, "")
 }

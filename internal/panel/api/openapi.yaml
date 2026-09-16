@@ -51,7 +51,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { description: Too many login attempts from this address; retry after the Retry-After header says }
+        '429': { description: "Too many login attempts from this address; retry after the Retry-After header says" }
   /auth/logout:
     post:
       tags: [Auth]
@@ -535,10 +535,10 @@ paths:
       responses:
         '200': { description: Raw file stream }
         '400': { description: No path was supplied on the session-authenticated form }
-        '401': { description: The download token is unknown, expired, already used, or not valid for this server or path — or the session that minted it is gone }
-        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
-        '429': { description: Too many requests from this address; retry after the Retry-After header says }
-        '502': { description: The node could not serve the file — a missing file included; the body is a JSON error, never a file }
+        '401': { description: "Unknown, expired, already-used or wrong-server/wrong-path download token — or the session that minted it is gone" }
+        '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
+        '429': { description: "Too many token redemptions from this address; retry after the Retry-After header says" }
+        '502': { description: "The node could not serve the file — a missing file included; the body is a JSON error, never a file" }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -561,10 +561,10 @@ paths:
       responses:
         '200': { description: Zip stream }
         '400': { description: No token was supplied }
-        '401': { description: The download token is unknown, expired, already used, or not valid for this server — or the session that minted it is gone }
-        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
-        '429': { description: Too many requests from this address; retry after the Retry-After header says }
-        '502': { description: The node could not serve the zip; the body is a JSON error, never a file }
+        '401': { description: "Unknown, expired, already-used or wrong-server download token — or the session that minted it is gone" }
+        '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
+        '429': { description: "Too many token redemptions from this address; retry after the Retry-After header says" }
+        '502': { description: "The node could not serve the zip; the body is a JSON error, never a file" }
     post:
       tags: [Files]
       summary: Download selected paths as a zip
@@ -623,8 +623,8 @@ paths:
                   kind: { type: string, enum: [raw, zip] }
                   expires_at: { type: string, format: date-time }
                   expires_in_seconds: { type: integer }
-        '400': { description: No path, both shapes at once, or a path that escapes the tree }
-        '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '400': { description: "No path, both shapes at once, or a path that escapes the tree" }
+        '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
   /servers/{id}/files/mkdir:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post: { tags: [Files], summary: Create a directory, responses: { '200': { description: Created } } }
@@ -639,7 +639,17 @@ paths:
     post: { tags: [Files], summary: Write/overwrite a file, responses: { '200': { description: Written } } }
   /servers/{id}/files/upload:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Upload files (multipart), responses: { '200': { description: Uploaded } } }
+    post:
+      tags: [Files]
+      summary: Upload files (multipart)
+      description: >
+        The request body is capped at 64 MiB plus a megabyte of multipart
+        framing; anything larger is refused outright rather than spooled to the
+        Panel's disk.
+      responses:
+        '200': { description: Uploaded }
+        '400': { description: "The body is not a valid multipart form, or names no files" }
+        '413': { description: The upload is larger than the Panel accepts }
   /servers/{id}/files/delete:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post: { tags: [Files], summary: Delete paths, responses: { '200': { description: Deleted } } }
@@ -901,7 +911,7 @@ paths:
                   bytes: { type: integer }
                   restarting: { type: boolean }
         '409': { description: Agent already at the Panel's version }
-        '502': { description: Agent unreachable, or it rejected the push (reason verbatim) }
+        '502': { description: "Agent unreachable, or it rejected the push (reason verbatim)" }
         '503': { description: No embedded agent binary in this Panel build }
   /nodes/{id}/info:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
@@ -997,7 +1007,7 @@ paths:
                   status: { type: string, enum: [pending, redeemed, expired] }
                   node_name: { type: string }
                   ip: { type: string }
-                  hosts: { type: array, items: { type: string }, description: agent-advertised reachable addresses, IPs first }
+                  hosts: { type: array, items: { type: string }, description: "agent-advertised reachable addresses, IPs first" }
                   agent_port: { type: integer, description: agent-reported gRPC port for the registration prefill }
                   expires_at: { type: string, format: date-time }
                   redeemed_at: { type: string, format: date-time }
@@ -1432,9 +1442,9 @@ components:
         uptime_seconds: { type: integer, format: int64 }
         cpu_percent: { type: number, format: double, description: 0-100 across all cores; meaningful only when cpu_known }
         cpu_cores: { type: integer }
-        cpu_known: { type: boolean, description: false until the Agent has taken two samples, or when /proc is unreadable }
+        cpu_known: { type: boolean, description: "false until the Agent has taken two samples, or when /proc is unreadable" }
         mem_total_mb: { type: integer, format: int64 }
-        mem_used_mb: { type: integer, format: int64, description: physical memory in use — total minus available, so reclaimable cache does not count as used }
+        mem_used_mb: { type: integer, format: int64, description: "physical memory in use — total minus available, so reclaimable cache does not count as used" }
         mem_known: { type: boolean }
         disk_path: { type: string, description: the filesystem measured — the one holding the Agent's data dir }
         disk_total_mb: { type: integer, format: int64 }
@@ -1443,14 +1453,14 @@ components:
         net_rx_bps: { type: number, format: double, description: bytes per second across the host's physical interfaces }
         net_tx_bps: { type: number, format: double }
         net_known: { type: boolean }
-        link_rtt_ms: { type: number, format: double, description: the Panel's own timing of the gRPC round trip that fetched this reading — no *_known flag, because the entry existing is the proof of the round trip }
+        link_rtt_ms: { type: number, format: double, description: "the Panel's own timing of the gRPC round trip that fetched this reading — no *_known flag, because the entry existing is the proof of the round trip" }
     NodeRegister:
       type: object
       required: [address]
       properties:
         name: { type: string, description: blank = adopt the agent's self-reported node id (KRAKEN_NODE_ID) }
         os: { type: string, enum: [linux, windows], description: blank = adopt the agent's self-reported OS }
-        wine_enabled: { type: boolean, description: ignored — derived from os (Wine ships in the game image, so every Linux node supports linux-wine) }
+        wine_enabled: { type: boolean, description: "ignored — derived from os (Wine ships in the game image, so every Linux node supports linux-wine)" }
         address: { type: string, description: "Agent gRPC host:port" }
         public_host: { type: string }
         total_memory_mb: { type: integer }
@@ -1473,7 +1483,7 @@ components:
         sftp_known_host_key: { type: string, description: pinned SSH host key in authorized_keys format; blank = trust-on-use }
         replicate_to_sftp: { type: boolean }
         smb_host: { type: string, description: "host[:port] (default port 445)" }
-        smb_share: { type: string, description: share name only, e.g. games }
+        smb_share: { type: string, description: "share name only, e.g. games" }
         smb_user: { type: string }
         smb_password_configured: { type: boolean }
         smb_domain: { type: string, description: optional NTLM domain; blank for a NAS or standalone server }
@@ -1490,7 +1500,7 @@ components:
         sftp_host: { type: string }
         sftp_user: { type: string }
         sftp_password: { type: string, format: password }
-        sftp_private_key: { type: string, format: password, description: full PEM, newlines included }
+        sftp_private_key: { type: string, format: password, description: "full PEM, newlines included" }
         sftp_base_path: { type: string }
         sftp_known_host_key: { type: string }
         replicate_to_sftp: { type: boolean }
@@ -1512,7 +1522,7 @@ components:
         created_ms: { type: integer, format: int64 }
         state: { type: string, enum: [pending, ready, failed], description: archive lifecycle — backups run asynchronously }
         replication: { type: string, enum: ['', pending, done, failed], description: off-node (SFTP) mirror status; empty when replication isn't configured }
-        error: { type: string, description: why the backup failed (state=failed), or a degraded-capture note on a ready archive; omitted when clean }
+        error: { type: string, description: "why the backup failed (state=failed), or a degraded-capture note on a ready archive; omitted when clean" }
     ScheduleInput:
       type: object
       required: [action, cron]

@@ -124,6 +124,9 @@ over the agent's own managed dir; integer conversions (G115) are bounded; the
 - **Spoofable client IP (staticcheck SA1019).** Removed `chi middleware.RealIP`,
   which trusts client `X-Forwarded-For`/`X-Real-IP`; `clientIP()` now uses the
   real TCP peer so audit-log source IPs can't be forged (no trusted proxy assumed).
+  _Superseded in part by the trusted-proxy model — see "Download-token hardening
+  (2026-09-16)". The default is unchanged (no header believed); an operator who
+  names their proxy gets the real client instead of the proxy on every row._
 - **Security headers.** Added `secureHeaders` middleware → `X-Content-Type-Options:
   nosniff` + `X-Frame-Options: DENY` on all responses.
 - **Download filename.** `Content-Disposition` filename is sanitized
@@ -660,57 +663,127 @@ from a `StatFile` taken before the first byte goes out (0 means "unknown", and
 until it has been written). The Panel turns a non-zero size into
 `Content-Length`, so a truncated transfer is something the browser can *detect*
 rather than something it reports as a finished download. The announcement is a
-promise the Agent keeps: a file that grew past the announced length is cut off
-and the RPC fails, and one that shrank hits EOF short and the RPC fails — either
-way the Panel aborts the connection exactly as it already did. An Agent older
-than the field sends 0 throughout and the Panel behaves precisely as it did
-before, so **Agents roll out before Panels** but nothing breaks if they do not.
-Both stream routes also send `Accept-Ranges: none`: resume is structurally
-impossible on a single-use token (the second request would 401), and a browser
-told nothing may offer the operator a resume that cannot work. Range requests
-are not implemented and are not planned; "click again" is the resume story.
+promise the Agent keeps, and the two ways a live file can break it are not the
+same failure. A file that **grew** since the stat — a running server appending
+to the log or save being downloaded, which is the ordinary case — is cut off at
+exactly the announced length and the stream ends cleanly: the download is a
+consistent prefix, which is all `Content-Length` promised. A file that
+**shrank** hits EOF short, cannot deliver what was announced, and fails the RPC
+so the Panel aborts the connection. A **zero-byte** file announces nothing:
+size 0 is indistinguishable from "unknown", so an empty file streams with no
+`Content-Length`, exactly as an older Agent's stream does — an honest empty 200
+either way. The Panel refuses over-delivery too: once `Content-Length` is out,
+net/http drops the excess and answers `http.ErrContentLength`, which the stream
+loop treats as a torn connection rather than as a client that hung up — read the
+other way, a browser would save exactly N bytes as a completed download, which
+is the failure this whole feature exists to remove. The zip route hardcodes size
+0 rather than forwarding the field, so no future Agent can turn it into a length
+nothing enforces. An Agent older than the field sends 0 throughout and the Panel
+behaves precisely as it did before, so **Agents roll out before Panels** but
+nothing breaks if they do not. Both stream routes also send
+`Accept-Ranges: none`: resume is structurally impossible on a single-use token
+(the second request would 401), and a browser told nothing may offer the
+operator a resume that cannot work. Range requests are not implemented and are
+not planned; "click again" is the resume story.
 
 **The grant dies with its session.** Covered in the bullet above: the grant
 carries the digest of the minting session and the redemption refuses when that
 session is no longer on record, so the ≤60-second window after a logout or an
 admin session revocation is closed. No migration: sessions are already stored
 by digest, so `SessionExistsByHash` is the lookup `GetSession` does without the
-token.
+token. Expiry is decided in Go against the **Panel's** clock rather than with
+`expires_at > now()` in SQL, matching `GetSession` and the memory store: a
+database whose clock ran ahead would otherwise make a session the UI is happily
+accepting "gone" at redemption, and every download would 401 with only a Debug
+line to explain it.
 
 **One auth chain, spelled once.** The two GET download routes previously
 re-stated the authenticated group's middleware by hand, so anything added to
-that group would silently not apply to them. They now sit behind a single
-`tokenOrSession` middleware that resolves identity from **either** a redeemed
-`?token=` **or** the ordinary Bearer session, then runs the same chain the group
-runs — audit, first-run password gate, `server.files.read` — and hands off to
-the route's original handler unchanged. The token branch still consults no
-Authorization header at all, still rewrites the query from the grant, and still
-audits the real outcome from a deferred, `WithoutCancel` append.
+that group would silently not apply to them. Both now end up in one `gatedChain`
+— audit, first-run password gate, `server.files.read`, in the group's own order
+— reached either through `tokenOrSession` (the raw route, which answers to a
+redeemed `?token=` or the ordinary Bearer session) or `tokenOnly` (the GET zip
+route, whose paths exist nowhere but a grant). The route handlers are registered
+unchanged behind it. The token branch still consults no Authorization header at
+all, still rewrites the query from the grant, and still audits the real outcome
+from a deferred, `WithoutCancel` append — including the verb: a redemption that
+the password gate or an unreachable node refuses is recorded as *refused*, not
+as a download that never happened.
 
 **Rate limits on what an anonymous caller can reach.** The Panel had no limiter
 anywhere. It has one now (`internal/panel/api/ratelimit.go`, a token bucket on
-`golang.org/x/time/rate` over a swept, capped per-IP table — no new dependency
-and no background goroutine): the two unauthenticated GET download routes at
-30/min per IP with a burst of 10, and `POST /auth/login` at 20/min with a burst
-of 20. The login numbers are deliberately generous — a whole team can share one
-NAT address, and locking an operator out of their own Panel is a worse failure
-than the guessing being slowed. Refusals are a 429 in the ordinary JSON error
-envelope with `Retry-After`, and a refused request does not consume future
-capacity. The key is the real TCP peer (`clientIP`): the Panel still trusts no
-`X-Forwarded-For`, and a limiter keyed on a spoofable header is one an attacker
-steps around a fake address at a time.
+`golang.org/x/time/rate` over a swept, capped per-client table — no new
+dependency and no background goroutine): **download-token redemption** at 30/min
+with a burst of 10, and `POST /auth/login` at 20/min with a burst of 20.
+`KRAKEN_RATE_LIMITS=off` disables both, logged loudly at startup, for an edge
+that already does this.
 
-Covered by `TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly` and
-`TestDownloadFilesZipAnnouncesNoSize` (`internal/agent`), and
+The download limit sits on the **token branch**, not on the route: a
+session-authenticated download is not what the limit is for, and an operator
+must not be refused for sharing a NAT address with somebody probing tokens. The
+login numbers are deliberately generous for the same reason — locking a team out
+of their own Panel is a worse failure than the guessing being slowed. Refusals
+are a 429 in the ordinary JSON error envelope with `Retry-After`, and a refused
+request does not consume future capacity.
+
+**Keys are per client, and the client is resolved once.** IPv4 is keyed per
+address; **IPv6 is aggregated to the /64**, because a single subscriber is
+routinely delegated a whole /64 and per-address keying would hand one attacker
+2^64 independent buckets. The table is swept for idle entries and, at its cap,
+evicted down to a watermark so the eviction sort amortises rather than running
+on every later admission; entries that cannot make a request right now are
+passed over, so filling the table is not a way to buy back a spent bucket
+(that protection yields to the cap if every candidate is spent — a bounded table
+is the point).
+
+**Trusted proxies (`KRAKEN_TRUSTED_PROXIES`).** `clientIP` is now one function
+used by the audit log, the `/setup/*` internal-network gate and both limiters,
+so they cannot disagree about who called. With the list empty — the default —
+it is the real TCP peer and no forwarding header is believed, exactly as before.
+That default is wrong for the reference deployment, though, and not in the
+direction the old comment assumed: behind a reverse proxy or a Cloudflare
+Tunnel the peer is the *proxy* on every request, so every audit row records the
+proxy and both limiters collapse into a single shared bucket that one stranger
+can exhaust for everybody. With the proxy's CIDR named, the Panel takes
+`CF-Connecting-IP` when the trusted peer set it, else the **rightmost**
+`X-Forwarded-For` hop that is not itself trusted — rightmost because the list is
+appended hop by hop, and only what a trusted proxy appended can be believed.
+This also **tightens** `/setup/*`: a Panel behind a co-located tunnel otherwise
+sees `127.0.0.1` for the entire public internet.
+
+**Visibility.** Rejected redemptions log at Debug (an unauthenticated caller
+chooses when they are written), so they are also counted:
+`kraken_download_tokens_rejected_total`, plus `kraken_rate_limited_total` per
+limiter, give an operator the signal without turning the log level down —
+and `KRAKEN_LOG_LEVEL=debug` is there for when they want to. A 429'd login never
+reaches the handler that audits a failed attempt, so the limiter writes that row
+itself, once per client per window rather than once per request.
+
+**Upload bodies are capped too** (found in the same pass). `ParseMultipartForm`'s
+argument is only the in-memory threshold — everything past it spills to temp
+files, unbounded — so `handleUploadFiles` now wraps the body in
+`http.MaxBytesReader` at 64 MiB plus a megabyte of multipart framing and answers
+413 past it. Without it one authenticated request could fill the Panel's disk.
+
+Covered by `TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly`,
+`TestDownloadFilesZipAnnouncesNoSize`, `TestDownloadFileTruncatesAFileThatGrew`
+and `TestDownloadFileFailsWhenTheFileShrank` (`internal/agent`), and
 `TestStreamChunksSetsContentLengthFromTheAnnouncedSize`,
 `TestStreamChunksOmitsContentLengthWhenSizeIsUnknown`,
+`TestStreamChunksAbortsWhenAStreamOverrunsItsContentLength`,
 `TestDownloadAnnouncesLengthAndRefusesRanges`,
 `TestDownloadTokenDiesWithItsSession`,
-`TestDownloadRedemptionIsRateLimited`,
-`TestLoginRateLimitLeavesANormalSignInAlone`,
+`TestDownloadTokenAuditsARefusalAsRefused`,
+`TestDownloadRedemptionIsRateLimited`, `TestOnlyTokenRedemptionIsRateLimited`,
+`TestRateLimitsOffSwitch`, `TestLoginRateLimitLeavesANormalSignInAlone`,
+`TestLoginRateLimitLeavesOneAuditRow`, `TestUploadBodyIsCapped`,
+the `TestClientIP*` set, `TestRateLimiterKeysOnTheResolvedClientBehindAProxy`,
 `TestRateLimiterAdmitsTheBurstThenRefuses`,
 `TestRateLimiterRecoversAfterTheWindow`, `TestRateLimiterIsolatesClients`,
-`TestRateLimiterSweepsIdleEntries` and
+`TestRateLimiterAggregatesIPv6ToTheRoutedPrefix`,
+`TestRateLimiterSweepsIdleEntries`, `TestRateLimiterEvictsDownToTheWatermark`,
+`TestRateLimiterEvictionKeepsAPenalisedClient`,
+`TestRateLimiterDisabledAdmitsEverything` and
 `TestRateLimiterMiddlewareAnswers429WithRetryAfter` (`internal/panel/api`),
 alongside every test the original feature shipped with, which still passes
 unchanged.

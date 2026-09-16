@@ -1312,8 +1312,8 @@ func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, erro
 	return host, st, nil
 }
 
-// statError renders a stat failure against the logical path, never the host
-// one. Anything unrecognized is reported by its underlying cause (the syscall
+// statError renders a filesystem failure (stat, open, read) against the
+// logical path, never the host one. Anything unrecognized is reported by its underlying cause (the syscall
 // errno, which an *os.PathError wraps) rather than the PathError itself, whose
 // Error() would print the host path we are keeping out of the response.
 func statError(p string, err error) error {
@@ -1343,12 +1343,12 @@ func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxByt
 	}
 	f, err := os.Open(host)
 	if err != nil {
-		return nil, 0, false, false, fmt.Errorf("docker: open %s: %w", p, err)
+		return nil, 0, false, false, statError(p, err)
 	}
 	defer f.Close()
 	buf, err := io.ReadAll(io.LimitReader(f, maxBytes))
 	if err != nil {
-		return nil, 0, false, false, fmt.Errorf("docker: read file: %w", err)
+		return nil, 0, false, false, statError(p, err)
 	}
 	size := st.Size()
 	truncated := size > int64(len(buf))
@@ -1375,7 +1375,7 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 	}
 	f, err := os.Open(host)
 	if err != nil {
-		return fmt.Errorf("docker: open %s: %w", p, err)
+		return statError(p, err)
 	}
 	defer f.Close()
 	_, err = io.Copy(w, f)

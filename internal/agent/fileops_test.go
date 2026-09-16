@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -215,5 +217,30 @@ func TestStatErrorsDoNotLeakTheHostPath(t *testing.T) {
 	}
 	if got := statError("cfg.ini", &os.PathError{Op: "stat", Path: "/host/secret/cfg.ini", Err: errors.New("some syscall failure")}); strings.Contains(got.Error(), "/host/secret") {
 		t.Fatalf("an unrecognized error leaked the host path: %v", got)
+	}
+	// The open failure after a successful stat goes through the same
+	// renderer: an *os.PathError from os.Open also carries the host path.
+	if got := statError("cfg.ini", &os.PathError{Op: "open", Path: "/host/secret/cfg.ini", Err: os.ErrPermission}); !strings.Contains(got.Error(), "permission denied") ||
+		strings.Contains(got.Error(), "/host/secret") {
+		t.Fatalf("open error rendered as %v", got)
+	}
+
+	// End to end on a file that stats fine but cannot be opened. POSIX only:
+	// on Windows the mode bits do not gate reads, so 0o000 opens anyway.
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		host := filepath.Join(d.localDir(sid), "locked.ini")
+		if err := os.WriteFile(host, []byte("secret"), 0o000); err != nil {
+			t.Fatalf("write locked file: %v", err)
+		}
+		_, _, _, _, rerr := d.ReadFile(ctx, sid, "locked.ini", 1<<20)
+		if rerr == nil {
+			t.Fatalf("ReadFile on a 0o000 file: expected an error")
+		}
+		if strings.Contains(rerr.Error(), d.dataDir) || !strings.Contains(rerr.Error(), "locked.ini") || !strings.Contains(rerr.Error(), "permission denied") {
+			t.Fatalf("ReadFile open failure rendered as %v", rerr)
+		}
+		if derr := d.DownloadFile(ctx, sid, "locked.ini", &bytes.Buffer{}); derr == nil || strings.Contains(derr.Error(), d.dataDir) {
+			t.Fatalf("DownloadFile open failure rendered as %v", derr)
+		}
 	}
 }

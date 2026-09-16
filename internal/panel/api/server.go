@@ -191,8 +191,9 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 	// covers a directly-constructed config (tests, embedders), and says so
 	// loudly rather than trusting a partial list in silence.
 	if err := config.ValidateCIDRList(cfg.TrustedProxies); err != nil {
-		logger.Error("KRAKEN_TRUSTED_PROXIES is invalid — no proxy will be trusted, "+
-			"so every caller will be seen as its TCP peer", "err", err)
+		logger.Error("KRAKEN_TRUSTED_PROXIES has an entry that does not parse — it is "+
+			"skipped; only the entries that parse are trusted, and config.Load "+
+			"refuses this list outright", "err", err)
 	}
 	s.trustedProxies = s.parseCIDRList(cfg.TrustedProxies, "KRAKEN_TRUSTED_PROXIES")
 	if len(s.trustedProxies) > 0 {

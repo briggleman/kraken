@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Servers — Kraken wiki</title>
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
+<meta property="og:title" content="Servers — Kraken wiki" />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Servers — Kraken wiki" />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link is-here" href="/wiki/operate/servers/" aria-current="page">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
+    <h1>Servers</h1>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#deploying">Deploying</a>
+<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
+<a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
+<a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
+<a class="toc-link lvl-2" href="#reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot;</a>
+<a class="toc-link lvl-2" href="#the-install-log">The install log</a>
+<a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
+<a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+</div></details>
+    <article class="prose">
+<p>A server is one game instance, running on one node, from one Game Spec. The spec
+decides how it installs, launches, configures and backs up; you decide where it
+lands, how much memory it reserves, and what its settings say.</p>
+<h2 id="deploying">Deploying <a class="hlink" href="#deploying" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Pick a spec, pick a node or let the scheduler pick, name it, deploy.</p>
+<!-- SCREENSHOT: the deploy sheet with a spec selected, the memory field, the node selector and the BepInEx toggle visible -->
+<p class="shot"><em>screenshot: the deploy sheet with a spec selected, the memory field, the node selector and the BepInEx toggle visible</em></p>
+
+
+<p>What the dialog is asking:</p>
+<ul>
+<li><strong>Memory.</strong> Leave it blank to take the spec&#39;s own figure, which is its
+recommended memory falling back to its minimum. An explicit value has to be at
+least the spec&#39;s <code>min_memory_mb</code>; under that floor the game does not boot, so
+the Panel refuses rather than letting you find out at start time.</li>
+<li><strong>Node.</strong> Optional. Pinning still goes through the scheduler, which checks
+eligibility and reserves the ports. An ineligible pin comes back as a <code>409</code>
+naming the reason, never as a quiet placement somewhere else.</li>
+<li><strong>Install BepInEx.</strong> Shown only when the spec declares <code>bepinex_compatible</code>,
+and honoured only then. See <a href="/wiki/operate/mods/">Mods</a>.</li>
+<li><strong>Pin build.</strong> Pins the server to the build this install pulls. Off by
+default; the section below is what it opts out of.</li>
+<li><strong>Steam Guard code.</strong> Only for specs whose install needs an authenticated
+Steam login. Used for that one install and never persisted.</li>
+</ul>
+<p>Ports come from the node&#39;s pool, 1:1 with the host. Deploying is asynchronous:
+the server goes to <code>installing</code> and the install log streams into the console
+pane while SteamCMD works.</p>
+<h2 id="the-seven-states">The seven states <a class="hlink" href="#the-seven-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>state</th>
+<th>what is true</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>installing</code></td>
+<td>the install script is running on the node</td>
+</tr>
+<tr>
+<td><code>install_failed</code></td>
+<td>the install script failed; <code>last_error</code> says why; start is refused until a reinstall</td>
+</tr>
+<tr>
+<td><code>offline</code></td>
+<td>installed and stopped, nothing holding the data directory</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td>the container is up, the readiness line has not appeared</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>the game is serving</td>
+</tr>
+<tr>
+<td><code>stopping</code></td>
+<td>a graceful stop is in progress</td>
+</tr>
+<tr>
+<td><code>crashed</code></td>
+<td>the process exited unexpectedly; the exit code is kept</td>
+</tr>
+</tbody></table>
+</div>
+<p>Four power actions drive it: <code>start</code>, <code>stop</code>, <code>restart</code> and <code>kill</code>. <code>kill</code> is
+the one that does not ask the game nicely, and a world that saves on shutdown
+will not have.</p>
+<p><code>install_failed</code>, <code>offline</code> and <code>crashed</code> are the stopped states, and they are
+the three a reinstall accepts, because nothing holds the data directory in any
+of them.</p>
+<h2 id="update-on-start">Update on start <a class="hlink" href="#update-on-start" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Since 0.50.0, every operator-initiated start or restart re-runs the spec&#39;s
+install script before launching.</strong> For a SteamCMD title that is an
+<code>app_update … validate</code> pass, which is how a server picks up a game update at
+all. Before this, a healthy server stayed on the build SteamCMD pulled the day
+it was created, and the only way forward was delete and recreate.</p>
+<p>The sequence, once you press start:</p>
+<ol>
+<li>The Panel stops the container if anything is holding the data directory.</li>
+<li>It runs the install script. The server reads <code>installing</code>, the response is a
+<code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.</li>
+<li>It re-renders the config files over the fresh tree. <strong>After</strong> the update, not
+before, because the pass can restore a file the depot owns and your settings
+have to win.</li>
+<li>It starts the game.</li>
+</ol>
+<p>A pass that fails lands in <code>install_failed</code> with <code>last_error</code> set, and start is
+refused until you reinstall. A pass that succeeded over a start that then failed
+lands in <code>offline</code>, which is the correct distinction: the tree is fine, the game
+did not come up.</p>
+<h3 id="the-two-opt-outs">The two opt-outs <a class="hlink" href="#the-two-opt-outs" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<ul>
+<li><strong>Per server: pin build.</strong> The Config tab&#39;s toggle. A pinned server never runs
+the pass on start, and reinstall becomes its explicit &quot;update now&quot;. An
+ordinary settings save cannot unpin a server by omission; the field has to be
+sent deliberately.</li>
+<li><strong>Per spec: <code>skip_update_on_start</code>.</strong> The spec installs at create time and on
+an explicit reinstall only. It is also available per platform, for a spec
+whose install is idempotent on one platform and not the other, and a platform
+can only opt out, never opt a spec-wide opt-out back in. No bundled spec sets
+it. Setting it costs that game its updates, so I would treat it as a last
+resort rather than a convenience, and rewrite the script instead.</li>
+</ul>
+<h3 id="what-deliberately-does-not-update">What deliberately does not update <a class="hlink" href="#what-deliberately-does-not-update" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>Three paths start a server without re-running anything, and each is a decision
+rather than an omission.</p>
+<ul>
+<li><strong>Scheduled restarts.</strong> A cron restart drives the Agent directly. A nightly
+restart is not an invitation to validate a 30 GB tree nightly.</li>
+<li><strong>The crash watchdog&#39;s restarts.</strong> The Agent restarts the container itself and
+never involves the Panel, so a crash loop cannot become a download loop.</li>
+<li><strong>A spec that needs a Steam login on a node with no stored credentials.</strong> The
+pass would fail on the login, so it is skipped with a warning in the Panel log
+and the server starts on the build it has. Store the node&#39;s Steam credentials,
+or use reinstall with a Steam Guard code.</li>
+</ul>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>The install script now runs against a fully installed data directory holding
+live save games, so <strong>it has to be idempotent</strong>. <code>steamcmd … +app_update &lt;id&gt; validate +quit</code> already is. A script that wipes the directory, re-seeds a config
+the operator has since edited, or unconditionally re-downloads a large
+unversioned artifact is not. If you write specs, <a href="/wiki/specs/writing/">Writing a
+spec</a> is the obligation in full.</p>
+</div>
+</aside>
+
+
+<h2 id="reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot; <a class="hlink" href="#reinstall-as-quotupdate-nowquot" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>POST /servers/{id}/reinstall</code>, or the action in the UI, re-runs the install
+script once, immediately. It is both the retry for a failed install and the
+explicit update for a server whose start does not update it.</p>
+<p>It is accepted from <code>install_failed</code>, <code>offline</code> and <code>crashed</code>, and refused from
+<code>installing</code>, <code>starting</code>, <code>running</code> and <code>stopping</code> with a <code>409</code> that names the
+current state. It runs asynchronously, exactly like the create path: the server
+flips to <code>installing</code> and the log streams.</p>
+<p>Unlike the update-on-start pass, a reinstall <em>does</em> re-run the spec&#39;s BepInEx
+overlay for a server deployed with it.</p>
+<h2 id="the-install-log">The install log <a class="hlink" href="#the-install-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The install runs on the node and is streamed to the Panel, which buffers it in
+memory. There is no container left to tail once the phase ends, so the buffer is
+the record.</p>
+<ul>
+<li>It keeps the last <strong>500 lines</strong> of the current attempt.</li>
+<li>It is kept <strong>after the install finishes, success included</strong>, because an
+installer can exit 0 having produced a broken tree.</li>
+<li>It is dropped when the server is deleted, and replaced when the next install
+starts.</li>
+<li><strong>It does not survive a Panel restart.</strong> The API answers <code>retained: false</code>
+when nothing is held, which is not the same as an install that printed
+nothing, and the UI says which it is rather than showing you an empty pane.</li>
+</ul>
+<h2 id="reading-a-crash">Reading a crash <a class="hlink" href="#reading-a-crash" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>When a server lands in <code>crashed</code>, the Agent captures the container&#39;s exit code
+and the Panel keeps it until the next power action. The drill-in renders it as
+<code>exit &lt;n&gt; / 0xXXXXXXXX</code>, and for the codes that come up repeatedly it adds what
+they mean:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>code</th>
+<th>what it usually is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0xC0000135</code></td>
+<td>a DLL the game needs is missing from the container image</td>
+</tr>
+<tr>
+<td><code>0xC0000139</code></td>
+<td>a DLL is present but the wrong build; an export is missing</td>
+</tr>
+<tr>
+<td><code>0xC0000005</code></td>
+<td>access violation; the game crashed on a bad memory access</td>
+</tr>
+<tr>
+<td><code>0xC000007B</code></td>
+<td>bad image format, a 32/64-bit mismatch between the game and a DLL</td>
+</tr>
+</tbody></table>
+</div>
+<p>Exit <code>0</code> is called out as the process ending on its own without an error code,
+which on a game server is more often a startup argument the game rejected than a
+clean shutdown. A code between 129 and 164 is reported as the signal that killed
+it, code minus 128, so <code>137</code> reads as signal 9.</p>
+<p>Whether the watchdog restarts after a crash is the spec&#39;s
+<code>startup.restart.on_crash</code>, with its own retry ceiling.</p>
+<h2 id="settings-that-wait-for-a-restart">Settings that wait for a restart <a class="hlink" href="#settings-that-wait-for-a-restart" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Two kinds of value, two different answers.</p>
+<p><strong>Launch variables</strong> are baked into the start command and the container
+environment when the container is created, so they are never live. A change
+takes effect on the next start, always.</p>
+<p><strong>Settings</strong> render into the game&#39;s own config files, which are written to the
+bind-mounted data directory the moment you save. Whether the running game
+notices is the game&#39;s business, and the spec declares it: <code>settings.hot_reload</code>
+says the game re-reads its config while running. It changes nothing about what
+gets pushed to the node, only what the Panel tells you afterwards.</p>
+<p>The save response says which case you are in, so the UI can ask for a restart
+only when one is actually needed: a running server, plus either a changed launch
+variable or a settings change on a spec that does not hot-reload.</p>
+<p>There is no per-setting &quot;requires restart&quot; flag. If you author specs, that is
+worth knowing before you go looking for one.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/fleet/"><span class="pg-k">previous</span><span class="pg-t">The fleet view</span></a>
+      <a class="pg next" href="/wiki/operate/files/"><span class="pg-k">next</span><span class="pg-t">Files and SFTP<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/servers.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/servers.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#deploying">Deploying</a>
+<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
+<a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
+<a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
+<a class="toc-link lvl-2" href="#reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot;</a>
+<a class="toc-link lvl-2" href="#the-install-log">The install log</a>
+<a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
+<a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

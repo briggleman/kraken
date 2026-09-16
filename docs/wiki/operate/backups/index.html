@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Backups — Kraken wiki</title>
+<meta name="description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/backups/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/backups/" />
+<meta property="og:title" content="Backups — Kraken wiki" />
+<meta property="og:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Backups — Kraken wiki" />
+<meta name="twitter:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link is-here" href="/wiki/operate/backups/" aria-current="page">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Backups</span></nav>
+    <h1>Backups</h1>
+    <p class="lede">What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#what-gets-captured">What gets captured</a>
+<a class="toc-link lvl-2" href="#where-it-goes">Where it goes</a>
+<a class="toc-link lvl-3" href="#mirroring-off-the-node">Mirroring off the node</a>
+<a class="toc-link lvl-2" href="#schedules">Schedules</a>
+<a class="toc-link lvl-2" href="#retention-five-and-it-is-not-a-setting">Retention: five, and it is not a setting</a>
+<a class="toc-link lvl-2" href="#restoring">Restoring</a>
+</div></details>
+    <article class="prose">
+<p><strong>A backup is the game&#39;s save data, not the reinstallable install tree.</strong> That
+sentence is the whole design. A 10 to 30 GB SteamCMD tree comes back with a
+reinstall; the world does not. Archiving the whole data directory is what
+produced multi-hour backups, mirror bandwidth nobody wanted, and <code>archive/tar: write too long</code> failures when a live log grew inside the tree mid-capture.</p>
+<h2 id="what-gets-captured">What gets captured <a class="hlink" href="#what-gets-captured" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The spec&#39;s optional <code>backup:</code> block decides, with
+<a href="https://github.com/bmatcuk/doublestar">doublestar</a> globs matched against
+data-directory-relative POSIX paths. <code>include</code> selects, <code>exclude</code> then filters,
+and an exclude wins a conflict.</p>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>backup</b><span class="p">:</span></span><span class="l">  <b>include</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <i>Pal/Saved/**</i></span><span class="l">  <b>exclude</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <i>Pal/Saved/Logs/**</i></span></pre></div>
+<p>A spec with <strong>no</strong> block gets the Panel&#39;s built-in policy instead: the whole data
+directory minus a conservative, ephemeral-only exclude list — SteamCMD staging
+directories, logs, crash dumps. That is the safe default and the right one when
+you are unsure, because capturing too much is only slow, while an include list
+that misses the saves produces a green backup with no save in it.</p>
+<p><strong>Declaring the block replaces that policy wholesale.</strong> The built-in excludes are
+not merged underneath it. A save tree that carries logs, which every Unreal game
+has, needs its own <code>Logs/**</code> exclude in your block.</p>
+<p>The drill-in shows what a given server&#39;s globs resolve to, as a <code>captured</code> line
+on each expanded backup row, so you can check before you need the archive rather
+than after.</p>
+<h2 id="where-it-goes">Where it goes <a class="hlink" href="#where-it-goes" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A node&#39;s backup destination is set per node, in its config, and every server on
+that node uses it. Four kinds:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>target</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>local</code></td>
+<td>a directory on the node&#39;s own filesystem. The default.</td>
+</tr>
+<tr>
+<td><code>share</code></td>
+<td>a network share already mounted on the host. The directory has to point at the mount.</td>
+</tr>
+<tr>
+<td><code>sftp</code></td>
+<td>an SFTP server the Agent dials itself.</td>
+</tr>
+<tr>
+<td><code>smb</code></td>
+<td>an SMB server the Agent dials itself, with credentials, no host mount.</td>
+</tr>
+</tbody></table>
+</div>
+<p>The distinction between <code>share</code> and <code>smb</code> is worth a moment. <code>share</code> delegates
+the mount to the host, which means it inherits whatever the host&#39;s credentials
+and automount are doing, and on Windows it inherits the fact that a service
+account does not see a mapped drive. <code>smb</code> dials the server from inside the
+Agent with credentials it holds, which is why it works from a service account on
+either OS. When in doubt on Windows, I would use <code>smb</code>.</p>
+<p>Destination paths take one token, <code>{{SLUG}}</code>, which expands to the server&#39;s
+game-spec slug and is sanitised to a single safe path segment. It is stable for
+the life of a server, so the resolved path is the same across capture, list,
+restore and delete. Use it: a <code>share</code> or <code>smb</code> directory holds archives directly
+rather than under a per-server subdirectory, so without <code>{{SLUG}}</code> two games end
+up in one folder.</p>
+<p>An SFTP target dials port 22 unless the host carries one, prefers a private key
+over a password when both are set, and pins the remote host key when you give it
+one. Without a pinned key it trusts on first use and logs a warning, which is
+fine on a LAN and not what I would run over the internet.</p>
+<h3 id="mirroring-off-the-node">Mirroring off the node <a class="hlink" href="#mirroring-off-the-node" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><code>replicate_to_sftp</code> or <code>replicate_to_smb</code> sends a second copy off the node after
+each successful capture. The two are mutually exclusive. Mirror state is
+tracked per archive and shown on its row: <code>mirroring</code>, <code>mirrored</code>, or <code>mirror failed</code>. A row that says <code>ok</code> is one on a node with no replication configured,
+not one that failed to mirror.</p>
+<p>An archive is a <code>.tar.gz</code>. Its id is the capture time in milliseconds, then a
+double underscore, then the name you gave it with anything outside
+<code>[A-Za-z0-9._-]</code> replaced, and the file on disk is that id plus <code>.tar.gz</code>. It is
+an ordinary tarball: you can open one without Kraken, which is the point of the
+format.</p>
+<h2 id="schedules">Schedules <a class="hlink" href="#schedules" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Cron, per server, with five fields in the usual order: minute, hour, day of
+month, month, day of week. Four actions:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>action</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>restart</code></td>
+<td>restarts the server. Drives the Agent directly, so it does <strong>not</strong> re-run the install pass.</td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td>takes a backup.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>sends a console command.</td>
+</tr>
+<tr>
+<td><code>replicate</code></td>
+<td>mirrors existing archives off the node.</td>
+</tr>
+</tbody></table>
+</div>
+<p>The UI offers four presets, and they are what the field is filled with:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>preset</th>
+<th>cron</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>hourly</td>
+<td><code>0 * * * *</code></td>
+</tr>
+<tr>
+<td>every 6h</td>
+<td><code>0 */6 * * *</code></td>
+</tr>
+<tr>
+<td>daily 04:00</td>
+<td><code>0 4 * * *</code></td>
+</tr>
+<tr>
+<td>sun 04:00</td>
+<td><code>0 4 * * 0</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>A scheduled backup runs under a ten-minute ceiling and a replicate under thirty.
+A capture that needs longer than that is a sign the globs are capturing the
+install tree.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>A capture is asynchronous. Creating one answers immediately and the archive is
+<code>pending</code> until the Agent has written it, then <code>ready</code> or <code>failed</code>. The capture
+job itself runs under a two-hour ceiling.</p>
+</div>
+</aside>
+
+
+<h2 id="retention-five-and-it-is-not-a-setting">Retention: five, and it is not a setting <a class="hlink" href="#retention-five-and-it-is-not-a-setting" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Agent keeps the <strong>five most recent</strong> archives per server and prunes after
+every successful capture. Eviction removes the archive from the node <strong>and from
+its mirror</strong>, so the off-node copy does not quietly become an unbounded
+archive of everything you ever took.</p>
+<p>Failed captures do not hold a slot: retention counts what is actually on disk.</p>
+<p>There is no per-server or per-node knob for this today, and the UI states the
+number rather than hiding it. The backups footer reads <code>keep 5 · n of 5 · &lt;size&gt; on disk</code>, and at capacity it names the archive the next backup will remove,
+before you take it. If you want more history than five, mirror to a target you
+control and let your own tooling keep what it wants; the mirror copy is a
+<code>.tar.gz</code> like any other.</p>
+<!-- SCREENSHOT: the backups section of a server drill-in with three collapsed rows, one expanded showing captured, archive and mirror lines, and the keep-5 footer -->
+<p class="shot"><em>screenshot: the backups section of a server drill-in with three collapsed rows, one expanded showing captured, archive and mirror lines, and the keep-5 footer</em></p>
+
+
+<h2 id="restoring">Restoring <a class="hlink" href="#restoring" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Stop the server first.</strong> The Panel refuses a restore unless the server is
+already in <code>offline</code>, <code>crashed</code> or <code>install_failed</code>, and answers <code>409</code> naming
+the current state otherwise. It will not stop a running game on your behalf.</p>
+<p>The restore is staged rather than streamed into place: the archive is extracted
+into a scratch directory inside the server&#39;s own data directory, and only then
+are the covered paths renamed into place, with the previous versions set aside
+so a failure part-way can be rolled back. Paths the archive does not cover are
+left alone.</p>
+<p>The extractor is hardened on every axis a tar archive offers. Backslashes,
+absolute paths, volume-qualified names and any literal <code>..</code> <strong>segment</strong> are
+rejected, the joined destination is prefix-checked against the staging directory
+and again against the server&#39;s own host directory, and symlink and hardlink
+entries are <strong>skipped rather than materialised</strong>. A restore that skipped entries
+logs what it skipped.</p>
+<p>Restore has a ten-minute ceiling of its own. An archive only ever contains what
+was included, so a restore cannot bring back a file the globs never captured,
+which is the other reason to check that <code>captured</code> line early.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/files/"><span class="pg-k">previous</span><span class="pg-t">Files and SFTP</span></a>
+      <a class="pg next" href="/wiki/operate/mods/"><span class="pg-k">next</span><span class="pg-t">Mods (BepInEx)<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/backups.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/backups.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#what-gets-captured">What gets captured</a>
+<a class="toc-link lvl-2" href="#where-it-goes">Where it goes</a>
+<a class="toc-link lvl-3" href="#mirroring-off-the-node">Mirroring off the node</a>
+<a class="toc-link lvl-2" href="#schedules">Schedules</a>
+<a class="toc-link lvl-2" href="#retention-five-and-it-is-not-a-setting">Retention: five, and it is not a setting</a>
+<a class="toc-link lvl-2" href="#restoring">Restoring</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

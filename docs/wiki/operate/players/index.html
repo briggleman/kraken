@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Who is online — Kraken wiki</title>
+<meta name="description" content="The live player count — the spec's query block and its three methods, where the count and the roster appear, and the difference between &quot;nobody is aboard&quot; and &quot;nobody knows&quot;." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/players/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/players/" />
+<meta property="og:title" content="Who is online — Kraken wiki" />
+<meta property="og:description" content="The live player count — the spec's query block and its three methods, where the count and the roster appear, and the difference between &quot;nobody is aboard&quot; and &quot;nobody knows&quot;." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Who is online — Kraken wiki" />
+<meta name="twitter:description" content="The live player count — the spec's query block and its three methods, where the count and the roster appear, and the difference between &quot;nobody is aboard&quot; and &quot;nobody knows&quot;." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link is-here" href="/wiki/operate/players/" aria-current="page">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Who is online</span></nav>
+    <h1>Who is online</h1>
+    <p class="lede">The live player count — the spec's query block and its three methods, where the count and the roster appear, and the difference between &quot;nobody is aboard&quot; and &quot;nobody knows&quot;.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#three-methods">Three methods</a>
+<a class="toc-link lvl-2" href="#the-cap">The cap</a>
+<a class="toc-link lvl-2" href="#where-it-shows">Where it shows</a>
+<a class="toc-link lvl-2" href="#unknown-is-a-third-answer">Unknown is a third answer</a>
+<a class="toc-link lvl-2" href="#validation">Validation</a>
+</div></details>
+    <article class="prose">
+<p>A spec&#39;s optional <code>query:</code> block tells the Agent how to ask a running game who
+is on it. Without one, the readouts stay blank and say so. With one, the count
+appears on the server card and in the drill-in, and for one of the three methods
+the actual names do too.</p>
+<h2 id="three-methods">Three methods <a class="hlink" href="#three-methods" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>method</th>
+<th>when to use it</th>
+<th>yields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>a2s</code></td>
+<td>the server answers Steam&#39;s A2S_INFO query. Most Source and Steam servers, Valheim among them.</td>
+<td>count and cap</td>
+</tr>
+<tr>
+<td><code>palworld-rest</code></td>
+<td>Palworld&#39;s admin REST API.</td>
+<td>count and cap</td>
+</tr>
+<tr>
+<td><code>log</code></td>
+<td>the game answers nothing but prints a line when a player arrives and another when one leaves. Early-access UE5 servers, typically.</td>
+<td>count <strong>and names</strong></td>
+</tr>
+</tbody></table>
+</div>
+<p><strong><code>a2s</code></strong> sends an A2S_INFO packet over UDP to <code>127.0.0.1</code> on the server&#39;s
+allocated host port, because game ports are published 1:1 and the Agent is on
+the host. It handles the modern challenge handshake: a server that answers with
+a challenge gets the query repeated with the challenge bytes appended. The
+spec&#39;s <code>port:</code> for this method names a <strong>spec port</strong>, so Valheim names its
+<code>query</code> port rather than its game port.</p>
+<p><strong><code>palworld-rest</code></strong> runs <code>curl</code> <strong>inside the container</strong> through a Docker exec,
+against <code>http://127.0.0.1:&lt;port&gt;/v1/api/metrics</code> with basic auth. That is not a
+workaround for anything: the REST port is deliberately not published on the
+host, so the only place it answers is inside the container. The spec&#39;s <code>port:</code>
+and <code>password:</code> for this method name <strong>setting keys</strong>, and the Panel resolves
+the server&#39;s own values before handing them to the Agent.</p>
+<p><strong><code>log</code></strong> follows the container&#39;s console for the life of each run, matching a
+join and a leave regex. Two details are worth knowing if you write one: the
+leave pattern is tried first on every line, so a join pattern loose enough to
+match a departure line cannot resurrect somebody who just left; and after an
+Agent restart the run&#39;s log is replayed from its start, so who is aboard
+survives the Agent going down. The regexes are RE2, and each must capture
+<code>(?P&lt;name&gt;…)</code>, optionally with a <code>(?P&lt;id&gt;…)</code> the roster keys on so a renamed
+character is one player rather than two.</p>
+<h2 id="the-cap">The cap <a class="hlink" href="#the-cap" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>a2s</code> and <code>palworld-rest</code> read the cap off the wire. A log never states one, so
+<code>log</code> specs declare it: <code>max_players:</code> is the game&#39;s own constant, and
+<code>max_players_setting:</code> names the setting key holding it when the operator picks
+the number. The server&#39;s own value wins when it is present and parses above
+zero; otherwise the constant. With neither, the readout shows a count and no
+denominator.</p>
+<h2 id="where-it-shows">Where it shows <a class="hlink" href="#where-it-shows" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>On a server card</strong>, as <code>n / max</code> over an occupancy rail, labelled <code>players online</code>.</p>
+<p><strong>In the drill-in header</strong>, as the <code>players</code> stat, live from the stats
+WebSocket while the drill-in is open and from the polled value otherwise.</p>
+<p><strong>In the drill-in&#39;s roster pane</strong>, headed <code>online · n</code>, listing names when the
+spec uses <code>log</code> and saying plainly why it cannot when it does not: <em>names need
+game query support</em> for a count-only method, <em>player names unavailable for this
+game</em> for a spec with no query block.</p>
+<h2 id="unknown-is-a-third-answer">Unknown is a third answer <a class="hlink" href="#unknown-is-a-third-answer" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Nobody is aboard a server that is not running, and the count reads <code>0</code>. A
+running server whose count has not arrived reads <strong>unknown</strong>, rendered as an em
+dash with no rail on the card and <code>?</code> in the roster header. The two are stored
+separately on purpose: &quot;0 online&quot; and &quot;we do not know&quot; are different facts and
+the UI is not allowed to blur them.</p>
+<p>The count-based methods are cached for 10 seconds, which is the sampling rate
+you actually get. The <code>log</code> roster bypasses that cache entirely, because it is
+maintained continuously from the console follower rather than sampled.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>There is no fleet-wide &quot;n online&quot; total today. The count lives on each server&#39;s
+card and in its drill-in.</p>
+</div>
+</aside>
+
+
+<h2 id="validation">Validation <a class="hlink" href="#validation" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The spec validator rejects an unknown method, a missing port for <code>a2s</code>, a
+missing port or password for <code>palworld-rest</code>, and a <code>log</code> regex that does not
+compile or captures neither group. Every one of those would otherwise fail
+silently at runtime as &quot;players unknown&quot;, which is the worst kind of wrong: a
+readout that looks like an answer.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/mods/"><span class="pg-k">previous</span><span class="pg-t">Mods (BepInEx)</span></a>
+      <a class="pg next" href="/wiki/operate/audit/"><span class="pg-k">next</span><span class="pg-t">The audit log<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/players.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/players.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#three-methods">Three methods</a>
+<a class="toc-link lvl-2" href="#the-cap">The cap</a>
+<a class="toc-link lvl-2" href="#where-it-shows">Where it shows</a>
+<a class="toc-link lvl-2" href="#unknown-is-a-third-answer">Unknown is a third answer</a>
+<a class="toc-link lvl-2" href="#validation">Validation</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

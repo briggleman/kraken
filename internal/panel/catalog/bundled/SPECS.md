@@ -1,5 +1,11 @@
 # Kraken Game Spec authoring conventions
 
+> This file is canonical. The orientation for spec authors is at
+> [krakenserver.io/wiki/specs/writing/](https://krakenserver.io/wiki/specs/writing/),
+> with the catalog at `/wiki/specs/`, the platform policy at
+> `/wiki/specs/platforms/` and the Windows-container notes at
+> `/wiki/specs/windows-containers/`. Those pages quote this one.
+
 This directory is the bundled catalog — YAML specs `go:embed`ded into the
 Panel binary. Each `*.yaml` describes one game the operator can import in
 `/catalog`.

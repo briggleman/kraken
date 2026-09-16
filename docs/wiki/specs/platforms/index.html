@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Platforms — Kraken wiki</title>
+<meta name="description" content="The three placement kinds — Linux native, Windows native and Linux under Wine — the policy that decides which a spec declares, how per-platform overrides work, and the config-path rules that make one spec run on both operating systems." />
+<link rel="canonical" href="https://krakenserver.io/wiki/specs/platforms/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/specs/platforms/" />
+<meta property="og:title" content="Platforms — Kraken wiki" />
+<meta property="og:description" content="The three placement kinds — Linux native, Windows native and Linux under Wine — the policy that decides which a spec declares, how per-platform overrides work, and the config-path rules that make one spec run on both operating systems." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Platforms — Kraken wiki" />
+<meta name="twitter:description" content="The three placement kinds — Linux native, Windows native and Linux under Wine — the policy that decides which a spec declares, how per-platform overrides work, and the config-path rules that make one spec run on both operating systems." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link is-here" href="/wiki/specs/platforms/" aria-current="page">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><a href="/wiki/specs/">The spec catalog</a><i aria-hidden="true">/</i><span aria-current="page">Platforms</span></nav>
+    <h1>Platforms</h1>
+    <p class="lede">The three placement kinds — Linux native, Windows native and Linux under Wine — the policy that decides which a spec declares, how per-platform overrides work, and the config-path rules that make one spec run on both operating systems.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-policy">The policy</a>
+<a class="toc-link lvl-2" href="#per-platform-overrides">Per-platform overrides</a>
+<a class="toc-link lvl-2" href="#wine-specifically">Wine, specifically</a>
+</div></details>
+    <article class="prose">
+<p>A spec declares one or more <code>platforms</code>, and each is a <strong>kind</strong> plus an
+<strong>image</strong>, optionally with its own install script and startup command.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>kind</th>
+<th>where it runs</th>
+<th>image</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>linux-native</code></td>
+<td>a Linux node, the game&#39;s native Linux server</td>
+<td><code>kraken-steam-base</code></td>
+</tr>
+<tr>
+<td><code>windows-native</code></td>
+<td>a Windows node, Windows containers</td>
+<td><code>kraken-steam-win</code></td>
+</tr>
+<tr>
+<td><code>linux-wine</code></td>
+<td>a Linux node, the game&#39;s Windows build under Wine</td>
+<td><code>kraken-steam-wine</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>The list order is <strong>scheduler priority</strong>, not a statement about which operating
+system we prefer.</p>
+<h2 id="the-policy">The policy <a class="hlink" href="#the-policy" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The goal is that every game is deployable on either kind of node, and that a
+native build always wins.</p>
+<ol>
+<li><strong>Bias toward the native build for the node&#39;s OS.</strong> A Windows node runs the
+native Windows build; a Linux node runs the native Linux build. The spec does
+not push a server onto one OS. The node it lands on picks.</li>
+<li><strong>Most games ship a native Windows server. When a native Linux server also
+exists, declare both.</strong> Then the game loads on either Agent.</li>
+<li><strong>When no Linux build exists, add a <code>linux-wine</code> entry</strong>, so Linux nodes can
+still host it. Wine is the fallback, never the preference, so put the native
+kinds first in the list.</li>
+</ol>
+<p>Dragonwilds is the case where one appid ships both depots: the same id sits
+under <code>linux</code> and <code>windows</code> in <code>steam_app_ids</code>, SteamCMD picks the depot for the
+platform it runs on, and the Panel injects <code>{{APP_ID}}</code> from the entry matching
+the placement&#39;s OS family.</p>
+<h2 id="per-platform-overrides">Per-platform overrides <a class="hlink" href="#per-platform-overrides" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A <code>platforms[]</code> entry may override <code>install_script</code>, <code>startup_command</code> and
+<code>skip_update_on_start</code>. The spec-level <code>install.script</code> and <code>startup.command</code>
+are the fallback for every kind that does not override them.</p>
+<p><code>config_files</code>, <code>stop</code>, <code>ports</code> and <code>backup</code> have <strong>no</strong> per-platform variant.
+That is a deliberate constraint rather than an omission, and it produces three
+rules worth knowing before you write a dual-platform spec:</p>
+<p><strong>Config paths always use the logical <code>/data</code> root.</strong> The Agent maps it to
+<code>C:\data</code> on a Windows node and leaves it alone on Linux. A literal <code>C:\data\…</code>
+in a spec breaks on a Linux or Wine node, where it resolves to a <code>C:</code>
+subdirectory.</p>
+<p><strong>Platform-named config folders get one entry each.</strong> Unreal reads
+<code>Saved/Config/LinuxServer/</code> on the Linux build and <code>Saved/Config/WindowsServer/</code>
+on the Windows build. Declare both <code>config_files</code> entries with the same
+template. Every save writes both; each build reads its own and ignores the
+other.</p>
+<p><strong>Declare the Linux stop signal.</strong> <code>stop: { type: signal, value: SIGINT }</code>. A
+Windows daemon ignores custom stop signals and sends its own shutdown event,
+and a Linux Agent ignores a Windows-only name such as <code>CTRL_SHUTDOWN_EVENT</code> and
+falls back to <code>SIGTERM</code>. Either name is safe on both, but the Linux signal is
+the only one either Agent can actually honour, which makes it the convention.</p>
+<p><strong>Backup globs are data-directory-relative and OS-neutral</strong>, so check that the
+Windows build actually writes its saves under the data directory. An Unreal
+build marked &quot;installed&quot; defaults to <code>%LOCALAPPDATA%\&lt;Project&gt;</code>; pin it with
+<code>-UserDir=C:\data\&lt;Project&gt;</code> in the Windows startup command.</p>
+<h2 id="wine-specifically">Wine, specifically <a class="hlink" href="#wine-specifically" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The <code>kraken-steam-wine</code> image is a Linux image with WineHQ and a headless X
+server. A <code>linux-wine</code> install pulls the <strong>Windows</strong> depot with the Linux
+SteamCMD by forcing the platform type:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data \
+  +login anonymous +app_update {{APP_ID}} validate +quit</code></pre></div>
+<p>Two things about launching under it, both of which the image encodes so specs do
+not have to rediscover them:</p>
+<p><strong>Use <code>wine64</code>, not <code>wine</code>.</strong> They are not interchangeable in this image.</p>
+<p><strong>Use <code>wine-headless</code>, not <code>xvfb-run</code>.</strong> <code>xvfb-run</code> waits for Xvfb&#39;s <code>SIGUSR1</code>
+readiness signal, and when a spec&#39;s startup command execs it as container PID 1
+that signal is ignored, because PID 1 default-ignores signals with no handler.
+The container then sits there having started nothing. <code>wine-headless</code> starts
+Xvfb and polls for its socket instead, and it is on <code>PATH</code> in the image:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>wine-headless /data/&lt;Game&gt;/Binaries/Win64/&lt;Server&gt;-Win64-Shipping.exe -log</code></pre></div>
+<p>For a UE5 server whose launcher respawns itself in ways Wine dislikes, launch
+the <code>Win64-Shipping</code> binary directly rather than the wrapper.</p>
+<p>Wine placements are validated per game, not in general. Enshrouded&#39;s
+<code>linux-wine</code> entry is live-validated to its ready line under Wine 10; Abiotic
+Factor&#39;s carries the direct-binary note above. If you add a <code>linux-wine</code> entry,
+boot it once and watch the console before you call it supported.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>BepInEx under Wine is not validated. The bundled BepInEx-capable specs target a
+Linux-native node and a Windows-native node respectively.</p>
+</div>
+</aside>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/specs/writing/"><span class="pg-k">previous</span><span class="pg-t">Writing a spec</span></a>
+      <a class="pg next" href="/wiki/specs/windows-containers/"><span class="pg-k">next</span><span class="pg-t">Windows containers<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/specs/platforms.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/specs/platforms.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-policy">The policy</a>
+<a class="toc-link lvl-2" href="#per-platform-overrides">Per-platform overrides</a>
+<a class="toc-link lvl-2" href="#wine-specifically">Wine, specifically</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

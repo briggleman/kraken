@@ -48,6 +48,10 @@ Thumbs.db
 server-data/
 backups/
 agent-backups/
+# …but the wiki's generated output is committed, and one of its pages is
+# docs/wiki/operate/backups/, which the unanchored rule above swallows. The
+# page is silently missing from the commit and CI fails the drift gate.
+!docs/wiki/operate/backups/
 # Persisted runtime specs written by the Agent under its state dir. Deliberately
 # not named "specs/" — that is the tracked Game Spec library, and the state dir
 # defaults to the working directory.

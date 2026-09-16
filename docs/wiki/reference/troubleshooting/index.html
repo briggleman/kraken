@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Troubleshooting — Kraken wiki</title>
+<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<link rel="canonical" href="https://krakenserver.io/wiki/reference/troubleshooting/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/reference/troubleshooting/" />
+<meta property="og:title" content="Troubleshooting — Kraken wiki" />
+<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Troubleshooting — Kraken wiki" />
+<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link is-here" href="/wiki/reference/troubleshooting/" aria-current="page">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">Troubleshooting</span></nav>
+    <h1>Troubleshooting</h1>
+    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code></a>
+<a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
+<a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
+<a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
+</div></details>
+    <article class="prose">
+<p>Four failures that happened, each written the way you will meet it: the symptom
+first, because that is all you have at the time.</p>
+<h2 id="every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code> <a class="hlink" href="#every-install-ends-with-state-is-0x6" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> The install log runs, SteamCMD reports progress, and the pass ends
+with</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>Error! App '4019830' state is 0x6 after update job.</code></pre></div>
+<p>on every attempt, including a reinstall. Before 0.50.1 this was worse than a
+failure: the Agent did not recognise the line, treated the pass as fine, and
+started the server on the <strong>old</strong> build, so the symptom was a server that
+refused to update and never said why.</p>
+<p><strong>Cause.</strong> A stale download state from an earlier failed attempt. SteamCMD keeps
+<code>steamapps/appmanifest_&lt;appid&gt;.acf</code> and a <code>steamapps/downloading/</code> directory
+between runs, and when they disagree with what the depot now holds, every
+subsequent <code>app_update</code> gives up in the same place. Validating does not clear
+it, because validation trusts the manifest.</p>
+<p><strong>Fix.</strong> Delete both, then run the install again.</p>
+<ol>
+<li>Open the server&#39;s <strong>Files</strong> tab, or connect over SFTP.</li>
+<li>Delete <code>steamapps/appmanifest_&lt;appid&gt;.acf</code>.</li>
+<li>Delete the <code>steamapps/downloading/</code> directory.</li>
+<li>Start the server, or reinstall if it is in <code>install_failed</code>.</li>
+</ol>
+<p>The saves are not in either of those; they are wherever the spec&#39;s backup globs
+point. Since 0.50.1 the Agent treats the <code>state is 0x…</code> family as an install
+failure, so a repeat lands in <code>install_failed</code> with the line as <code>last_error</code>
+instead of quietly relaunching the old build.</p>
+<h2 id="every-node-goes-offline-at-once">Every node goes offline at once <a class="hlink" href="#every-node-goes-offline-at-once" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> The whole fleet reads <code>offline</code> at the same moment, which is not
+how real outages usually arrive. The Panel is up and serving the UI. A node&#39;s
+<code>agent.log</code> repeats a dial failure against the Panel&#39;s tunnel port:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>dial tcp &lt;panel-address&gt;:9443: connectex: No connection could be made because
+the target machine actively refused it.</code></pre></div>
+<p><strong>Cause.</strong> The Panel&#39;s <code>9443</code> is not published or not reachable. The usual way
+to get there is hardening: binding the Panel&#39;s HTTP port to loopback so a
+reverse proxy can front it, and binding the tunnel listener the same way while
+you are in the file. Tunnel mode is the default for new nodes, so every tunnel
+node loses the Panel at once.</p>
+<p>Enrollment succeeding proves nothing about this. Enrollment is an outbound HTTP
+call to the Panel&#39;s HTTP port; the tunnel is a separate connection to <code>9443</code>.</p>
+<p><strong>Fix.</strong> Publish <code>9443</code> again and make sure it is reachable from where your
+Agents are.</p>
+<ul>
+<li>In Compose, check that the port is in the Panel service&#39;s <code>ports</code> (or that the
+service is on host networking) and that nothing bound it to <code>127.0.0.1</code>.</li>
+<li>Raw mTLS cannot be proxied, so <code>9443</code> cannot live behind Nginx, Caddy or a
+Cloudflare Tunnel the way the HTTP port can. Give it its own address or DNS
+name.</li>
+<li>Confirm from a node, not from the Panel host.</li>
+</ul>
+<p>The nodes come back on their own once the listener is reachable; there is no
+re-enrollment step. <a href="/wiki/configure/network/">Ports and firewall</a> has the full
+table of who is allowed to reach what.</p>
+<h2 id="containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear <a class="hlink" href="#containers-n-running-1-untracked-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> A node&#39;s band reads one more running container than the Panel has
+<code>running</code> rows for, and it stays that way. The server in question shows
+<code>install_failed</code>, or <code>offline</code>, while players are still connected to it.</p>
+<p><strong>Cause.</strong> A restart that failed at the <em>stop before update</em> step while the
+Agent was unreachable. The 0.50.0 update pass is stop, install, start. When the
+stop could not be delivered, the Panel recorded the failure as
+<code>install_failed</code> even though nothing on the node had changed: the container kept
+running throughout, and the Agent adopted it again when it came back.</p>
+<p>That is a state lie rather than a data problem. <code>install_failed</code> means &quot;the
+install tree is suspect&quot;, and a stop that never arrived says nothing about the
+tree. It also locks start and restart behind a reinstall, which is the part you
+feel.</p>
+<p><strong>Fix.</strong> Get the Agent back first, then reinstall the server once the node is
+online. The reinstall runs the pass properly and the badge clears when the row
+and the node agree again.</p>
+<p>This one is a product bug, not an operator error, and it is tracked as
+<a href="https://github.com/briggleman/kraken/issues/328">#328</a>: a failed pre-update
+stop should leave the server in the state it was already in, record the reason,
+and refuse the pass up front when the node has no live session.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>A transient <code>1 untracked</code> during an install or update pass is <strong>normal</strong>. The
+one-shot install container carries the same managed label the game container
+does, so while it runs the node is running one more than the Panel counts. It
+clears when the pass ends. It is only the badge that persists that means
+something.</p>
+</div>
+</aside>
+
+
+<h2 id="cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code> <a class="hlink" href="#cloudflare-returns-400-the-ssl-certificate-error" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> With Authenticated Origin Pulls enabled, every request through
+Cloudflare comes back <code>400</code> with a body reading <em>The SSL certificate error</em>. The
+proxy&#39;s error log is empty, which makes it look like the requests are not
+arriving at all.</p>
+<p><strong>Cause.</strong> The wrong certificate authority is installed on the origin. Two
+different objects arrive from the Cloudflare dashboard as a <code>.pem</code>:</p>
+<ul>
+<li>an <strong>Origin Certificate</strong>, which is a server certificate for your origin, and</li>
+<li>the <strong>public Origin Pull CA</strong>, which is what signs the client certificate
+Cloudflare presents.</li>
+</ul>
+<p><code>ssl_client_certificate</code> wants the second one. With the first one in that slot,
+nginx cannot verify Cloudflare&#39;s client certificate and refuses the connection.
+The empty error log is the other half of the trap: nginx records a client
+certificate verify failure at <strong>info</strong> level, so a proxy logging at error, which
+Nginx Proxy Manager does by default, shows nothing at all.</p>
+<p><strong>Fix.</strong> Read the 400&#39;s body rather than the log, then replace the file with
+Cloudflare&#39;s public Origin Pull CA from
+<code>https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem</code>
+and reload the proxy. The exact configuration block is on <a href="/wiki/configure/reverse-proxy/">behind a reverse
+proxy</a>.</p>
+<h2 id="when-it-is-none-of-these">When it is none of these <a class="hlink" href="#when-it-is-none-of-these" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Three places to look, in this order:</p>
+<ol>
+<li><strong>The install log.</strong> It is kept after the install finishes, success included,
+until the server is deleted or reinstalled. It does not survive a Panel
+restart, and the API says <code>retained: false</code> when it is gone rather than
+showing you an empty pane.</li>
+<li><strong>The audit log.</strong> Filter to failures. A screen of 4xx is somebody getting a
+request wrong; a screen of 5xx is the Panel or a node.</li>
+<li><strong><code>agent.log</code> on the node</strong>, JSON, rotated at 10 MiB, in the Agent&#39;s state
+directory. On Windows, <code>restart-helper.log</code> beside it is what a self-update&#39;s
+relaunch wrote, step by step.</li>
+</ol>
+<p>And one thing to check before anything else if the whole UI looks wrong: the
+header&#39;s <code>stale</code> mark. A stale fleet view is a browser that cannot reach the
+Panel, not a fleet that stopped working. Servers keep running and schedules keep
+firing while your tab is out of date.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/reference/releases/"><span class="pg-k">previous</span><span class="pg-t">Releases</span></a>
+      <span class="pg is-empty"></span>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/reference/troubleshooting.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/reference/troubleshooting.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code></a>
+<a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
+<a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
+<a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

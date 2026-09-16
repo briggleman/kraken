@@ -134,10 +134,14 @@ the Docker socket, because it launches game containers on the host's daemon and
 their ports have to be reachable from the LAN.
 
 If the Panel host will not run games — a small VPS fronting nodes elsewhere, for
-instance — drop the service and turn quickstart off:
+instance — drop the service and turn quickstart off. This one is not read from
+`deploy/.env`: the compose file sets it on the `panel` service directly, so edit
+it there.
 
-```sh
-KRAKEN_QUICKSTART=false
+```yaml
+panel:
+  environment:
+    KRAKEN_QUICKSTART: "false"
 ```
 
 `KRAKEN_QUICKSTART` is the single-host convenience path: on startup the Panel

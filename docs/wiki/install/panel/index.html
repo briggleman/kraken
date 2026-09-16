@@ -201,8 +201,12 @@ running game server with nothing else to do. It takes <code>network_mode: host</
 the Docker socket, because it launches game containers on the host&#39;s daemon and
 their ports have to be reachable from the LAN.</p>
 <p>If the Panel host will not run games — a small VPS fronting nodes elsewhere, for
-instance — drop the service and turn quickstart off:</p>
-<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_QUICKSTART=false</code></pre></div>
+instance — drop the service and turn quickstart off. This one is not read from
+<code>deploy/.env</code>: the compose file sets it on the <code>panel</code> service directly, so edit
+it there.</p>
+<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>panel:
+  environment:
+    KRAKEN_QUICKSTART: &quot;false&quot;</code></pre></div>
 <p><code>KRAKEN_QUICKSTART</code> is the single-host convenience path: on startup the Panel
 auto-registers the co-located Agent as the <code>local</code> node. With no Agent there to
 register, leave it off, or the fleet shows a node that will never come

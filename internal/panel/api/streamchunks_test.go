@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -168,4 +169,62 @@ func TestAuditAppendOutlivesACancelledRequest(t *testing.T) {
 	if rec.sawCancelled {
 		t.Fatal("the store was handed an already-cancelled context — a real store would drop the row")
 	}
+}
+
+// contentLengthWriter is net/http's behaviour in miniature: once a
+// Content-Length has gone out, writes past it are dropped and answered with
+// http.ErrContentLength. httptest.ResponseRecorder does not enforce that, and
+// the failure being tested here only exists because the real server does.
+type contentLengthWriter struct {
+	*httptest.ResponseRecorder
+	remaining int64
+	limited   bool
+}
+
+func (c *contentLengthWriter) WriteHeader(code int) {
+	if cl := c.Header().Get("Content-Length"); cl != "" {
+		n, err := strconv.ParseInt(cl, 10, 64)
+		if err == nil {
+			c.remaining, c.limited = n, true
+		}
+	}
+	c.ResponseRecorder.WriteHeader(code)
+}
+
+func (c *contentLengthWriter) Write(b []byte) (int, error) {
+	if !c.limited {
+		return c.ResponseRecorder.Write(b)
+	}
+	if int64(len(b)) > c.remaining {
+		if c.remaining > 0 {
+			_, _ = c.ResponseRecorder.Write(b[:c.remaining])
+			c.remaining = 0
+		}
+		return 0, http.ErrContentLength
+	}
+	c.remaining -= int64(len(b))
+	return c.ResponseRecorder.Write(b)
+}
+
+// A stream that delivers MORE than it announced is the same failure as one that
+// delivers less, and it is the one this feature exists to remove. net/http
+// drops the excess and hands back http.ErrContentLength — which, read as "the
+// client went away", would end the response cleanly and let the browser save
+// exactly N bytes as a complete download. It has to tear the connection down
+// instead.
+func TestStreamChunksAbortsWhenAStreamOverrunsItsContentLength(t *testing.T) {
+	s := testAPI(memory.New())
+	rec := &contentLengthWriter{ResponseRecorder: httptest.NewRecorder()}
+	defer func() {
+		rvr := recover()
+		if rvr == nil {
+			t.Fatal("over-delivery returned normally — the truncated body would arrive as a clean 200")
+		}
+		if rvr != http.ErrAbortHandler {
+			t.Fatalf("panicked with %v, want http.ErrAbortHandler", rvr)
+		}
+	}()
+	// Announces 3 bytes, then hands over 6.
+	s.streamChunks(rec, sizedChunker([]string{"abc", "def"}, 3, io.EOF),
+		"application/octet-stream", "server.cfg", "server", "srv-1", "paths", 1)
 }

@@ -1283,24 +1283,39 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 	return entries, nil
 }
 
-// ReadFile returns the contents of a single file in the volume, capped at
-// maxBytes. It reports the file's true size, whether the returned bytes were
-// truncated, and whether the content looks binary (contains a NUL byte).
-func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxBytes int64) ([]byte, int64, bool, bool, error) {
+// statLocal resolves a logical path to its host file and stats it, applying the
+// containment check (safePath) every file op shares and refusing a directory.
+// The three single-file operations — read, stat, download — all begin this way,
+// and having one copy is what keeps their containment and their error text
+// identical. The underlying os.Stat error is preserved rather than flattened to
+// "not found": a permission error and a missing file are different problems,
+// and an operator chasing one should not be told the other.
+func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, error) {
 	fp, err := d.safePath(p)
 	if err != nil {
-		return nil, 0, false, false, err
-	}
-	if maxBytes <= 0 {
-		maxBytes = 1 << 20 // 1 MiB default
+		return "", nil, err
 	}
 	host := d.localOf(serverID, fp)
 	st, err := os.Stat(host)
 	if err != nil {
-		return nil, 0, false, false, fmt.Errorf("docker: %s not found", p)
+		return "", nil, fmt.Errorf("docker: %s: %w", p, err)
 	}
 	if st.IsDir() {
-		return nil, 0, false, false, fmt.Errorf("docker: %s is a directory", p)
+		return "", nil, fmt.Errorf("docker: %s is a directory", p)
+	}
+	return host, st, nil
+}
+
+// ReadFile returns the contents of a single file in the volume, capped at
+// maxBytes. It reports the file's true size, whether the returned bytes were
+// truncated, and whether the content looks binary (contains a NUL byte).
+func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxBytes int64) ([]byte, int64, bool, bool, error) {
+	if maxBytes <= 0 {
+		maxBytes = 1 << 20 // 1 MiB default
+	}
+	host, st, err := d.statLocal(serverID, p)
+	if err != nil {
+		return nil, 0, false, false, err
 	}
 	f, err := os.Open(host)
 	if err != nil {
@@ -1321,33 +1336,18 @@ func (d *DockerRuntime) ReadFile(ctx context.Context, serverID, p string, maxByt
 // other file op — safePath first, then the host mapping — and OS-agnostic:
 // os.Stat is the same call on a Linux node and a Windows one.
 func (d *DockerRuntime) StatFile(_ context.Context, serverID, p string) (int64, error) {
-	fp, err := d.safePath(p)
+	_, st, err := d.statLocal(serverID, p)
 	if err != nil {
 		return 0, err
-	}
-	st, err := os.Stat(d.localOf(serverID, fp))
-	if err != nil {
-		return 0, fmt.Errorf("docker: %s not found", p)
-	}
-	if st.IsDir() {
-		return 0, fmt.Errorf("docker: %s is a directory", p)
 	}
 	return st.Size(), nil
 }
 
 // DownloadFile streams a single file's raw bytes to w (no zip wrapper).
 func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io.Writer) error {
-	fp, err := d.safePath(p)
+	host, _, err := d.statLocal(serverID, p)
 	if err != nil {
 		return err
-	}
-	host := d.localOf(serverID, fp)
-	st, err := os.Stat(host)
-	if err != nil {
-		return fmt.Errorf("docker: %s not found", p)
-	}
-	if st.IsDir() {
-		return fmt.Errorf("docker: %s is a directory", p)
 	}
 	f, err := os.Open(host)
 	if err != nil {

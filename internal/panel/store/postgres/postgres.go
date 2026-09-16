@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -653,20 +654,28 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 // on record. The digest IS the stored key (see store.HashToken), so no schema
 // change is needed: this is GetSession's lookup for a caller that holds the
 // session's identity but not its secret. An expired row counts as gone.
+//
+// Expiry is decided in Go, against the Panel's clock, deliberately — NOT with
+// `expires_at > now()` in SQL. Every other path (resolveSession via GetSession,
+// and the memory store) compares against time.Now on the Panel, and a database
+// whose clock has drifted ahead would otherwise make a session the UI is
+// happily accepting "gone" here: every download would 401 with only a Debug
+// line to say why. One clock, one answer.
 func (s *Store) SessionExistsByHash(ctx context.Context, hash string) (bool, error) {
 	if hash == "" {
 		return false, nil
 	}
-	var one int
+	var expires time.Time
 	err := s.pool.QueryRow(ctx,
-		`SELECT 1 FROM sessions WHERE token=$1 AND expires_at > now()`, hash).Scan(&one)
+		`SELECT expires_at FROM sessions WHERE token=$1`, hash).Scan(&expires)
 	if notFoundErr(err) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	sess := store.Session{Token: hash, ExpiresAt: expires}
+	return !sess.Expired(time.Now()), nil
 }
 
 // ---- Cluster CA ----

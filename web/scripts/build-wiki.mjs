@@ -91,10 +91,17 @@ function walk(dir, base = dir) {
 function makeSlugger() {
   const seen = new Map();
   return (text) => {
+    // Strip inline markup to a fixpoint: a single pass over `<[^>]*>` can leave
+    // a tag behind when tags nest or overlap (`<<b>` → `<b>`), which is what
+    // CodeQL's incomplete-sanitization rule is about. The input is our own
+    // rendered heading HTML, but the slug must be plain text regardless.
+    let plain = text.toLowerCase();
+    for (let prev; prev !== plain; ) {
+      prev = plain;
+      plain = plain.replace(/<[^>]*>/g, "");
+    }
     const base =
-      text
-        .toLowerCase()
-        .replace(/<[^>]*>/g, "")
+      plain
         .replace(/[^\w\- ]+/g, "")
         .trim()
         .replace(/\s+/g, "-") || "section";

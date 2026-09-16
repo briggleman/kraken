@@ -86,7 +86,7 @@ On Windows the installer uses `C:\kraken` and the same layout beneath it.
 Modes, which do something and exit rather than configuring a run: `--version`,
 `--print-config`, and on Windows `--service install|uninstall|start|stop|status`.
 
-## The ones with teeth
+## The important keys
 
 **`node_id`** is the node's identity. Change it later and the node re-registers,
 orphaning every server installed under the old id. Set it once, at install.

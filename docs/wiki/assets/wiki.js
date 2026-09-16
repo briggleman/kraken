@@ -36,7 +36,22 @@
     var timer;
     btn.addEventListener("click", function () {
       var block = btn.closest(".cmd");
-      var code = block && block.querySelector("code");
+      if (!block) return;
+      /* A highlighted spec block has no <code>: it is one <span class="l"> per
+       * source line, with no newlines between them (a literal newline inside
+       * the <pre> would render as a blank line). Rejoin them so the clipboard
+       * gets the source text rather than the markup or one run-together line. */
+      var lines = block.querySelectorAll(".l");
+      var code = block.querySelector("code");
+      if (lines.length) {
+        code = {
+          textContent: Array.prototype.map
+            .call(lines, function (l) {
+              return l.textContent.replace(/​/g, "");
+            })
+            .join("\n"),
+        };
+      }
       if (!code) return;
       var done = function (ok) {
         if (label) label.textContent = ok ? "copied" : "select it";

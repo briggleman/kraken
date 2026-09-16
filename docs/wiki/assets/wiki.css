@@ -314,6 +314,42 @@ h2:hover .hlink,h3:hover .hlink,.hlink:focus-visible{opacity:1}
    pointing is not a control on a phone. */
 @media (hover:none){.cmd-copy{opacity:1}}
 
+/* ---------- spec code: the same block, wearing the editor's colours ----------
+   A YAML or JSON block is tokenised by the Panel's own highlighter
+   (web/src/lib/spechl.ts), so the classes below are the ones DESIGN.md's
+   "Spec code editor" section documents, with the values copied from
+   web/src/styles/house.css rather than re-invented.
+
+   This is the Editor-Palette Exception from DESIGN.md, applied to a stateless
+   code view in the wiki. The reasoning carries over unchanged: a code block
+   reports no server state, so Caution Violet and Crisis Magenta carry no
+   "warning" or "danger" meaning here and are free to do colour work.
+
+   The exception stops at this selector. These roles must never leak onto the
+   wiki's callouts, where violet and magenta ARE semantics — a warning callout
+   painted in the same violet as a YAML key would make both meaningless. */
+.cmd.spec-code{padding:16px 14px}
+.spec-code pre{
+  font-family:var(--mono);font-weight:300;font-size:12.5px;line-height:1.85;
+  color:rgba(var(--ink-3-rgb),.75);tab-size:2;
+}
+/* every source line is its own block, so a line long enough to wrap hangs
+   under its own key instead of restarting at the margin */
+.spec-code .l{
+  display:block;white-space:pre-wrap;overflow-wrap:anywhere;
+  text-indent:-3ch;padding-left:3ch;
+}
+.spec-code b{color:var(--caution);font-weight:400}
+.spec-code i{font-style:normal;color:#3fb69b} /* lightened Spectrum Deep Teal (#1a7a6d) for legibility */
+.spec-code .n{color:var(--ok)}
+.spec-code .k{color:var(--crisis)}
+.spec-code .p{color:#2a9a89} /* structural punctuation: the green scaffold the pairs hang on — one step under the string teal so a value stays in front of its own brackets */
+.spec-code .t{
+  color:var(--lumen);
+  text-decoration:underline dotted rgba(var(--lumen-rgb), 0.5);text-underline-offset:2px;
+}
+.spec-code em{font-style:normal;color:var(--ink-3)}
+
 /* ---------- tables ---------- */
 .tbl,.prose table{width:100%}
 .tbl{overflow-x:auto;border:1px solid var(--edge);border-radius:6px;background:rgba(5,13,20,.5)}

@@ -146,16 +146,7 @@ AES-256-GCM; nothing infrastructural is persisted in the clear.</p>
 
 <h2 id="the-stack-service-by-service">The stack, service by service <a class="hlink" href="#the-stack-service-by-service" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <h3 id="postgres">postgres <a class="hlink" href="#postgres" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>postgres:
-  image: postgres:17-alpine
-  environment:
-    POSTGRES_USER: kraken
-    POSTGRES_PASSWORD: kraken
-    POSTGRES_DB: kraken
-  ports:
-    - &quot;127.0.0.1:5432:5432&quot;
-  volumes:
-    - pgdata:/var/lib/postgresql/data</code></pre></div>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>postgres</b><span class="p">:</span></span><span class="l">  <b>image</b><span class="p">:</span> <i>postgres:17-alpine</i></span><span class="l">  <b>environment</b><span class="p">:</span></span><span class="l">    <b>POSTGRES_USER</b><span class="p">:</span> <i>kraken</i></span><span class="l">    <b>POSTGRES_PASSWORD</b><span class="p">:</span> <i>kraken</i></span><span class="l">    <b>POSTGRES_DB</b><span class="p">:</span> <i>kraken</i></span><span class="l">  <b>ports</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <b>"127.0.0.1</b><span class="p">:</span><i>5432:5432"</i></span><span class="l">  <b>volumes</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <b>pgdata</b><span class="p">:</span><i>/var/lib/postgresql/data</i></span></pre></div>
 <p>Postgres is the source of truth: fleet state, users, sessions and the audit log
 all live here. The publish is deliberately <code>127.0.0.1:5432:5432</code>, so the
 host-networked Panel reaches it over loopback and the rest of the network
@@ -177,19 +168,7 @@ password inside a running database, not in compose.</p>
 <p>The <code>pgdata</code> volume is the fleet. Back it up alongside <code>KRAKEN_SECRETS_KEY</code>; one
 without the other is not a restore.</p>
 <h3 id="panel">panel <a class="hlink" href="#panel" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>panel:
-  image: ${KRAKEN_PANEL_IMAGE:-ghcr.io/briggleman/kraken-panel:latest}
-  depends_on:
-    postgres: { condition: service_healthy }
-  network_mode: host
-  environment:
-    KRAKEN_ENV: prod
-    KRAKEN_HTTP_ADDR: :${KRAKEN_HTTP_PORT:-8080}
-    KRAKEN_DATABASE_URL: postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable
-    KRAKEN_STATE_DIR: /var/lib/kraken
-    KRAKEN_SECRETS_KEY: ${KRAKEN_SECRETS_KEY:?…}
-  volumes:
-    - panel-state:/var/lib/kraken</code></pre></div>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>panel</b><span class="p">:</span></span><span class="l">  <b>image</b><span class="p">:</span> <i>${KRAKEN_PANEL_IMAGE:-ghcr.io/briggleman/kraken-panel:latest}</i></span><span class="l">  <b>depends_on</b><span class="p">:</span></span><span class="l">    <b>postgres</b><span class="p">:</span> <i>{ condition: service_healthy }</i></span><span class="l">  <b>network_mode</b><span class="p">:</span> <i>host</i></span><span class="l">  <b>environment</b><span class="p">:</span></span><span class="l">    <b>KRAKEN_ENV</b><span class="p">:</span> <i>prod</i></span><span class="l">    <b>KRAKEN_HTTP_ADDR</b><span class="p">:</span> <i>:${KRAKEN_HTTP_PORT:-8080}</i></span><span class="l">    <b>KRAKEN_DATABASE_URL</b><span class="p">:</span> <i>postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable</i></span><span class="l">    <b>KRAKEN_STATE_DIR</b><span class="p">:</span> <i>/var/lib/kraken</i></span><span class="l">    <b>KRAKEN_SECRETS_KEY</b><span class="p">:</span> <i>${KRAKEN_SECRETS_KEY:?…}</i></span><span class="l">  <b>volumes</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <b>panel-state</b><span class="p">:</span><i>/var/lib/kraken</i></span></pre></div>
 <p>Host networking, so the Panel binds its HTTP port directly, binds <code>:9443</code> for
 the tunnel listener, and can dial a co-located Agent on <code>127.0.0.1:9090</code> without
 cross-network gymnastics.</p>
@@ -207,9 +186,7 @@ their ports have to be reachable from the LAN.</p>
 — drop the service and turn quickstart off. This one is not read from
 <code>deploy/.env</code>: the compose file sets it on the <code>panel</code> service directly, so edit
 it there.</p>
-<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>panel:
-  environment:
-    KRAKEN_QUICKSTART: &quot;false&quot;</code></pre></div>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>panel</b><span class="p">:</span></span><span class="l">  <b>environment</b><span class="p">:</span></span><span class="l">    <b>KRAKEN_QUICKSTART</b><span class="p">:</span> <i>"false"</i></span></pre></div>
 <p><code>KRAKEN_QUICKSTART</code> is the single-host convenience path: at startup the Panel
 auto-registers the co-located Agent as the <code>local</code> node. With no Agent there to
 register, leave it off, or the fleet shows a node that will not come up.</p>

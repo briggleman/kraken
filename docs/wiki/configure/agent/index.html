@@ -86,7 +86,7 @@
 <a class="toc-link lvl-2" href="#where-the-file-lives">Where the file lives</a>
 <a class="toc-link lvl-2" href="#the-one-setting-most-installs-need">The one setting most installs need</a>
 <a class="toc-link lvl-2" href="#keys">Keys</a>
-<a class="toc-link lvl-2" href="#the-ones-with-teeth">The ones with teeth</a>
+<a class="toc-link lvl-2" href="#the-important-keys">The important keys</a>
 <a class="toc-link lvl-2" href="#changing-a-setting">Changing a setting</a>
 </div></details>
     <article class="prose">
@@ -109,7 +109,7 @@ the file is parsed as YAML and JSON is valid YAML.</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>kraken-agent --root /var/lib/kraken           # finds &lt;root&gt;/agent.yaml
 kraken-agent --config /etc/kraken/agent.yaml  # or name it explicitly</code></pre></div>
 <h2 id="the-one-setting-most-installs-need">The one setting most installs need <a class="hlink" href="#the-one-setting-most-installs-need" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>root: /var/lib/kraken</code></pre></div>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>root</b><span class="p">:</span> <i>/var/lib/kraken</i></span></pre></div>
 <p>Everything else defaults beneath it:</p>
 <div class="tbl"><table>
 <thead>
@@ -283,7 +283,7 @@ kraken-agent --config /etc/kraken/agent.yaml  # or name it explicitly</code></pr
 </div>
 <p>Modes, which do something and exit rather than configuring a run: <code>--version</code>,
 <code>--print-config</code>, and on Windows <code>--service install|uninstall|start|stop|status</code>.</p>
-<h2 id="the-ones-with-teeth">The ones with teeth <a class="hlink" href="#the-ones-with-teeth" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<h2 id="the-important-keys">The important keys <a class="hlink" href="#the-important-keys" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong><code>node_id</code></strong> is the node&#39;s identity. Change it later and the node re-registers,
 orphaning every server installed under the old id. Set it once, at install.</p>
 <p><strong><code>host_data_dir</code></strong> exists for one situation: a containerized Agent whose data
@@ -344,7 +344,7 @@ costs a second, and it has saved me an hour.</p>
 <a class="toc-link lvl-2" href="#where-the-file-lives">Where the file lives</a>
 <a class="toc-link lvl-2" href="#the-one-setting-most-installs-need">The one setting most installs need</a>
 <a class="toc-link lvl-2" href="#keys">Keys</a>
-<a class="toc-link lvl-2" href="#the-ones-with-teeth">The ones with teeth</a>
+<a class="toc-link lvl-2" href="#the-important-keys">The important keys</a>
 <a class="toc-link lvl-2" href="#changing-a-setting">Changing a setting</a>
     </div>
   </aside>

@@ -44,7 +44,7 @@ the Panel running and wrong. `KRAKEN_SETUP_ALLOWED_CIDRS` keeps skip-and-warn,
 since that list fails closed: a dropped entry denies access rather than granting
 it.
 
-## The ones worth knowing by heart
+## The ones worth knowing
 
 - **`KRAKEN_SECRETS_KEY`**: base64 of 32 bytes. It seals every at-rest secret,
   and losing it makes every stored secret unrecoverable. See [installing the

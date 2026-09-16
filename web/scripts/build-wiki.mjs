@@ -31,6 +31,21 @@ import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
 
+// The wiki's YAML and JSON blocks are coloured by the SAME tokenizer the Panel's
+// spec editor uses, imported straight from the app rather than reimplemented:
+// one set of token classes, one set of rules about what counts as a key. It is
+// TypeScript, so this needs a Node that strips types (24 on the pinned CI
+// runner, unflagged since 22.18). Checked before the import so an older runtime
+// says what is wrong instead of failing on a type annotation.
+if (!process.features.typescript) {
+  console.error(
+    "build-wiki: this Node cannot strip TypeScript types, so web/src/lib/spechl.ts " +
+      `cannot be imported (running ${process.version}; use Node 24, as .github/workflows/ci.yml pins).`,
+  );
+  process.exit(2);
+}
+const { highlightLines } = await import("../src/lib/spechl.ts");
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
 const srcDir = resolve(repoRoot, "docs", "wiki-src");
@@ -467,14 +482,27 @@ function makeRenderer(headings) {
 
   // The house Command Block: it wraps rather than scrolling sideways, and it
   // carries a copy affordance because everything in it is meant to be run.
+  //
+  // A YAML or JSON block is the same block wearing the spec editor's colours:
+  // `.spec-code`, and one `<span class="l">` per source line so a line long
+  // enough to wrap hangs under its own key instead of restarting at the margin.
+  // Shell is deliberately left uncoloured — a command is read as one string,
+  // and the editor palette has nothing true to say about it.
   renderer.code = function ({ text, lang }) {
     const label = (lang || "").split(/\s+/)[0] || "";
-    return (
-      `<div class="cmd" data-lang="${esc(label)}">` +
-      `<button class="cmd-copy" type="button" data-copy>${COPY_SVG}<span>copy</span></button>` +
-      `<pre><code>${esc(text)}</code></pre>` +
-      `</div>\n`
-    );
+    const fmt = label === "yml" ? "yaml" : label === "yaml" || label === "json" ? label : null;
+    const copy = `<button class="cmd-copy" type="button" data-copy>${COPY_SVG}<span>copy</span></button>`;
+    if (fmt) {
+      // No newlines between the lines: `.l` is a block, and a literal newline
+      // inside the <pre> would render as a blank one. The copy control rebuilds
+      // the plain source by joining the lines, so what lands on the clipboard is
+      // still the text that was in the markdown.
+      const lines = highlightLines(text.replace(/\n+$/, ""), fmt)
+        .map((l) => `<span class="l">${l || "&#8203;"}</span>`)
+        .join("");
+      return `<div class="cmd spec-code" data-lang="${esc(label)}">${copy}<pre>${lines}</pre></div>\n`;
+    }
+    return `<div class="cmd" data-lang="${esc(label)}">${copy}<pre><code>${esc(text)}</code></pre></div>\n`;
   };
 
   // Tables scroll inside their own box on a phone rather than widening the page.

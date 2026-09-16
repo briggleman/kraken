@@ -258,18 +258,7 @@ as image <code>ghcr.io/briggleman/kraken-agent</code>, and the compose stack&#39
 service does that. It wants <code>network_mode: host</code> and <code>/var/run/docker.sock</code>,
 because it launches game containers on the host&#39;s daemon and their ports have to
 be reachable from the LAN.</p>
-<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>agent:
-  image: ghcr.io/briggleman/kraken-agent:latest
-  network_mode: host
-  environment:
-    KRAKEN_AGENT_ADDR: 127.0.0.1:9090
-    KRAKEN_DATA_DIR: /var/lib/kraken/server-data
-    KRAKEN_STATE_DIR: /var/lib/kraken
-    KRAKEN_PANEL_URL: http://127.0.0.1:8080
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
-    - /var/lib/kraken/server-data:/var/lib/kraken/server-data
-    - agent-state:/var/lib/kraken</code></pre></div>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>agent</b><span class="p">:</span></span><span class="l">  <b>image</b><span class="p">:</span> <i>ghcr.io/briggleman/kraken-agent:latest</i></span><span class="l">  <b>network_mode</b><span class="p">:</span> <i>host</i></span><span class="l">  <b>environment</b><span class="p">:</span></span><span class="l">    <b>KRAKEN_AGENT_ADDR</b><span class="p">:</span> <i>127.0.0.1:9090</i></span><span class="l">    <b>KRAKEN_DATA_DIR</b><span class="p">:</span> <i>/var/lib/kraken/server-data</i></span><span class="l">    <b>KRAKEN_STATE_DIR</b><span class="p">:</span> <i>/var/lib/kraken</i></span><span class="l">    <b>KRAKEN_PANEL_URL</b><span class="p">:</span> <i>http://127.0.0.1:8080</i></span><span class="l">  <b>volumes</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <b>/var/run/docker.sock</b><span class="p">:</span><i>/var/run/docker.sock</i></span><span class="l">    <span class="p">-</span> <b>/var/lib/kraken/server-data</b><span class="p">:</span><i>/var/lib/kraken/server-data</i></span><span class="l">    <span class="p">-</span> <b>agent-state</b><span class="p">:</span><i>/var/lib/kraken</i></span></pre></div>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
 <div class="callout-b"><p><strong>Mount the data root at the same absolute path on both sides.</strong> The Agent hands

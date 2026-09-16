@@ -177,8 +177,9 @@ If you see that 400, you installed an Origin Certificate where the Origin Pull
 CA belongs. Replace the file, reload the proxy, and it clears.
 :::
 
-`ssl_verify_depth 2` is required because Cloudflare's client certificate chains
-through an intermediate; depth 1 rejects it.
+`ssl_verify_depth 2` is insurance, not a requirement: today Cloudflare's client
+certificate is issued directly by that CA, so the default depth verifies it. The
+extra hop only matters if Cloudflare ever inserts an intermediate.
 
 ## Checking your work
 

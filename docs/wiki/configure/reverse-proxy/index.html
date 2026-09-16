@@ -242,8 +242,9 @@ CA belongs. Replace the file, reload the proxy, and it clears.</p>
 </aside>
 
 
-<p><code>ssl_verify_depth 2</code> is required because Cloudflare&#39;s client certificate chains
-through an intermediate; depth 1 rejects it.</p>
+<p><code>ssl_verify_depth 2</code> is insurance, not a requirement: today Cloudflare&#39;s client
+certificate is issued directly by that CA, so the default depth verifies it. The
+extra hop only matters if Cloudflare ever inserts an intermediate.</p>
 <h2 id="checking-your-work">Checking your work <a class="hlink" href="#checking-your-work" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
 <li><strong>Audit rows</strong> should show real client addresses, not one repeated proxy

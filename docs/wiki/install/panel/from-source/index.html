@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Panel from source — Kraken wiki</title>
+<meta name="description" content="Build the Panel yourself — the one build-order rule that decides whether you get the real web UI or a stub, and what a development run looks like." />
+<link rel="canonical" href="https://krakenserver.io/wiki/install/panel/from-source/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/install/panel/from-source/" />
+<meta property="og:title" content="Panel from source — Kraken wiki" />
+<meta property="og:description" content="Build the Panel yourself — the one build-order rule that decides whether you get the real web UI or a stub, and what a development run looks like." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Panel from source — Kraken wiki" />
+<meta name="twitter:description" content="Build the Panel yourself — the one build-order rule that decides whether you get the real web UI or a stub, and what a development run looks like." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link is-here" href="/wiki/install/panel/from-source/" aria-current="page">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>install</span><i aria-hidden="true">/</i><a href="/wiki/install/panel/">Install the Panel</a><i aria-hidden="true">/</i><span aria-current="page">Panel from source</span></nav>
+    <h1>Panel from source</h1>
+    <p class="lede">Build the Panel yourself — the one build-order rule that decides whether you get the real web UI or a stub, and what a development run looks like.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#requirements">Requirements</a>
+<a class="toc-link lvl-2" href="#build">Build</a>
+<a class="toc-link lvl-2" href="#version-stamping">Version stamping</a>
+<a class="toc-link lvl-2" href="#run-it">Run it</a>
+<a class="toc-link lvl-2" href="#agent-updates-from-a-source-build">Agent updates from a source build</a>
+<a class="toc-link lvl-2" href="#checks">Checks</a>
+</div></details>
+    <article class="prose">
+<p>For contributors, and for an OS or architecture with no published build. A
+normal install belongs on <a href="/wiki/install/panel/">Docker Compose</a> instead.</p>
+<h2 id="requirements">Requirements <a class="hlink" href="#requirements" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>Go 1.26+</strong></li>
+<li><strong>Node 24+</strong> (any recent LTS builds the bundle; CI uses 24)</li>
+<li>Docker, for Postgres and for actually running game servers</li>
+</ul>
+<h2 id="build">Build <a class="hlink" href="#build" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>git clone https://github.com/briggleman/kraken.git
+cd kraken
+make build</code></pre></div>
+<p><code>make build</code> is web bundle first, then the three Go binaries into <code>bin/</code>:
+<code>panel</code>, <code>agent</code>, <code>krakenctl</code>. <code>make help</code> lists every target.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>Build the web bundle first, or you get a stub.</strong> The Panel serves its UI from
+a <code>//go:embed</code> of <code>internal/panel/webui/dist</code>, which a fresh checkout leaves
+empty, so <code>make build-go</code> on its own produces a Panel that serves a &quot;UI not
+built&quot; page and little else. Run <code>make build</code>, or <code>make build-web</code> once and then
+iterate with <code>make build-go</code>.</p>
+</div>
+</aside>
+
+
+<p>Without <code>make</code> (Windows, say), the recipes are one-line shell blocks and can be
+run directly:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>npm --prefix web ci
+npm --prefix web run build
+go build -trimpath -o bin/ ./cmd/...</code></pre></div>
+<h2 id="version-stamping">Version stamping <a class="hlink" href="#version-stamping" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Release builds stamp the version through <code>-ldflags</code>. <code>make build</code> mirrors the
+release workflow, so a local build reports the same tag, commit and date a
+release build would:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>make version</code></pre></div>
+<p>An unstamped <code>go build</code> reports <code>dev</code>. Honest, and perfectly usable. Bear in
+mind that the Panel compares its own version against each Agent to decide when
+to offer an update, so a fleet driven by an unstamped Panel says less about
+upgrades than a released one would.</p>
+<h2 id="run-it">Run it <a class="hlink" href="#run-it" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose -f deploy/docker-compose.yml up -d   # postgres
+./bin/panel</code></pre></div>
+<p>With no <code>KRAKEN_DATABASE_URL</code> the Panel falls back to an <strong>in-memory store</strong>.
+That is a development convenience and nothing else.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>The in-memory store is not a datastore. Nothing is persisted: every server,
+node, user and audit row disappears when the process exits. An install left in
+that state is a demo, whatever it looks like on screen. Set
+<code>KRAKEN_DATABASE_URL</code>, or configure the datastore in the first-run wizard.</p>
+</div>
+</aside>
+
+
+<p>On a fresh database the dev bootstrap login is <code>admin</code> / <code>admin</code>, overridable
+with <code>KRAKEN_BOOTSTRAP_ADMIN_USER</code> and <code>KRAKEN_BOOTSTRAP_ADMIN_PASSWORD</code>.</p>
+<h2 id="agent-updates-from-a-source-build">Agent updates from a source build <a class="hlink" href="#agent-updates-from-a-source-build" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel pushes Agent upgrades by streaming a binary it carries inside itself.
+It embeds the Agent builds matching its own version, so an Agent it updates can
+only land on that version. A plain <code>make build</code> does not cross-compile those:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>make embed-agents   # linux/amd64, linux/arm64, windows/amd64 into the embed dir
+make build-go</code></pre></div>
+<p>Skip it and the update endpoint answers <code>503</code>, which is the honest response: the
+Panel has nothing to push.</p>
+<h2 id="checks">Checks <a class="hlink" href="#checks" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>make check</code></pre></div>
+<p>Everything CI runs: the web build and unit tests, <code>gofmt</code>, <code>go vet</code>,
+<code>staticcheck</code>, <code>go test -race</code>, and the wiki staleness gate. Run it before
+opening a PR. See
+<a href="https://github.com/briggleman/kraken/blob/main/CLAUDE.md">CLAUDE.md</a> for the
+branch and PR-title conventions.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/install/panel/bare-metal/"><span class="pg-k">previous</span><span class="pg-t">Panel on bare metal</span></a>
+      <a class="pg next" href="/wiki/install/agent/"><span class="pg-k">next</span><span class="pg-t">Install an Agent<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/install/panel/from-source.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/install/panel/from-source.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#requirements">Requirements</a>
+<a class="toc-link lvl-2" href="#build">Build</a>
+<a class="toc-link lvl-2" href="#version-stamping">Version stamping</a>
+<a class="toc-link lvl-2" href="#run-it">Run it</a>
+<a class="toc-link lvl-2" href="#agent-updates-from-a-source-build">Agent updates from a source build</a>
+<a class="toc-link lvl-2" href="#checks">Checks</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

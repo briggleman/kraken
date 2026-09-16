@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent configuration — Kraken wiki</title>
+<meta name="description" content="agent.yaml, the KRAKEN_* variables and the command-line flags — three spellings of the same settings, with the precedence rule that decides which one wins." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/agent/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/agent/" />
+<meta property="og:title" content="Agent configuration — Kraken wiki" />
+<meta property="og:description" content="agent.yaml, the KRAKEN_* variables and the command-line flags — three spellings of the same settings, with the precedence rule that decides which one wins." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Agent configuration — Kraken wiki" />
+<meta name="twitter:description" content="agent.yaml, the KRAKEN_* variables and the command-line flags — three spellings of the same settings, with the precedence rule that decides which one wins." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link is-here" href="/wiki/configure/agent/" aria-current="page">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Agent configuration</span></nav>
+    <h1>Agent configuration</h1>
+    <p class="lede">agent.yaml, the KRAKEN_* variables and the command-line flags — three spellings of the same settings, with the precedence rule that decides which one wins.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#precedence">Precedence</a>
+<a class="toc-link lvl-2" href="#where-the-file-lives">Where the file lives</a>
+<a class="toc-link lvl-2" href="#the-one-setting-most-installs-need">The one setting most installs need</a>
+<a class="toc-link lvl-2" href="#keys">Keys</a>
+<a class="toc-link lvl-2" href="#the-important-keys">The important keys</a>
+<a class="toc-link lvl-2" href="#changing-a-setting">Changing a setting</a>
+</div></details>
+    <article class="prose">
+<p>Every Agent setting has three spellings: a key in <code>agent.yaml</code>, a <code>KRAKEN_*</code>
+environment variable, and a <code>--flag</code>. Pick whichever suits how the host is
+managed. The annotated template is
+<a href="https://github.com/briggleman/kraken/blob/main/deploy/agent.example.yaml"><code>deploy/agent.example.yaml</code></a>.</p>
+<h2 id="precedence">Precedence <a class="hlink" href="#precedence" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Lowest to highest:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>defaults  &lt;  paths derived from root  &lt;  the config file  &lt;  KRAKEN_* env  &lt;  flags</code></pre></div>
+<p>Environment outranks the file on purpose. Drop a config file onto a host already
+driven by compose, systemd or a Windows service and its settings should not
+change out from under the thing managing it.</p>
+<p>Ask the Agent what it resolved, without starting it:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>kraken-agent --root /var/lib/kraken --print-config</code></pre></div>
+<h2 id="where-the-file-lives">Where the file lives <a class="hlink" href="#where-the-file-lives" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Agent looks in order at <code>--config &lt;path&gt;</code>, <code>KRAKEN_CONFIG</code>,
+<code>&lt;root&gt;/agent.yaml</code>, then the OS-conventional location. JSON works too, since
+the file is parsed as YAML and JSON is valid YAML.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>kraken-agent --root /var/lib/kraken           # finds &lt;root&gt;/agent.yaml
+kraken-agent --config /etc/kraken/agent.yaml  # or name it explicitly</code></pre></div>
+<h2 id="the-one-setting-most-installs-need">The one setting most installs need <a class="hlink" href="#the-one-setting-most-installs-need" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>root</b><span class="p">:</span> <i>/var/lib/kraken</i></span></pre></div>
+<p>Everything else defaults beneath it:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>path</th>
+<th>what</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>&lt;root&gt;/state</code></td>
+<td>mTLS bundle, SFTP host key, <code>agent.log</code>, the update sentinel</td>
+</tr>
+<tr>
+<td><code>&lt;root&gt;/server-data</code></td>
+<td>per-server game data, one subdirectory per server</td>
+</tr>
+<tr>
+<td><code>&lt;root&gt;/backups</code></td>
+<td>local backup archives</td>
+</tr>
+<tr>
+<td><code>&lt;root&gt;/certs</code></td>
+<td><code>agent.pem</code> + <code>agent-key.pem</code> + <code>ca.pem</code>, adopted once all three exist, which is what <code>krakenctl enroll -out &lt;root&gt;/certs</code> writes</td>
+</tr>
+</tbody></table>
+</div>
+<p>On Windows the installer uses <code>C:\kraken</code> and the same layout beneath it.</p>
+<h2 id="keys">Keys <a class="hlink" href="#keys" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>key</th>
+<th>env</th>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>root</code></td>
+<td><code>KRAKEN_ROOT</code></td>
+<td><code>--root</code></td>
+<td>directory the other paths default beneath</td>
+</tr>
+<tr>
+<td><code>node_id</code></td>
+<td><code>KRAKEN_NODE_ID</code></td>
+<td><code>--node-id</code></td>
+<td>stable identity in the Panel&#39;s node list</td>
+</tr>
+<tr>
+<td><code>node_os</code></td>
+<td><code>KRAKEN_NODE_OS</code></td>
+<td><code>--node-os</code></td>
+<td><code>linux</code> or <code>windows</code>; must match the Docker daemon&#39;s container mode</td>
+</tr>
+<tr>
+<td><code>wine</code></td>
+<td><code>KRAKEN_NODE_WINE</code></td>
+<td><code>--wine</code></td>
+<td>advertise Wine, so Windows-only games can be placed on this Linux node</td>
+</tr>
+<tr>
+<td><code>addr</code></td>
+<td><code>KRAKEN_AGENT_ADDR</code></td>
+<td><code>--addr</code></td>
+<td>gRPC listen address, e.g. <code>:9090</code></td>
+</tr>
+<tr>
+<td><code>sftp_addr</code></td>
+<td><code>KRAKEN_SFTP_ADDR</code></td>
+<td><code>--sftp-addr</code></td>
+<td>SFTP listen address, e.g. <code>:2022</code></td>
+</tr>
+<tr>
+<td><code>state_dir</code></td>
+<td><code>KRAKEN_STATE_DIR</code></td>
+<td><code>--state-dir</code></td>
+<td>Agent-owned state</td>
+</tr>
+<tr>
+<td><code>data_dir</code></td>
+<td><code>KRAKEN_DATA_DIR</code></td>
+<td><code>--data-dir</code></td>
+<td>per-server game data root</td>
+</tr>
+<tr>
+<td><code>host_data_dir</code></td>
+<td><code>KRAKEN_HOST_DATA_DIR</code></td>
+<td><code>--host-data-dir</code></td>
+<td>the data root <strong>as the Docker daemon sees it</strong> — containerized Agent only</td>
+</tr>
+<tr>
+<td><code>backup_dir</code></td>
+<td><code>KRAKEN_BACKUP_DIR</code></td>
+<td><code>--backup-dir</code></td>
+<td>local backup destination</td>
+</tr>
+<tr>
+<td><code>sftp_host_key</code></td>
+<td><code>KRAKEN_SFTP_HOST_KEY</code></td>
+<td><code>--sftp-host-key</code></td>
+<td>SSH host key path; generated on first run</td>
+</tr>
+<tr>
+<td><code>tls_cert</code> / <code>tls_key</code> / <code>tls_ca</code></td>
+<td><code>KRAKEN_TLS_CERT</code> / <code>_KEY</code> / <code>_CA</code></td>
+<td><code>--tls-cert</code> / <code>--tls-key</code> / <code>--tls-ca</code></td>
+<td>name the mTLS bundle explicitly instead of taking <code>&lt;root&gt;/certs</code></td>
+</tr>
+<tr>
+<td><code>panel_url</code></td>
+<td><code>KRAKEN_PANEL_URL</code></td>
+<td><code>--panel-url</code></td>
+<td>Panel base URL for auto-enrollment when no bundle exists</td>
+</tr>
+<tr>
+<td><code>enroll_token</code></td>
+<td><code>KRAKEN_ENROLL_TOKEN</code></td>
+<td><code>--enroll-token</code></td>
+<td>the one-time bootstrap token from the Add node dialog</td>
+</tr>
+<tr>
+<td><code>ca_fingerprint</code></td>
+<td><code>KRAKEN_CA_FINGERPRINT</code></td>
+<td><code>--ca-fingerprint</code></td>
+<td>pinned SHA-256 of the Panel CA, verified during enrollment</td>
+</tr>
+<tr>
+<td><code>tunnel</code></td>
+<td><code>KRAKEN_TUNNEL</code></td>
+<td><code>--tunnel</code></td>
+<td>dial out and serve over a reverse tunnel; no inbound gRPC port</td>
+</tr>
+<tr>
+<td><code>tunnel_addr</code></td>
+<td><code>KRAKEN_TUNNEL_ADDR</code></td>
+<td><code>--tunnel-addr</code></td>
+<td>the Panel&#39;s tunnel endpoint; defaults to the <code>panel_url</code> host on <code>:9443</code></td>
+</tr>
+<tr>
+<td><code>runtime</code></td>
+<td><code>KRAKEN_RUNTIME</code></td>
+<td><code>--runtime</code></td>
+<td><code>docker</code> (default) or <code>fake</code> for a runtime-less smoke test</td>
+</tr>
+<tr>
+<td><code>windows_isolation</code></td>
+<td><code>KRAKEN_WINDOWS_ISOLATION</code></td>
+<td><code>--windows-isolation</code></td>
+<td><code>hyperv</code>, <code>process</code>, or <code>default</code></td>
+</tr>
+<tr>
+<td><code>image_pull</code></td>
+<td><code>KRAKEN_IMAGE_PULL</code></td>
+<td><code>--image-pull</code></td>
+<td><code>always</code> (default), <code>if-not-present</code>, or <code>never</code></td>
+</tr>
+<tr>
+<td><code>image_prune</code></td>
+<td><code>KRAKEN_IMAGE_PRUNE</code></td>
+<td><code>--image-prune</code></td>
+<td>weekly prune of dangling images: <code>on</code> (default) or <code>off</code></td>
+</tr>
+<tr>
+<td><code>allow_insecure_grpc</code></td>
+<td><code>KRAKEN_ALLOW_INSECURE_GRPC</code></td>
+<td><code>--allow-insecure-grpc</code></td>
+<td>serve plaintext gRPC on a non-loopback address</td>
+</tr>
+</tbody></table>
+</div>
+<p>Modes, which do something and exit rather than configuring a run: <code>--version</code>,
+<code>--print-config</code>, and on Windows <code>--service install|uninstall|start|stop|status</code>.</p>
+<h2 id="the-important-keys">The important keys <a class="hlink" href="#the-important-keys" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong><code>node_id</code></strong> is the node&#39;s identity. Change it later and the node re-registers,
+orphaning every server installed under the old id. Set it once, at install.</p>
+<p><strong><code>host_data_dir</code></strong> exists for one situation: a containerized Agent whose data
+root is mounted at a different path inside the container than on the host. Bind
+sources are resolved by the host&#39;s Docker daemon, so it needs the host path.
+Better to mount the data root at the same absolute path on both sides and leave
+this unset.</p>
+<p><strong><code>image_pull</code></strong> decides when a game-server image is fetched. The default,
+<code>always</code>, tries the registry on each install and each operator-driven start,
+falling back to the copy already on the node when the pull fails. Every bundled
+spec names a moving tag, so <code>always</code> is what keeps a node current, and I would
+leave it there unless the host is on metered bandwidth. A crash-restart never
+pulls. A start waits a few seconds for the refresh and no longer: a download
+that runs past that finishes in the background and takes effect on the next
+start, so a slow registry does not hold up a server. An install waits for the
+whole download.</p>
+<p><strong><code>image_prune</code></strong> removes dangling (untagged) images weekly: the previous copy
+of a moving tag after a re-pull, which nothing else on the node reclaims. Only
+images no tag points at are removed, and Docker never removes one backing a
+container, running or stopped. Retention has no floor, so a dangling image is
+gone a week after it was untagged, and rolling back to it means downloading it
+again.</p>
+<aside class="callout is-security">
+<span class="callout-k">security</span>
+<div class="callout-b"><p><strong><code>allow_insecure_grpc</code> hands the Docker socket to the network.</strong> Agent gRPC has
+no application-level authentication, and mTLS is the entire trust boundary, so
+the Agent refuses to serve plaintext on a non-loopback address unless this says
+otherwise. Enroll the node instead. The switch is there for a diagnosis, not for
+a deployment.</p>
+</div>
+</aside>
+
+
+<h2 id="changing-a-setting">Changing a setting <a class="hlink" href="#changing-a-setting" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo $EDITOR /etc/kraken/agent.env    # or &lt;root&gt;/agent.yaml
+sudo systemctl restart kraken-agent</code></pre></div>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>notepad C:\kraken\agent.yaml
+Restart-Service kraken-agent</code></pre></div>
+<p>Then confirm with <code>--print-config</code> rather than assuming which spelling won. It
+costs a second, and it has saved me an hour.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/panel/"><span class="pg-k">previous</span><span class="pg-t">Panel configuration</span></a>
+      <a class="pg next" href="/wiki/configure/reverse-proxy/"><span class="pg-k">next</span><span class="pg-t">Behind a reverse proxy<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/agent.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/agent.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#precedence">Precedence</a>
+<a class="toc-link lvl-2" href="#where-the-file-lives">Where the file lives</a>
+<a class="toc-link lvl-2" href="#the-one-setting-most-installs-need">The one setting most installs need</a>
+<a class="toc-link lvl-2" href="#keys">Keys</a>
+<a class="toc-link lvl-2" href="#the-important-keys">The important keys</a>
+<a class="toc-link lvl-2" href="#changing-a-setting">Changing a setting</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

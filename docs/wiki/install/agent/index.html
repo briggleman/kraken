@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Install an Agent — Kraken wiki</title>
+<meta name="description" content="Put an Agent on every host that will run games — Linux with install.sh and systemd, Windows as a service, Docker where it fits — then enroll it as a node and give it a port range." />
+<link rel="canonical" href="https://krakenserver.io/wiki/install/agent/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/install/agent/" />
+<meta property="og:title" content="Install an Agent — Kraken wiki" />
+<meta property="og:description" content="Put an Agent on every host that will run games — Linux with install.sh and systemd, Windows as a service, Docker where it fits — then enroll it as a node and give it a port range." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Install an Agent — Kraken wiki" />
+<meta name="twitter:description" content="Put an Agent on every host that will run games — Linux with install.sh and systemd, Windows as a service, Docker where it fits — then enroll it as a node and give it a port range." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link is-here" href="/wiki/install/agent/" aria-current="page">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>install</span><i aria-hidden="true">/</i><span aria-current="page">Install an Agent</span></nav>
+    <h1>Install an Agent</h1>
+    <p class="lede">Put an Agent on every host that will run games — Linux with install.sh and systemd, Windows as a service, Docker where it fits — then enroll it as a node and give it a port range.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#linux">Linux</a>
+<a class="toc-link lvl-3" href="#the-unit-and-optkrakenbin">the unit, and /opt/kraken/bin</a>
+<a class="toc-link lvl-3" href="#enroll-after-the-fact">enroll after the fact</a>
+<a class="toc-link lvl-2" href="#windows">Windows</a>
+<a class="toc-link lvl-2" href="#docker">Docker</a>
+<a class="toc-link lvl-2" href="#enrolling-the-node">Enrolling the node</a>
+<a class="toc-link lvl-3" href="#tunnel-or-direct">tunnel or direct</a>
+<a class="toc-link lvl-2" href="#give-the-node-a-port-range">Give the node a port range</a>
+</div></details>
+    <article class="prose">
+<p>One Agent per machine. It talks to that host&#39;s Docker daemon, owns the server
+files on disk, takes the backups and serves SFTP. Bare metal is the main line on
+both operating systems, for the unglamorous reason that the Agent wants the
+host&#39;s Docker socket and the game ports have to land on the host regardless.</p>
+<p>Have the Panel open before you start. Everything here ends at <strong>Settings →
+Nodes → Add node</strong>, which mints the one-time token the Agent enrolls with.</p>
+<h2 id="linux">Linux <a class="hlink" href="#linux" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role agent --tunnel \
+      --panel-url http://&lt;panel-host&gt;:8080 \
+      --enroll-token &lt;one-time-token&gt; \
+      --ca-fingerprint &lt;sha256-from-the-dialog&gt;</code></pre></div>
+<p>The Add node dialog renders that command with the real values already in it.
+Copy it from there rather than typing it.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>flag</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--role agent</code></td>
+<td>installs the Agent and <code>krakenctl</code>, not the Panel</td>
+</tr>
+<tr>
+<td><code>--panel-url</code></td>
+<td>the Panel the token was minted on. Enrollment is an outbound HTTP call to this URL</td>
+</tr>
+<tr>
+<td><code>--enroll-token</code></td>
+<td>the one-time bootstrap token. Single use, and a Panel restart invalidates it</td>
+</tr>
+<tr>
+<td><code>--ca-fingerprint</code></td>
+<td>pins the Panel&#39;s CA. Without it the Agent trusts whatever CA the enrollment answer carries, and the installer warns you about that</td>
+</tr>
+<tr>
+<td><code>--tunnel</code></td>
+<td>reverse-connection mode: the Agent dials the Panel, so this host needs no inbound rule at all</td>
+</tr>
+<tr>
+<td><code>--tunnel-addr</code></td>
+<td>the tunnel endpoint, when it is not <code>&lt;panel-url host&gt;:9443</code> — which it is not when the Panel URL is a proxied domain</td>
+</tr>
+<tr>
+<td><code>--version vX.Y.Z</code></td>
+<td>pin a release instead of resolving the latest</td>
+</tr>
+<tr>
+<td><code>--no-systemd</code></td>
+<td>binaries and config only</td>
+</tr>
+</tbody></table>
+</div>
+<p>The installer downloads the release binaries, <strong>verifies their SHA-256
+checksums</strong>, creates the <code>kraken</code> system user, adds it to the <code>docker</code> group,
+creates <code>/var/lib/kraken</code> plus <code>/etc/kraken</code>, writes <code>/etc/kraken/agent.env</code>,
+installs the unit, and, when you passed a token, starts the service so the
+Agent enrolls on first start.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>journalctl -u kraken-agent -f</code></pre></div>
+<p>Re-running it is safe. It upgrades the binaries and rewrites only the enrollment
+keys, which is also the recovery path for an expired token.</p>
+<h3 id="the-unit-and-optkrakenbin">the unit, and /opt/kraken/bin <a class="hlink" href="#the-unit-and-optkrakenbin" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><a href="https://github.com/briggleman/kraken/blob/main/deploy/systemd/kraken-agent.service"><code>deploy/systemd/kraken-agent.service</code></a>
+runs as <code>kraken</code> with <code>SupplementaryGroups=docker</code>, under the same hardening the
+Panel unit takes. Two details are load-bearing:</p>
+<ul>
+<li><strong><code>ExecStart=/opt/kraken/bin/kraken-agent</code>, not <code>/usr/local/bin</code>.</strong> The Panel
+can push a new Agent build, and the Agent replaces its own binary in place: it
+writes <code>kraken-agent.new</code> beside itself and renames the running file to
+<code>.old</code>, which needs write permission on the <em>directory</em>. <code>/usr/local/bin</code> is
+root-owned and, under <code>ProtectSystem=strict</code>, read-only as well.
+<code>/opt/kraken/bin</code> is kraken-owned and holds one replaceable file.
+<code>/usr/local/bin/kraken-agent</code> stays as a symlink so the command is still on
+<code>PATH</code>.</li>
+<li><strong><code>ReadWritePaths=/var/lib/kraken /etc/kraken /opt/kraken/bin</code>.</strong> Move
+<code>KRAKEN_DATA_DIR</code> or <code>KRAKEN_BACKUP_DIR</code> outside <code>/var/lib/kraken</code> and you
+have to add them here with <code>systemctl edit kraken-agent</code>, or the write fails
+at runtime.</li>
+</ul>
+<h3 id="enroll-after-the-fact">enroll after the fact <a class="hlink" href="#enroll-after-the-fact" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>Installed without a token, or the token expired? Mint a fresh one, then either
+re-run the installer with it or enroll by hand:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo krakenctl enroll -panel http://&lt;panel-host&gt;:8080 -token &lt;one-time-token&gt;
+sudo systemctl restart kraken-agent</code></pre></div>
+<h2 id="windows">Windows <a class="hlink" href="#windows" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>For Windows-native game servers. The Panel and its Postgres stay on a Linux
+host; the Windows machine runs the Agent as a native service. Docker Desktop has
+to be in <strong>Windows containers</strong> mode. It cannot serve Linux and Windows
+containers at once, so that choice is per host.</p>
+<p>In an <strong>elevated</strong> PowerShell:</p>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>iwr -useb https://raw.githubusercontent.com/briggleman/kraken/main/deploy/windows/install.ps1 -OutFile $env:TEMP\kraken-install.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1 `
+  -PanelUrl http://&lt;panel-host&gt;:8080 `
+  -Token &lt;one-time-token&gt; `
+  -CaFingerprint &lt;sha256-from-the-dialog&gt; `
+  -Tunnel</code></pre></div>
+<p>The Add node dialog&#39;s <strong>Windows</strong> tab renders this with the values filled in.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>switch</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>-PanelUrl</code> <code>-Token</code> <code>-CaFingerprint</code></td>
+<td>the same three enrollment values as Linux</td>
+</tr>
+<tr>
+<td><code>-Tunnel</code></td>
+<td>reverse-connection mode. Also skips the firewall rule, because nothing dials in</td>
+</tr>
+<tr>
+<td><code>-TunnelAddr</code></td>
+<td>the tunnel endpoint when it is not <code>&lt;PanelUrl host&gt;:9443</code></td>
+</tr>
+<tr>
+<td><code>-Root</code></td>
+<td>everything lives beneath it. Default <code>C:\kraken</code></td>
+</tr>
+<tr>
+<td><code>-Version</code></td>
+<td>pin a release</td>
+</tr>
+<tr>
+<td><code>-NoFirewall</code> / <code>-NoService</code></td>
+<td>skip those steps</td>
+</tr>
+</tbody></table>
+</div>
+<p>One run downloads and checksum-verifies the binaries into <code>C:\kraken\bin</code>,
+writes <code>C:\kraken\agent.yaml</code> (<code>node_id</code> is the computer name, lowercased;
+<code>node_os: windows</code>), opens a <strong>port-based</strong> firewall rule for TCP 9090 + 2022
+unless <code>-Tunnel</code> was passed, registers the <code>kraken-agent</code> service with delayed
+auto-start and restart-on-failure recovery actions, starts it, and then waits up
+to 60 seconds for the log to say <code>serving with mutual TLS</code>.</p>
+<p>State lives in <code>C:\kraken\state</code>: the mTLS bundle, the SFTP host key, and
+<code>agent.log</code> (JSON, rotated at 10 MiB).</p>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>Get-Content C:\kraken\state\agent.log -Tail 30 -Wait
+C:\kraken\bin\kraken-agent.exe --root C:\kraken --print-config</code></pre></div>
+<p><code>--print-config</code> prints the configuration the Agent resolved, without starting
+it. Fastest answer to &quot;which of the three spellings won&quot;.</p>
+<p>That firewall rule is port-based on purpose. A program-based rule quietly stops
+matching when the binary is renamed or replaced, and a self-update does both.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>Running a second Agent in WSL on the same machine? WSL&#39;s mirrored networking
+makes the distro and the Windows host share one port space, so both Agents
+cannot hold <code>:9090</code>/<code>:2022</code>. Give each its own <code>addr</code> and <code>sftp_addr</code> (<code>:9091</code>
+and <code>:2023</code> on the Windows side), then split the game-port pools into
+non-overlapping ranges in the Panel&#39;s node settings. A tunnel-mode Agent
+survives losing that race and reports the conflict; a direct-mode one will not
+start.</p>
+</div>
+</aside>
+
+
+<h2 id="docker">Docker <a class="hlink" href="#docker" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>An Agent can run as a container, from
+<a href="https://github.com/briggleman/kraken/blob/main/deploy/agent.Dockerfile"><code>deploy/agent.Dockerfile</code></a>
+as image <code>ghcr.io/briggleman/kraken-agent</code>, and the compose stack&#39;s third
+service does that. It wants <code>network_mode: host</code> and <code>/var/run/docker.sock</code>,
+because it launches game containers on the host&#39;s daemon and their ports have to
+be reachable from the LAN.</p>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>agent</b><span class="p">:</span></span><span class="l">  <b>image</b><span class="p">:</span> <i>ghcr.io/briggleman/kraken-agent:latest</i></span><span class="l">  <b>network_mode</b><span class="p">:</span> <i>host</i></span><span class="l">  <b>environment</b><span class="p">:</span></span><span class="l">    <b>KRAKEN_AGENT_ADDR</b><span class="p">:</span> <i>127.0.0.1:9090</i></span><span class="l">    <b>KRAKEN_DATA_DIR</b><span class="p">:</span> <i>/var/lib/kraken/server-data</i></span><span class="l">    <b>KRAKEN_STATE_DIR</b><span class="p">:</span> <i>/var/lib/kraken</i></span><span class="l">    <b>KRAKEN_PANEL_URL</b><span class="p">:</span> <i>http://127.0.0.1:8080</i></span><span class="l">  <b>volumes</b><span class="p">:</span></span><span class="l">    <span class="p">-</span> <b>/var/run/docker.sock</b><span class="p">:</span><i>/var/run/docker.sock</i></span><span class="l">    <span class="p">-</span> <b>/var/lib/kraken/server-data</b><span class="p">:</span><i>/var/lib/kraken/server-data</i></span><span class="l">    <span class="p">-</span> <b>agent-state</b><span class="p">:</span><i>/var/lib/kraken</i></span></pre></div>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>Mount the data root at the same absolute path on both sides.</strong> The Agent hands
+bind sources to the <em>host&#39;s</em> Docker daemon, which resolves them on the host, so
+a container-only path like <code>/data</code> sends game servers to a different directory
+than the Agent&#39;s file browser, backups and SFTP are looking at. Where you truly
+cannot match the paths, set <code>KRAKEN_HOST_DATA_DIR</code> to the host path.</p>
+</div>
+</aside>
+
+
+<p>Handing a container the Docker socket gives it the host&#39;s daemon. A bare-metal
+Agent holds the same authority, which is why the Agent&#39;s gRPC in this stack
+binds <code>127.0.0.1:9090</code>: Agent gRPC has no application-level auth, mTLS is the
+whole trust boundary, and a plaintext listener on a LAN address hands the socket
+to any peer that can reach it. The Agent refuses to serve plaintext gRPC on a
+non-loopback address unless <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> says so out loud.</p>
+<p>Windows nodes cannot take this path. Compose&#39;s host networking is Linux-only,
+and Windows-container game servers need the host&#39;s Windows daemon.</p>
+<h2 id="enrolling-the-node">Enrolling the node <a class="hlink" href="#enrolling-the-node" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Enrollment is how an Agent gets the mTLS bundle it serves with: one outbound
+HTTP call from the Agent to the Panel, answered with a signed certificate.</p>
+<ol>
+<li><strong>Settings → Nodes → Add node</strong> in the Panel.</li>
+<li>Mint a <strong>one-time enrollment token</strong>. Single-use, expires in about 15
+minutes, and a Panel restart invalidates it. An expired token costs you
+nothing: mint another and re-run the installer.</li>
+<li>Copy the <strong>CA fingerprint</strong> shown beside it. The Agent refuses any CA whose
+SHA-256 does not match, which is what stops something else answering the
+enrollment call.</li>
+<li>Choose <strong>tunnel</strong> or <strong>direct</strong>. Tunnel is the default for new nodes.</li>
+<li>Run the install command on the host. The Agent generates a key, exchanges the
+token for a certificate, persists the bundle, reports its addresses so the
+dialog can prefill itself, and starts serving.</li>
+<li>Confirm the address in the dialog and register the node.</li>
+</ol>
+<!-- SCREENSHOT: the Add node dialog with a freshly minted enrollment token, CA fingerprint and the rendered Linux install command, with tunnel mode selected -->
+<p class="shot"><em>screenshot: the Add node dialog with a freshly minted enrollment token, CA fingerprint and the rendered Linux install command, with tunnel mode selected</em></p>
+
+
+<p>The bundle lands in the Agent&#39;s state directory: <code>agent.pem</code>, <code>agent-key.pem</code>
+and <code>ca.pem</code> under <code>/var/lib/kraken</code> on Linux or <code>C:\kraken\state</code> on Windows.
+(<code>krakenctl enroll -out &lt;root&gt;/certs</code> writes the same three files to
+<code>&lt;root&gt;/certs</code>, which the Agent adopts on its own once all three exist.) That
+bundle <strong>is</strong> the node&#39;s identity. It survives restarts, it is what the Panel
+authenticates, and the Panel rotates it as expiry approaches. Delete it and the
+node needs a fresh token.</p>
+<aside class="callout is-security">
+<span class="callout-k">security</span>
+<div class="callout-b"><p>An enrollment token is a credential. It is single-use and short-lived, but
+between minting and use it is enough to obtain a signed Agent certificate.
+Treat it like a password, and prefer pasting the whole rendered command over
+mailing the token around. The CA fingerprint is not secret; it is a pin, and
+enrolling without one means trusting whatever CA answers.</p>
+</div>
+</aside>
+
+
+<h3 id="tunnel-or-direct">tunnel or direct <a class="hlink" href="#tunnel-or-direct" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><strong>Tunnel</strong>: the Agent holds one outbound mTLS connection to the Panel&#39;s <code>:9443</code>
+listener and everything rides it — deploys, console, stats, file operations,
+backups, self-update. No inbound firewall rules, and it works behind NAT you do
+not control. The Panel fronts each tunnel node&#39;s SFTP on a per-node port of its
+own, allocated upward from <code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default 2222),
+forwarding the raw SSH stream to the node, so the Panel never terminates SSH and
+the host key stays on the Agent.</p>
+<p><strong>Direct</strong>: the Panel dials the node on <code>:9090</code>. Fewer moving parts, and on a
+LAN you own that is a real argument for it. The node has to accept inbound TCP
+9090, plus 2022 for SFTP. Enrollment succeeding proves nothing about that, since
+enrollment is outbound; a freshly enrolled node sitting <strong>offline</strong> is usually a
+blocked inbound port. See <a href="/wiki/configure/network/">ports and firewall</a>.</p>
+<p>Which to pick? Tunnel unless you have a reason. It is the default because the
+inbound rule is where most installs come apart, and a node you cannot reach is
+worse than a hop you cannot see.</p>
+<h2 id="give-the-node-a-port-range">Give the node a port range <a class="hlink" href="#give-the-node-a-port-range" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A newly registered node has no game-port pool until you give it one. The
+reference range is <code>28000–28999</code>.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>A node with no port range is online and unschedulable.</strong> The node reports in,
+its vitals move, nothing looks wrong, and every deploy fails with &quot;no node can
+host this spec&quot; because the scheduler has nowhere to put the game&#39;s ports. When
+a deploy is refused and the fleet looks healthy, check the range first.</p>
+</div>
+</aside>
+
+
+<p>Game ports are published <strong>1:1</strong>: the port the Panel assigns is the port on the
+host and the port players connect to. Forward them on your router, and keep the
+pools non-overlapping where two Agents share a port space.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/install/panel/from-source/"><span class="pg-k">previous</span><span class="pg-t">Panel from source</span></a>
+      <a class="pg next" href="/wiki/install/upgrade/"><span class="pg-k">next</span><span class="pg-t">Upgrading<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/install/agent/index.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/install/agent/index.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#linux">Linux</a>
+<a class="toc-link lvl-3" href="#the-unit-and-optkrakenbin">the unit, and /opt/kraken/bin</a>
+<a class="toc-link lvl-3" href="#enroll-after-the-fact">enroll after the fact</a>
+<a class="toc-link lvl-2" href="#windows">Windows</a>
+<a class="toc-link lvl-2" href="#docker">Docker</a>
+<a class="toc-link lvl-2" href="#enrolling-the-node">Enrolling the node</a>
+<a class="toc-link lvl-3" href="#tunnel-or-direct">tunnel or direct</a>
+<a class="toc-link lvl-2" href="#give-the-node-a-port-range">Give the node a port range</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

@@ -207,6 +207,21 @@ jobs:
         run: npm run check:csp
         working-directory: web
 
+      # The wiki at krakenserver.io/wiki/ is generated from docs/wiki-src and
+      # from internal/panel/config/config.go, and the OUTPUT is committed so
+      # GitHub Pages can serve it. Regenerating here catches both halves of the
+      # drift: sources edited without rebuilding, and a config.go change whose
+      # env-var reference nobody regenerated. The build is deterministic, so a
+      # diff means stale, never flaky.
+      #
+      # The node-version pin above is load-bearing for this step: the generator
+      # imports the Panel's own highlighter (web/src/lib/spechl.ts) rather than
+      # reimplementing it, so it needs a Node that strips TypeScript types.
+      # Node 24 does; the script checks and says so before failing.
+      - name: wiki drift gate (docs/wiki matches docs/wiki-src)
+        run: npm run check:wiki
+        working-directory: web
+
       - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web

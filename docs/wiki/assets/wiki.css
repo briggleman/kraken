@@ -1,0 +1,548 @@
+/* ============================================================
+   KRAKEN WIKI — the Abyssal design language on a reading surface.
+   Hand-written from DESIGN.md's tokens. Not generated, and NOT the
+   app's stylesheet: web/src/styles/house.css is generated from the
+   living mock and must never be imported here (a doc page has no
+   pane, no deck and no event floor to style).
+
+   One departure from DESIGN.md, stated rather than smuggled: the
+   house forbids a sidebar and top navigation. That rule is about
+   the PANE — one full-bleed operations screen with drill-ins and
+   no routes. A wiki is the opposite kind of object: many URLs, read
+   top to bottom, entered from a search result in the middle. It
+   inherits the world — one warm light on cold water, gold-tinted
+   hairlines, panel material, tracked-caps labels, mono for anything
+   a machine produced — and takes the two structures a document
+   cannot do without.
+
+   Everything else is house law. No pure grays, whites or blacks;
+   alphas come from the --*-rgb channel tokens; gold means alive and
+   is never spent on decoration; violet means something is prevented;
+   magenta means you cannot take it back.
+   ============================================================ */
+
+@font-face{
+  font-family:'Archivo';
+  src:url(/assets/fonts/archivo-latin.woff2) format('woff2');
+  font-weight:400 700;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:'Spline Sans Mono';
+  src:url(/assets/fonts/spline-sans-mono-latin.woff2) format('woff2');
+  font-weight:300 500;font-style:normal;font-display:swap;
+}
+
+:root{
+  --d0:#050d14; --d1:#071521; --d2:#0a1e2c; --void:#02090E;
+
+  --lumen:#ffc266;
+  --lumen-rgb:255, 194, 102;
+  --lumen-soft:rgba(var(--lumen-rgb), 0.09);
+  --edge:rgba(var(--lumen-rgb), 0.16);
+
+  --ok:#d8b46a; --ok-rgb:216, 180, 106;
+  --caution:#9d8cff; --caution-rgb:157, 140, 255;
+  --crisis:#ff4d9d; --crisis-rgb:255, 77, 157;
+
+  --ink:#f5dfc1;
+  --ink-2:#b6a894; --ink-2-rgb:182, 168, 148;
+  --ink-3:#7d7160; --ink-3-rgb:125, 113, 96;
+
+  --ui:"Archivo","Segoe UI",sans-serif;
+  --mono:"Spline Sans Mono","Consolas",monospace;
+
+  --wrap:1420px;
+  --gut:clamp(16px, 2.4vw, 34px);
+  --measure:68ch;
+  --top-h:60px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--top-h) + 20px)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+html,body{max-width:100%}
+/* `clip`, not `hidden`: hidden makes the element a scroll container, and a
+   scroll container between the viewport and a sticky element is why the
+   contents rail, the on-this-page rail and the identity strip would all
+   scroll away. `clip` contains the same overflow without one. */
+body{overflow-x:clip}
+
+body{
+  font-family:var(--ui);
+  background:var(--void);
+  color:var(--ink);
+  font-size:16px;line-height:1.66;
+  -webkit-font-smoothing:antialiased;
+  font-synthesis-weight:none;
+}
+
+/* ---------- the water column, fixed behind a page that scrolls ---------- */
+.bg-depth,.bg-fog-glow,.bg-vignette{position:fixed;inset:0;pointer-events:none}
+.bg-depth{z-index:-3;background:linear-gradient(180deg,#0d3340 0%,#082530 34%,#04141B 64%,#02090E 100%)}
+.bg-fog-glow{
+  z-index:-2;opacity:.6;
+  background:radial-gradient(120% 70% at 50% 120%,rgba(3,28,33,.9),transparent 55%);
+}
+.bg-vignette{z-index:-1;box-shadow:inset 0 0 300px 70px rgba(1,9,14,.78)}
+
+/* ---------- browser surfaces wear the house too ---------- */
+::selection{background:var(--lumen);color:var(--d0)}
+:focus-visible{outline:2px solid var(--lumen);outline-offset:3px;border-radius:3px}
+html{scrollbar-width:thin;scrollbar-color:rgba(var(--lumen-rgb),.35) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(var(--lumen-rgb),.3);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(var(--lumen-rgb),.45)}
+
+a{color:inherit;text-decoration:none}
+b,strong{font-weight:700;color:var(--ink)}
+.mono{font-family:var(--mono);font-weight:300;font-variant-numeric:tabular-nums}
+
+.skip{
+  position:absolute;left:-9999px;top:0;z-index:99;
+  background:var(--d2);border:1px solid var(--edge);border-radius:4px;
+  padding:10px 16px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--lumen);
+}
+.skip:focus{left:var(--gut);top:10px}
+
+/* ============================================================
+   IDENTITY STRIP — the same one the landing page wears, so moving
+   between / and /wiki/ never reads as two sites.
+   ============================================================ */
+.top{
+  position:sticky;top:0;z-index:50;
+  background:rgba(2,9,14,.78);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--edge);
+}
+.top-in{
+  display:flex;align-items:center;gap:clamp(10px,1.6vw,22px);
+  height:var(--top-h);max-width:var(--wrap);margin-inline:auto;padding-inline:var(--gut);
+}
+.kr-lock{display:inline-flex;align-items:baseline;gap:.43em;font-size:18px}
+.kr-lock.sm{font-size:16px}
+.kr-glyph{
+  display:block;flex:0 0 auto;align-self:center;
+  width:1.095em;aspect-ratio:398 / 429;
+  background:url(/assets/kraken-glyph-teal.png) center / contain no-repeat;
+  filter:brightness(0) invert(84%) sepia(48%) saturate(600%) hue-rotate(338deg) brightness(101%)
+         drop-shadow(0 0 14px rgba(var(--lumen-rgb),.4));
+}
+.kr-word{font-weight:700;font-size:1em;letter-spacing:.34em;color:var(--ink)}
+.top-tag{
+  font-size:10px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:var(--ink-3);
+  padding-left:clamp(10px,1.6vw,18px);border-left:1px solid var(--edge);align-self:stretch;
+  display:flex;align-items:center;
+}
+.top-nav{margin-left:auto;display:flex;align-items:center;gap:clamp(10px,1.6vw,22px)}
+.top-nav a.link{
+  font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--ink-3);padding:8px 2px;transition:color .2s;
+}
+.top-nav a.link:hover{color:var(--ink)}
+.stamp{
+  font-size:11.5px;color:var(--ink-3);
+  padding-left:clamp(10px,1.4vw,18px);border-left:1px solid rgba(var(--ink-3-rgb),.3);
+}
+.nav-toggle{
+  display:none;background:none;border:1px solid var(--edge);border-radius:4px;
+  padding:7px;color:var(--ink-2);cursor:pointer;
+}
+.nav-toggle svg{display:block;width:17px;height:17px}
+
+/* ============================================================
+   SHELL — contents rail · document · on-this-page rail
+   ============================================================ */
+.shell{
+  display:grid;
+  grid-template-columns:minmax(0,232px) minmax(0,1fr) minmax(0,204px);
+  gap:clamp(20px,3vw,48px);
+  max-width:var(--wrap);margin-inline:auto;padding:0 var(--gut);
+  align-items:start;
+}
+
+/* ---------- contents ---------- */
+.side{
+  position:sticky;top:var(--top-h);
+  max-height:calc(100vh - var(--top-h));overflow-y:auto;
+  padding:clamp(22px,2.6vw,34px) clamp(14px,1.4vw,20px) 40px 0;
+  border-right:1px solid rgba(var(--lumen-rgb),.10);
+}
+.nav-sec{margin-bottom:22px}
+.nav-sec summary{
+  list-style:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:0 0 9px;margin-bottom:8px;border-bottom:1px solid var(--edge);
+}
+.nav-sec summary::-webkit-details-marker{display:none}
+.nav-sec-t{
+  font-size:10.5px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--ink-3);transition:color .2s;
+}
+.nav-sec[data-here] .nav-sec-t{color:var(--lumen)}
+.nav-sec summary:hover .nav-sec-t{color:var(--ink-2)}
+.nav-sec summary::after{
+  content:'';width:7px;height:7px;flex:none;
+  border-right:1px solid rgba(var(--ink-3-rgb),.7);border-bottom:1px solid rgba(var(--ink-3-rgb),.7);
+  transform:rotate(45deg) translate(-2px,-2px);transition:transform .2s;
+}
+.nav-sec[open] summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+.nav-link{
+  display:block;padding:6px 0 6px 11px;
+  border-left:1px solid transparent;
+  font-size:14.5px;color:var(--ink-2);line-height:1.4;
+  transition:color .18s,border-color .18s;
+}
+.nav-link:hover{color:var(--ink)}
+.nav-link.is-here{
+  color:var(--lumen);font-weight:600;
+  border-left-color:var(--lumen);
+  text-shadow:0 0 18px rgba(var(--lumen-rgb),.35);
+}
+.nav-kids{margin-left:11px;border-left:1px solid rgba(var(--ink-3-rgb),.2)}
+.nav-kids .nav-link{font-size:13.5px;color:var(--ink-3)}
+.nav-kids .nav-link:hover{color:var(--ink-2)}
+.nav-kids .nav-link.is-here{color:var(--lumen)}
+
+/* ---------- the document ---------- */
+.doc{padding:clamp(24px,3vw,44px) 0 clamp(50px,6vw,90px);min-width:0}
+.crumbs{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  font-size:10.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:16px;
+}
+.crumbs a{transition:color .18s}
+.crumbs a:hover{color:var(--lumen)}
+.crumbs i{color:rgba(var(--lumen-rgb),.35);font-style:normal}
+.crumbs [aria-current]{color:var(--ink-2)}
+
+.doc h1{
+  font-weight:700;font-size:clamp(28px,3.4vw,46px);letter-spacing:.02em;
+  line-height:1.08;text-wrap:balance;max-width:20ch;
+}
+.lede{
+  color:var(--ink-2);max-width:var(--measure);
+  font-size:clamp(15px,1.05vw,18px);line-height:1.6;text-wrap:pretty;
+  margin-top:14px;padding-bottom:22px;border-bottom:1px solid var(--edge);
+}
+
+/* ---------- prose ---------- */
+.prose{max-width:var(--measure);padding-top:8px}
+.prose > *{margin-top:18px}
+.prose > :first-child{margin-top:0}
+.prose h2{
+  font-weight:700;font-size:clamp(21px,1.8vw,28px);letter-spacing:.02em;line-height:1.18;
+  margin-top:56px;padding-top:22px;border-top:1px solid rgba(var(--lumen-rgb),.11);
+  text-wrap:balance;
+}
+.prose h3{
+  font-weight:700;font-size:clamp(16px,1.15vw,19px);letter-spacing:.02em;
+  margin-top:38px;color:var(--ink);
+}
+.prose h4{
+  font-size:11px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--ink-3);margin-top:30px;
+}
+.prose p{color:var(--ink-2);text-wrap:pretty}
+.prose a:not(.hlink){
+  color:var(--ink);border-bottom:1px solid rgba(var(--lumen-rgb),.38);
+  transition:color .18s,border-color .18s;
+}
+.prose a:not(.hlink):hover{color:var(--lumen);border-color:var(--lumen)}
+.prose ul,.prose ol{padding-left:20px;color:var(--ink-2)}
+.prose li{margin-top:7px}
+.prose li::marker{color:rgba(var(--lumen-rgb),.5)}
+.prose li > ul,.prose li > ol{margin-top:6px}
+.prose hr{border:0;border-top:1px solid var(--edge);margin-top:34px}
+.prose blockquote{
+  border-left:1px solid rgba(var(--lumen-rgb),.35);padding-left:18px;color:var(--ink-2);font-style:italic;
+}
+
+/* Mono means measured: machine strings only, never prose. */
+code{font-family:var(--mono);font-weight:400;font-size:.9em;color:var(--ink)}
+.prose p code,.prose li code,.prose td code,.prose th code{
+  background:rgba(var(--lumen-rgb),.07);border:1px solid rgba(var(--lumen-rgb),.13);
+  border-radius:3px;padding:1px 5px;color:var(--ink);overflow-wrap:anywhere;
+}
+
+.hlink{
+  display:inline-flex;vertical-align:middle;margin-left:9px;
+  color:var(--ink-3);opacity:0;transition:opacity .18s,color .18s;
+}
+.hlink svg{width:14px;height:14px}
+h2:hover .hlink,h3:hover .hlink,.hlink:focus-visible{opacity:1}
+.hlink:hover{color:var(--lumen)}
+@media (hover:none){.hlink{opacity:.55}}
+
+/* ---------- the house Command Block ----------
+   It wraps rather than scrolling sideways: a command is read in full
+   before it is run, and a flag hidden behind a drag is a flag nobody
+   read. Folded lines take a hanging indent so a continuation is
+   visibly a continuation and not a new argument. */
+.cmd{
+  position:relative;
+  background:rgba(2,9,14,.6);border:1px solid var(--edge);border-radius:6px;
+  box-shadow:inset 0 1px 0 rgba(var(--lumen-rgb),.05);
+  padding:16px 14px 16px calc(14px + 3ch);
+}
+.cmd pre{overflow:visible}
+.cmd code{
+  display:block;font-family:var(--mono);font-weight:300;font-size:12.5px;line-height:1.85;
+  color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere;
+  text-indent:-3ch;
+}
+.cmd[data-lang]:not([data-lang=""])::before{
+  content:attr(data-lang);
+  position:absolute;top:-1px;left:14px;
+  font-size:9px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--ink-3);background:var(--void);padding:0 7px;transform:translateY(-50%);
+}
+.cmd-copy{
+  position:absolute;top:8px;right:8px;
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(2,9,14,.9);border:1px solid rgba(var(--ink-3-rgb),.4);border-radius:3px;
+  padding:3px 9px;cursor:pointer;
+  font-family:var(--ui);font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--ink-3);opacity:0;
+  transition:opacity .18s,color .18s,border-color .18s;
+}
+.cmd-copy svg{width:12px;height:12px}
+.cmd:hover .cmd-copy,.cmd:focus-within .cmd-copy{opacity:1}
+.cmd-copy:hover{color:var(--ink);border-color:rgba(var(--ink-2-rgb),.5)}
+.cmd-copy.did{color:var(--lumen);border-color:rgba(var(--lumen-rgb),.45);opacity:1}
+/* No hover to reveal it with — a control that can only be found by
+   pointing is not a control on a phone. */
+@media (hover:none){.cmd-copy{opacity:1}}
+
+/* ---------- spec code: the same block, wearing the editor's colours ----------
+   A YAML or JSON block is tokenised by the Panel's own highlighter
+   (web/src/lib/spechl.ts), so the classes below are the ones DESIGN.md's
+   "Spec code editor" section documents, with the values copied from
+   web/src/styles/house.css rather than re-invented.
+
+   This is the Editor-Palette Exception from DESIGN.md, applied to a stateless
+   code view in the wiki. The reasoning carries over unchanged: a code block
+   reports no server state, so Caution Violet and Crisis Magenta carry no
+   "warning" or "danger" meaning here and are free to do colour work.
+
+   The exception stops at this selector. These roles must never leak onto the
+   wiki's callouts, where violet and magenta ARE semantics — a warning callout
+   painted in the same violet as a YAML key would make both meaningless. */
+.cmd.spec-code{padding:16px 14px}
+.spec-code pre{
+  font-family:var(--mono);font-weight:300;font-size:12.5px;line-height:1.85;
+  color:rgba(var(--ink-3-rgb),.75);tab-size:2;
+}
+/* every source line is its own block, so a line long enough to wrap hangs
+   under its own key instead of restarting at the margin */
+.spec-code .l{
+  display:block;white-space:pre-wrap;overflow-wrap:anywhere;
+  text-indent:-3ch;padding-left:3ch;
+}
+.spec-code b{color:var(--caution);font-weight:400}
+.spec-code i{font-style:normal;color:#3fb69b} /* lightened Spectrum Deep Teal (#1a7a6d) for legibility */
+.spec-code .n{color:var(--ok)}
+.spec-code .k{color:var(--crisis)}
+.spec-code .p{color:#2a9a89} /* structural punctuation: the green scaffold the pairs hang on — one step under the string teal so a value stays in front of its own brackets */
+.spec-code .t{
+  color:var(--lumen);
+  text-decoration:underline dotted rgba(var(--lumen-rgb), 0.5);text-underline-offset:2px;
+}
+.spec-code em{font-style:normal;color:var(--ink-3)}
+
+/* ---------- tables ---------- */
+.tbl,.prose table{width:100%}
+.tbl{overflow-x:auto;border:1px solid var(--edge);border-radius:6px;background:rgba(5,13,20,.5)}
+.prose table{border-collapse:collapse;font-size:14px}
+.prose table:not(.envs){min-width:460px}
+.prose th{
+  text-align:left;padding:11px 14px;white-space:nowrap;
+  font-size:10px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1px solid var(--edge);
+}
+.prose td{
+  padding:11px 14px;vertical-align:top;color:var(--ink-2);line-height:1.55;
+  border-bottom:1px solid rgba(var(--ink-3-rgb),.14);
+}
+.prose tr:last-child td{border-bottom:none}
+.prose tbody tr{transition:background .18s}
+.prose tbody tr:hover{background:rgba(var(--lumen-rgb),.05)}
+
+/* The generated env reference. The variable name is a machine value and never
+   folds — a wrapped KRAKEN_BOOTSTRAP_ADMIN_PASSWORD is two things that look
+   like one — so the column is sized by the longest name and the default rides
+   beneath it. */
+table.envs td:first-child{white-space:nowrap}
+table.envs td:first-child code{
+  display:block;background:none;border:none;padding:0;color:var(--lumen);font-size:12.5px;
+}
+table.envs .def{
+  display:block;margin-top:4px;
+  font-family:var(--mono);font-weight:300;font-size:11.5px;color:var(--ink-3);
+}
+table.envs .def b{font-weight:400;color:var(--ink-2)}
+table.envs .nil{color:var(--ink-3)}
+table.envs td:last-child{min-width:34ch;white-space:normal}
+
+/* ---------- callouts ----------
+   note says something quietly; warning takes Caution Violet because
+   something is prevented; security takes Crisis Magenta because it
+   marks the things you cannot take back. */
+.callout{
+  display:grid;gap:8px;
+  border:1px solid var(--edge);border-radius:6px;
+  padding:15px 17px;background:rgba(5,13,20,.55);
+}
+.callout-k{
+  font-size:10px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--ink-3);
+}
+.callout-b > *{margin-top:10px}
+.callout-b > :first-child{margin-top:0}
+.callout-b p{color:var(--ink-2)}
+.callout.is-warning{border-color:rgba(var(--caution-rgb),.42);background:rgba(var(--caution-rgb),.05)}
+.callout.is-warning .callout-k{color:var(--caution)}
+.callout.is-security{border-color:rgba(var(--crisis-rgb),.4);background:rgba(var(--crisis-rgb),.05)}
+.callout.is-security .callout-k{color:var(--crisis)}
+
+/* ---------- screenshot placeholder ----------
+   The dashed edge is the mark the house already spends on data that
+   is real-but-not-yours / different-in-kind. Nothing here is a
+   screenshot yet, and the page says so rather than pretending. */
+.shot{
+  border:1px dashed rgba(var(--ink-3-rgb),.5);border-radius:4px;
+  padding:14px 16px;color:var(--ink-3);font-size:13.5px;
+}
+.shot em{font-style:italic}
+
+/* ---------- pager + page footer ---------- */
+.pager{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;
+  max-width:var(--measure);margin-top:56px;padding-top:22px;border-top:1px solid var(--edge);
+}
+.pg{
+  display:grid;gap:5px;padding:12px 0;min-width:0;
+  border-bottom:1px solid transparent;transition:border-color .18s;
+}
+.pg.next{text-align:right}
+.pg-k{font-size:10px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--ink-3)}
+.pg-t{
+  display:inline-flex;align-items:center;gap:8px;
+  font-weight:600;font-size:15px;color:var(--ink-2);transition:color .18s;
+}
+.pg.next .pg-t{justify-content:flex-end}
+.pg-t svg{width:14px;height:14px;flex:none}
+.pg:hover .pg-t{color:var(--lumen)}
+.pg:hover{border-bottom-color:rgba(var(--lumen-rgb),.35)}
+
+.doc-foot{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 20px;
+  max-width:var(--measure);margin-top:26px;padding-top:16px;
+  border-top:1px solid rgba(var(--ink-3-rgb),.16);
+  font-size:12.5px;color:var(--ink-3);
+}
+.doc-foot .mono{font-size:11.5px}
+.edit{
+  color:var(--ink-2);border-bottom:1px solid rgba(var(--lumen-rgb),.3);padding-bottom:2px;
+  transition:color .18s,border-color .18s;
+}
+.edit:hover{color:var(--lumen);border-color:var(--lumen)}
+
+/* ---------- on this page ---------- */
+.rail{
+  position:sticky;top:var(--top-h);
+  max-height:calc(100vh - var(--top-h));overflow-y:auto;
+  padding:clamp(28px,3vw,50px) 0 40px;
+}
+.rail-k{
+  display:block;font-size:10px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--ink-3);padding-bottom:10px;margin-bottom:6px;border-bottom:1px solid var(--edge);
+}
+.toc{display:grid}
+.toc-link{
+  padding:5px 0 5px 12px;border-left:1px solid rgba(var(--ink-3-rgb),.22);
+  font-size:13px;line-height:1.4;color:var(--ink-3);
+  transition:color .18s,border-color .18s;
+}
+.toc-link.lvl-3{padding-left:24px;font-size:12.5px}
+.toc-link:hover{color:var(--ink-2)}
+.toc-link.is-here{color:var(--lumen);border-left-color:var(--lumen)}
+.toc-in{display:none}
+
+/* ---------- site footer ---------- */
+.site-foot{border-top:1px solid var(--edge);margin-top:20px}
+.foot-in{
+  display:flex;flex-wrap:wrap;align-items:center;gap:14px 26px;
+  max-width:var(--wrap);margin-inline:auto;padding:26px var(--gut) 44px;
+}
+.foot-links{display:flex;flex-wrap:wrap;gap:8px 22px;margin-left:auto}
+.foot-links a{font-family:var(--mono);font-weight:300;font-size:12.5px;color:var(--ink-2);transition:color .2s}
+.foot-links a:hover{color:var(--lumen)}
+.signoff{
+  width:100%;padding-top:18px;border-top:1px solid rgba(var(--ink-3-rgb),.14);
+  font-size:12px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;
+}
+.signoff .sep{color:rgba(var(--lumen-rgb),.3)}
+
+/* ============================================================
+   RESPONSIVE — three structural collapses, each catching one
+   specific failure rather than a device class.
+   ============================================================ */
+
+/* 1180px: the on-this-page rail has no room left; the same list
+   moves into the document as a disclosure above the prose. */
+@media (max-width:1180px){
+  .shell{grid-template-columns:minmax(0,220px) minmax(0,1fr)}
+  .rail{display:none}
+  .toc-in{display:block;max-width:var(--measure);margin-top:20px}
+  .toc-in summary{
+    list-style:none;cursor:pointer;padding:10px 0;
+    font-size:10px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--ink-3);
+    border-bottom:1px solid var(--edge);
+  }
+  .toc-in summary::-webkit-details-marker{display:none}
+  .toc-in summary:hover{color:var(--ink-2)}
+  .toc-in .toc{padding-top:10px}
+}
+
+/* 700px: the env reference stops being a table. Two columns of a 27-row
+   reference behind a sideways drag is not a reference; each variable becomes
+   its own block, name over default over description, and the header — which
+   only ever said "variable / what it does" — goes away with the columns. */
+@media (max-width:700px){
+  table.envs,table.envs tbody,table.envs tr,table.envs td{display:block;width:auto;min-width:0}
+  table.envs{min-width:0}
+  table.envs thead{display:none}
+  table.envs tr{padding:13px 14px;border-bottom:1px solid rgba(var(--ink-3-rgb),.14)}
+  table.envs tr:last-child{border-bottom:none}
+  table.envs td{padding:0;border-bottom:none}
+  table.envs td:last-child{margin-top:8px}
+}
+
+/* 900px: the contents rail becomes a drawer under the identity strip. */
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .nav-toggle{display:block;margin-left:auto;order:3}
+  .top-nav{margin-left:0;order:4;gap:12px}
+  .top-nav a.link{display:none}
+  .side{
+    position:static;max-height:none;overflow:visible;
+    display:none;border-right:none;border-bottom:1px solid var(--edge);
+    padding:18px 0 22px;
+  }
+  .side.open{display:block}
+  .doc{padding-top:26px}
+}
+
+/* 420px: the identity strip keeps the lockup and the drawer, and
+   gives up the version stamp — it is repeated in the footer. */
+@media (max-width:420px){
+  body{font-size:15.5px}
+  .top-tag,.stamp{display:none}
+  .pager{grid-template-columns:minmax(0,1fr)}
+  .pg.next{text-align:left}
+  .pg.next .pg-t{justify-content:flex-start}
+  .pg.is-empty{display:none}
+  .cmd{padding-left:calc(12px + 2ch);padding-right:12px}
+  .cmd code{font-size:12px;text-indent:-2ch}
+  .prose table:not(.envs){min-width:380px}
+}

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kraken wiki — Start here</title>
+<meta name="description" content="What Kraken is, the five words the rest of the documentation uses, how the pieces talk to each other, and where to go next." />
+<link rel="canonical" href="https://krakenserver.io/wiki/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/" />
+<meta property="og:title" content="Kraken wiki — Start here" />
+<meta property="og:description" content="What Kraken is, the five words the rest of the documentation uses, how the pieces talk to each other, and where to go next." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Kraken wiki — Start here" />
+<meta name="twitter:description" content="What Kraken is, the five words the rest of the documentation uses, how the pieces talk to each other, and where to go next." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link is-here" href="/wiki/" aria-current="page">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    
+    <h1>Start here</h1>
+    <p class="lede">What Kraken is, the five words the rest of the documentation uses, how the pieces talk to each other, and where to go next.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-five-words">The five words</a>
+<a class="toc-link lvl-2" href="#how-it-fits-together">How it fits together</a>
+<a class="toc-link lvl-2" href="#placement-one-spec-three-platforms">Placement: one spec, three platforms</a>
+<a class="toc-link lvl-2" href="#how-to-read-the-rest-of-this">How to read the rest of this</a>
+</div></details>
+    <article class="prose">
+<p>Kraken is a self-hosted control plane for dedicated game servers. One <strong>Panel</strong>
+drives a lightweight <strong>Agent</strong> on each host you own, and every Agent runs your
+servers as Docker containers: on Linux, on native Windows, or under Wine, all
+from one declarative <strong>Game Spec</strong>.</p>
+<p>Two binaries and Postgres. The Panel embeds the web UI, so you are not also
+running a static host, a message broker, a cache, or Kubernetes. It works with
+no outbound internet at all; the Cloudflare and UniFi integrations are optional
+and degrade cleanly when unconfigured.</p>
+<p>Kraken is free software under GPL-3.0.</p>
+<h2 id="the-five-words">The five words <a class="hlink" href="#the-five-words" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The rest of the wiki leans on these five, and means this by them.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>word</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Panel</strong></td>
+<td>the control plane. One per fleet. Go, REST + WebSocket, source of truth in Postgres. It embeds the web UI.</td>
+</tr>
+<tr>
+<td><strong>Agent</strong></td>
+<td>the per-host daemon. One per machine. It talks to that host&#39;s Docker daemon, owns the files on disk, takes the backups, and serves SFTP.</td>
+</tr>
+<tr>
+<td><strong>Node</strong></td>
+<td>a host the Panel manages: the machine, plus the Agent on it, plus its port pool. Health is three states — <code>online</code>, <code>partial</code>, <code>offline</code>.</td>
+</tr>
+<tr>
+<td><strong>Game Spec</strong></td>
+<td>the declarative game definition (the &quot;egg&quot; equivalent): install script, per-platform image, startup command, ports, settings, config templates.</td>
+</tr>
+<tr>
+<td><strong>Server</strong></td>
+<td>one deployed game instance, running on one node from one spec. All the servers across all the nodes are the <strong>fleet</strong>.</td>
+</tr>
+</tbody></table>
+</div>
+<p>Learn <code>partial</code> before you meet it. The Agent answers, its Docker daemon does
+not, and the node is deliberately not schedulable, because nothing placed there
+could start.</p>
+<h2 id="how-it-fits-together">How it fits together <a class="hlink" href="#how-it-fits-together" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Four moving parts, one direction of trust. The browser talks to the Panel; the
+Panel is the only thing that talks to an Agent.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>hop</th>
+<th>how</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>browser ⇄ Panel</td>
+<td>REST over the published OpenAPI surface, plus WebSocket for console and stats.</td>
+</tr>
+<tr>
+<td>Panel ⇄ Agent</td>
+<td>gRPC over mutual TLS. The Panel dials in, or the node dials out and serves over a reverse tunnel with no inbound port.</td>
+</tr>
+<tr>
+<td>Panel ⇄ Postgres</td>
+<td>all fleet state, sessions and audit history in one durable datastore.</td>
+</tr>
+<tr>
+<td>browser ⇄ Agent</td>
+<td>never. Console and stats are bridged by the Panel, so an Agent needs no browser-facing surface at all.</td>
+</tr>
+</tbody></table>
+</div>
+<p><strong>Tunnel mode is the default for new nodes.</strong> A tunnel node holds one outbound
+mTLS connection to the Panel and is fully manageable with zero inbound firewall
+rules, which is what makes a machine behind somebody else&#39;s NAT a node at all.
+That is why it is the default: the inbound rule is where most setups fail, and
+removing it removes the failure. On a LAN you control, direct mode — the Panel
+dialling the node on port 9090 — is one less moving piece, and I would still
+reach for it there. Game traffic is unaffected
+either way. Players connect straight to the node&#39;s ports; nothing about a game
+session goes through the Panel.</p>
+<p>The design note behind tunnel mode is
+<a href="https://github.com/briggleman/kraken/blob/main/docs/design/reverse-connections.md">docs/design/reverse-connections.md</a>.</p>
+<h2 id="placement-one-spec-three-platforms">Placement: one spec, three platforms <a class="hlink" href="#placement-one-spec-three-platforms" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A Game Spec carries per-platform overrides for the image, the install script and
+the startup command. When a game ships a native Linux dedicated server, that is
+what gets scheduled. When it only ships a Windows build, Kraken runs it on a
+native-Windows node, or under Wine on a Linux one. The scheduler picks; you do
+not have to.</p>
+<p>Downstream, the platform stops mattering. The file browser, the editor, the
+backups and the restore path are native Go filesystem work against a host bind
+mount rather than the Docker archive API, so they behave the same on both
+operating systems.</p>
+<h2 id="how-to-read-the-rest-of-this">How to read the rest of this <a class="hlink" href="#how-to-read-the-rest-of-this" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong><a href="/wiki/install/panel/">Install</a></strong> is the main line: Panel plus Postgres in
+Docker Compose, Agents on bare metal. Start at the Panel, add nodes, then read
+the upgrade page <em>before</em> your first release lands rather than during it.</li>
+<li><strong><a href="/wiki/configure/panel/">Configure</a></strong> is reference: the <code>KRAKEN_*</code> variables
+the Panel reads (generated from the source, so it cannot drift), the Agent&#39;s
+config file and flags, and the three pages you will reach for in anger —
+reverse proxy, network, limits and logging.</li>
+</ul>
+<p>Planning to put Nginx Proxy Manager, Caddy or Cloudflare in front? Read
+<strong><a href="/wiki/configure/reverse-proxy/">behind a reverse proxy</a></strong> before you expose
+anything. <code>KRAKEN_TRUSTED_PROXIES</code> decides what the audit log records and
+whether the rate limiters protect anybody, and the wrong value still looks like
+a working Panel.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>This wiki is generated from markdown in
+<a href="https://github.com/briggleman/kraken/tree/main/docs/wiki-src"><code>docs/wiki-src/</code></a>
+and committed under <code>docs/wiki/</code>. There is an edit link at the foot of each
+page.</p>
+</div>
+</aside>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <span class="pg is-empty"></span>
+      <a class="pg next" href="/wiki/install/panel/"><span class="pg-k">next</span><span class="pg-t">Install the Panel<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/index.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/index.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-five-words">The five words</a>
+<a class="toc-link lvl-2" href="#how-it-fits-together">How it fits together</a>
+<a class="toc-link lvl-2" href="#placement-one-spec-three-platforms">Placement: one spec, three platforms</a>
+<a class="toc-link lvl-2" href="#how-to-read-the-rest-of-this">How to read the rest of this</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

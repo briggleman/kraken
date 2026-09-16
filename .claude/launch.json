@@ -68,6 +68,19 @@
         "--silent"
       ],
       "port": 8091
+    },
+    {
+      "name": "wiki",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--yes",
+        "serve",
+        "docs",
+        "-l",
+        "4173"
+      ],
+      "port": 4173,
+      "url": "http://localhost:4173"
     }
   ]
 }

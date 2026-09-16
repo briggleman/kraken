@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Limits and logging — Kraken wiki</title>
+<meta name="description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/limits-and-logging/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/limits-and-logging/" />
+<meta property="og:title" content="Limits and logging — Kraken wiki" />
+<meta property="og:description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Limits and logging — Kraken wiki" />
+<meta name="twitter:description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link is-here" href="/wiki/configure/limits-and-logging/" aria-current="page">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Limits and logging</span></nav>
+    <h1>Limits and logging</h1>
+    <p class="lede">The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#rate-limits">Rate limits</a>
+<a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
+<a class="toc-link lvl-2" href="#body-caps">Body caps</a>
+<a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#metrics">Metrics</a>
+</div></details>
+    <article class="prose">
+<h2 id="rate-limits">Rate limits <a class="hlink" href="#rate-limits" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel limits the two things an unauthenticated caller can reach:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>what</th>
+<th>rate</th>
+<th>burst</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>download-token redemption</td>
+<td>30/min</td>
+<td>10</td>
+</tr>
+<tr>
+<td><code>POST /auth/login</code></td>
+<td>20/min</td>
+<td>20</td>
+</tr>
+</tbody></table>
+</div>
+<p>A refusal is a <strong>429</strong> in the ordinary JSON error envelope with <code>Retry-After</code>,
+and a refused request does not consume future capacity.</p>
+<p>The download limit sits on the <strong>token branch</strong>, not on the route: a
+session-authenticated download is not what the limit is for, and an operator
+must not be refused for sharing a NAT address with somebody probing tokens. The
+login numbers are deliberately generous for the same reason — locking a team out
+of their own Panel is a worse failure than the guessing being slowed.</p>
+<p><strong>Keys are per client, and the client is resolved once.</strong> IPv4 is keyed per
+address; <strong>IPv6 is aggregated to the /64</strong>, because a single subscriber is
+routinely delegated a whole /64 and per-address keying would hand one attacker
+2^64 independent buckets. The table is swept for idle entries and, at its cap,
+evicted down to a watermark; entries that cannot make a request right now are
+passed over, so filling the table is not a way to buy back a spent bucket.</p>
+<p>&quot;Per client&quot; means whatever <a href="/wiki/configure/reverse-proxy/"><code>clientIP</code></a>
+resolves to. Behind a proxy with no <code>KRAKEN_TRUSTED_PROXIES</code> set, that is <em>the
+proxy</em>, for everybody, and both limiters become one shared bucket a stranger can
+exhaust for the whole fleet. Of the ways to misconfigure a Panel, it is the one
+I would check first.</p>
+<h3 id="the-off-switch">the off switch <a class="hlink" href="#the-off-switch" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMITS=off</code></pre></div>
+<p>Disables both limiters, logged loudly at startup, for an edge that already does
+this. Anything other than <code>off</code> leaves them on, which is the default.</p>
+<h2 id="body-caps">Body caps <a class="hlink" href="#body-caps" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Not configurable, listed here because the answers arrive as HTTP errors:</p>
+<ul>
+<li><strong>Every JSON request body is capped at 4 MiB.</strong> Sized off the largest
+legitimate body, which is the in-browser editor saving a 1 MiB file,
+JSON-escaped. Without a cap, any authenticated caller could pin arbitrary
+Panel memory with one request, because <code>json.Decoder</code> reads until the body
+ends.</li>
+<li><strong>Uploads are capped at 64 MiB</strong> plus a megabyte of multipart framing, and
+answer <strong>413</strong> past it. <code>ParseMultipartForm</code>&#39;s argument is only the in-memory
+threshold — everything past it spills to temp files, unbounded — so without
+this one authenticated request could fill the Panel&#39;s disk. Anything larger
+belongs on SFTP.</li>
+<li><strong>A download token&#39;s path set</strong> is capped at 256 paths of 4096 bytes, since a
+mint holds that set in memory for 60 seconds.</li>
+</ul>
+<h2 id="log-level">Log level <a class="hlink" href="#log-level" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_LOG_LEVEL=debug   # debug | info (default) | warn | error</code></pre></div>
+<p>An unrecognised value falls back to <code>info</code>: a typo must not silence the Panel.</p>
+<p>Several diagnostics are <code>Debug</code> on purpose, because they are writable by an
+unauthenticated caller. A rejected download token is the example. Turn the level
+down when you are diagnosing something; leaving it there hands a stranger a
+write into the log an operator actually reads.</p>
+<p>Logs are JSON. Read them wherever the Panel runs:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml logs -f panel
+journalctl -u kraken-panel -f</code></pre></div>
+<p>The Agent keeps its own log: <code>journalctl -u kraken-agent</code> on Linux,
+<code>C:\kraken\state\agent.log</code> on Windows (JSON, rotated at 10 MiB).</p>
+<h2 id="metrics">Metrics <a class="hlink" href="#metrics" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel exports Prometheus metrics at <strong><code>GET /metrics</code></strong>, unauthenticated
+alongside <code>/healthz</code> and <code>/readyz</code>. It belongs on a network your scrapers can
+reach and strangers cannot, which is where the rest of the Panel belongs too.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>metric</th>
+<th>what</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>kraken_build_info{version}</code></td>
+<td>the running Panel&#39;s version</td>
+</tr>
+<tr>
+<td><code>kraken_servers{state}</code></td>
+<td>servers by lifecycle state</td>
+</tr>
+<tr>
+<td><code>kraken_nodes_total</code>, <code>kraken_nodes_online</code></td>
+<td>fleet size and health</td>
+</tr>
+<tr>
+<td><code>kraken_schedules_total</code></td>
+<td>cron schedules</td>
+</tr>
+<tr>
+<td><code>kraken_http_requests_total</code></td>
+<td>request counter</td>
+</tr>
+<tr>
+<td><code>kraken_audit_events_total</code></td>
+<td>audit rows written</td>
+</tr>
+<tr>
+<td><code>kraken_download_tokens_rejected_total</code></td>
+<td>refused download-token redemptions</td>
+</tr>
+<tr>
+<td><code>kraken_rate_limited_total</code></td>
+<td>refusals, per limiter</td>
+</tr>
+</tbody></table>
+</div>
+<p>The last two are why the quiet <code>Debug</code> lines are also counted: they give an
+operator the signal without turning the log level down. A 429&#39;d login never
+reaches the handler that audits a failed attempt, so the limiter writes that row
+itself, once per client per window rather than once per request.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>A steady trickle on <code>kraken_download_tokens_rejected_total</code> is somebody probing,
+and it is what the rejection path is for: a download token is single-use, sixty
+seconds long, scoped to one server and one exact path set, and bound to the user
+and session that minted it. A spike on <code>kraken_rate_limited_total</code> for the login
+limiter, with one client address behind it, is worth reading the audit log over.</p>
+</div>
+</aside>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/network/"><span class="pg-k">previous</span><span class="pg-t">Ports and firewall</span></a>
+      <span class="pg is-empty"></span>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/limits-and-logging.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/limits-and-logging.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#rate-limits">Rate limits</a>
+<a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
+<a class="toc-link lvl-2" href="#body-caps">Body caps</a>
+<a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#metrics">Metrics</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

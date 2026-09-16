@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ports and firewall — Kraken wiki</title>
+<meta name="description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/network/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/network/" />
+<meta property="og:title" content="Ports and firewall — Kraken wiki" />
+<meta property="og:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Ports and firewall — Kraken wiki" />
+<meta name="twitter:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link is-here" href="/wiki/configure/network/" aria-current="page">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Ports and firewall</span></nav>
+    <h1>Ports and firewall</h1>
+    <p class="lede">Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-rules-that-matter">The rules that matter</a>
+<a class="toc-link lvl-2" href="#direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule</a>
+<a class="toc-link lvl-2" href="#or-skip-inbound-ports-entirely">Or skip inbound ports entirely</a>
+<a class="toc-link lvl-2" href="#game-ports-end-to-end">Game ports, end to end</a>
+</div></details>
+    <article class="prose">
+<p>Four listeners and a pool. Game traffic sits apart from all of it and goes
+straight to the node.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>port</th>
+<th>where</th>
+<th>what</th>
+<th>who may reach it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>8080</code></td>
+<td>Panel</td>
+<td>HTTP: web UI, REST + WebSocket API</td>
+<td>browsers on your LAN or VPN; Agents during enrollment</td>
+</tr>
+<tr>
+<td><code>9443</code></td>
+<td>Panel</td>
+<td>the mTLS reverse-tunnel listener</td>
+<td>tunnel-mode Agents</td>
+</tr>
+<tr>
+<td><code>2222</code>+</td>
+<td>Panel</td>
+<td>SFTP proxy, one port per tunnel node</td>
+<td>SFTP clients on your LAN</td>
+</tr>
+<tr>
+<td><code>9090</code></td>
+<td>Agent</td>
+<td>gRPC over mTLS</td>
+<td>the Panel only, and only in direct mode</td>
+</tr>
+<tr>
+<td><code>2022</code></td>
+<td>Agent</td>
+<td>per-server SFTP</td>
+<td>SFTP clients on your LAN</td>
+</tr>
+<tr>
+<td><code>28000–28999</code></td>
+<td>Agent host</td>
+<td>the game-port pool</td>
+<td>players, via your router</td>
+</tr>
+</tbody></table>
+</div>
+<p>The Panel&#39;s HTTP port is <code>KRAKEN_HTTP_ADDR</code> / <code>KRAKEN_HTTP_PORT</code>, and it
+defaults to <code>8080</code>. Change it if something else on the host already holds that
+port, then use the same number everywhere the Panel URL appears. The port pool is per node and set in the
+Panel&#39;s node settings, where <code>28000–28999</code> is the reference range rather than a
+default you inherit.</p>
+<p>Two Agents sharing one port space cannot both hold <code>:9090</code>/<code>:2022</code>. The classic
+case is a WSL distro with mirrored networking beside its Windows host. Give the
+second <code>:9091</code>/<code>:2023</code> and split the pools into non-overlapping ranges.</p>
+<h2 id="the-rules-that-matter">The rules that matter <a class="hlink" href="#the-rules-that-matter" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Keep the Panel and SFTP off the public internet.</strong> LAN, VPN, or a reverse
+proxy with TLS in front. Not a published port on a router.</p>
+<p><strong><code>:9443</code> has to stay reachable from your Agents.</strong> It is how a tunnel-mode node
+talks to the Panel, and tunnel is the default for new nodes. Raw mTLS cannot be
+proxied, so give it its own address or DNS name. Binding it to loopback while
+putting the HTTP port behind a proxy takes the whole fleet offline at once, and
+that pairing is common enough to be worth saying twice.</p>
+<p><strong>Agent gRPC should not be reachable off-host without mTLS.</strong> The deploy configs
+bind it to <code>127.0.0.1:9090</code> so only the co-located Panel can reach it. The Agent
+refuses to serve plaintext gRPC on a non-loopback address unless either
+<code>KRAKEN_TLS_CERT</code>/<code>KRAKEN_TLS_KEY</code>/<code>KRAKEN_TLS_CA</code> are configured, which is what
+enrollment does, or <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> is set as an explicit opt-in.
+Agent gRPC has no application-level auth; mTLS is the whole trust boundary, and
+it fronts the Docker socket.</p>
+<p><strong>Game ports are published 1:1.</strong> The port the Panel assigns is the port on the
+host and the port a player types. Forward them from your router to the node.
+Tunnel mode changes nothing here, because game traffic never touches the Panel.</p>
+<h2 id="direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule <a class="hlink" href="#direct-mode-nodes-need-an-inbound-rule" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>The Panel dials <em>in</em> to a direct-mode Agent, so enrollment succeeding proves
+nothing about reachability.</strong> Enrollment is an outbound HTTP call; the gRPC
+channel is inbound. A blocked inbound port is the most common reason a freshly
+enrolled node sits <strong>offline</strong>, usually surfacing as a connection refused in the
+Panel&#39;s logs when NAT is in the path.</p>
+<p>Use a <strong>port-based</strong> rule rather than a program-based one. Program rules quietly
+stop matching when the Agent binary is renamed or replaced, which a self-update
+does by design.</p>
+</div>
+</aside>
+
+
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># windows, elevated
+New-NetFirewallRule -DisplayName &quot;kraken-agent ports (TCP 9090 + 2022)&quot; `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9090,2022</code></pre></div>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># linux — ufw
+sudo ufw allow 9090/tcp &amp;&amp; sudo ufw allow 2022/tcp
+# linux — firewalld
+sudo firewall-cmd --permanent --add-port={9090,2022}/tcp &amp;&amp; sudo firewall-cmd --reload</code></pre></div>
+<p>Scope those to your LAN or VPN subnet where your firewall makes that easy.
+Internet exposure is a different matter: gRPC is mTLS-only, but SFTP is password
+and key auth, so neither belongs on a public interface.</p>
+<h2 id="or-skip-inbound-ports-entirely">Or skip inbound ports entirely <a class="hlink" href="#or-skip-inbound-ports-entirely" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A node enrolled with <code>--tunnel</code> (<strong>Add node → the node dials the Panel</strong>) holds
+an outbound mTLS connection to <code>KRAKEN_TUNNEL_ADDR</code> and is fully manageable with
+<strong>zero inbound firewall rules</strong>. It also works behind NAT you do not control,
+which no amount of firewall rule-writing solves.</p>
+<p>Per-server SFTP is where the trade-off lands. The Panel fronts each tunnel
+node&#39;s SFTP on a per-node port of its own, allocated upward from
+<code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default 2222) and persisted on the node record,
+forwarding the raw SSH byte stream to the Agent. The Panel never terminates SSH,
+so credentials and host keys stay Agent-side. Raw SSH carries no routing header
+a pass-through proxy could read, which is why each node gets its own port
+instead of one shared endpoint. The in-browser file manager behaves the same
+either way.</p>
+<p>Design note:
+<a href="https://github.com/briggleman/kraken/blob/main/docs/design/reverse-connections.md">docs/design/reverse-connections.md</a>.</p>
+<h2 id="game-ports-end-to-end">Game ports, end to end <a class="hlink" href="#game-ports-end-to-end" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ol>
+<li>Deploy a server. The scheduler allocates its ports from the node&#39;s pool.</li>
+<li>Forward those ports from your router to the <strong>node&#39;s</strong> address, 1:1. Mind the
+protocol; most games want UDP.</li>
+<li>Players connect to your public address on that port.</li>
+</ol>
+<p>The optional <strong>UniFi</strong> integration can publish the forward from the same screen
+that assigned the port, and the <strong>Cloudflare</strong> integration can publish the DNS
+record. Both degrade cleanly when unconfigured, and a game is joinable without
+either.</p>
+<p>A node whose pool is empty reads <strong>online and unschedulable</strong>: deploys are
+refused with &quot;no node can host this spec&quot; while the fleet looks healthy. Set the
+range when you register the node and the whole class of confusion goes away.</p>
+<!-- SCREENSHOT: a node's settings showing its game-port pool range, with an assigned server port beneath it -->
+<p class="shot"><em>screenshot: a node's settings showing its game-port pool range, with an assigned server port beneath it</em></p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/reverse-proxy/"><span class="pg-k">previous</span><span class="pg-t">Behind a reverse proxy</span></a>
+      <a class="pg next" href="/wiki/configure/limits-and-logging/"><span class="pg-k">next</span><span class="pg-t">Limits and logging<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/network.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/network.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-rules-that-matter">The rules that matter</a>
+<a class="toc-link lvl-2" href="#direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule</a>
+<a class="toc-link lvl-2" href="#or-skip-inbound-ports-entirely">Or skip inbound ports entirely</a>
+<a class="toc-link lvl-2" href="#game-ports-end-to-end">Game ports, end to end</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

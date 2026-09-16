@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://krakenserver.io/wiki/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/agent/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/limits-and-logging/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/network/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/panel/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/reverse-proxy/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/agent/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/panel/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/panel/bare-metal/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/panel/from-source/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/uninstall/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/install/upgrade/</loc></url>
+</urlset>

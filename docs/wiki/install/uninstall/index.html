@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Uninstalling — Kraken wiki</title>
+<meta name="description" content="Take a node out of the fleet, or remove Kraken entirely — in the order that leaves nothing orphaned, with the two things worth keeping called out before you delete them." />
+<link rel="canonical" href="https://krakenserver.io/wiki/install/uninstall/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/install/uninstall/" />
+<meta property="og:title" content="Uninstalling — Kraken wiki" />
+<meta property="og:description" content="Take a node out of the fleet, or remove Kraken entirely — in the order that leaves nothing orphaned, with the two things worth keeping called out before you delete them." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Uninstalling — Kraken wiki" />
+<meta name="twitter:description" content="Take a node out of the fleet, or remove Kraken entirely — in the order that leaves nothing orphaned, with the two things worth keeping called out before you delete them." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link is-here" href="/wiki/install/uninstall/" aria-current="page">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>install</span><i aria-hidden="true">/</i><span aria-current="page">Uninstalling</span></nav>
+    <h1>Uninstalling</h1>
+    <p class="lede">Take a node out of the fleet, or remove Kraken entirely — in the order that leaves nothing orphaned, with the two things worth keeping called out before you delete them.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#remove-one-node">Remove one node</a>
+<a class="toc-link lvl-2" href="#remove-the-panel-compose">Remove the Panel: compose</a>
+<a class="toc-link lvl-2" href="#remove-the-panel-bare-metal">Remove the Panel: bare metal</a>
+<a class="toc-link lvl-2" href="#what-is-left-behind">What is left behind</a>
+</div></details>
+    <article class="prose">
+<p>None of this is reversible. Read the order before running any of it.</p>
+<aside class="callout is-security">
+<span class="callout-k">security</span>
+<div class="callout-b"><p>Two things are worth keeping even when you are certain: <strong><code>KRAKEN_SECRETS_KEY</code></strong>
+and the <strong>Postgres data</strong>. Without the key, a database restored later is a
+database of secrets nobody can open. Without the database, the key opens
+nothing. Take both, or accept that this install is gone.</p>
+<p>Game-server data is a third. <code>KRAKEN_DATA_DIR</code> on each node holds the worlds, so
+back up what you care about before removing a node: the install tree comes back
+with a reinstall, the save does not.</p>
+</div>
+</aside>
+
+
+<h2 id="remove-one-node">Remove one node <a class="hlink" href="#remove-one-node" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Delete the server or move it elsewhere first, then delete the node in <strong>Settings
+→ Nodes</strong>. Deleting the node record neither stops the Agent nor frees the disk.
+Both of those happen on the host.</p>
+<p><strong>Linux:</strong></p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo systemctl disable --now kraken-agent
+sudo rm -f /etc/systemd/system/kraken-agent.service
+sudo systemctl daemon-reload
+sudo rm -rf /opt/kraken/bin /usr/local/bin/kraken-agent /etc/kraken/agent.env
+# state, server data and local backups — check before you run this
+sudo rm -rf /var/lib/kraken</code></pre></div>
+<p><strong>Windows:</strong></p>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>C:\kraken\bin\kraken-agent.exe --service stop
+C:\kraken\bin\kraken-agent.exe --service uninstall
+Remove-NetFirewallRule -DisplayName &quot;Kraken Agent (TCP 9090 gRPC + 2022 SFTP)&quot;
+# binaries, state, server data and backups — check before you run this
+Remove-Item -Recurse -Force C:\kraken</code></pre></div>
+<p>Game containers the Agent created stay on the host&#39;s Docker daemon. Remove them
+yourself if you want the space back:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker ps -a --filter &quot;name=kraken-&quot; </code></pre></div>
+<h2 id="remove-the-panel-compose">Remove the Panel: compose <a class="hlink" href="#remove-the-panel-compose" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml down</code></pre></div>
+<p>That keeps the volumes. To delete the fleet with them:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml down -v</code></pre></div>
+<p><code>-v</code> destroys <code>pgdata</code> (every server, node, user and audit row) and
+<code>panel-state</code> (the config file, the generated CA, the secrets key if it was
+generated rather than supplied). No prompt, no undo.</p>
+<h2 id="remove-the-panel-bare-metal">Remove the Panel: bare metal <a class="hlink" href="#remove-the-panel-bare-metal" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo systemctl disable --now kraken-panel
+sudo rm -f /etc/systemd/system/kraken-panel.service
+sudo systemctl daemon-reload
+sudo rm -f /usr/local/bin/kraken-panel /usr/local/bin/kraken-krakenctl
+sudo rm -rf /etc/kraken /var/lib/kraken
+sudo userdel kraken</code></pre></div>
+<p>Postgres is separate: either a container you brought up from
+<code>deploy/docker-compose.yml</code>, or a database of your own. Drop it deliberately.</p>
+<h2 id="what-is-left-behind">What is left behind <a class="hlink" href="#what-is-left-behind" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>Cloudflare DNS records and UniFi port forwards</strong> the integrations created
+are not removed by uninstalling. They live in those systems; delete them
+there.</li>
+<li><strong>Router port forwards</strong> you made by hand for game ports.</li>
+<li><strong>Off-node backups</strong> on a NAS share or SFTP remote. Kraken never reaches back
+to clean them up, which is the behaviour you want right up until you forget
+they are there.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/install/upgrade/"><span class="pg-k">previous</span><span class="pg-t">Upgrading</span></a>
+      <a class="pg next" href="/wiki/configure/panel/"><span class="pg-k">next</span><span class="pg-t">Panel configuration<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/install/uninstall.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/install/uninstall.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#remove-one-node">Remove one node</a>
+<a class="toc-link lvl-2" href="#remove-the-panel-compose">Remove the Panel: compose</a>
+<a class="toc-link lvl-2" href="#remove-the-panel-bare-metal">Remove the Panel: bare metal</a>
+<a class="toc-link lvl-2" href="#what-is-left-behind">What is left behind</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

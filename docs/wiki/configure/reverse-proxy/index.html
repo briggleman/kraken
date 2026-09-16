@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Behind a reverse proxy — Kraken wiki</title>
+<meta name="description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/reverse-proxy/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/reverse-proxy/" />
+<meta property="og:title" content="Behind a reverse proxy — Kraken wiki" />
+<meta property="og:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Behind a reverse proxy — Kraken wiki" />
+<meta name="twitter:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link is-here" href="/wiki/configure/reverse-proxy/" aria-current="page">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Behind a reverse proxy</span></nav>
+    <h1>Behind a reverse proxy</h1>
+    <p class="lede">Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#what-clientip-does">What <code>clientIP</code> does</a>
+<a class="toc-link lvl-2" href="#docker-desktop-erases-the-client-address">Docker Desktop erases the client address</a>
+<a class="toc-link lvl-2" href="#nginx-proxy-manager">Nginx Proxy Manager</a>
+<a class="toc-link lvl-2" href="#caddy">Caddy</a>
+<a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>
+<a class="toc-link lvl-3" href="#authenticated-origin-pulls">Authenticated Origin Pulls</a>
+<a class="toc-link lvl-2" href="#checking-your-work">Checking your work</a>
+<a class="toc-link lvl-2" href="#while-you-are-here">While you are here</a>
+</div></details>
+    <article class="prose">
+<p>Most people will put the Panel behind a proxy, and the moment you do, the Panel
+loses the one fact it leaned on: who is calling. Requests arrive from the proxy
+now. Worth getting right before the port forward goes in, because every mistake
+on this page looks like a working Panel.</p>
+<p>Three decisions, in this order: which proxy the Panel believes, how the proxy
+reaches the Panel, and whether anything other than your proxy can reach the
+Panel at all.</p>
+<h2 id="what-clientip-does">What <code>clientIP</code> does <a class="hlink" href="#what-clientip-does" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>clientIP</code> is one function used by the audit log, the <code>/setup/*</code>
+internal-network gate and both rate limiters, so they cannot disagree about who
+called. The semantics, exactly:</p>
+<ul>
+<li><strong>Empty <code>KRAKEN_TRUSTED_PROXIES</code> — the default — is the real TCP peer and
+nothing else.</strong> <code>X-Forwarded-For</code> is a request header like any other, and
+believing it without a trusted set lets anyone claim any address.</li>
+<li><strong>When the peer is inside a trusted CIDR, the Panel takes the <em>rightmost</em>
+<code>X-Forwarded-For</code> entry that is not itself trusted.</strong> Rightmost, because the
+list is appended to hop by hop: everything to the left of the last trusted hop
+is whatever the client chose to send, and only what a trusted proxy appended
+can be believed.</li>
+<li><strong>A malformed hop ends anything believable to its left</strong> — the walk stops
+there and falls back.</li>
+<li><strong><code>X-Forwarded-For</code> is the only header consulted, and deliberately so.</strong>
+<code>CF-Connecting-IP</code> looks more direct, but only Cloudflare ever sets it: Caddy,
+nginx and Traefik pass a client-supplied one through untouched, and nothing in
+the request says which of them is in front. Believing it from any trusted
+proxy would let an internet client name its own address to <code>requireInternal</code>
+(which would put <code>/setup/*</code> and the unauthenticated local enrollment behind a
+header the caller writes), to both rate limiters, and to every audit row.
+Cloudflare appends to <code>X-Forwarded-For</code> as well, so the rightmost-untrusted
+rule serves the reference deployment without trusting anything a proxy did not
+append.</li>
+<li><strong>An unparseable entry is a startup error, not a warning.</strong> A typo that
+silently emptied the list would leave the Panel running with <code>/setup/*</code> seeing
+the tunnel&#39;s loopback for the entire internet and both limiters back in one
+shared bucket — a misconfiguration that looks like a working Panel.
+Hostnames are refused too: a name is not source-verifiable.</li>
+</ul>
+<p>So the default, which is the safe setting on a bare Panel, becomes the wrong one
+the day a proxy appears. Not in the direction you might assume, either. Behind a
+reverse proxy or a Cloudflare Tunnel the peer is the <em>proxy</em> on every request,
+so <strong>every audit row records the proxy and both limiters collapse into a single
+shared bucket that one stranger can exhaust for everybody</strong>.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># a cloudflared sidecar, or any proxy on this host
+KRAKEN_TRUSTED_PROXIES=127.0.0.0/8,::1/128
+# a proxy elsewhere on the LAN — name its address
+KRAKEN_TRUSTED_PROXIES=10.0.0.5/32</code></pre></div>
+<p>Name the proxy, not the network it sits in. Anything in that list can claim any
+client address it likes.</p>
+<h2 id="docker-desktop-erases-the-client-address">Docker Desktop erases the client address <a class="hlink" href="#docker-desktop-erases-the-client-address" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Budget an afternoon for this one if you meet it cold.</p>
+<p><strong>Docker Desktop rewrites the source address of every published-port connection
+to its gateway, <code>192.168.65.1</code>.</strong> Put a proxy container and a Panel container on
+the same machine, talk between them through published ports, and the Panel sees
+<code>192.168.65.1</code> for the proxy. It sees the same address for everything else that
+reaches a published port, a LAN client included.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>Trusting <code>192.168.65.1</code> to fix your audit log hands header-forging to anyone on
+your LAN. A client that can reach the published port arrives from the same
+gateway address, is therefore &quot;a trusted proxy&quot;, and its own <code>X-Forwarded-For</code>
+is believed.</p>
+</div>
+</aside>
+
+
+<p>The fix is a shorter path, not a wider trust list:</p>
+<ol>
+<li>Put the proxy and the Panel on a <strong>shared Docker network</strong>.</li>
+<li>Proxy to the <strong>container name and internal port</strong>, <code>http://kraken-panel:8080</code>,
+rather than to <code>host.docker.internal</code> or a published port.</li>
+<li>Trust the <strong>Docker network&#39;s subnet</strong>, which only containers on it can
+originate from: <code>KRAKEN_TRUSTED_PROXIES=172.18.0.0/16</code> (read your own with
+<code>docker network inspect &lt;name&gt;</code>).</li>
+</ol>
+<p>My own view: Docker Desktop is the wrong place to run an internet-facing Panel
+at all. Its port publishing is a NAT you cannot see into, and the first thing it
+costs you is the client address that three security decisions depend on. If the
+Panel is going to face the internet, I would run it on plain Docker on Linux,
+which is what the reference compose stack does. There the Panel takes
+<code>network_mode: host</code>, sees real source addresses, and a proxy on the same host
+is <code>KRAKEN_TRUSTED_PROXIES=127.0.0.0/8,::1/128</code> with nothing further to think
+about.</p>
+<h2 id="nginx-proxy-manager">Nginx Proxy Manager <a class="hlink" href="#nginx-proxy-manager" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Create a Proxy Host for the Panel&#39;s hostname, forwarding to the Panel&#39;s
+container name and port, and:</p>
+<ul>
+<li><strong>Websockets Support: on.</strong> Console and live stats are WebSockets that
+terminate at the Panel. Leave it off and the UI signs in, then sits there with
+a dead console and no stats, which reads as a broken Panel rather than a proxy
+setting.</li>
+<li><strong>Block Common Exploits</strong> is fine. Caching is not: leave it off.</li>
+</ul>
+<p>Then, on the Panel:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_ALLOWED_ORIGINS=https://kraken.example.com
+KRAKEN_TRUSTED_PROXIES=172.18.0.0/16</code></pre></div>
+<p><code>KRAKEN_ALLOWED_ORIGINS</code> is the WebSocket origin allowlist. Same-origin is
+always permitted, so it starts mattering only once the browser&#39;s origin stops
+being the Panel&#39;s own address, which is precisely what a proxy changes.</p>
+<h2 id="caddy">Caddy <a class="hlink" href="#caddy" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>kraken.example.com {
+	reverse_proxy kraken-panel:8080
+}</code></pre></div>
+<p>Caddy passes <code>X-Forwarded-For</code> and upgrades WebSockets without being asked.
+Trust its address and set the origin as above.</p>
+<h2 id="cloudflare-in-front">Cloudflare in front <a class="hlink" href="#cloudflare-in-front" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>With an orange-clouded record, Cloudflare terminates TLS and your proxy is the
+origin. Two extra moves:</p>
+<ol>
+<li><strong>Trust the gateway as well</strong>, since the tunnel or the Cloudflare-facing
+proxy is what now reaches the Panel. Cloudflare appends the real client to
+<code>X-Forwarded-For</code>, and the rightmost-untrusted rule picks it out.</li>
+<li><strong>Bind the HTTP port to <code>127.0.0.1</code></strong>, so the way in is through the proxy. An
+origin that is also directly reachable is an origin whose protection is
+optional.</li>
+</ol>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>Bind the <strong>HTTP</strong> port to loopback. Not <code>:9443</code>.</p>
+<p><code>KRAKEN_TUNNEL_ADDR</code> is the mTLS listener a tunnel-mode Agent dials, it carries
+raw mTLS that no proxy will pass through, and binding it to loopback takes every
+tunnel node in the fleet offline at once. Give it its own DNS name or address
+and point Agents at it with <code>--tunnel-addr</code>.</p>
+</div>
+</aside>
+
+
+<h3 id="authenticated-origin-pulls">Authenticated Origin Pulls <a class="hlink" href="#authenticated-origin-pulls" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>This is what turns &quot;only Cloudflare may reach my origin&quot; from a hope into a
+refusal. The origin rejects any TLS connection that does not present a client
+certificate signed by Cloudflare&#39;s Origin Pull CA.</p>
+<ol>
+<li>Turn on the zone-wide toggle: <strong>SSL/TLS → Origin Server → Authenticated
+Origin Pulls</strong>, the <em>Global</em> switch.</li>
+<li>Install Cloudflare&#39;s <strong>public Origin Pull CA</strong> on the proxy, from
+<code>https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem</code>.</li>
+<li>In NPM, on the Proxy Host, <strong>Advanced → Custom Nginx Configuration</strong>:</li>
+</ol>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>ssl_client_certificate /data/cloudflare-origin-pull-ca.pem;
+ssl_verify_client on;
+ssl_verify_depth 2;</code></pre></div>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>That is the public Origin Pull CA, not a dashboard-generated Origin
+Certificate.</strong> Two different objects, both arriving as a <code>.pem</code> from
+Cloudflare&#39;s dashboard, and using the wrong one fails in a way that names
+neither: requests come back as <strong>400 &quot;The SSL certificate error&quot;</strong>.</p>
+<p>Seeing that 400 means an Origin Certificate is sitting where the Origin Pull CA
+belongs. Replace the file, reload the proxy, and it clears.</p>
+</div>
+</aside>
+
+
+<p><code>ssl_verify_depth 2</code> is insurance, not a requirement: today Cloudflare&#39;s client
+certificate is issued directly by that CA, so the default depth verifies it. The
+extra hop only matters if Cloudflare ever inserts an intermediate.</p>
+<h2 id="checking-your-work">Checking your work <a class="hlink" href="#checking-your-work" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>Audit rows</strong> should show real client addresses rather than one repeated
+proxy address. Nothing else you can look at proves the trusted-proxy setting
+took.</li>
+<li><strong>Console and stats</strong> should stream. When they do not, suspect WebSockets on
+the proxy first and <code>KRAKEN_ALLOWED_ORIGINS</code> second.</li>
+<li><strong><code>/setup/*</code></strong> should be unreachable from outside your network.
+<code>KRAKEN_SETUP_ALLOWED_CIDRS</code> gates it on the resolved client address, so a
+mis-set trusted-proxy list is what would open it. A Panel behind a co-located
+tunnel otherwise sees <code>127.0.0.1</code> for the entire public internet.</li>
+<li><strong>Rate limits</strong> should refuse a burst of bad logins from one address without
+refusing everybody: <a href="/wiki/configure/limits-and-logging/">limits and
+logging</a>.</li>
+</ul>
+<!-- SCREENSHOT: the audit log after a proxy is configured, showing distinct client addresses per row rather than one repeated proxy address -->
+<p class="shot"><em>screenshot: the audit log after a proxy is configured, showing distinct client addresses per row rather than one repeated proxy address</em></p>
+
+
+<h2 id="while-you-are-here">While you are here <a class="hlink" href="#while-you-are-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>An internet-reachable Panel wants three more things settled:</p>
+<ul>
+<li><strong><code>KRAKEN_CSP</code></strong> left at <code>enforce</code>. Run <code>report-only</code> for a day after putting
+a new proxy or CDN in front, check the browser console for violations, then
+switch back. <code>off</code> is for the case where a proxy already sets its own policy:
+two CSP headers intersect, which is usually stricter than either author
+intended.</li>
+<li><strong><code>KRAKEN_CSP_SCRIPT_SRC</code></strong> set only if your CDN injects a script. The shipped
+policy is same-origin only. Cloudflare Web Analytics is the common exception
+and wants <code>https://static.cloudflareinsights.com</code> named here rather than in
+the default everyone else inherits.</li>
+<li>The <strong>game ports left alone</strong>. They are not proxied and never were; players
+connect straight to the node. See <a href="/wiki/configure/network/">ports and
+firewall</a>.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/agent/"><span class="pg-k">previous</span><span class="pg-t">Agent configuration</span></a>
+      <a class="pg next" href="/wiki/configure/network/"><span class="pg-k">next</span><span class="pg-t">Ports and firewall<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/reverse-proxy.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/reverse-proxy.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#what-clientip-does">What <code>clientIP</code> does</a>
+<a class="toc-link lvl-2" href="#docker-desktop-erases-the-client-address">Docker Desktop erases the client address</a>
+<a class="toc-link lvl-2" href="#nginx-proxy-manager">Nginx Proxy Manager</a>
+<a class="toc-link lvl-2" href="#caddy">Caddy</a>
+<a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>
+<a class="toc-link lvl-3" href="#authenticated-origin-pulls">Authenticated Origin Pulls</a>
+<a class="toc-link lvl-2" href="#checking-your-work">Checking your work</a>
+<a class="toc-link lvl-2" href="#while-you-are-here">While you are here</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

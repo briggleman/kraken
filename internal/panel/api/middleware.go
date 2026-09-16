@@ -22,6 +22,11 @@ const (
 	// authorized, for the GET zip route that has no body to read them from
 	// (see handlers_filedownloadtoken.go).
 	ctxKeyDownloadPaths
+	// ctxKeySessionHash carries the SHA-256 digest of the bearer token that
+	// authenticated the request — the same digest the store keys sessions by,
+	// and NEVER the token itself. It exists so something minted inside a
+	// session can be tied back to it (download tokens are, and die with it).
+	ctxKeySessionHash
 )
 
 // authError classifies a session-resolution failure with the HTTP status the
@@ -66,7 +71,8 @@ func (s *Server) resolveSession(ctx context.Context, token string) (*store.User,
 // yield 401.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, role, err := s.resolveSession(r.Context(), bearerToken(r))
+		token := bearerToken(r)
+		user, role, err := s.resolveSession(r.Context(), token)
 		if err != nil {
 			ae := err.(*authError)
 			writeError(w, ae.status, ae.Error())
@@ -74,6 +80,10 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyUser, user)
 		ctx = context.WithValue(ctx, ctxKeyRole, role)
+		// The session's identity, as its digest — the same value the store keys
+		// sessions by, so anything minted here can ask later whether the session
+		// that minted it is still alive. The token itself never enters ctx.
+		ctx = context.WithValue(ctx, ctxKeySessionHash, store.HashToken(token))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -117,6 +127,14 @@ func userFrom(ctx context.Context) *store.User {
 func roleFrom(ctx context.Context) *rbac.Role {
 	r, _ := ctx.Value(ctxKeyRole).(*rbac.Role)
 	return r
+}
+
+// sessionHashFrom returns the digest of the session token that authenticated
+// the request, or "" when it did not come through requireAuth (a redeemed
+// download token, for instance, carries a user but no session of its own).
+func sessionHashFrom(ctx context.Context) string {
+	h, _ := ctx.Value(ctxKeySessionHash).(string)
+	return h
 }
 
 // mayAccessServer reports whether the request's user may act on sv. A role with

@@ -649,6 +649,26 @@ func (s *Store) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+// SessionExistsByHash answers whether a live session with this digest is still
+// on record. The digest IS the stored key (see store.HashToken), so no schema
+// change is needed: this is GetSession's lookup for a caller that holds the
+// session's identity but not its secret. An expired row counts as gone.
+func (s *Store) SessionExistsByHash(ctx context.Context, hash string) (bool, error) {
+	if hash == "" {
+		return false, nil
+	}
+	var one int
+	err := s.pool.QueryRow(ctx,
+		`SELECT 1 FROM sessions WHERE token=$1 AND expires_at > now()`, hash).Scan(&one)
+	if notFoundErr(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ---- Cluster CA ----
 
 func (s *Store) GetCA(ctx context.Context) (cert, key []byte, err error) {

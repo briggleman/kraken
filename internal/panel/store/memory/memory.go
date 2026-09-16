@@ -451,6 +451,23 @@ func (s *Store) DeleteSession(_ context.Context, token string) error {
 	return nil
 }
 
+// SessionExistsByHash answers whether a live session with this digest is still
+// on record. Sessions are already keyed by the digest, so this is a lookup
+// without the token — and an expired row counts as gone, matching what
+// resolveSession would do with the bearer itself.
+func (s *Store) SessionExistsByHash(_ context.Context, hash string) (bool, error) {
+	if hash == "" {
+		return false, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sess, ok := s.sessions[hash]
+	if !ok || sess.Expired(time.Now()) {
+		return false, nil
+	}
+	return true, nil
+}
+
 // ---- Cluster CA ----
 
 func (s *Store) GetCA(_ context.Context) (cert, key []byte, err error) {

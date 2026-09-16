@@ -7,6 +7,7 @@
 #   make dev-panel  go run ./cmd/panel
 #   make dev-agent  go run ./cmd/agent
 #   make dev-web    Vite dev server (:5173, proxies /api → :8080)
+#   make wiki       regenerate docs/wiki from docs/wiki-src
 #   make images     build Panel + Agent Docker images locally
 #   make up         docker compose full stack (Postgres + Panel + Agent)
 #   make clean      remove bin/ and generated web assets
@@ -30,7 +31,7 @@ LDFLAGS := -s -w \
            -X $(MOD).Date=$(DATE)
 
 .DEFAULT_GOAL := build
-.PHONY: help build build-web build-go proto embed-agents \
+.PHONY: help build build-web build-go proto embed-agents wiki wiki-check \
         test test-race test-web fmt vet staticcheck lint check \
         db-up db-down db-reset \
         dev-panel dev-agent dev-web seed \
@@ -65,6 +66,20 @@ embed-agents:
 	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o internal/panel/agentbin/dist/kraken-agent-linux-arm64       ./cmd/agent
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o internal/panel/agentbin/dist/kraken-agent-windows-amd64.exe ./cmd/agent
 
+# ---- docs ----------------------------------------------------------------
+
+## Regenerate docs/wiki (GitHub Pages) from the markdown in docs/wiki-src.
+wiki:
+	node web/scripts/build-wiki.mjs
+
+## Fail if the committed docs/wiki is stale. Matches the CI check.
+wiki-check:
+	node web/scripts/build-wiki.mjs --check
+	@git diff --exit-code docs/wiki || { \
+		echo "docs/wiki has uncommitted changes — run 'make wiki' and commit them"; \
+		exit 1; \
+	}
+
 # ---- test / lint ---------------------------------------------------------
 
 test:
@@ -95,7 +110,7 @@ staticcheck:
 lint: fmt vet staticcheck
 
 ## Everything CI runs (equivalent to a green ci.yml go job).
-check: build-web test-web fmt vet staticcheck test-race
+check: build-web test-web wiki-check fmt vet staticcheck test-race
 
 # ---- postgres ------------------------------------------------------------
 

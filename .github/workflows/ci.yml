@@ -207,6 +207,16 @@ jobs:
         run: npm run check:csp
         working-directory: web
 
+      # The wiki at krakenserver.io/wiki/ is generated from docs/wiki-src and
+      # from internal/panel/config/config.go, and the OUTPUT is committed so
+      # GitHub Pages can serve it. Regenerating here catches both halves of the
+      # drift: sources edited without rebuilding, and a config.go change whose
+      # env-var reference nobody regenerated. The build is deterministic, so a
+      # diff means stale, never flaky.
+      - name: wiki drift gate (docs/wiki matches docs/wiki-src)
+        run: npm run check:wiki
+        working-directory: web
+
       - name: build (svelte-check && vite build)
         run: npm run build
         working-directory: web

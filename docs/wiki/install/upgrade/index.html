@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Upgrading — Kraken wiki</title>
+<meta name="description" content="How a release reaches your fleet — GitHub releases and GHCR images, why Agents go before Panels, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back." />
+<link rel="canonical" href="https://krakenserver.io/wiki/install/upgrade/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/install/upgrade/" />
+<meta property="og:title" content="Upgrading — Kraken wiki" />
+<meta property="og:description" content="How a release reaches your fleet — GitHub releases and GHCR images, why Agents go before Panels, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Upgrading — Kraken wiki" />
+<meta name="twitter:description" content="How a release reaches your fleet — GitHub releases and GHCR images, why Agents go before Panels, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link is-here" href="/wiki/install/upgrade/" aria-current="page">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>install</span><i aria-hidden="true">/</i><span aria-current="page">Upgrading</span></nav>
+    <h1>Upgrading</h1>
+    <p class="lede">How a release reaches your fleet — GitHub releases and GHCR images, why Agents go before Panels, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-rule-agents-before-panels">The rule: Agents before Panels</a>
+<a class="toc-link lvl-2" href="#panel-compose">Panel: compose</a>
+<a class="toc-link lvl-2" href="#panel-bare-metal">Panel: bare metal</a>
+<a class="toc-link lvl-2" href="#agents-from-the-panel">Agents: from the Panel</a>
+<a class="toc-link lvl-2" href="#agents-from-their-own-installer">Agents: from their own installer</a>
+<a class="toc-link lvl-2" href="#what-self-update-actually-does">What self-update actually does</a>
+<a class="toc-link lvl-2" href="#when-a-node-does-not-come-back">When a node does not come back</a>
+<a class="toc-link lvl-2" href="#rolling-back">Rolling back</a>
+</div></details>
+    <article class="prose">
+<p>Releases are cut on GitHub with the binaries attached and their <code>SHA256SUMS</code>
+beside them; container images are published to
+<code>ghcr.io/briggleman/kraken-panel</code> and <code>ghcr.io/briggleman/kraken-agent</code> in the
+same run. The changelog is
+<a href="https://github.com/briggleman/kraken/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+<h2 id="the-rule-agents-before-panels">The rule: Agents before Panels <a class="hlink" href="#the-rule-agents-before-panels" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>When a release changes the Agent↔Panel protocol, upgrade the Agents first,
+then the Panel.</strong></p>
+<p>The protocol is versioned by tolerance, not by negotiation: a new field is added
+in a shape where an older Agent&#39;s zero value means &quot;unknown&quot; and the Panel falls
+back to exactly what it did before. The tokenised-download work is the worked
+example — the Agent learned to announce a file&#39;s size on the first chunk, the
+Panel turns a non-zero size into <code>Content-Length</code>, and an Agent older than the
+field sends 0 throughout so the Panel behaves precisely as it did before.
+Nothing breaks if you get the order wrong; you simply do not get the new
+behaviour until both halves are current.</p>
+<p>The order is a rollout discipline, and it is what makes that tolerance cheap to
+keep.</p>
+<p>It also runs against the grain of the in-Panel update button, so read this
+carefully: <strong>the Panel can only push its own version.</strong> It carries the Agent
+builds matching its own release inside the binary, so an Agent it updates lands
+on the Panel&#39;s version and no other. Agents-first therefore means upgrading them
+from their own installers — <code>install.sh</code> and <code>install.ps1</code> pull from the GitHub
+release, not from the Panel — before the new Panel starts.</p>
+<h2 id="panel-compose">Panel: compose <a class="hlink" href="#panel-compose" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>cd /path/to/your/stack
+docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml pull panel
+docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d</code></pre></div>
+<p><code>pull</code> then <code>up -d</code> recreates only what changed. Pin a version in <code>deploy/.env</code>
+if you would rather decide when:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_PANEL_IMAGE=ghcr.io/briggleman/kraken-panel:v0.52.0</code></pre></div>
+<p>Postgres migrations run at startup. Watch them land before you declare victory:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml logs -f panel</code></pre></div>
+<h2 id="panel-bare-metal">Panel: bare metal <a class="hlink" href="#panel-bare-metal" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Re-run the installer, then restart:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role panel
+sudo systemctl restart kraken-panel</code></pre></div>
+<p>It never touches <code>/etc/kraken/*.env</code>.</p>
+<h2 id="agents-from-the-panel">Agents: from the Panel <a class="hlink" href="#agents-from-the-panel" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>When a node&#39;s Agent version drifts behind the Panel&#39;s, the Nodes page offers an
+<strong>update</strong> action per node. The Panel streams the matching build over the
+existing mTLS channel; the Agent checksum-verifies it, swaps its binary and
+restarts.</p>
+<!-- SCREENSHOT: the Nodes list with one node showing the agent-update affordance, the panel version and the node's older agent version side by side -->
+<p class="shot"><em>screenshot: the Nodes list with one node showing the agent-update affordance, the panel version and the node's older agent version side by side</em></p>
+
+
+<p>This is the ordinary path once the Panel is current. It is per node and
+confirmed per node on purpose: a node going down ends a game session for real
+people.</p>
+<h2 id="agents-from-their-own-installer">Agents: from their own installer <a class="hlink" href="#agents-from-their-own-installer" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Which is what &quot;Agents first&quot; means in practice.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># linux
+curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
+  | sudo bash -s -- --role agent</code></pre></div>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># windows, elevated
+powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1</code></pre></div>
+<p>Both are idempotent, both stop the service, swap the binary and start it again,
+and both leave your configuration alone. The Windows installer additionally
+re-asserts the service&#39;s recovery configuration on every run, which is worth
+having: a service registered by an old installer carries its old recovery policy
+through every upgrade otherwise.</p>
+<h2 id="what-self-update-actually-does">What self-update actually does <a class="hlink" href="#what-self-update-actually-does" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The update is transactional, and the whole point of the design is that a binary
+which cannot start does not take the node with it.</p>
+<ol>
+<li>The incoming binary is <strong>checksum-verified before anything is touched</strong>.</li>
+<li>A <strong>sentinel</strong> — <code>update.json</code> in the Agent&#39;s state directory — records the
+attempt, from-version and to-version.</li>
+<li>The running binary is set aside beside the new one as <code>&lt;exe&gt;.old</code>. The swap
+is a rename, never an overwrite: the running file&#39;s inode survives.</li>
+<li>The Agent restarts. <strong>Each boot increments the sentinel&#39;s attempt counter</strong>,
+and past three attempts the Agent swaps <code>.old</code> back, sets the failed binary
+aside as <code>&lt;exe&gt;.failed</code>, and records the failure. The service manager&#39;s
+restart-on-failure loop is the retry engine; the sentinel is what bounds it.</li>
+<li>The sentinel and <code>.old</code> are cleared by a <strong>health milestone</strong>: the first
+<code>GetNodeInfo</code> served to the Panel, or two minutes of clean uptime if the
+Panel is itself briefly down during a fleet update.</li>
+</ol>
+<p>A failed-and-reverted update is reported back to the Panel and shown on the node
+until a later update succeeds. So the honest reading of a node that comes back
+on its old version is: the new binary did not start, three times, and the Agent
+put the old one back.</p>
+<h2 id="when-a-node-does-not-come-back">When a node does not come back <a class="hlink" href="#when-a-node-does-not-come-back" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Read the log first.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># linux
+journalctl -u kraken-agent -n 100
+sudo systemctl start kraken-agent</code></pre></div>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code># windows
+Get-Content C:\kraken\state\agent.log -Tail 50
+Get-Content C:\kraken\state\restart-helper.log -Tail 50
+Start-Service kraken-agent</code></pre></div>
+<p><code>agent.log</code> is the Agent itself — JSON, rotated at 10 MiB.
+<code>restart-helper.log</code> is the Windows-only relaunch after a self-update: the
+swapped binary starts a hidden <code>--service restart-helper</code> process which waits
+for the service to stop, starts it through the SCM API, confirms it is running,
+and logs every step. <strong>If a Windows node does not come back after an update,
+that file says which step it got to.</strong> Meanwhile <code>Start-Service kraken-agent</code>
+brings it up immediately.</p>
+<p>The service&#39;s recovery actions are what restart a <em>failing</em> Agent — a bad
+config, a bind conflict, and above all the boot-attempt loop above. Check and
+heal them:</p>
+<div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>C:\kraken\bin\kraken-agent.exe --service status
+C:\kraken\bin\kraken-agent.exe --service install --root C:\kraken
+C:\kraken\bin\kraken-agent.exe --service status</code></pre></div>
+<p><code>--service status</code> exits 0 when the registered configuration matches what
+<code>--service install</code> would write, 1 on drift, and 2 when the service is not
+installed or the SCM cannot be read — an unelevated shell lands on 2. It prints
+actual against expected per field, so it is scriptable and it is the first thing
+to run when a Windows node&#39;s behaviour across updates does not match the docs.</p>
+<h2 id="rolling-back">Rolling back <a class="hlink" href="#rolling-back" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>There is no downgrade button, and a rollback is not free: migrations run
+forward. The realistic recoveries are</p>
+<ul>
+<li><strong>Agent</strong> — pin the previous release and re-run the installer with
+<code>--version vX.Y.Z</code> (Linux) or <code>-Version vX.Y.Z</code> (Windows).</li>
+<li><strong>Panel</strong> — set <code>KRAKEN_PANEL_IMAGE</code> to the previous tag and <code>up -d</code>. Whether
+that works depends on whether the release migrated the schema; check the
+changelog entry before assuming it does.</li>
+<li><strong>Everything</strong> — restore the <code>pgdata</code> volume and the Panel&#39;s state directory
+together. Neither is a restore on its own, and neither is a restore without
+<code>KRAKEN_SECRETS_KEY</code>.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/install/agent/"><span class="pg-k">previous</span><span class="pg-t">Install an Agent</span></a>
+      <a class="pg next" href="/wiki/install/uninstall/"><span class="pg-k">next</span><span class="pg-t">Uninstalling<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/install/upgrade.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/install/upgrade.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-rule-agents-before-panels">The rule: Agents before Panels</a>
+<a class="toc-link lvl-2" href="#panel-compose">Panel: compose</a>
+<a class="toc-link lvl-2" href="#panel-bare-metal">Panel: bare metal</a>
+<a class="toc-link lvl-2" href="#agents-from-the-panel">Agents: from the Panel</a>
+<a class="toc-link lvl-2" href="#agents-from-their-own-installer">Agents: from their own installer</a>
+<a class="toc-link lvl-2" href="#what-self-update-actually-does">What self-update actually does</a>
+<a class="toc-link lvl-2" href="#when-a-node-does-not-come-back">When a node does not come back</a>
+<a class="toc-link lvl-2" href="#rolling-back">Rolling back</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Panel configuration — Kraken wiki</title>
+<meta name="description" content="Every KRAKEN_* environment variable the Panel reads, with its default and what it does — generated from internal/panel/config/config.go so it cannot drift from the code." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/panel/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/panel/" />
+<meta property="og:title" content="Panel configuration — Kraken wiki" />
+<meta property="og:description" content="Every KRAKEN_* environment variable the Panel reads, with its default and what it does — generated from internal/panel/config/config.go so it cannot drift from the code." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Panel configuration — Kraken wiki" />
+<meta name="twitter:description" content="Every KRAKEN_* environment variable the Panel reads, with its default and what it does — generated from internal/panel/config/config.go so it cannot drift from the code." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link is-here" href="/wiki/configure/panel/" aria-current="page">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Panel configuration</span></nav>
+    <h1>Panel configuration</h1>
+    <p class="lede">Every KRAKEN_* environment variable the Panel reads, with its default and what it does — generated from internal/panel/config/config.go so it cannot drift from the code.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-3" href="#core">core</a>
+<a class="toc-link lvl-3" href="#bootstrap-admin">bootstrap admin</a>
+<a class="toc-link lvl-3" href="#browser-origins">browser origins</a>
+<a class="toc-link lvl-3" href="#first-run-setup">first-run setup</a>
+<a class="toc-link lvl-3" href="#content-security-policy">content security policy</a>
+<a class="toc-link lvl-3" href="#panel-agent-mtls">panel → agent mTLS</a>
+<a class="toc-link lvl-3" href="#certificate-authority">certificate authority</a>
+<a class="toc-link lvl-3" href="#quickstart-single-host">quickstart (single host)</a>
+<a class="toc-link lvl-3" href="#state-on-disk">state on disk</a>
+<a class="toc-link lvl-3" href="#secrets-at-rest">secrets at rest</a>
+<a class="toc-link lvl-3" href="#reverse-tunnel">reverse tunnel</a>
+<a class="toc-link lvl-3" href="#sftp-proxy-tunnel-nodes">sftp proxy (tunnel nodes)</a>
+<a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
+<a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
+<a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
+<a class="toc-link lvl-2" href="#the-ones-worth-knowing-by-heart">The ones worth knowing by heart</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+</div></details>
+    <article class="prose">
+<p>The Panel is configured entirely from the environment, read once at startup.
+Defaults make it runnable out of the box for local development, which is not the
+same as runnable in production — see <a href="/wiki/install/panel/">installing the
+Panel</a> for the handful that matter on a real deploy.</p>
+<p>Where the variables go depends on how you run it: <code>deploy/.env</code> (compose),
+<code>/etc/kraken/panel.env</code> (systemd), or the process environment.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p><strong>The tables below are generated</strong> from the <code>env(…)</code> calls and their comments in
+<a href="https://github.com/briggleman/kraken/blob/main/internal/panel/config/config.go"><code>internal/panel/config/config.go</code></a>,
+grouped the way that file groups them. Editing this page by hand is pointless —
+the next <code>make wiki</code> overwrites it. A <code>KRAKEN_*</code> variable with no comment on the
+Go side fails the build rather than appearing here with a blank description.</p>
+</div>
+</aside>
+
+
+<h3 id="core">core <a class="hlink" href="#core" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_ENV</code><span class="def">default <b>dev</b></span></td><td>Env is the deployment environment: &quot;dev&quot;, &quot;staging&quot;, or &quot;prod&quot;.</td></tr>
+<tr><td><code>KRAKEN_HTTP_ADDR</code><span class="def">default <b>:8080</b></span></td><td>HTTPAddr is the listen address for the HTTP API, e.g. &quot;:8080&quot;.</td></tr>
+<tr><td><code>KRAKEN_DATABASE_URL</code><span class="def">default <span class="nil">unset</span></span></td><td>DatabaseURL is the Postgres DSN. Empty selects the in-memory store (dev only).</td></tr>
+<tr><td><code>KRAKEN_CONFIG_FILE</code><span class="def">default <b>&lt;stateDir&gt;/panel.json</b></span></td><td>ConfigFile is the path to the JSON file holding UI-entered settings that must live outside the database (currently just the database_url).</td></tr>
+<tr><td><code>KRAKEN_SESSION_TTL</code><span class="def">default <b>24h</b></span></td><td>SessionTTL is how long an authenticated session remains valid.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="bootstrap-admin">bootstrap admin <a class="hlink" href="#bootstrap-admin" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_BOOTSTRAP_ADMIN_USER</code><span class="def">default <b>admin</b></span></td><td>Bootstrap admin — created on first start if no users exist. If the password is left empty a strong random one is generated and logged once at startup, so there is no weak default credential.</td></tr>
+<tr><td><code>KRAKEN_BOOTSTRAP_ADMIN_PASSWORD</code><span class="def">default <span class="nil">unset</span></span></td><td>Bootstrap admin — created on first start if no users exist. If the password is left empty a strong random one is generated and logged once at startup, so there is no weak default credential.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="browser-origins">browser origins <a class="hlink" href="#browser-origins" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_ALLOWED_ORIGINS</code><span class="def">default <span class="nil">unset</span></span></td><td>AllowedOrigins is the WebSocket Origin allowlist (host[:port] patterns, &quot;*&quot; wildcards allowed). Empty falls back to localhost dev origins. Same-origin requests are always permitted regardless of this list.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="first-run-setup">first-run setup <a class="hlink" href="#first-run-setup" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_SETUP_ALLOWED_CIDRS</code><span class="def">default <span class="nil">unset</span></span></td><td>SetupAllowedCIDRs restricts the /setup/* API surface (first-run wizard, datastore configuration, local enrollment) to requests whose real TCP peer falls inside one of these CIDRs (single IPs allowed too). Defaults to loopback + private ranges (RFC 1918, link-local, IPv6 ULA) so setup is never drivable from the public internet, even with valid credentials.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="content-security-policy">content security policy <a class="hlink" href="#content-security-policy" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_CSP</code><span class="def">default <b>enforce</b></span></td><td>CSPMode selects how the Content-Security-Policy header is emitted: &quot;enforce&quot; (default), &quot;report-only&quot; for a dry run that reports violations without blocking, or &quot;off&quot; for the escape hatch when a reverse proxy already sets its own policy (two CSP headers intersect, which is usually stricter than either author intended).</td></tr>
+<tr><td><code>KRAKEN_CSP_SCRIPT_SRC</code><span class="def">default <span class="nil">unset</span></span></td><td>CSPScriptSrc and CSPConnectSrc are extra sources appended to those directives. The shipped policy is same-origin only; a Panel fronted by a CDN that injects a script (Cloudflare Web Analytics, for one) needs its host allowed here rather than in the default everyone else inherits.</td></tr>
+<tr><td><code>KRAKEN_CSP_CONNECT_SRC</code><span class="def">default <span class="nil">unset</span></span></td><td>CSPScriptSrc and CSPConnectSrc are extra sources appended to those directives. The shipped policy is same-origin only; a Panel fronted by a CDN that injects a script (Cloudflare Web Analytics, for one) needs its host allowed here rather than in the default everyone else inherits.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="panel-agent-mtls">panel → agent mTLS <a class="hlink" href="#panel-agent-mtls" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_TLS_CERT</code><span class="def">default <span class="nil">unset</span></span></td><td>Mutual-TLS for Panel→Agent gRPC. When all three are set the Panel dials Agents over mTLS; otherwise it falls back to an insecure connection (dev).</td></tr>
+<tr><td><code>KRAKEN_TLS_KEY</code><span class="def">default <span class="nil">unset</span></span></td><td>Mutual-TLS for Panel→Agent gRPC. When all three are set the Panel dials Agents over mTLS; otherwise it falls back to an insecure connection (dev).</td></tr>
+<tr><td><code>KRAKEN_TLS_CA</code><span class="def">default <span class="nil">unset</span></span></td><td>Mutual-TLS for Panel→Agent gRPC. When all three are set the Panel dials Agents over mTLS; otherwise it falls back to an insecure connection (dev).</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="certificate-authority">certificate authority <a class="hlink" href="#certificate-authority" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_CA_CERT</code><span class="def">default <span class="nil">unset</span></span></td><td>CA signing material. When set, the Panel acts as the certificate authority for Agent enrollment: it issues short-lived Agent certs in response to a one-time bootstrap token. Usually CACert == TLSCA.</td></tr>
+<tr><td><code>KRAKEN_CA_KEY</code><span class="def">default <span class="nil">unset</span></span></td><td>CA signing material. When set, the Panel acts as the certificate authority for Agent enrollment: it issues short-lived Agent certs in response to a one-time bootstrap token. Usually CACert == TLSCA.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="quickstart-single-host">quickstart (single host) <a class="hlink" href="#quickstart-single-host" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_LOCAL_AGENT_ADDR</code><span class="def">default <b>127.0.0.1:9090</b></span></td><td>LocalAgentAddr is the gRPC address of the co-located Agent used by quickstart.</td></tr>
+<tr><td><code>KRAKEN_QUICKSTART</code><span class="def">default <b>true in dev, false otherwise</b></span></td><td>Quickstart defaults on in dev; override explicitly with KRAKEN_QUICKSTART.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="state-on-disk">state on disk <a class="hlink" href="#state-on-disk" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_STATE_DIR</code><span class="def">default <b>data</b></span></td><td>KRAKEN_STATE_DIR groups all Panel-owned state (config file, secrets key, generated CA) under one directory so a systemd unit or a container just needs to point at /var/lib/kraken. Legacy default is &quot;data&quot; (cwd-relative) so existing dev setups keep working unchanged.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="secrets-at-rest">secrets at rest <a class="hlink" href="#secrets-at-rest" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_SECRETS_KEY</code><span class="def">default <span class="nil">unset</span></span></td><td>ResolveSecretsKey returns the 32-byte master key used to encrypt at-rest DB secrets. Precedence: KRAKEN_SECRETS_KEY (base64) → the config file → a freshly generated key persisted to the config file. fromEnv reports the first case.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="reverse-tunnel">reverse tunnel <a class="hlink" href="#reverse-tunnel" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_TUNNEL_ADDR</code><span class="def">default <b>:9443</b></span></td><td>TunnelAddr is the listen address for the reverse-tunnel listener that tunnel-mode Agents dial into (mTLS only; see docs/design/reverse-connections.md). Default &quot;:9443&quot;; set KRAKEN_TUNNEL_ADDR=off to disable the listener entirely. The listener also requires CA signing material — with no CA there is nothing to authenticate agents against, so it stays off.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="sftp-proxy-tunnel-nodes">sftp proxy (tunnel nodes) <a class="hlink" href="#sftp-proxy-tunnel-nodes" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_SFTP_PROXY</code><span class="def">default <b>on</b></span></td><td>SFTPProxyHost is the host part of the Panel-side SFTP proxy endpoints for tunnel-mode nodes. Each tunneled node gets its own port (raw SSH carries no routing header a pass-through proxy could read), allocated upward from SFTPProxyBasePort and persisted on the node record. Default base 2222 — :2022 collides with a co-located Agent&#39;s own SFTP server. Set KRAKEN_SFTP_PROXY=off to disable the proxy.</td></tr>
+<tr><td><code>KRAKEN_SFTP_PROXY_BASE_PORT</code><span class="def">default <b>2222</b></span></td><td>SFTPProxyHost is the host part of the Panel-side SFTP proxy endpoints for tunnel-mode nodes. Each tunneled node gets its own port (raw SSH carries no routing header a pass-through proxy could read), allocated upward from SFTPProxyBasePort and persisted on the node record. Default base 2222 — :2022 collides with a co-located Agent&#39;s own SFTP server. Set KRAKEN_SFTP_PROXY=off to disable the proxy.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="behind-a-reverse-proxy">behind a reverse proxy <a class="hlink" href="#behind-a-reverse-proxy" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_TRUSTED_PROXIES</code><span class="def">default <span class="nil">unset</span></span></td><td>TrustedProxies lists the CIDRs (bare IPs allowed) of reverse proxies whose forwarding headers the Panel may believe. EMPTY BY DEFAULT: with no trusted set, <code>X-Forwarded-For</code> is attacker-supplied and the Panel uses the real TCP peer for everything. Set it when the Panel sits behind Caddy/nginx/Traefik or a Cloudflare Tunnel — otherwise every request looks like it came from the proxy, which collapses the per-IP rate limiters into one shared bucket and files every audit row under the proxy&#39;s address. See clientIP in internal/panel/api.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="rate-limits">rate limits <a class="hlink" href="#rate-limits" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_RATE_LIMITS</code><span class="def">default <b>on</b></span></td><td>RateLimits is the escape hatch for the per-IP limiters on login and the token-redemption downloads: &quot;off&quot; disables both (logged loudly at startup). Anything else leaves them on, which is the default.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="logging">logging <a class="hlink" href="#logging" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_LOG_LEVEL</code><span class="def">default <b>info</b></span></td><td>LogLevel is the Panel&#39;s slog level: debug, info (default), warn, error. Several diagnostics — a rejected download token, for one — are Debug on purpose, because they are writable by an unauthenticated caller; this is how an operator turns them on when actually diagnosing something.</td></tr>
+</tbody>
+</table></div>
+
+
+<h2 id="reading-the-defaults">Reading the defaults <a class="hlink" href="#reading-the-defaults" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li>An <strong>unset</strong> default means empty, and the description says what empty
+selects. That is not always &quot;nothing&quot;: an empty <code>KRAKEN_DATABASE_URL</code> selects
+the in-memory store, and an empty <code>KRAKEN_TRUSTED_PROXIES</code> means no forwarding
+header is ever believed.</li>
+<li>A <strong>list</strong> is comma-separated, trimmed, with empty entries dropped.</li>
+<li>A <strong>duration</strong> takes either a Go duration (<code>24h</code>) or a plain number of
+seconds.</li>
+<li><strong>Booleans</strong> take anything Go&#39;s <code>strconv.ParseBool</code> accepts — <code>true</code>, <code>1</code>,
+<code>false</code>, <code>0</code>. An unparseable value falls back to the default rather than
+failing.</li>
+</ul>
+<p>Two variables refuse to be quietly wrong, and the difference is which way each
+list fails. An unparseable entry in <code>KRAKEN_TRUSTED_PROXIES</code> is a <strong>startup
+error</strong>: a typo that silently emptied that list would leave the Panel running
+and wrong. <code>KRAKEN_SETUP_ALLOWED_CIDRS</code> keeps skip-and-warn, because that list
+fails closed — a dropped entry denies access rather than granting it.</p>
+<h2 id="the-ones-worth-knowing-by-heart">The ones worth knowing by heart <a class="hlink" href="#the-ones-worth-knowing-by-heart" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong><code>KRAKEN_SECRETS_KEY</code></strong> — base64 of 32 bytes. Seals every at-rest secret.
+Lose it and every stored secret is unrecoverable. See <a href="/wiki/install/panel/">installing the
+Panel</a>.</li>
+<li><strong><code>KRAKEN_TRUSTED_PROXIES</code></strong> — empty unless a proxy really fronts the Panel,
+and set correctly when one does. It decides what the audit log records and
+whether the rate limiters work at all: <a href="/wiki/configure/reverse-proxy/">behind a reverse
+proxy</a>.</li>
+<li><strong><code>KRAKEN_TUNNEL_ADDR</code></strong> — the <code>:9443</code> listener every tunnel-mode node dials.
+Binding it to loopback takes the fleet offline: <a href="/wiki/configure/network/">ports and
+firewall</a>.</li>
+<li><strong><code>KRAKEN_RATE_LIMITS</code></strong> and <strong><code>KRAKEN_LOG_LEVEL</code></strong> — <a href="/wiki/configure/limits-and-logging/">limits and
+logging</a>.</li>
+</ul>
+<h2 id="what-is-not-here">What is not here <a class="hlink" href="#what-is-not-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Agent has its own configuration, with a file, flags and environment
+variables of its own: <a href="/wiki/configure/agent/">Agent configuration</a>.</p>
+<p>A few settings live in the database and are edited in the UI rather than the
+environment — the datastore DSN entered in the first-run wizard, the session
+TTL, the WebSocket origins. Where an environment variable exists for one of
+those, <strong>the environment wins and the UI shows the field as locked</strong>, so a host
+driven by compose or systemd cannot be quietly changed out from under its unit
+file.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/install/uninstall/"><span class="pg-k">previous</span><span class="pg-t">Uninstalling</span></a>
+      <a class="pg next" href="/wiki/configure/agent/"><span class="pg-k">next</span><span class="pg-t">Agent configuration<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/panel.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/panel.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-3" href="#core">core</a>
+<a class="toc-link lvl-3" href="#bootstrap-admin">bootstrap admin</a>
+<a class="toc-link lvl-3" href="#browser-origins">browser origins</a>
+<a class="toc-link lvl-3" href="#first-run-setup">first-run setup</a>
+<a class="toc-link lvl-3" href="#content-security-policy">content security policy</a>
+<a class="toc-link lvl-3" href="#panel-agent-mtls">panel → agent mTLS</a>
+<a class="toc-link lvl-3" href="#certificate-authority">certificate authority</a>
+<a class="toc-link lvl-3" href="#quickstart-single-host">quickstart (single host)</a>
+<a class="toc-link lvl-3" href="#state-on-disk">state on disk</a>
+<a class="toc-link lvl-3" href="#secrets-at-rest">secrets at rest</a>
+<a class="toc-link lvl-3" href="#reverse-tunnel">reverse tunnel</a>
+<a class="toc-link lvl-3" href="#sftp-proxy-tunnel-nodes">sftp proxy (tunnel nodes)</a>
+<a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
+<a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
+<a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
+<a class="toc-link lvl-2" href="#the-ones-worth-knowing-by-heart">The ones worth knowing by heart</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

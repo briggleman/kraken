@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Install the Panel — Kraken wiki</title>
+<meta name="description" content="The recommended install — Panel and Postgres in Docker Compose, service by service, including the one key you must not lose and the two ports that decide whether your fleet can reach you." />
+<link rel="canonical" href="https://krakenserver.io/wiki/install/panel/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/install/panel/" />
+<meta property="og:title" content="Install the Panel — Kraken wiki" />
+<meta property="og:description" content="The recommended install — Panel and Postgres in Docker Compose, service by service, including the one key you must not lose and the two ports that decide whether your fleet can reach you." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Install the Panel — Kraken wiki" />
+<meta name="twitter:description" content="The recommended install — Panel and Postgres in Docker Compose, service by service, including the one key you must not lose and the two ports that decide whether your fleet can reach you." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.52.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link is-here" href="/wiki/install/panel/" aria-current="page">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>install</span><i aria-hidden="true">/</i><span aria-current="page">Install the Panel</span></nav>
+    <h1>Install the Panel</h1>
+    <p class="lede">The recommended install — Panel and Postgres in Docker Compose, service by service, including the one key you must not lose and the two ports that decide whether your fleet can reach you.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#before-you-start">Before you start</a>
+<a class="toc-link lvl-2" href="#get-the-files">Get the files</a>
+<a class="toc-link lvl-2" href="#the-secrets-key">The secrets key</a>
+<a class="toc-link lvl-2" href="#the-stack-service-by-service">The stack, service by service</a>
+<a class="toc-link lvl-3" href="#postgres">postgres</a>
+<a class="toc-link lvl-3" href="#panel">panel</a>
+<a class="toc-link lvl-3" href="#agent-optional">agent (optional)</a>
+<a class="toc-link lvl-2" href="#bootstrap-admin">Bootstrap admin</a>
+<a class="toc-link lvl-2" href="#origins-and-the-setup-surface">Origins and the setup surface</a>
+<a class="toc-link lvl-2" href="#ports">Ports</a>
+<a class="toc-link lvl-2" href="#bring-it-up">Bring it up</a>
+<a class="toc-link lvl-2" href="#alternatives">Alternatives</a>
+</div></details>
+    <article class="prose">
+<p>The main line: <strong>Panel plus Postgres in Docker Compose</strong>, Agents on bare metal.
+The reference compose file is
+<a href="https://github.com/briggleman/kraken/blob/main/deploy/docker-compose.full.yml"><code>deploy/docker-compose.full.yml</code></a>
+and the Panel image is <code>ghcr.io/briggleman/kraken-panel</code>, published on every
+release.</p>
+<p>Two alternatives exist and are documented, but neither is the path to take
+first: <a href="/wiki/install/panel/bare-metal/">bare metal + systemd</a> and
+<a href="/wiki/install/panel/from-source/">from source</a>.</p>
+<h2 id="before-you-start">Before you start <a class="hlink" href="#before-you-start" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li>A Linux host with <strong>Docker</strong> and <strong>Compose v2</strong> (<code>docker compose version</code>).</li>
+<li><code>amd64</code> or <code>arm64</code>.</li>
+<li>The host&#39;s own IP or DNS name. Not a Windows computer name — anywhere Kraken
+asks for a node address it wants an IP or a DNS name.</li>
+<li>Two ports you can decide about now: the <strong>HTTP port</strong> the browser uses
+(<code>:8080</code> by default) and <strong><code>:9443</code></strong>, the mTLS listener that tunnel-mode
+Agents dial. See <a href="/wiki/configure/network/">ports and firewall</a>.</li>
+</ul>
+<p><code>network_mode: host</code> is Linux-only. Docker Desktop for Mac and Windows ignore
+it, which is why a Windows machine runs the Agent bare metal and the Panel lives
+on a Linux host.</p>
+<h2 id="get-the-files">Get the files <a class="hlink" href="#get-the-files" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>git clone https://github.com/briggleman/kraken.git
+cd kraken
+cp deploy/.env.example deploy/.env</code></pre></div>
+<p>You only need <code>deploy/docker-compose.full.yml</code> and <code>deploy/.env</code>; copy them
+wherever you keep your compose stacks if you would rather not keep the clone.
+The compose file itself holds no secrets, which is the whole point of the split,
+so it stays safe to commit; <code>deploy/.env</code> is git-ignored and does not.</p>
+<h2 id="the-secrets-key">The secrets key <a class="hlink" href="#the-secrets-key" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>echo &quot;KRAKEN_SECRETS_KEY=$(openssl rand -base64 32)&quot; &gt;&gt; deploy/.env</code></pre></div>
+<p>This is the master key that seals every at-rest secret: Steam credentials, the
+Panel&#39;s CA private key, SFTP keys, integration tokens. The Panel refuses to
+start without it (<code>KRAKEN_SECRETS_KEY:?</code> in the compose file is a hard stop, not
+a default).</p>
+<aside class="callout is-security">
+<span class="callout-k">security</span>
+<div class="callout-b"><p><strong>Losing this key means every stored secret becomes unrecoverable.</strong> It is not
+derived from anything and there is no recovery path: back it up somewhere that
+survives the host, and keep it out of the compose file. Encryption at rest is
+AES-256-GCM; nothing infrastructural is persisted in the clear.</p>
+</div>
+</aside>
+
+
+<h2 id="the-stack-service-by-service">The stack, service by service <a class="hlink" href="#the-stack-service-by-service" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<h3 id="postgres">postgres <a class="hlink" href="#postgres" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>postgres:
+  image: postgres:17-alpine
+  environment:
+    POSTGRES_USER: kraken
+    POSTGRES_PASSWORD: kraken
+    POSTGRES_DB: kraken
+  ports:
+    - &quot;127.0.0.1:5432:5432&quot;
+  volumes:
+    - pgdata:/var/lib/postgresql/data</code></pre></div>
+<p>Postgres is the source of truth: fleet state, users, sessions and the audit log
+all live here. The port publish is deliberately <code>127.0.0.1:5432:5432</code>: the
+host-networked Panel reaches it over loopback and nothing else on the network
+can.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>The Postgres password appears in two places and they must match.</strong>
+<code>POSTGRES_PASSWORD</code> on this service, and the DSN the Panel is given
+(<code>KRAKEN_DATABASE_URL: postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable</code>).
+Change one without the other and the Panel starts, fails to connect, and the
+first thing you see is a login screen that will not accept anything.</p>
+<p>Change both <em>before</em> the first <code>up -d</code>. Postgres only reads <code>POSTGRES_PASSWORD</code>
+when it initialises an empty data directory, so afterwards you are changing the
+password inside the running database, not in compose.</p>
+</div>
+</aside>
+
+
+<p>The <code>pgdata</code> volume is the fleet. Back it up alongside <code>KRAKEN_SECRETS_KEY</code> —
+one without the other is not a restore.</p>
+<h3 id="panel">panel <a class="hlink" href="#panel" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>panel:
+  image: ${KRAKEN_PANEL_IMAGE:-ghcr.io/briggleman/kraken-panel:latest}
+  depends_on:
+    postgres: { condition: service_healthy }
+  network_mode: host
+  environment:
+    KRAKEN_ENV: prod
+    KRAKEN_HTTP_ADDR: :${KRAKEN_HTTP_PORT:-8080}
+    KRAKEN_DATABASE_URL: postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable
+    KRAKEN_STATE_DIR: /var/lib/kraken
+    KRAKEN_SECRETS_KEY: ${KRAKEN_SECRETS_KEY:?…}
+  volumes:
+    - panel-state:/var/lib/kraken</code></pre></div>
+<p>Host networking, so the Panel binds its HTTP port directly, binds <code>:9443</code> for
+the tunnel listener, and can dial a co-located Agent on <code>127.0.0.1:9090</code> with no
+cross-network gymnastics.</p>
+<p><code>KRAKEN_STATE_DIR</code> is where the Panel keeps what must not live in the database:
+its <code>panel.json</code>, the CA it generates for Agent enrollment, and its own client
+certificate. The <code>panel-state</code> volume is the second thing to back up.</p>
+<p>Pin the image when you want to control upgrades:
+<code>KRAKEN_PANEL_IMAGE=ghcr.io/briggleman/kraken-panel:v0.52.0</code> in <code>deploy/.env</code>.</p>
+<h3 id="agent-optional">agent (optional) <a class="hlink" href="#agent-optional" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>The third service is a co-located Agent so a single-host install reaches a
+running game server with nothing else to do. It takes <code>network_mode: host</code> and
+the Docker socket, because it launches game containers on the host&#39;s daemon and
+their ports have to be reachable from the LAN.</p>
+<p>If the Panel host will not run games — a small VPS fronting nodes elsewhere, for
+instance — drop the service and turn quickstart off:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_QUICKSTART=false</code></pre></div>
+<p><code>KRAKEN_QUICKSTART</code> is the single-host convenience path: on startup the Panel
+auto-registers the co-located Agent as the <code>local</code> node. With no Agent there to
+register, leave it off, or the fleet shows a node that will never come
+up.</p>
+<h2 id="bootstrap-admin">Bootstrap admin <a class="hlink" href="#bootstrap-admin" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_BOOTSTRAP_ADMIN_USER=admin
+KRAKEN_BOOTSTRAP_ADMIN_PASSWORD=</code></pre></div>
+<p>On a fresh database the Panel creates this user. <strong>Leave the password empty</strong>:
+the Panel then generates a strong random one and logs it once at startup, so
+there is no weak default credential to forget about.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml logs panel | grep -i password</code></pre></div>
+<p>On later starts the value is ignored. The login lives in Postgres now.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>That generated password is logged <strong>once</strong>. If the container&#39;s logs have rolled
+past it before you read it, the recovery is to wipe the database and start
+again — so read it now, sign in, and let the UI walk you through the change it
+forces on first login.</p>
+</div>
+</aside>
+
+
+<h2 id="origins-and-the-setup-surface">Origins and the setup surface <a class="hlink" href="#origins-and-the-setup-surface" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_ALLOWED_ORIGINS=https://kraken.example.com</code></pre></div>
+<p>The WebSocket origin allowlist. Same-origin requests are always permitted, so a
+Panel reached directly at <code>http://host:8080</code> needs nothing here. Set it the
+moment a proxy or a real hostname is in front, or the console and stats sockets
+will be refused while ordinary REST calls keep working: a confusing half-broken
+Panel.</p>
+<p><code>KRAKEN_SETUP_ALLOWED_CIDRS</code> restricts the <code>/setup/*</code> API — the first-run
+wizard, datastore configuration, local enrollment — to callers whose real TCP
+peer falls inside one of the listed CIDRs. It defaults to loopback plus the RFC
+1918 private ranges, link-local and IPv6 ULA, so setup is never drivable from
+the public internet even with valid credentials. Narrow it if you want; the
+default is already closed to the internet.</p>
+<p>Behind a proxy, &quot;real TCP peer&quot; is the thing to think about: see
+<a href="/wiki/configure/reverse-proxy/">behind a reverse proxy</a>.</p>
+<h2 id="ports">Ports <a class="hlink" href="#ports" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Two ports matter on the Panel host.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>port</th>
+<th>what</th>
+<th>who reaches it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>8080</code> (<code>KRAKEN_HTTP_PORT</code>)</td>
+<td>HTTP: web UI and REST + WebSocket API</td>
+<td>browsers, and Agents during enrollment</td>
+</tr>
+<tr>
+<td><code>9443</code> (<code>KRAKEN_TUNNEL_ADDR</code>)</td>
+<td>the mTLS reverse-tunnel listener</td>
+<td>tunnel-mode Agents only</td>
+</tr>
+</tbody></table>
+</div>
+<p>The reference deployment publishes HTTP on <strong>9095</strong> rather than 8080; pick
+whatever you like with <code>KRAKEN_HTTP_PORT</code> and use it consistently everywhere the
+Panel URL appears.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong><code>:9443</code> must stay reachable from your Agents.</strong> It is the only way a
+tunnel-mode node talks to the Panel, and tunnel mode is the default for new
+nodes. Binding it to <code>127.0.0.1</code> — the reflex when putting the HTTP port behind
+a proxy — takes every tunnel node in the fleet offline at once, with nothing on
+the node&#39;s own side to explain it.</p>
+<p>It also cannot be proxied. It carries raw mTLS, so nginx, Caddy and Cloudflare
+cannot pass it through; give it its own DNS name or address and point Agents
+straight at it with <code>--tunnel-addr</code>.</p>
+</div>
+</aside>
+
+
+<h2 id="bring-it-up">Bring it up <a class="hlink" href="#bring-it-up" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
+docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml ps</code></pre></div>
+<p>Then open <code>http://&lt;host&gt;:8080</code> and sign in as the bootstrap admin.</p>
+<!-- SCREENSHOT: the Kraken sign-in screen at http://host:8080, with the bootstrap admin username filled in -->
+<p class="shot"><em>screenshot: the Kraken sign-in screen at http://host:8080, with the bootstrap admin username filled in</em></p>
+
+
+<p>The UI forces a password change on first login. Do it: the generated one is in
+a log file.</p>
+<!-- SCREENSHOT: the fleet view immediately after first login, empty, with the Add node affordance visible -->
+<p class="shot"><em>screenshot: the fleet view immediately after first login, empty, with the Add node affordance visible</em></p>
+
+
+<p>From here:</p>
+<ol>
+<li><strong><a href="/wiki/install/agent/">Install an Agent</a></strong> on each host that will run games
+— including this one, if you kept the compose <code>agent</code> service, in which case
+quickstart has already registered it.</li>
+<li>Give every node a <strong>port range</strong> before you try to deploy anything. A node
+with no range is online and unschedulable.</li>
+<li>Read <strong><a href="/wiki/install/upgrade/">upgrading</a></strong> before the first release lands,
+because the order matters.</li>
+</ol>
+<h2 id="alternatives">Alternatives <a class="hlink" href="#alternatives" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong><a href="/wiki/install/panel/bare-metal/">Bare metal + systemd</a></strong> — a
+service-managed binary instead of a container.</li>
+<li><strong><a href="/wiki/install/panel/from-source/">From source</a></strong> — contributors, or an
+OS/arch with no published build.</li>
+<li><strong>Mixed</strong> — containerized Panel, bare-metal Agents. Skip the compose <code>agent</code>
+service and follow the Agent page. Because the Panel uses host networking, no
+compose edits are needed.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/"><span class="pg-k">previous</span><span class="pg-t">Start here</span></a>
+      <a class="pg next" href="/wiki/install/panel/bare-metal/"><span class="pg-k">next</span><span class="pg-t">Panel on bare metal<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/install/panel/index.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/install/panel/index.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#before-you-start">Before you start</a>
+<a class="toc-link lvl-2" href="#get-the-files">Get the files</a>
+<a class="toc-link lvl-2" href="#the-secrets-key">The secrets key</a>
+<a class="toc-link lvl-2" href="#the-stack-service-by-service">The stack, service by service</a>
+<a class="toc-link lvl-3" href="#postgres">postgres</a>
+<a class="toc-link lvl-3" href="#panel">panel</a>
+<a class="toc-link lvl-3" href="#agent-optional">agent (optional)</a>
+<a class="toc-link lvl-2" href="#bootstrap-admin">Bootstrap admin</a>
+<a class="toc-link lvl-2" href="#origins-and-the-setup-surface">Origins and the setup surface</a>
+<a class="toc-link lvl-2" href="#ports">Ports</a>
+<a class="toc-link lvl-2" href="#bring-it-up">Bring it up</a>
+<a class="toc-link lvl-2" href="#alternatives">Alternatives</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

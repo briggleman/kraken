@@ -11,13 +11,16 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "check:design": "node scripts/extract-design.mjs --check",
     "check:csp": "node scripts/check-inline-style.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:wiki": "node scripts/build-wiki.mjs",
+    "check:wiki": "node scripts/build-wiki.mjs --check"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tsconfig/svelte": "^5.0.4",
     "@types/node": "^26.3.0",
     "jsdom": "^30.0.1",
+    "marked": "^16.4.2",
     "svelte": "^5.16.0",
     "svelte-check": "^4.1.1",
     "typescript": "^5.6.3",

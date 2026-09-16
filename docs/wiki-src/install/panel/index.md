@@ -206,9 +206,9 @@ Two ports matter on the Panel host.
 | `8080` (`KRAKEN_HTTP_PORT`) | HTTP: web UI and REST + WebSocket API | browsers, and Agents during enrollment |
 | `9443` (`KRAKEN_TUNNEL_ADDR`) | the mTLS reverse-tunnel listener | tunnel-mode Agents only |
 
-The reference deployment publishes HTTP on **9095** rather than 8080. Pick
-whatever you like with `KRAKEN_HTTP_PORT` and use it consistently everywhere the
-Panel URL appears.
+`8080` is the default and the compose file publishes it as-is. If another
+service on the host already owns it, move the Panel with `KRAKEN_HTTP_PORT` and
+use the same number everywhere the Panel URL appears.
 
 :::warning
 **`:9443` has to stay reachable from your Agents.** It is how a tunnel-mode node

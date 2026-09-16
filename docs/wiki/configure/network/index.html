@@ -137,9 +137,9 @@ straight to the node.</p>
 </tr>
 </tbody></table>
 </div>
-<p>The Panel&#39;s HTTP port is <code>KRAKEN_HTTP_ADDR</code> / <code>KRAKEN_HTTP_PORT</code>, defaulting to
-<code>8080</code>; the reference deployment runs it on <strong>9095</strong>. Pick one and use it
-everywhere the Panel URL appears. The port pool is per node and set in the
+<p>The Panel&#39;s HTTP port is <code>KRAKEN_HTTP_ADDR</code> / <code>KRAKEN_HTTP_PORT</code>, and it
+defaults to <code>8080</code>. Change it if something else on the host already holds that
+port, then use the same number everywhere the Panel URL appears. The port pool is per node and set in the
 Panel&#39;s node settings, where <code>28000–28999</code> is the reference range rather than a
 default you inherit.</p>
 <p>Two Agents sharing one port space cannot both hold <code>:9090</code>/<code>:2022</code>. The classic

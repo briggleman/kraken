@@ -17,9 +17,9 @@ straight to the node.
 | `2022` | Agent | per-server SFTP | SFTP clients on your LAN |
 | `28000–28999` | Agent host | the game-port pool | players, via your router |
 
-The Panel's HTTP port is `KRAKEN_HTTP_ADDR` / `KRAKEN_HTTP_PORT`, defaulting to
-`8080`; the reference deployment runs it on **9095**. Pick one and use it
-everywhere the Panel URL appears. The port pool is per node and set in the
+The Panel's HTTP port is `KRAKEN_HTTP_ADDR` / `KRAKEN_HTTP_PORT`, and it
+defaults to `8080`. Change it if something else on the host already holds that
+port, then use the same number everywhere the Panel URL appears. The port pool is per node and set in the
 Panel's node settings, where `28000–28999` is the reference range rather than a
 default you inherit.
 

@@ -268,9 +268,9 @@ default is already closed to the internet.</p>
 </tr>
 </tbody></table>
 </div>
-<p>The reference deployment publishes HTTP on <strong>9095</strong> rather than 8080. Pick
-whatever you like with <code>KRAKEN_HTTP_PORT</code> and use it consistently everywhere the
-Panel URL appears.</p>
+<p><code>8080</code> is the default and the compose file publishes it as-is. If another
+service on the host already owns it, move the Panel with <code>KRAKEN_HTTP_PORT</code> and
+use the same number everywhere the Panel URL appears.</p>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
 <div class="callout-b"><p><strong><code>:9443</code> has to stay reachable from your Agents.</strong> It is how a tunnel-mode node

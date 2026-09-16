@@ -68,8 +68,11 @@ services:
       # every audit row records the proxy, and the per-client rate limiters on
       # login and download-token redemption collapse into a single shared
       # bucket that one stranger can exhaust for everybody. With the proxy
-      # named here, the Panel reads the real client from CF-Connecting-IP or
-      # the rightmost untrusted X-Forwarded-For hop instead.
+      # named here, the Panel reads the real client from the rightmost
+      # untrusted X-Forwarded-For hop instead. (X-Forwarded-For is the only
+      # header consulted: CF-Connecting-IP is set by Cloudflare but passed
+      # through verbatim by other proxies, so it is not proof of anything.)
+      # An entry that does not parse is a startup error, not a warning.
       #
       # A cloudflared sidecar on the host, or any proxy on this machine:
       #   KRAKEN_TRUSTED_PROXIES: 127.0.0.0/8,::1/128

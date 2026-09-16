@@ -185,6 +185,15 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 	// Caddy, nginx, Traefik or a Cloudflare Tunnel sees the proxy on every
 	// request unless this is set, which would put every audit row and every
 	// rate-limit bucket under one address (see clientip.go).
+	// An unparseable entry never reaches here from a real startup —
+	// config.Load refuses it outright, because a list that quietly lost an
+	// entry leaves a Panel running and wrong rather than failing. This path
+	// covers a directly-constructed config (tests, embedders), and says so
+	// loudly rather than trusting a partial list in silence.
+	if err := config.ValidateCIDRList(cfg.TrustedProxies); err != nil {
+		logger.Error("KRAKEN_TRUSTED_PROXIES is invalid — no proxy will be trusted, "+
+			"so every caller will be seen as its TCP peer", "err", err)
+	}
 	s.trustedProxies = s.parseCIDRList(cfg.TrustedProxies, "KRAKEN_TRUSTED_PROXIES")
 	if len(s.trustedProxies) > 0 {
 		logger.Info("trusting reverse-proxy forwarding headers from these networks",

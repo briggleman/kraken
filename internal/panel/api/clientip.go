@@ -29,20 +29,25 @@ func peerIP(r *http.Request) string {
 // and behind any reverse proxy the peer is the PROXY for every request, which
 // is worse than spoofable: one shared bucket for every rate limiter and one
 // address on every audit row. So when the peer is inside a trusted CIDR the
-// Panel reads the client from the proxy's own headers: `CF-Connecting-IP` if
-// the tunnel set it, otherwise the RIGHTMOST `X-Forwarded-For` entry that is
-// not itself trusted. Rightmost, because the list is appended to hop by hop:
-// everything to the left of the last trusted hop is whatever the client chose
-// to send, and only what a trusted proxy appended can be believed.
+// Panel takes the RIGHTMOST `X-Forwarded-For` entry that is not itself trusted.
+// Rightmost, because the list is appended to hop by hop: everything to the left
+// of the last trusted hop is whatever the client chose to send, and only what a
+// trusted proxy appended can be believed.
+//
+// `X-Forwarded-For` is the ONLY header consulted, and deliberately so.
+// `CF-Connecting-IP` looks more direct, but only Cloudflare ever sets it:
+// Caddy, nginx and Traefik pass a client-supplied one through untouched, and
+// nothing in the request says which of them is in front. Believing it from any
+// trusted proxy would let an internet client name its own address to
+// `requireInternal` (which would put `/setup/*` and the unauthenticated local
+// enrollment behind a header the caller writes), to both rate limiters, and to
+// every audit row. Cloudflare appends to `X-Forwarded-For` as well, so the
+// rightmost-untrusted rule serves the reference deployment without trusting
+// anything a proxy did not append.
 func (s *Server) clientIP(r *http.Request) string {
 	peer := peerIP(r)
 	if len(s.trustedProxies) == 0 || !s.isTrustedProxy(peer) {
 		return peer
-	}
-	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
-		if ip := net.ParseIP(cf); ip != nil {
-			return ip.String()
-		}
 	}
 	fwd := r.Header.Values("X-Forwarded-For")
 	var hops []string

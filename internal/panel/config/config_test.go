@@ -108,3 +108,57 @@ func TestLoad_FileFallbackWhenEnvUnset(t *testing.T) {
 		}
 	}
 }
+
+// A typo in KRAKEN_TRUSTED_PROXIES has to stop the process. Skipping the entry
+// with a warning would leave a Panel that starts, serves, and is quietly wrong:
+// behind a tunnel, /setup/* would see loopback for the entire internet and both
+// rate limiters would share one bucket — a misconfiguration that looks exactly
+// like a working deployment.
+func TestLoadRejectsAnUnparseableTrustedProxy(t *testing.T) {
+	t.Setenv("KRAKEN_TRUSTED_PROXIES", "127.0.0.0/8,proxy.internal")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted a trusted-proxy entry that is not an address")
+	}
+	t.Setenv("KRAKEN_TRUSTED_PROXIES", "127.0.0.0/8,10.0.0.5,::1/128")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected a valid list: %v", err)
+	}
+	if len(cfg.TrustedProxies) != 3 {
+		t.Fatalf("parsed %d entries, want 3", len(cfg.TrustedProxies))
+	}
+	// Unset is the default and is not an error: no proxy is trusted.
+	t.Setenv("KRAKEN_TRUSTED_PROXIES", "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected an empty list: %v", err)
+	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("empty list parsed as %v", cfg.TrustedProxies)
+	}
+}
+
+// The setup allowlist keeps its skip-and-warn behaviour on purpose: that list
+// fails CLOSED, so a dropped entry denies access rather than granting it.
+func TestLoadDoesNotRejectAnUnparseableSetupCIDR(t *testing.T) {
+	t.Setenv("KRAKEN_SETUP_ALLOWED_CIDRS", "10.0.0.0/8,not-a-cidr")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load rejected a setup allowlist entry: %v", err)
+	}
+}
+
+func TestRateLimitsAndLogLevelDefaults(t *testing.T) {
+	c := &Config{}
+	if !c.RateLimitsEnabled() {
+		t.Fatal("limiters are off by default; they must be on unless disabled")
+	}
+	if (&Config{RateLimits: "OFF"}).RateLimitsEnabled() {
+		t.Fatal("RateLimits=OFF did not disable the limiters")
+	}
+	if lvl := (&Config{LogLevel: "debug"}).SlogLevel(); lvl.String() != "DEBUG" {
+		t.Fatalf("LogLevel=debug gave %s", lvl)
+	}
+	if lvl := (&Config{LogLevel: "nonsense"}).SlogLevel(); lvl.String() != "INFO" {
+		t.Fatalf("an unrecognized level gave %s, want INFO", lvl)
+	}
+}

@@ -1287,9 +1287,15 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 // containment check (safePath) every file op shares and refusing a directory.
 // The three single-file operations — read, stat, download — all begin this way,
 // and having one copy is what keeps their containment and their error text
-// identical. The underlying os.Stat error is preserved rather than flattened to
-// "not found": a permission error and a missing file are different problems,
-// and an operator chasing one should not be told the other.
+// identical.
+//
+// The message names the LOGICAL path only. Whatever this returns reaches an API
+// client verbatim ("agent error: …"), and an *os.PathError from os.Stat carries
+// the resolved HOST path — so returning it as-is would teach anyone with
+// server.files.read where the node keeps its storage. What is worth keeping is
+// the distinction between the failures, not the filename that came with it:
+// missing and unreadable are different problems, and an operator chasing one
+// should not be told the other.
 func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, error) {
 	fp, err := d.safePath(p)
 	if err != nil {
@@ -1298,12 +1304,30 @@ func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, erro
 	host := d.localOf(serverID, fp)
 	st, err := os.Stat(host)
 	if err != nil {
-		return "", nil, fmt.Errorf("docker: %s: %w", p, err)
+		return "", nil, statError(p, err)
 	}
 	if st.IsDir() {
 		return "", nil, fmt.Errorf("docker: %s is a directory", p)
 	}
 	return host, st, nil
+}
+
+// statError renders a stat failure against the logical path, never the host
+// one. Anything unrecognized is reported by its underlying cause (the syscall
+// errno, which an *os.PathError wraps) rather than the PathError itself, whose
+// Error() would print the host path we are keeping out of the response.
+func statError(p string, err error) error {
+	switch {
+	case os.IsNotExist(err):
+		return fmt.Errorf("docker: %s not found", p)
+	case os.IsPermission(err):
+		return fmt.Errorf("docker: %s: permission denied", p)
+	}
+	cause := err
+	if pe, ok := err.(*os.PathError); ok && pe.Err != nil {
+		cause = pe.Err
+	}
+	return fmt.Errorf("docker: %s: %v", p, cause)
 }
 
 // ReadFile returns the contents of a single file in the volume, capped at

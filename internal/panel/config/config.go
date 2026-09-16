@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -198,6 +199,22 @@ func DefaultSetupAllowedCIDRs() []string {
 	}
 }
 
+// ValidateCIDRList reports the first entry that is neither a CIDR nor a bare
+// IP. Hostnames are refused on purpose: a name is not source-verifiable, and a
+// list of trusted addresses cannot depend on what DNS says today.
+func ValidateCIDRList(entries []string) error {
+	for _, e := range entries {
+		if _, _, err := net.ParseCIDR(e); err == nil {
+			continue
+		}
+		if ip := net.ParseIP(e); ip != nil {
+			continue
+		}
+		return fmt.Errorf("%q is not a CIDR or IP address (hostnames are not source-verifiable)", e)
+	}
+	return nil
+}
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	// KRAKEN_STATE_DIR groups all Panel-owned state (config file, secrets
@@ -233,6 +250,15 @@ func Load() (*Config, error) {
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()
+	}
+	// A bad trusted-proxy entry is fatal, unlike the setup allowlist's
+	// skip-and-warn. The difference is which way each list fails: a dropped
+	// setup CIDR denies access, while a dropped trusted proxy leaves the Panel
+	// RUNNING and quietly wrong — /setup/* seeing a tunnel's loopback for the
+	// whole internet, both rate limiters back in one shared bucket — with
+	// nothing on screen to say so. A typo here has to stop the process.
+	if err := ValidateCIDRList(c.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("KRAKEN_TRUSTED_PROXIES: %w", err)
 	}
 	// An unrecognized mode falls back to enforcing rather than silently serving
 	// no policy: a typo in KRAKEN_CSP must not disable a security header.

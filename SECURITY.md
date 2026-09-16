@@ -744,10 +744,25 @@ That default is wrong for the reference deployment, though, and not in the
 direction the old comment assumed: behind a reverse proxy or a Cloudflare
 Tunnel the peer is the *proxy* on every request, so every audit row records the
 proxy and both limiters collapse into a single shared bucket that one stranger
-can exhaust for everybody. With the proxy's CIDR named, the Panel takes
-`CF-Connecting-IP` when the trusted peer set it, else the **rightmost**
-`X-Forwarded-For` hop that is not itself trusted — rightmost because the list is
-appended hop by hop, and only what a trusted proxy appended can be believed.
+can exhaust for everybody. With the proxy's CIDR named, the Panel takes the
+**rightmost** `X-Forwarded-For` hop that is not itself trusted — rightmost
+because the list is appended hop by hop, and only what a trusted proxy appended
+can be believed. That is the only header consulted. `CF-Connecting-IP` looks
+more direct and is not: only Cloudflare sets it, Caddy/nginx/Traefik pass a
+client-supplied one through untouched, and nothing in a request says which of
+them is in front — so believing it from any trusted proxy would hand an
+internet client its own `clientIP`, and with it `requireInternal`, both
+limiters and every audit row. Cloudflare appends to `X-Forwarded-For` too, so
+the reference deployment needs nothing else.
+
+An unparseable entry in `KRAKEN_TRUSTED_PROXIES` is a **startup error**, not a
+warning. A typo that silently emptied the list would leave the Panel running
+with `/setup/*` seeing the tunnel's loopback for the entire internet and both
+limiters back in one shared bucket — a misconfiguration that looks like a
+working Panel. (`KRAKEN_SETUP_ALLOWED_CIDRS` keeps its skip-and-warn behaviour:
+that list fails closed, so a dropped entry denies access rather than granting
+it.)
+
 This also **tightens** `/setup/*`: a Panel behind a co-located tunnel otherwise
 sees `127.0.0.1` for the entire public internet.
 
@@ -765,7 +780,18 @@ files, unbounded — so `handleUploadFiles` now wraps the body in
 `http.MaxBytesReader` at 64 MiB plus a megabyte of multipart framing and answers
 413 past it. Without it one authenticated request could fill the Panel's disk.
 
-Covered by `TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly`,
+**Agent errors name the logical path, never the host one.** The Agent's
+single-file operations share one `statLocal`, whose message is built from the
+`/data`-relative path the caller asked for. An `*os.PathError` carries the
+RESOLVED host path, and the Panel hands an Agent error to the client verbatim
+("agent error: …"), so returning it unchanged would teach anyone holding
+`server.files.read` where a node keeps its storage. What is kept is the
+distinction — `not found` and `permission denied` stay separate answers, and
+anything else is reported by its underlying syscall error rather than the
+`PathError` wrapper.
+
+Covered by `TestStatErrorsDoNotLeakTheHostPath` (`internal/agent`),
+`TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly`,
 `TestDownloadFilesZipAnnouncesNoSize`, `TestDownloadFileTruncatesAFileThatGrew`
 and `TestDownloadFileFailsWhenTheFileShrank` (`internal/agent`), and
 `TestStreamChunksSetsContentLengthFromTheAnnouncedSize`,
@@ -777,7 +803,14 @@ and `TestDownloadFileFailsWhenTheFileShrank` (`internal/agent`), and
 `TestDownloadRedemptionIsRateLimited`, `TestOnlyTokenRedemptionIsRateLimited`,
 `TestRateLimitsOffSwitch`, `TestLoginRateLimitLeavesANormalSignInAlone`,
 `TestLoginRateLimitLeavesOneAuditRow`, `TestUploadBodyIsCapped`,
-the `TestClientIP*` set, `TestRateLimiterKeysOnTheResolvedClientBehindAProxy`,
+the `TestClientIP*` set (including
+`TestClientIPNeverBelievesCloudflareHeader`,
+`TestClientIPFallsBackWhenAHopIsGarbage` and
+`TestTrustedProxyMatchesAnIPv4MappedPeer`),
+`TestClipForLogCutsOnARuneBoundary`,
+`TestLoadRejectsAnUnparseableTrustedProxy`,
+`TestLoadDoesNotRejectAnUnparseableSetupCIDR` (`internal/panel/config`),
+`TestRateLimiterKeysOnTheResolvedClientBehindAProxy`,
 `TestRateLimiterAdmitsTheBurstThenRefuses`,
 `TestRateLimiterRecoversAfterTheWindow`, `TestRateLimiterIsolatesClients`,
 `TestRateLimiterAggregatesIPv6ToTheRoutedPrefix`,

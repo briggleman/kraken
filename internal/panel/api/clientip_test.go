@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/briggleman/kraken/internal/panel/config"
 	"github.com/briggleman/kraken/internal/panel/store/memory"
@@ -56,17 +58,18 @@ func TestClientIPTakesTheRightmostUntrustedHopFromATrustedPeer(t *testing.T) {
 	}
 }
 
-// The reference deployment is a Cloudflare Tunnel, which names the client
-// outright. When the peer is trusted, that header is the most direct answer
-// there is.
-func TestClientIPPrefersCloudflareHeaderFromATrustedPeer(t *testing.T) {
+// The reference deployment is a Cloudflare Tunnel on the Panel's own host. It
+// appends to X-Forwarded-For like any other proxy, so the rightmost-untrusted
+// rule serves it without the Panel having to believe a vendor-specific header
+// that other proxies forward verbatim.
+func TestClientIPResolvesTheClientBehindACloudflareTunnel(t *testing.T) {
 	s := proxyAPI(t, "127.0.0.1")
 	r := request("127.0.0.1:8443", map[string]string{
 		"CF-Connecting-IP": "198.51.100.42",
 		"X-Forwarded-For":  "198.51.100.42",
 	})
 	if got := s.clientIP(r); got != "198.51.100.42" {
-		t.Fatalf("clientIP = %q, want the address the tunnel named", got)
+		t.Fatalf("clientIP = %q, want the address the tunnel forwarded", got)
 	}
 }
 
@@ -94,7 +97,7 @@ func TestRateLimiterKeysOnTheResolvedClientBehindAProxy(t *testing.T) {
 	}))
 	call := func(client string) int {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, request("127.0.0.1:8443", map[string]string{"CF-Connecting-IP": client}))
+		h.ServeHTTP(rec, request("127.0.0.1:8443", map[string]string{"X-Forwarded-For": client}))
 		return rec.Code
 	}
 	if code := call("198.51.100.1"); code != http.StatusOK {
@@ -105,5 +108,76 @@ func TestRateLimiterKeysOnTheResolvedClientBehindAProxy(t *testing.T) {
 	}
 	if code := call("198.51.100.1"); code != http.StatusTooManyRequests {
 		t.Fatalf("first client again: got %d, want 429", code)
+	}
+}
+
+// CF-Connecting-IP is never believed, from any peer. Only Cloudflare sets it;
+// Caddy, nginx and Traefik pass a client-supplied one straight through, and
+// nothing in the request says which is in front. Believing it from a trusted
+// peer would let an internet client name its own address — and that address
+// now drives the internal-network gate in front of /setup/* and the
+// unauthenticated local-enrollment route, both rate limiters, and every audit
+// row. X-Forwarded-For, which a proxy appends itself, is the only header read.
+func TestClientIPNeverBelievesCloudflareHeader(t *testing.T) {
+	s := proxyAPI(t, "127.0.0.0/8")
+	r := request("127.0.0.1:8443", map[string]string{
+		"CF-Connecting-IP": "10.0.0.1", // the prize: an "internal" address
+		"X-Forwarded-For":  "198.51.100.7",
+	})
+	if got := s.clientIP(r); got != "198.51.100.7" {
+		t.Fatalf("clientIP = %q, want the forwarded hop — a spoofable vendor header won", got)
+	}
+	// With no X-Forwarded-For at all it falls back to the peer, not to the
+	// header a caller supplied.
+	only := request("127.0.0.1:8443", map[string]string{"CF-Connecting-IP": "10.0.0.1"})
+	if got := s.clientIP(only); got != "127.0.0.1" {
+		t.Fatalf("clientIP = %q, want the peer", got)
+	}
+}
+
+// A hop that is not an address ends the chain: everything to its left is
+// unverifiable, and an unparseable value must not become a rate-limit key of
+// its own (or an empty one).
+func TestClientIPFallsBackWhenAHopIsGarbage(t *testing.T) {
+	s := proxyAPI(t, "127.0.0.0/8")
+	r := request("127.0.0.1:8443", map[string]string{"X-Forwarded-For": "not-an-ip"})
+	if got := s.clientIP(r); got != "127.0.0.1" {
+		t.Fatalf("clientIP = %q, want the peer when the chain is unusable", got)
+	}
+	empty := request("127.0.0.1:8443", map[string]string{"X-Forwarded-For": " , "})
+	if got := s.clientIP(empty); got != "127.0.0.1" {
+		t.Fatalf("clientIP = %q, want the peer for an empty chain", got)
+	}
+}
+
+// Go hands an IPv4 connection to a dual-stack listener as ::ffff:10.0.0.1. A
+// trusted proxy written as an IPv4 CIDR has to match it, or the operator's
+// configuration silently does nothing on exactly the deployment it was for.
+func TestTrustedProxyMatchesAnIPv4MappedPeer(t *testing.T) {
+	s := proxyAPI(t, "10.0.0.0/8")
+	r := request("[::ffff:10.0.0.1]:8443", map[string]string{"X-Forwarded-For": "198.51.100.7"})
+	if got := s.clientIP(r); got != "198.51.100.7" {
+		t.Fatalf("clientIP = %q, want the forwarded hop — the IPv4-mapped peer did not match its CIDR", got)
+	}
+}
+
+// A clipped id must still be valid UTF-8: slicing bytes mid-rune would put an
+// invalid sequence into a log line for a JSON handler to mangle.
+func TestClipForLogCutsOnARuneBoundary(t *testing.T) {
+	// 21 three-byte runes = 63 bytes, so the 64th byte is the middle of the
+	// next one — exactly where a naive slice would cut.
+	id := strings.Repeat("あ", 21) + "あ"
+	got := clipForLog(id)
+	if !utf8.ValidString(got) {
+		t.Fatalf("clipForLog produced invalid UTF-8: %q", got)
+	}
+	if len(got) > maxLoggedIDLen+len("…") {
+		t.Fatalf("clipForLog returned %d bytes, want at most the cap plus the marker", len(got))
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("clipForLog = %q, want the clipped marker", got)
+	}
+	if short := clipForLog("srv-1"); short != "srv-1" {
+		t.Fatalf("clipForLog clipped a short id: %q", short)
 	}
 }

@@ -66,7 +66,7 @@ iterate on `make build-go`) for the real UI.
 Dev login on a fresh DB: `admin` / `admin` (override via
 `KRAKEN_BOOTSTRAP_ADMIN_USER` / `_PASSWORD`).
 
-## Conventions that bite
+## Conventions that catch people out
 
 - **Go:** 1.26, module `github.com/briggleman/kraken`. Run `gofmt` before done. Static
   analysis stack: `go vet`, `staticcheck`, `deadcode`, `gosec`, `govulncheck` (all clean).

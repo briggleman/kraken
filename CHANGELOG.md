@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.52.0](https://github.com/briggleman/kraken/compare/v0.51.0...v0.52.0) (2026-09-16)
+
+
+### Features
+
+* **panel:** harden download tokens with content-length, session binding, one auth chain, and rate limits ([#325](https://github.com/briggleman/kraken/issues/325)) ([412ae92](https://github.com/briggleman/kraken/commit/412ae928ff0385777a805bbaf70101b228e9d9eb))
+
 ## [0.51.0](https://github.com/briggleman/kraken/compare/v0.50.2...v0.51.0) (2026-09-15)
 
 

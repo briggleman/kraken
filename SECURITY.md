@@ -538,12 +538,20 @@ cannot be turned into one. Concretely, each token is:
   arrived, so the token cannot be widened. The jail itself is unchanged and is
   not the Panel's: the Agent's `safePath` confines every request to the
   server's data root regardless of how it was authorized.
-- **Bound to the issuing user, re-validated at redemption.** The minting user
-  must still exist, still be enabled, still hold `server.files.read` and still
-  pass the ownership scope on that server (`mayAccessServer`, called in
-  `redeemDownloadToken` and again by `agentForServer` on the way through). A
-  role revoked, an account deleted or a server handed to another owner inside
-  the 60-second window takes effect on the download.
+- **Bound to the issuing user and session, re-validated at redemption.** The
+  minting user must still exist, still be enabled, still hold
+  `server.files.read` and still pass the ownership scope on that server
+  (`mayAccessServer`, called in `redeemDownloadToken` and again by
+  `agentForServer` on the way through), **and the session that minted the token
+  must still be on record** (`SessionExistsByHash`). A role revoked, an account
+  deleted, a server handed to another owner, a logout or an admin-revoked
+  session inside the 60-second window all take effect on the download. The
+  binding is a digest, never a token: `requireAuth` puts `hex(sha256(bearer))`
+  — the same value the store already keys sessions by — into the request
+  context under `ctxKeySessionHash`, and the grant carries that digest. The
+  Panel holds no session secret to leak, and no schema change was needed
+  because sessions have been stored by digest since the encryption-at-rest
+  pass.
 - **Never a Bearer alternative.** With `token` present the Authorization header
   is not consulted at all, so a live session can never rescue an invalid token;
   with it absent, the routes behave exactly as they did before.
@@ -552,9 +560,12 @@ cannot be turned into one. Concretely, each token is:
   empties; the secret itself is never stored and never written to Postgres.
   The audit log records the
   mint and the redemption with the server, the user and the path *count*; the
-  token itself appears in no log line, and a rejected redemption is a `Warn`
+  token itself appears in no log line, and a rejected redemption is a `Debug`
   line rather than an audit row, so an unauthenticated caller with a bad token
-  cannot amplify writes into the audit table. The redemption row carries the
+  cannot amplify writes into the audit table — or, at `Debug`, into the log at
+  the level an operator actually reads. What that line does carry from the URL
+  (the server id) is clipped to 64 characters first: it is attacker-chosen, and
+  a log file is not somewhere to let a stranger write 4 KiB. The redemption row carries the
   request's **outcome** status, not an assumed 200 — a redemption the node
   could not serve is on the record as the 502 it was, rather than as a
   download that never happened. It is written from a deferred call, so a
@@ -580,10 +591,8 @@ already-shipped session-authenticated routes too:
   (`http.ErrAbortHandler`, which chi's Recoverer re-panics by design) and
   logs a `download truncated mid-stream` warning: returning normally would let
   net/http finish the chunked response and hand the operator half a save file
-  as a completed download. That is detection by connection reset, not by
-  content: the Agent's `FileChunk` carries no total size, so the Panel cannot
-  set a `Content-Length` for the browser to check the transfer against.
-  Positive truncation detection is tracked as **#324**.
+  as a completed download. That was, at first, detection by connection reset
+  alone; **#324** added the positive form (see below).
 - **Content-Disposition filenames are sanitised on both halves.** The zip's
   name now comes from a path segment — a folder name anyone with
   `server.files.write` or SFTP chose — rather than from the server record.
@@ -638,3 +647,70 @@ Covered by `TestDownloadTokenRegistrySingleUse`,
 `TestStreamChunksAbortsOnMidStreamFailure` and
 `TestAuditAppendOutlivesACancelledRequest` (`internal/panel/api`), plus
 `web/src/lib/depth.download.test.ts` for the browser's side.
+
+## Download-token hardening (2026-09-16)
+
+The four follow-ups the tokenised-download review deferred (**#324**), shipped
+together. Nothing here changes what a token is; it closes the gaps around it.
+
+**Announced length, and no resume on offer.** `FileChunk` gained an
+`int64 size`, which the Agent's `DownloadFile` sets on the **first chunk only**
+from a `StatFile` taken before the first byte goes out (0 means "unknown", and
+`DownloadFiles` — the zip — leaves it 0, because an archive's size is not known
+until it has been written). The Panel turns a non-zero size into
+`Content-Length`, so a truncated transfer is something the browser can *detect*
+rather than something it reports as a finished download. The announcement is a
+promise the Agent keeps: a file that grew past the announced length is cut off
+and the RPC fails, and one that shrank hits EOF short and the RPC fails — either
+way the Panel aborts the connection exactly as it already did. An Agent older
+than the field sends 0 throughout and the Panel behaves precisely as it did
+before, so **Agents roll out before Panels** but nothing breaks if they do not.
+Both stream routes also send `Accept-Ranges: none`: resume is structurally
+impossible on a single-use token (the second request would 401), and a browser
+told nothing may offer the operator a resume that cannot work. Range requests
+are not implemented and are not planned; "click again" is the resume story.
+
+**The grant dies with its session.** Covered in the bullet above: the grant
+carries the digest of the minting session and the redemption refuses when that
+session is no longer on record, so the ≤60-second window after a logout or an
+admin session revocation is closed. No migration: sessions are already stored
+by digest, so `SessionExistsByHash` is the lookup `GetSession` does without the
+token.
+
+**One auth chain, spelled once.** The two GET download routes previously
+re-stated the authenticated group's middleware by hand, so anything added to
+that group would silently not apply to them. They now sit behind a single
+`tokenOrSession` middleware that resolves identity from **either** a redeemed
+`?token=` **or** the ordinary Bearer session, then runs the same chain the group
+runs — audit, first-run password gate, `server.files.read` — and hands off to
+the route's original handler unchanged. The token branch still consults no
+Authorization header at all, still rewrites the query from the grant, and still
+audits the real outcome from a deferred, `WithoutCancel` append.
+
+**Rate limits on what an anonymous caller can reach.** The Panel had no limiter
+anywhere. It has one now (`internal/panel/api/ratelimit.go`, a token bucket on
+`golang.org/x/time/rate` over a swept, capped per-IP table — no new dependency
+and no background goroutine): the two unauthenticated GET download routes at
+30/min per IP with a burst of 10, and `POST /auth/login` at 20/min with a burst
+of 20. The login numbers are deliberately generous — a whole team can share one
+NAT address, and locking an operator out of their own Panel is a worse failure
+than the guessing being slowed. Refusals are a 429 in the ordinary JSON error
+envelope with `Retry-After`, and a refused request does not consume future
+capacity. The key is the real TCP peer (`clientIP`): the Panel still trusts no
+`X-Forwarded-For`, and a limiter keyed on a spoofable header is one an attacker
+steps around a fake address at a time.
+
+Covered by `TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly` and
+`TestDownloadFilesZipAnnouncesNoSize` (`internal/agent`), and
+`TestStreamChunksSetsContentLengthFromTheAnnouncedSize`,
+`TestStreamChunksOmitsContentLengthWhenSizeIsUnknown`,
+`TestDownloadAnnouncesLengthAndRefusesRanges`,
+`TestDownloadTokenDiesWithItsSession`,
+`TestDownloadRedemptionIsRateLimited`,
+`TestLoginRateLimitLeavesANormalSignInAlone`,
+`TestRateLimiterAdmitsTheBurstThenRefuses`,
+`TestRateLimiterRecoversAfterTheWindow`, `TestRateLimiterIsolatesClients`,
+`TestRateLimiterSweepsIdleEntries` and
+`TestRateLimiterMiddlewareAnswers429WithRetryAfter` (`internal/panel/api`),
+alongside every test the original feature shipped with, which still passes
+unchanged.

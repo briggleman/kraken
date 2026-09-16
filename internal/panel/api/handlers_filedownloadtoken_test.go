@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -369,5 +371,125 @@ func TestDownloadTokenAuditsMintAndRedemption(t *testing.T) {
 	}
 	if mints != 1 {
 		t.Fatalf("the mint wrote %d audit rows, want 1", mints)
+	}
+}
+
+// A grant is no stronger than the session that minted it. Logging out, or
+// having a session revoked by an admin, used to leave a minted token good for
+// the rest of its 60 seconds; the redemption now checks the session is still
+// on record before it serves a byte.
+func TestDownloadTokenDiesWithItsSession(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("live session still streams", func(t *testing.T) {
+		e := newDownloadEnv(t)
+		sess := seedDownloadOperator(t, e, "sess-ok")
+		tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
+		if code != http.StatusCreated {
+			t.Fatalf("mint: got %d, want 201", code)
+		}
+		if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusOK {
+			t.Fatalf("redeem on a live session: got %d, body %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("logged out", func(t *testing.T) {
+		e := newDownloadEnv(t)
+		sess := seedDownloadOperator(t, e, "sess-logout")
+		tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
+		if code != http.StatusCreated {
+			t.Fatalf("mint: got %d, want 201", code)
+		}
+		if out := do(t, e.h, http.MethodPost, "/api/v1/auth/logout", sess, nil); out.Code != http.StatusOK {
+			t.Fatalf("logout: got %d", out.Code)
+		}
+		if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("redeem after logout: got %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("session revoked", func(t *testing.T) {
+		e := newDownloadEnv(t)
+		sess := seedDownloadOperator(t, e, "sess-revoked")
+		tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
+		if code != http.StatusCreated {
+			t.Fatalf("mint: got %d, want 201", code)
+		}
+		if err := e.st.DeleteSession(ctx, sess); err != nil {
+			t.Fatalf("delete session: %v", err)
+		}
+		if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("redeem after the session was revoked: got %d, want 401", rec.Code)
+		}
+	})
+}
+
+// The raw route announces how many bytes are coming, so the browser can check
+// the transfer against a number rather than trusting a clean end of stream —
+// and says outright that a resume is not on offer, because a single-use token
+// cannot serve one. A zip announces nothing: its size is not known until the
+// Agent has written it.
+func TestDownloadAnnouncesLengthAndRefusesRanges(t *testing.T) {
+	e := newDownloadEnv(t)
+
+	raw := do(t, e.h, http.MethodGet,
+		"/api/v1/servers/"+e.server+"/files/raw?path="+fakeCfgPath, e.token, nil)
+	if raw.Code != http.StatusOK {
+		t.Fatalf("raw download: got %d, body %s", raw.Code, raw.Body.String())
+	}
+	if cl := raw.Header().Get("Content-Length"); cl != strconv.Itoa(len(fakeCfgBody)) {
+		t.Fatalf("Content-Length = %q, want the file's %d bytes", cl, len(fakeCfgBody))
+	}
+	if ar := raw.Header().Get("Accept-Ranges"); ar != "none" {
+		t.Fatalf("Accept-Ranges = %q, want none", ar)
+	}
+
+	tok, _ := e.mint(t, e.token, e.server, map[string]any{"paths": []string{fakeSavePth}})
+	zipped := do(t, e.h, http.MethodGet, tok.URL, "", nil)
+	if zipped.Code != http.StatusOK {
+		t.Fatalf("zip download: got %d, body %s", zipped.Code, zipped.Body.String())
+	}
+	if cl := zipped.Header().Get("Content-Length"); cl != "" {
+		t.Fatalf("a zip announced Content-Length %q, but its size is not known until it is written", cl)
+	}
+}
+
+// The redemption routes take no credentials, so they are rate limited per
+// source IP. The refusal is the ordinary JSON envelope plus a Retry-After.
+func TestDownloadRedemptionIsRateLimited(t *testing.T) {
+	e := newDownloadEnv(t)
+	url := "/api/v1/servers/" + e.server + "/files/raw?path=" + fakeCfgPath + "&token=deadbeef"
+	var last *httptest.ResponseRecorder
+	for range api.DownloadRedeemBurstForTest + 1 {
+		last = do(t, e.h, http.MethodGet, url, "", nil)
+	}
+	if last.Code != http.StatusTooManyRequests {
+		t.Fatalf("request past the burst: got %d, want 429", last.Code)
+	}
+	if ra := last.Header().Get("Retry-After"); ra == "" {
+		t.Fatal("the 429 carried no Retry-After")
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(last.Body.Bytes(), &body); err != nil || body.Error == "" {
+		t.Fatalf("429 body = %q, want a JSON error envelope", last.Body.String())
+	}
+}
+
+// The login limiter is a ceiling on scripted guessing, not on operators: a
+// normal sign-in sequence — and a fumbled password before it — goes through
+// untouched.
+func TestLoginRateLimitLeavesANormalSignInAlone(t *testing.T) {
+	h := newTestServer(t)
+	for range 3 {
+		if rec := do(t, h, http.MethodPost, "/api/v1/auth/login", "",
+			map[string]string{"username": testAdmin, "password": "wrong"}); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("bad password: got %d, want 401", rec.Code)
+		}
+	}
+	token := login(t, h)
+	if rec := do(t, h, http.MethodGet, "/api/v1/auth/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("me after login: got %d", rec.Code)
 	}
 }

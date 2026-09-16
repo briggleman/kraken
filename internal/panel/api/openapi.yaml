@@ -33,6 +33,11 @@ paths:
     post:
       tags: [Auth]
       summary: Log in and obtain a session token
+      description: >
+        Rate limited per source IP (20 a minute, burst 20) — generous enough
+        that a whole team behind one NAT address can sign in normally, tight
+        enough to put a ceiling on scripted guessing. A refusal is a 429 with
+        Retry-After.
       security: []
       requestBody:
         required: true
@@ -46,6 +51,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Too many login attempts from this address; retry after the Retry-After header says }
   /auth/logout:
     post:
       tags: [Auth]
@@ -507,6 +513,14 @@ paths:
         browser streams to disk instead of buffering the payload in memory.
         When `token` is present the Authorization header is not consulted at
         all, and `path` must be exactly the path the token was minted for.
+
+
+        The response carries `Content-Length` when the Agent announced the
+        file's size (an older Agent does not, and then there is none), so a
+        truncated transfer is detectable rather than arriving as a complete
+        download. `Accept-Ranges: none` goes out either way: a download token
+        is single-use, so a ranged second request could only be refused.
+        Rate limited per source IP (30 a minute, burst 10).
       parameters:
         - name: path
           in: query
@@ -521,8 +535,9 @@ paths:
       responses:
         '200': { description: Raw file stream }
         '400': { description: No path was supplied on the session-authenticated form }
-        '401': { description: The download token is unknown, expired, already used, or not valid for this server or path }
+        '401': { description: The download token is unknown, expired, already used, or not valid for this server or path — or the session that minted it is gone }
         '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '429': { description: Too many requests from this address; retry after the Retry-After header says }
         '502': { description: The node could not serve the file — a missing file included; the body is a JSON error, never a file }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
@@ -546,8 +561,9 @@ paths:
       responses:
         '200': { description: Zip stream }
         '400': { description: No token was supplied }
-        '401': { description: The download token is unknown, expired, already used, or not valid for this server }
+        '401': { description: The download token is unknown, expired, already used, or not valid for this server — or the session that minted it is gone }
         '404': { description: No such server, or one this user may not reach (existence is not revealed) }
+        '429': { description: Too many requests from this address; retry after the Retry-After header says }
         '502': { description: The node could not serve the zip; the body is a JSON error, never a file }
     post:
       tags: [Files]
@@ -571,7 +587,9 @@ paths:
         one path set on this one server, for 60 seconds, on behalf of the
         calling user. It is redeemed on GET /files/raw or GET /files/download
         and deleted on first use; the user's permission is re-checked at
-        redemption, so a revoked role takes effect immediately. The token is
+        redemption, so a revoked role takes effect immediately, and so is the
+        minting session, so logging out or having that session revoked kills
+        any token it minted. The token is
         held in the Panel's memory only, never persisted, and never a session
         credential. Requires server.files.read — the same permission the raw
         route carries.

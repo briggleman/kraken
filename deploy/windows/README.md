@@ -18,8 +18,9 @@ For running the Panel itself, see [`deploy/docker-compose.example.yml`](../docke
 - **Hyper-V** (or Windows Sandbox) feature enabled. The Docker Desktop
   installer handles this on Windows 10/11 Pro; Server 2019/2022 comes
   with Hyper-V available.
-- The Panel is up somewhere reachable (e.g.
-  `http://media-server:9095`) and you're signed in as an admin.
+- The Panel is up somewhere this host can reach (for example
+  `http://<panel-host>:8080`, the default port) and you're signed in as an
+  admin.
 
 ## One-command install
 

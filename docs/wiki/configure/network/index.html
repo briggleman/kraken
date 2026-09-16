@@ -88,8 +88,8 @@
 <a class="toc-link lvl-2" href="#game-ports-end-to-end">Game ports, end to end</a>
 </div></details>
     <article class="prose">
-<p>Four listeners and a pool. Game traffic is separate from everything else and
-always goes straight to the node.</p>
+<p>Four listeners and a pool. Game traffic sits apart from all of it and goes
+straight to the node.</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -137,32 +137,32 @@ always goes straight to the node.</p>
 </tr>
 </tbody></table>
 </div>
-<p>The Panel&#39;s HTTP port is <code>KRAKEN_HTTP_ADDR</code> / <code>KRAKEN_HTTP_PORT</code> and defaults to
+<p>The Panel&#39;s HTTP port is <code>KRAKEN_HTTP_ADDR</code> / <code>KRAKEN_HTTP_PORT</code>, defaulting to
 <code>8080</code>; the reference deployment runs it on <strong>9095</strong>. Pick one and use it
 everywhere the Panel URL appears. The port pool is per node and set in the
-Panel&#39;s node settings; <code>28000–28999</code> is the reference range, not a default you
-inherit.</p>
-<p>Two Agents sharing one port space — the classic case being a WSL distro with
-mirrored networking beside its Windows host — cannot both hold <code>:9090</code>/<code>:2022</code>.
-Give the second <code>:9091</code>/<code>:2023</code> and split the pools into non-overlapping ranges.</p>
+Panel&#39;s node settings, where <code>28000–28999</code> is the reference range rather than a
+default you inherit.</p>
+<p>Two Agents sharing one port space cannot both hold <code>:9090</code>/<code>:2022</code>. The classic
+case is a WSL distro with mirrored networking beside its Windows host. Give the
+second <code>:9091</code>/<code>:2023</code> and split the pools into non-overlapping ranges.</p>
 <h2 id="the-rules-that-matter">The rules that matter <a class="hlink" href="#the-rules-that-matter" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Keep the Panel and SFTP off the public internet.</strong> LAN, VPN, or a reverse
 proxy with TLS in front. Not a published port on a router.</p>
-<p><strong><code>:9443</code> must stay reachable from your Agents.</strong> It is how every tunnel-mode
-node talks to the Panel, and tunnel is the default for new nodes. It carries raw
-mTLS, so it cannot be proxied — give it its own address or DNS name. Binding it
-to loopback while putting the HTTP port behind a proxy takes the whole fleet
-offline at once.</p>
-<p><strong>Agent gRPC must not be reachable off-host without mTLS.</strong> The default deploy
-configs bind it to <code>127.0.0.1:9090</code> so only the co-located Panel can reach it.
-The Agent refuses to serve plaintext gRPC on a non-loopback address unless
-either <code>KRAKEN_TLS_CERT</code>/<code>KRAKEN_TLS_KEY</code>/<code>KRAKEN_TLS_CA</code> are configured — which
-is what enrollment does — or <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> is set as an
-explicit opt-in. Agent gRPC has no application-level auth; mTLS is the whole
-trust boundary, and it fronts the Docker socket.</p>
+<p><strong><code>:9443</code> has to stay reachable from your Agents.</strong> It is how a tunnel-mode node
+talks to the Panel, and tunnel is the default for new nodes. Raw mTLS cannot be
+proxied, so give it its own address or DNS name. Binding it to loopback while
+putting the HTTP port behind a proxy takes the whole fleet offline at once, and
+that pairing is common enough to be worth saying twice.</p>
+<p><strong>Agent gRPC should not be reachable off-host without mTLS.</strong> The deploy configs
+bind it to <code>127.0.0.1:9090</code> so only the co-located Panel can reach it. The Agent
+refuses to serve plaintext gRPC on a non-loopback address unless either
+<code>KRAKEN_TLS_CERT</code>/<code>KRAKEN_TLS_KEY</code>/<code>KRAKEN_TLS_CA</code> are configured, which is what
+enrollment does, or <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> is set as an explicit opt-in.
+Agent gRPC has no application-level auth; mTLS is the whole trust boundary, and
+it fronts the Docker socket.</p>
 <p><strong>Game ports are published 1:1.</strong> The port the Panel assigns is the port on the
-host and the port a player types. Forward them from your router to the node —
-tunnel mode changes nothing here, because game traffic never touches the Panel.</p>
+host and the port a player types. Forward them from your router to the node.
+Tunnel mode changes nothing here, because game traffic never touches the Panel.</p>
 <h2 id="direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule <a class="hlink" href="#direct-mode-nodes-need-an-inbound-rule" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
@@ -171,9 +171,9 @@ nothing about reachability.</strong> Enrollment is an outbound HTTP call; the gR
 channel is inbound. A blocked inbound port is the most common reason a freshly
 enrolled node sits <strong>offline</strong>, usually surfacing as a connection refused in the
 Panel&#39;s logs when NAT is in the path.</p>
-<p>Use a <strong>port-based</strong> rule, not a program-based one. Program rules silently stop
-matching when the Agent binary is renamed or replaced — which a self-update does
-by design.</p>
+<p>Use a <strong>port-based</strong> rule rather than a program-based one. Program rules quietly
+stop matching when the Agent binary is renamed or replaced, which a self-update
+does by design.</p>
 </div>
 </aside>
 
@@ -185,36 +185,38 @@ New-NetFirewallRule -DisplayName &quot;kraken-agent ports (TCP 9090 + 2022)&quot
 sudo ufw allow 9090/tcp &amp;&amp; sudo ufw allow 2022/tcp
 # linux — firewalld
 sudo firewall-cmd --permanent --add-port={9090,2022}/tcp &amp;&amp; sudo firewall-cmd --reload</code></pre></div>
-<p>Scope those to your LAN or VPN subnet where you can. They still must never be
-internet-exposed: gRPC is mTLS-only, but SFTP is password and key auth.</p>
+<p>Scope those to your LAN or VPN subnet where your firewall makes that easy.
+Internet exposure is a different matter: gRPC is mTLS-only, but SFTP is password
+and key auth, so neither belongs on a public interface.</p>
 <h2 id="or-skip-inbound-ports-entirely">Or skip inbound ports entirely <a class="hlink" href="#or-skip-inbound-ports-entirely" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>A node enrolled with <code>--tunnel</code> — <strong>Add node → the node dials the Panel</strong> —
-keeps an outbound mTLS connection open to <code>KRAKEN_TUNNEL_ADDR</code> and is fully
-manageable with <strong>zero inbound firewall rules</strong>. It works behind NAT you do not
-control, which is the case bare rules cannot solve at all.</p>
-<p>The trade-off is per-server SFTP. The Panel fronts each tunnel node&#39;s SFTP on a
-per-node port of its own, allocated upward from <code>KRAKEN_SFTP_PROXY_BASE_PORT</code>
-(default 2222) and persisted on the node record, forwarding the raw SSH byte
-stream to the Agent — so the Panel never terminates SSH, and credentials and
-host keys stay Agent-side. Raw SSH carries no routing header a pass-through
-proxy could read, which is why each node needs its own port rather than one
-shared endpoint. The in-browser file manager works unchanged either way.</p>
+<p>A node enrolled with <code>--tunnel</code> (<strong>Add node → the node dials the Panel</strong>) holds
+an outbound mTLS connection to <code>KRAKEN_TUNNEL_ADDR</code> and is fully manageable with
+<strong>zero inbound firewall rules</strong>. It also works behind NAT you do not control,
+which no amount of firewall rule-writing solves.</p>
+<p>Per-server SFTP is where the trade-off lands. The Panel fronts each tunnel
+node&#39;s SFTP on a per-node port of its own, allocated upward from
+<code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default 2222) and persisted on the node record,
+forwarding the raw SSH byte stream to the Agent. The Panel never terminates SSH,
+so credentials and host keys stay Agent-side. Raw SSH carries no routing header
+a pass-through proxy could read, which is why each node gets its own port
+instead of one shared endpoint. The in-browser file manager behaves the same
+either way.</p>
 <p>Design note:
 <a href="https://github.com/briggleman/kraken/blob/main/docs/design/reverse-connections.md">docs/design/reverse-connections.md</a>.</p>
 <h2 id="game-ports-end-to-end">Game ports, end to end <a class="hlink" href="#game-ports-end-to-end" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ol>
 <li>Deploy a server. The scheduler allocates its ports from the node&#39;s pool.</li>
-<li>Forward those ports — the protocol matters, and most games want UDP — from
-your router to the <strong>node&#39;s</strong> address, 1:1.</li>
+<li>Forward those ports from your router to the <strong>node&#39;s</strong> address, 1:1. Mind the
+protocol; most games want UDP.</li>
 <li>Players connect to your public address on that port.</li>
 </ol>
 <p>The optional <strong>UniFi</strong> integration can publish the forward from the same screen
 that assigned the port, and the <strong>Cloudflare</strong> integration can publish the DNS
-record. Both are optional and degrade cleanly when unconfigured; neither is
-required for a game to be joinable.</p>
-<p>A node whose pool is empty is <strong>online and unschedulable</strong> — every deploy is
+record. Both degrade cleanly when unconfigured, and a game is joinable without
+either.</p>
+<p>A node whose pool is empty reads <strong>online and unschedulable</strong>: deploys are
 refused with &quot;no node can host this spec&quot; while the fleet looks healthy. Set the
-range when you register the node.</p>
+range when you register the node and the whole class of confusion goes away.</p>
 <!-- SCREENSHOT: a node's settings showing its game-port pool range, with an assigned server port beneath it -->
 <p class="shot"><em>screenshot: a node's settings showing its game-port pool range, with an assigned server port beneath it</em></p>
     </article>

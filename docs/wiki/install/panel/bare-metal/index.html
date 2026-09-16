@@ -91,10 +91,9 @@
     <article class="prose">
 <p>An alternative to <a href="/wiki/install/panel/">Docker Compose</a>, not a replacement for
 it. Take this path when you want a service-managed binary, when Docker on the
-Panel host is not something you want, or when you are already managing this
-machine with systemd and would like the Panel to look like everything else on
-it.</p>
-<p>You still need Postgres somewhere. The bundled
+Panel host is not something you want, or when the machine is already under
+systemd and you would like the Panel to look like everything else on it.</p>
+<p>Postgres still has to live somewhere. The bundled
 <a href="https://github.com/briggleman/kraken/blob/main/deploy/docker-compose.yml"><code>deploy/docker-compose.yml</code></a>
 runs one and nothing else; any Postgres 17 will do.</p>
 <h2 id="install">Install <a class="hlink" href="#install" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
@@ -107,7 +106,7 @@ moves the install prefix from <code>/usr/local</code>.</p>
 <p>What the installer does:</p>
 <ul>
 <li>downloads the release binaries for your OS and arch and <strong>verifies their
-SHA-256 checksums</strong> — a mismatch is a hard stop;</li>
+SHA-256 checksums</strong>, treating a mismatch as a hard stop;</li>
 <li>installs <code>kraken-panel</code> and <code>kraken-krakenctl</code> into <code>/usr/local/bin</code>;</li>
 <li>creates the <code>kraken</code> system user, <code>/var/lib/kraken</code> (state) and
 <code>/etc/kraken</code> (config), with the config directory <code>0750 root:kraken</code>;</li>
@@ -115,12 +114,12 @@ SHA-256 checksums</strong> — a mismatch is a hard stop;</li>
 <code>KRAKEN_SECRETS_KEY</code></strong>, but only if that file does not already exist;</li>
 <li>installs the systemd unit.</li>
 </ul>
-<p>It is idempotent. Re-running it upgrades the binaries and leaves
-<code>/etc/kraken/*.env</code> alone.</p>
+<p>Re-running it is safe: the binaries are upgraded, <code>/etc/kraken/*.env</code> is left
+alone.</p>
 <aside class="callout is-security">
 <span class="callout-k">security</span>
 <div class="callout-b"><p>The generated <code>KRAKEN_SECRETS_KEY</code> in <code>/etc/kraken/panel.env</code> seals every
-at-rest secret — Steam credentials, the CA private key, SFTP keys, integration
+at-rest secret: Steam credentials, the CA private key, SFTP keys, integration
 tokens. Back that file up. Losing the key means every stored secret becomes
 unrecoverable. Keep it <code>0640 root:kraken</code>, which is how the installer leaves it.</p>
 </div>
@@ -128,9 +127,9 @@ unrecoverable. Keep it <code>0640 root:kraken</code>, which is how the installer
 
 
 <h2 id="configure">Configure <a class="hlink" href="#configure" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p><code>/etc/kraken/panel.env</code> is an ordinary systemd <code>EnvironmentFile</code>; every variable
-in the <a href="/wiki/configure/panel/">Panel configuration reference</a> works here. What
-the installer writes:</p>
+<p><code>/etc/kraken/panel.env</code> is an ordinary systemd <code>EnvironmentFile</code>, so anything in
+the <a href="/wiki/configure/panel/">Panel configuration reference</a> works here. What the
+installer writes:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_HTTP_ADDR=:8080
 KRAKEN_DATABASE_URL=postgres://kraken:kraken@127.0.0.1:5432/kraken?sslmode=disable
 KRAKEN_SECRETS_KEY=&lt;generated&gt;
@@ -138,9 +137,9 @@ KRAKEN_BOOTSTRAP_ADMIN_USER=admin
 KRAKEN_BOOTSTRAP_ADMIN_PASSWORD=
 KRAKEN_QUICKSTART=true
 KRAKEN_LOCAL_AGENT_ADDR=127.0.0.1:9090</code></pre></div>
-<p>Set <code>KRAKEN_QUICKSTART=false</code> if no Agent will run on this host — otherwise the
-Panel registers a <code>local</code> node that never comes up. Leave the bootstrap password
-empty so the Panel generates one and logs it once.</p>
+<p>Set <code>KRAKEN_QUICKSTART=false</code> when no Agent will run on this host, or the Panel
+registers a <code>local</code> node that never comes up. Leave the bootstrap password empty
+so the Panel generates one and logs it once.</p>
 <h2 id="start-it">Start it <a class="hlink" href="#start-it" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose -f deploy/docker-compose.yml up -d   # or your own postgres
 sudo systemctl enable --now kraken-panel
@@ -152,11 +151,11 @@ journalctl -u kraken-panel -f</code></pre></div>
 runs as the <code>kraken</code> user and is hardened: <code>NoNewPrivileges</code>, <code>PrivateTmp</code>,
 <code>ProtectSystem=strict</code>, <code>ProtectHome</code>, <code>ProtectKernelTunables</code>,
 <code>ProtectKernelModules</code>, <code>ProtectControlGroups</code>, <code>RestrictSUIDSGID</code>,
-<code>LockPersonality</code>. Writable paths are exactly <code>/var/lib/kraken</code> and
-<code>/etc/kraken</code>.</p>
-<p><strong>The Panel does not need the Docker socket.</strong> That is the Agent&#39;s job, and a
-Panel that has been handed the socket is a Panel with more authority than the
-design gives it. If you change the unit, do not add it.</p>
+<code>LockPersonality</code>. Writable paths are <code>/var/lib/kraken</code> and <code>/etc/kraken</code>,
+nothing else.</p>
+<p><strong>The Panel does not need the Docker socket.</strong> Handling containers is the
+Agent&#39;s job, and a Panel holding the socket has more authority than the design
+intends. Edit the unit as you like; do not add that.</p>
 <p>Point state somewhere else and you have to say so in both places:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo systemctl edit kraken-panel</code></pre></div>
 <div class="cmd" data-lang="ini"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>[Service]
@@ -166,12 +165,12 @@ ReadWritePaths=/srv/kraken /etc/kraken</code></pre></div>
 directory that is not in <code>ReadWritePaths</code> fails at startup rather than at the
 first write.</p>
 <h2 id="upgrading">Upgrading <a class="hlink" href="#upgrading" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>Re-run the installer. It stops nothing and clobbers nothing:</p>
+<p>Re-run the installer. Nothing is stopped, nothing is clobbered:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
   | sudo bash -s -- --role panel
 sudo systemctl restart kraken-panel</code></pre></div>
-<p>Read <a href="/wiki/install/upgrade/">upgrading</a> first — <strong>Agents go before Panels</strong>
-when a release changes the Agent↔Panel protocol.</p>
+<p>Read <a href="/wiki/install/upgrade/">upgrading</a> first. <strong>Agents go before Panels</strong> when
+a release changes the Agent↔Panel protocol.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">

@@ -7,11 +7,10 @@ order: 11
 
 An alternative to [Docker Compose](/wiki/install/panel/), not a replacement for
 it. Take this path when you want a service-managed binary, when Docker on the
-Panel host is not something you want, or when you are already managing this
-machine with systemd and would like the Panel to look like everything else on
-it.
+Panel host is not something you want, or when the machine is already under
+systemd and you would like the Panel to look like everything else on it.
 
-You still need Postgres somewhere. The bundled
+Postgres still has to live somewhere. The bundled
 [`deploy/docker-compose.yml`](https://github.com/briggleman/kraken/blob/main/deploy/docker-compose.yml)
 runs one and nothing else; any Postgres 17 will do.
 
@@ -30,7 +29,7 @@ moves the install prefix from `/usr/local`.
 What the installer does:
 
 - downloads the release binaries for your OS and arch and **verifies their
-  SHA-256 checksums** — a mismatch is a hard stop;
+  SHA-256 checksums**, treating a mismatch as a hard stop;
 - installs `kraken-panel` and `kraken-krakenctl` into `/usr/local/bin`;
 - creates the `kraken` system user, `/var/lib/kraken` (state) and
   `/etc/kraken` (config), with the config directory `0750 root:kraken`;
@@ -38,21 +37,21 @@ What the installer does:
   `KRAKEN_SECRETS_KEY`**, but only if that file does not already exist;
 - installs the systemd unit.
 
-It is idempotent. Re-running it upgrades the binaries and leaves
-`/etc/kraken/*.env` alone.
+Re-running it is safe: the binaries are upgraded, `/etc/kraken/*.env` is left
+alone.
 
 :::security
 The generated `KRAKEN_SECRETS_KEY` in `/etc/kraken/panel.env` seals every
-at-rest secret — Steam credentials, the CA private key, SFTP keys, integration
+at-rest secret: Steam credentials, the CA private key, SFTP keys, integration
 tokens. Back that file up. Losing the key means every stored secret becomes
 unrecoverable. Keep it `0640 root:kraken`, which is how the installer leaves it.
 :::
 
 ## Configure
 
-`/etc/kraken/panel.env` is an ordinary systemd `EnvironmentFile`; every variable
-in the [Panel configuration reference](/wiki/configure/panel/) works here. What
-the installer writes:
+`/etc/kraken/panel.env` is an ordinary systemd `EnvironmentFile`, so anything in
+the [Panel configuration reference](/wiki/configure/panel/) works here. What the
+installer writes:
 
 ```sh
 KRAKEN_HTTP_ADDR=:8080
@@ -64,9 +63,9 @@ KRAKEN_QUICKSTART=true
 KRAKEN_LOCAL_AGENT_ADDR=127.0.0.1:9090
 ```
 
-Set `KRAKEN_QUICKSTART=false` if no Agent will run on this host — otherwise the
-Panel registers a `local` node that never comes up. Leave the bootstrap password
-empty so the Panel generates one and logs it once.
+Set `KRAKEN_QUICKSTART=false` when no Agent will run on this host, or the Panel
+registers a `local` node that never comes up. Leave the bootstrap password empty
+so the Panel generates one and logs it once.
 
 ## Start it
 
@@ -88,12 +87,12 @@ journalctl -u kraken-panel | grep -i password
 runs as the `kraken` user and is hardened: `NoNewPrivileges`, `PrivateTmp`,
 `ProtectSystem=strict`, `ProtectHome`, `ProtectKernelTunables`,
 `ProtectKernelModules`, `ProtectControlGroups`, `RestrictSUIDSGID`,
-`LockPersonality`. Writable paths are exactly `/var/lib/kraken` and
-`/etc/kraken`.
+`LockPersonality`. Writable paths are `/var/lib/kraken` and `/etc/kraken`,
+nothing else.
 
-**The Panel does not need the Docker socket.** That is the Agent's job, and a
-Panel that has been handed the socket is a Panel with more authority than the
-design gives it. If you change the unit, do not add it.
+**The Panel does not need the Docker socket.** Handling containers is the
+Agent's job, and a Panel holding the socket has more authority than the design
+intends. Edit the unit as you like; do not add that.
 
 Point state somewhere else and you have to say so in both places:
 
@@ -113,7 +112,7 @@ first write.
 
 ## Upgrading
 
-Re-run the installer. It stops nothing and clobbers nothing:
+Re-run the installer. Nothing is stopped, nothing is clobbered:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/install.sh \
@@ -121,5 +120,5 @@ curl -fsSL https://raw.githubusercontent.com/briggleman/kraken/main/deploy/insta
 sudo systemctl restart kraken-panel
 ```
 
-Read [upgrading](/wiki/install/upgrade/) first — **Agents go before Panels**
-when a release changes the Agent↔Panel protocol.
+Read [upgrading](/wiki/install/upgrade/) first. **Agents go before Panels** when
+a release changes the Agent↔Panel protocol.

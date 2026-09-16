@@ -88,24 +88,24 @@
 <a class="toc-link lvl-2" href="#what-is-left-behind">What is left behind</a>
 </div></details>
     <article class="prose">
-<p>Nothing here is reversible, so read the order before running any of it.</p>
+<p>None of this is reversible. Read the order before running any of it.</p>
 <aside class="callout is-security">
 <span class="callout-k">security</span>
-<div class="callout-b"><p>Two things are worth keeping even if you are sure: <strong><code>KRAKEN_SECRETS_KEY</code></strong> and
-the <strong>Postgres data</strong>. Without the key, a database restored later is a database
-of secrets nobody can open. Without the database, the key opens nothing. Take
-both, or accept that this install is gone.</p>
-<p>Game-server data is a third: <code>KRAKEN_DATA_DIR</code> on each node holds the worlds.
-Back up what you want before removing a node — the install tree comes back with
-a reinstall; the save does not.</p>
+<div class="callout-b"><p>Two things are worth keeping even when you are certain: <strong><code>KRAKEN_SECRETS_KEY</code></strong>
+and the <strong>Postgres data</strong>. Without the key, a database restored later is a
+database of secrets nobody can open. Without the database, the key opens
+nothing. Take both, or accept that this install is gone.</p>
+<p>Game-server data is a third. <code>KRAKEN_DATA_DIR</code> on each node holds the worlds, so
+back up what you care about before removing a node: the install tree comes back
+with a reinstall, the save does not.</p>
 </div>
 </aside>
 
 
 <h2 id="remove-one-node">Remove one node <a class="hlink" href="#remove-one-node" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Delete the server or move it elsewhere first, then delete the node in <strong>Settings
-→ Nodes</strong>. Deleting the node record does not stop the Agent or free the disk —
-do that on the host.</p>
+→ Nodes</strong>. Deleting the node record neither stops the Agent nor frees the disk.
+Both of those happen on the host.</p>
 <p><strong>Linux:</strong></p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo systemctl disable --now kraken-agent
 sudo rm -f /etc/systemd/system/kraken-agent.service
@@ -128,7 +128,7 @@ yourself if you want the space back:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml down -v</code></pre></div>
 <p><code>-v</code> destroys <code>pgdata</code> (every server, node, user and audit row) and
 <code>panel-state</code> (the config file, the generated CA, the secrets key if it was
-generated rather than supplied). There is no undo and no prompt.</p>
+generated rather than supplied). No prompt, no undo.</p>
 <h2 id="remove-the-panel-bare-metal">Remove the Panel: bare metal <a class="hlink" href="#remove-the-panel-bare-metal" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo systemctl disable --now kraken-panel
 sudo rm -f /etc/systemd/system/kraken-panel.service
@@ -136,8 +136,8 @@ sudo systemctl daemon-reload
 sudo rm -f /usr/local/bin/kraken-panel /usr/local/bin/kraken-krakenctl
 sudo rm -rf /etc/kraken /var/lib/kraken
 sudo userdel kraken</code></pre></div>
-<p>Postgres is separate — it was either a container you brought up from
-<code>deploy/docker-compose.yml</code> or a database of your own. Drop it deliberately.</p>
+<p>Postgres is separate: either a container you brought up from
+<code>deploy/docker-compose.yml</code>, or a database of your own. Drop it deliberately.</p>
 <h2 id="what-is-left-behind">What is left behind <a class="hlink" href="#what-is-left-behind" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
 <li><strong>Cloudflare DNS records and UniFi port forwards</strong> the integrations created

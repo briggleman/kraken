@@ -5,24 +5,24 @@ section: install
 order: 15
 ---
 
-Nothing here is reversible, so read the order before running any of it.
+None of this is reversible. Read the order before running any of it.
 
 :::security
-Two things are worth keeping even if you are sure: **`KRAKEN_SECRETS_KEY`** and
-the **Postgres data**. Without the key, a database restored later is a database
-of secrets nobody can open. Without the database, the key opens nothing. Take
-both, or accept that this install is gone.
+Two things are worth keeping even when you are certain: **`KRAKEN_SECRETS_KEY`**
+and the **Postgres data**. Without the key, a database restored later is a
+database of secrets nobody can open. Without the database, the key opens
+nothing. Take both, or accept that this install is gone.
 
-Game-server data is a third: `KRAKEN_DATA_DIR` on each node holds the worlds.
-Back up what you want before removing a node — the install tree comes back with
-a reinstall; the save does not.
+Game-server data is a third. `KRAKEN_DATA_DIR` on each node holds the worlds, so
+back up what you care about before removing a node: the install tree comes back
+with a reinstall, the save does not.
 :::
 
 ## Remove one node
 
 Delete the server or move it elsewhere first, then delete the node in **Settings
-→ Nodes**. Deleting the node record does not stop the Agent or free the disk —
-do that on the host.
+→ Nodes**. Deleting the node record neither stops the Agent nor frees the disk.
+Both of those happen on the host.
 
 **Linux:**
 
@@ -66,7 +66,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml down -v
 
 `-v` destroys `pgdata` (every server, node, user and audit row) and
 `panel-state` (the config file, the generated CA, the secrets key if it was
-generated rather than supplied). There is no undo and no prompt.
+generated rather than supplied). No prompt, no undo.
 
 ## Remove the Panel: bare metal
 
@@ -79,8 +79,8 @@ sudo rm -rf /etc/kraken /var/lib/kraken
 sudo userdel kraken
 ```
 
-Postgres is separate — it was either a container you brought up from
-`deploy/docker-compose.yml` or a database of your own. Drop it deliberately.
+Postgres is separate: either a container you brought up from
+`deploy/docker-compose.yml`, or a database of your own. Drop it deliberately.
 
 ## What is left behind
 

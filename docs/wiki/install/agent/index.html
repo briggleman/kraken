@@ -94,8 +94,8 @@
     <article class="prose">
 <p>One Agent per machine. It talks to that host&#39;s Docker daemon, owns the server
 files on disk, takes the backups and serves SFTP. Bare metal is the main line on
-both operating systems: the Agent needs the host&#39;s Docker socket and the game
-ports have to land on the host anyway.</p>
+both operating systems, for the unglamorous reason that the Agent wants the
+host&#39;s Docker socket and the game ports have to land on the host regardless.</p>
 <p>Have the Panel open before you start. Everything here ends at <strong>Settings →
 Nodes → Add node</strong>, which mints the one-time token the Agent enrolls with.</p>
 <h2 id="linux">Linux <a class="hlink" href="#linux" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
@@ -153,8 +153,8 @@ creates <code>/var/lib/kraken</code> plus <code>/etc/kraken</code>, writes <code
 installs the unit, and, when you passed a token, starts the service so the
 Agent enrolls on first start.</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>journalctl -u kraken-agent -f</code></pre></div>
-<p>It is idempotent. Re-running upgrades the binaries and rewrites only the
-enrollment keys, which is the recovery path for an expired token.</p>
+<p>Re-running it is safe. It upgrades the binaries and rewrites only the enrollment
+keys, which is also the recovery path for an expired token.</p>
 <h3 id="the-unit-and-optkrakenbin">the unit, and /opt/kraken/bin <a class="hlink" href="#the-unit-and-optkrakenbin" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <p><a href="https://github.com/briggleman/kraken/blob/main/deploy/systemd/kraken-agent.service"><code>deploy/systemd/kraken-agent.service</code></a>
 runs as <code>kraken</code> with <code>SupplementaryGroups=docker</code>, under the same hardening the
@@ -165,23 +165,23 @@ can push a new Agent build, and the Agent replaces its own binary in place: it
 writes <code>kraken-agent.new</code> beside itself and renames the running file to
 <code>.old</code>, which needs write permission on the <em>directory</em>. <code>/usr/local/bin</code> is
 root-owned and, under <code>ProtectSystem=strict</code>, read-only as well.
-<code>/opt/kraken/bin</code> is kraken-owned and holds exactly one replaceable file.
+<code>/opt/kraken/bin</code> is kraken-owned and holds one replaceable file.
 <code>/usr/local/bin/kraken-agent</code> stays as a symlink so the command is still on
 <code>PATH</code>.</li>
 <li><strong><code>ReadWritePaths=/var/lib/kraken /etc/kraken /opt/kraken/bin</code>.</strong> Move
 <code>KRAKEN_DATA_DIR</code> or <code>KRAKEN_BACKUP_DIR</code> outside <code>/var/lib/kraken</code> and you
-must add them here with <code>systemctl edit kraken-agent</code>, or the write fails at
-runtime.</li>
+have to add them here with <code>systemctl edit kraken-agent</code>, or the write fails
+at runtime.</li>
 </ul>
 <h3 id="enroll-after-the-fact">enroll after the fact <a class="hlink" href="#enroll-after-the-fact" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<p>If you installed without a token, or the token expired, mint a fresh one and
-either re-run the installer with it, or enroll by hand:</p>
+<p>Installed without a token, or the token expired? Mint a fresh one, then either
+re-run the installer with it or enroll by hand:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>sudo krakenctl enroll -panel http://&lt;panel-host&gt;:8080 -token &lt;one-time-token&gt;
 sudo systemctl restart kraken-agent</code></pre></div>
 <h2 id="windows">Windows <a class="hlink" href="#windows" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>For Windows-native game servers. The Panel and its Postgres stay on a Linux
-host; the Windows machine runs the Agent as a native service. Docker Desktop
-must be in <strong>Windows containers</strong> mode. It cannot serve Linux and Windows
+host; the Windows machine runs the Agent as a native service. Docker Desktop has
+to be in <strong>Windows containers</strong> mode. It cannot serve Linux and Windows
 containers at once, so that choice is per host.</p>
 <p>In an <strong>elevated</strong> PowerShell:</p>
 <div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>iwr -useb https://raw.githubusercontent.com/briggleman/kraken/main/deploy/windows/install.ps1 -OutFile $env:TEMP\kraken-install.ps1
@@ -190,8 +190,7 @@ powershell -ExecutionPolicy Bypass -File $env:TEMP\kraken-install.ps1 `
   -Token &lt;one-time-token&gt; `
   -CaFingerprint &lt;sha256-from-the-dialog&gt; `
   -Tunnel</code></pre></div>
-<p>The Add node dialog&#39;s <strong>Windows</strong> tab renders exactly this with the values
-filled in.</p>
+<p>The Add node dialog&#39;s <strong>Windows</strong> tab renders this with the values filled in.</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -232,19 +231,19 @@ unless <code>-Tunnel</code> was passed, registers the <code>kraken-agent</code> 
 auto-start and restart-on-failure recovery actions, starts it, and then waits up
 to 60 seconds for the log to say <code>serving with mutual TLS</code>.</p>
 <p>State lives in <code>C:\kraken\state</code>: the mTLS bundle, the SFTP host key, and
-<code>agent.log</code> — JSON, rotated at 10 MiB.</p>
+<code>agent.log</code> (JSON, rotated at 10 MiB).</p>
 <div class="cmd" data-lang="powershell"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>Get-Content C:\kraken\state\agent.log -Tail 30 -Wait
 C:\kraken\bin\kraken-agent.exe --root C:\kraken --print-config</code></pre></div>
-<p><code>--print-config</code> prints the configuration the Agent actually resolved, without
-starting it. It is the fastest answer to &quot;which of the three spellings won&quot;.</p>
-<p>The firewall rule is port-based on purpose: a program-based rule silently stops
-matching when the binary is renamed or replaced, which is a self-update away.</p>
+<p><code>--print-config</code> prints the configuration the Agent resolved, without starting
+it. Fastest answer to &quot;which of the three spellings won&quot;.</p>
+<p>That firewall rule is port-based on purpose. A program-based rule quietly stops
+matching when the binary is renamed or replaced, and a self-update does both.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
 <div class="callout-b"><p>Running a second Agent in WSL on the same machine? WSL&#39;s mirrored networking
 makes the distro and the Windows host share one port space, so both Agents
-cannot hold <code>:9090</code>/<code>:2022</code>. Give each its own <code>addr</code> and <code>sftp_addr</code> — <code>:9091</code>
-and <code>:2023</code> on the Windows side — and split the game-port pools into
+cannot hold <code>:9090</code>/<code>:2022</code>. Give each its own <code>addr</code> and <code>sftp_addr</code> (<code>:9091</code>
+and <code>:2023</code> on the Windows side), then split the game-port pools into
 non-overlapping ranges in the Panel&#39;s node settings. A tunnel-mode Agent
 survives losing that race and reports the conflict; a direct-mode one will not
 start.</p>
@@ -255,10 +254,10 @@ start.</p>
 <h2 id="docker">Docker <a class="hlink" href="#docker" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>An Agent can run as a container, from
 <a href="https://github.com/briggleman/kraken/blob/main/deploy/agent.Dockerfile"><code>deploy/agent.Dockerfile</code></a>
-as image <code>ghcr.io/briggleman/kraken-agent</code>, and the compose stack&#39;s third service
-does exactly that. It needs <code>network_mode: host</code> and <code>/var/run/docker.sock</code>,
-because it launches game containers on the host&#39;s daemon and their ports must be
-reachable from the LAN.</p>
+as image <code>ghcr.io/briggleman/kraken-agent</code>, and the compose stack&#39;s third
+service does that. It wants <code>network_mode: host</code> and <code>/var/run/docker.sock</code>,
+because it launches game containers on the host&#39;s daemon and their ports have to
+be reachable from the LAN.</p>
 <div class="cmd" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>agent:
   image: ghcr.io/briggleman/kraken-agent:latest
   network_mode: host
@@ -274,32 +273,30 @@ reachable from the LAN.</p>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
 <div class="callout-b"><p><strong>Mount the data root at the same absolute path on both sides.</strong> The Agent hands
-bind sources to the <em>host&#39;s</em> Docker daemon, which resolves them on the host — so
+bind sources to the <em>host&#39;s</em> Docker daemon, which resolves them on the host, so
 a container-only path like <code>/data</code> sends game servers to a different directory
-than the Agent&#39;s file browser, backups and SFTP are looking at. If you genuinely
+than the Agent&#39;s file browser, backups and SFTP are looking at. Where you truly
 cannot match the paths, set <code>KRAKEN_HOST_DATA_DIR</code> to the host path.</p>
 </div>
 </aside>
 
 
-<p>Handing a container the Docker socket gives it the host&#39;s daemon. That is the
-same authority a bare-metal Agent has, and it is why the Agent&#39;s gRPC in this
-stack binds <code>127.0.0.1:9090</code>: Agent gRPC has no application-level auth, mTLS is
-the whole trust boundary, and a plaintext listener on a LAN address hands the
-socket to any peer that can reach it. The Agent refuses to serve plaintext gRPC
-on a non-loopback address unless <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> says so out
-loud.</p>
-<p>Windows nodes cannot use this path: Docker Compose&#39;s host networking is
-Linux-only, and Windows-container game servers need the host&#39;s Windows daemon.</p>
+<p>Handing a container the Docker socket gives it the host&#39;s daemon. A bare-metal
+Agent holds the same authority, which is why the Agent&#39;s gRPC in this stack
+binds <code>127.0.0.1:9090</code>: Agent gRPC has no application-level auth, mTLS is the
+whole trust boundary, and a plaintext listener on a LAN address hands the socket
+to any peer that can reach it. The Agent refuses to serve plaintext gRPC on a
+non-loopback address unless <code>KRAKEN_ALLOW_INSECURE_GRPC=1</code> says so out loud.</p>
+<p>Windows nodes cannot take this path. Compose&#39;s host networking is Linux-only,
+and Windows-container game servers need the host&#39;s Windows daemon.</p>
 <h2 id="enrolling-the-node">Enrolling the node <a class="hlink" href="#enrolling-the-node" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>Enrollment is how an Agent gets the mTLS bundle it serves with. It is one
-outbound HTTP call from the Agent to the Panel, answered with a signed
-certificate.</p>
+<p>Enrollment is how an Agent gets the mTLS bundle it serves with: one outbound
+HTTP call from the Agent to the Panel, answered with a signed certificate.</p>
 <ol>
 <li><strong>Settings → Nodes → Add node</strong> in the Panel.</li>
-<li>Mint a <strong>one-time enrollment token</strong>. It is single-use, expires in about 15
-minutes, and a Panel restart invalidates it. An expired token is nothing to
-worry about — mint another and re-run the installer.</li>
+<li>Mint a <strong>one-time enrollment token</strong>. Single-use, expires in about 15
+minutes, and a Panel restart invalidates it. An expired token costs you
+nothing: mint another and re-run the installer.</li>
 <li>Copy the <strong>CA fingerprint</strong> shown beside it. The Agent refuses any CA whose
 SHA-256 does not match, which is what stops something else answering the
 enrollment call.</li>
@@ -313,18 +310,18 @@ dialog can prefill itself, and starts serving.</li>
 <p class="shot"><em>screenshot: the Add node dialog with a freshly minted enrollment token, CA fingerprint and the rendered Linux install command, with tunnel mode selected</em></p>
 
 
-<p>The bundle lands in the Agent&#39;s state directory — <code>agent.pem</code>, <code>agent-key.pem</code>
-and <code>ca.pem</code> under <code>/var/lib/kraken</code> on Linux or <code>C:\kraken\state</code> on Windows
+<p>The bundle lands in the Agent&#39;s state directory: <code>agent.pem</code>, <code>agent-key.pem</code>
+and <code>ca.pem</code> under <code>/var/lib/kraken</code> on Linux or <code>C:\kraken\state</code> on Windows.
 (<code>krakenctl enroll -out &lt;root&gt;/certs</code> writes the same three files to
-<code>&lt;root&gt;/certs</code>, which the Agent adopts automatically once all three exist). That
-bundle <strong>is</strong> the node&#39;s identity: it survives restarts, it is what the Panel
-authenticates, and the Panel rotates it automatically as expiry approaches.
-Delete it and the node needs a fresh token.</p>
+<code>&lt;root&gt;/certs</code>, which the Agent adopts on its own once all three exist.) That
+bundle <strong>is</strong> the node&#39;s identity. It survives restarts, it is what the Panel
+authenticates, and the Panel rotates it as expiry approaches. Delete it and the
+node needs a fresh token.</p>
 <aside class="callout is-security">
 <span class="callout-k">security</span>
 <div class="callout-b"><p>An enrollment token is a credential. It is single-use and short-lived, but
-between minting and use it is enough to obtain a signed Agent certificate —
-treat it like a password, and prefer pasting the whole rendered command over
+between minting and use it is enough to obtain a signed Agent certificate.
+Treat it like a password, and prefer pasting the whole rendered command over
 mailing the token around. The CA fingerprint is not secret; it is a pin, and
 enrolling without one means trusting whatever CA answers.</p>
 </div>
@@ -332,35 +329,37 @@ enrolling without one means trusting whatever CA answers.</p>
 
 
 <h3 id="tunnel-or-direct">tunnel or direct <a class="hlink" href="#tunnel-or-direct" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<p><strong>Tunnel</strong>: the Agent keeps one outbound mTLS connection open to the Panel&#39;s
-<code>:9443</code> listener and everything rides it: deploys, console, stats, file
-operations, backups, self-update. Zero inbound firewall rules, works behind NAT
-you do not control. The Panel fronts each tunnel node&#39;s SFTP on a per-node port
-of its own, allocated upward from <code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default 2222),
-forwarding the raw SSH stream to the node — so the Panel never terminates SSH
-and the host key stays on the Agent.</p>
-<p><strong>Direct</strong>: the Panel dials the node on <code>:9090</code>. Fewer moving parts on a LAN
-you control, and the node must accept inbound TCP 9090 (plus 2022 for SFTP).
-Enrollment succeeding proves nothing about that: enrollment is outbound. A
-freshly enrolled node sitting <strong>offline</strong> is almost always a blocked inbound
-port. See <a href="/wiki/configure/network/">ports and firewall</a>.</p>
+<p><strong>Tunnel</strong>: the Agent holds one outbound mTLS connection to the Panel&#39;s <code>:9443</code>
+listener and everything rides it — deploys, console, stats, file operations,
+backups, self-update. No inbound firewall rules, and it works behind NAT you do
+not control. The Panel fronts each tunnel node&#39;s SFTP on a per-node port of its
+own, allocated upward from <code>KRAKEN_SFTP_PROXY_BASE_PORT</code> (default 2222),
+forwarding the raw SSH stream to the node, so the Panel never terminates SSH and
+the host key stays on the Agent.</p>
+<p><strong>Direct</strong>: the Panel dials the node on <code>:9090</code>. Fewer moving parts, and on a
+LAN you own that is a real argument for it. The node has to accept inbound TCP
+9090, plus 2022 for SFTP. Enrollment succeeding proves nothing about that, since
+enrollment is outbound; a freshly enrolled node sitting <strong>offline</strong> is usually a
+blocked inbound port. See <a href="/wiki/configure/network/">ports and firewall</a>.</p>
+<p>Which to pick? Tunnel unless you have a reason. It is the default because the
+inbound rule is where most installs come apart, and a node you cannot reach is
+worse than a hop you cannot see.</p>
 <h2 id="give-the-node-a-port-range">Give the node a port range <a class="hlink" href="#give-the-node-a-port-range" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>A newly registered node has no game-port pool until you give it one. The
 reference range is <code>28000–28999</code>.</p>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
-<div class="callout-b"><p><strong>A node with no port range is online and unschedulable.</strong> Everything looks
-healthy — the node reports in, its vitals move — but every deploy fails with
-&quot;no node can host this spec&quot;, because the scheduler has nowhere to put the
-game&#39;s ports. If a deploy is refused and the nodes all look fine, check the
-range first.</p>
+<div class="callout-b"><p><strong>A node with no port range is online and unschedulable.</strong> The node reports in,
+its vitals move, nothing looks wrong, and every deploy fails with &quot;no node can
+host this spec&quot; because the scheduler has nowhere to put the game&#39;s ports. When
+a deploy is refused and the fleet looks healthy, check the range first.</p>
 </div>
 </aside>
 
 
 <p>Game ports are published <strong>1:1</strong>: the port the Panel assigns is the port on the
 host and the port players connect to. Forward them on your router, and keep the
-pools non-overlapping if two Agents share a port space.</p>
+pools non-overlapping where two Agents share a port space.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">

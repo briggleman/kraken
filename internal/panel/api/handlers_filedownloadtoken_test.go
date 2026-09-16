@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/briggleman/kraken/internal/panel/api"
+	"github.com/briggleman/kraken/internal/panel/config"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/store/memory"
@@ -493,3 +496,134 @@ func TestLoginRateLimitLeavesANormalSignInAlone(t *testing.T) {
 		t.Fatalf("me after login: got %d", rec.Code)
 	}
 }
+
+// The limit is on the token branch, not the route. An operator downloading
+// files with a live session shares a NAT address with whoever else is behind
+// it — including somebody probing tokens — and must not be refused for their
+// company. The probes are refused; the session is not.
+func TestOnlyTokenRedemptionIsRateLimited(t *testing.T) {
+	e := newDownloadEnv(t)
+
+	authed := "/api/v1/servers/" + e.server + "/files/raw?path=" + fakeCfgPath
+	for i := range api.DownloadRedeemBurstForTest + 1 {
+		if rec := do(t, e.h, http.MethodGet, authed, e.token, nil); rec.Code != http.StatusOK {
+			t.Fatalf("authenticated download %d: got %d, want 200 — the Bearer path must not be limited", i+1, rec.Code)
+		}
+	}
+
+	probe := "/api/v1/servers/" + e.server + "/files/raw?path=" + fakeCfgPath + "&token=deadbeef"
+	var last *httptest.ResponseRecorder
+	for range api.DownloadRedeemBurstForTest + 1 {
+		last = do(t, e.h, http.MethodGet, probe, "", nil)
+	}
+	if last.Code != http.StatusTooManyRequests {
+		t.Fatalf("token probe past the burst: got %d, want 429", last.Code)
+	}
+
+	// And the session still works afterwards: the probing did not spend the
+	// operator's capacity, because the operator never had a bucket.
+	if rec := do(t, e.h, http.MethodGet, authed, e.token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("authenticated download after a probe flood: got %d, want 200", rec.Code)
+	}
+}
+
+// KRAKEN_RATE_LIMITS=off is a real off switch on both limiters, for an operator
+// whose edge already does this (or who is debugging the one that does).
+func TestRateLimitsOffSwitch(t *testing.T) {
+	h := newTestServerWith(t, func(cfg *config.Config) { cfg.RateLimits = "off" })
+	for i := range 40 {
+		if rec := do(t, h, http.MethodPost, "/api/v1/auth/login", "",
+			map[string]string{"username": testAdmin, "password": "wrong"}); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("login attempt %d: got %d, want 401 with limiting off", i+1, rec.Code)
+		}
+	}
+	token := login(t, h)
+	serverless := "/api/v1/servers/nope/files/raw?token=deadbeef"
+	for i := range 40 {
+		if rec := do(t, h, http.MethodGet, serverless, "", nil); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("token probe %d was rate limited although limiting is off", i+1)
+		}
+	}
+	if rec := do(t, h, http.MethodGet, "/api/v1/auth/me", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("me: got %d", rec.Code)
+	}
+}
+
+// A brute-force flood never reaches the handler that audits a failed login, so
+// the limiter leaves the row itself — once per client per window, not once per
+// request, or the flood would just move into the audit table.
+func TestLoginRateLimitLeavesOneAuditRow(t *testing.T) {
+	h := newTestServer(t)
+	admin := login(t, h)
+	for range api.LoginBurstForTest + 5 {
+		do(t, h, http.MethodPost, "/api/v1/auth/login", "",
+			map[string]string{"username": "nobody", "password": "guess"})
+	}
+	rec := do(t, h, http.MethodGet, "/api/v1/audit", admin, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("audit: got %d", rec.Code)
+	}
+	var out struct {
+		Entries []store.AuditEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode audit: %v", err)
+	}
+	limited := 0
+	for _, ent := range out.Entries {
+		if ent.Status == http.StatusTooManyRequests && strings.Contains(ent.Action, "rate limited") {
+			limited++
+		}
+	}
+	if limited != 1 {
+		t.Fatalf("the flood left %d rate-limit audit rows, want exactly 1", limited)
+	}
+}
+
+// An upload is bounded by the body reader, not by ParseMultipartForm's argument
+// — that is only the in-memory threshold, and everything past it spills to temp
+// files with no limit of its own. Without the cap one authenticated request
+// could fill the Panel's disk.
+func TestUploadBodyIsCapped(t *testing.T) {
+	e := newDownloadEnv(t)
+
+	body, contentType := oversizeUpload(t)
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/servers/"+e.server+"/files/upload?path=/data", body)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversize upload: got %d, want 413", rec.Code)
+	}
+}
+
+// oversizeUpload streams a multipart body past the Panel's cap without ever
+// holding it in memory — the point is what the server does with the bytes, not
+// what the test can allocate.
+func oversizeUpload(t *testing.T) (io.Reader, string) {
+	t.Helper()
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		part, err := mw.CreateFormFile("files", "huge.bin")
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		// Comfortably past maxUploadBytes + the framing slack.
+		if _, err := io.CopyN(part, zeroes{}, 70<<20); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = mw.Close()
+		_ = pw.Close()
+	}()
+	return pr, mw.FormDataContentType()
+}
+
+type zeroes struct{}
+
+func (zeroes) Read(p []byte) (int, error) { return len(p), nil }

@@ -102,9 +102,14 @@ func TestDownloadTokenAuditsTheOutcomeNotTheIntent(t *testing.T) {
 		t.Fatalf("redeem against an unreachable agent: got %d, want 502", rec.Code)
 	}
 	for _, ent := range auditEntries(t, e) {
-		if strings.Contains(ent.Action, "download token redeemed") {
+		if strings.Contains(ent.Action, "download token") && !strings.Contains(ent.Action, "mint") {
 			if ent.Status != http.StatusBadGateway {
 				t.Fatalf("the redemption audited as %d, want 502 — the row claims a download that never happened", ent.Status)
+			}
+			// And it does not read as a download either: the verb comes from
+			// the outcome, so a 502 is "refused", not "redeemed".
+			if !strings.Contains(ent.Action, "refused") {
+				t.Fatalf("a failed redemption audited as %q", ent.Action)
 			}
 			return
 		}
@@ -184,4 +189,44 @@ func TestDownloadTokenRejectedAfterServerIsReOwned(t *testing.T) {
 	if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("redeem after the server was re-owned: got %d, want 401", rec.Code)
 	}
+}
+
+// The redemption's audit row takes its verb from the outcome too, not just its
+// status. Everything after the grant is consumed can still refuse the request —
+// here the first-run password gate, which the token path now runs like every
+// other authorized route — and a row reading "redeemed" against a 403 would
+// claim a download that never happened.
+func TestDownloadTokenAuditsARefusalAsRefused(t *testing.T) {
+	e := newDownloadEnv(t)
+	ctx := context.Background()
+	sess := seedDownloadOperator(t, e, "op-pwgate")
+	tok, code := e.mint(t, sess, e.server, map[string]any{"path": fakeCfgPath})
+	if code != http.StatusCreated {
+		t.Fatalf("mint: got %d, want 201", code)
+	}
+	// An admin forces a password rotation inside the token's 60 seconds.
+	u, err := e.st.GetUser(ctx, "op-pwgate")
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	u.MustChangePassword = true
+	if err := e.st.UpdateUser(ctx, u); err != nil {
+		t.Fatalf("update user: %v", err)
+	}
+	if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("redeem behind the first-run password gate: got %d, want 403", rec.Code)
+	}
+	for _, ent := range auditEntries(t, e) {
+		if !strings.Contains(ent.Action, "download token") || strings.Contains(ent.Action, "mint") {
+			continue
+		}
+		if !strings.Contains(ent.Action, "refused") {
+			t.Fatalf("a refused redemption audited as %q — the row claims a download that never happened", ent.Action)
+		}
+		if ent.Status != http.StatusForbidden {
+			t.Fatalf("the refusal audited as %d, want 403", ent.Status)
+		}
+		return
+	}
+	t.Fatal("no audit entry for the refused redemption")
 }

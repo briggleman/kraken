@@ -2,6 +2,7 @@ package api
 
 import (
 	"math"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -15,12 +16,14 @@ import (
 // stranger cannot hammer a route for free, not to police operators. Several
 // people behind one NAT (a homelab, an office, a VPN exit) share an IP, and
 // locking them out of their own Panel would be a far worse failure than the
-// abuse being prevented.
+// abuse being prevented. KRAKEN_RATE_LIMITS=off turns both off outright.
 const (
-	// downloadRedeemPerMinute / Burst guard the two GET download routes, which
-	// are reachable with no credentials at all (?token= is the whole
+	// downloadRedeemPerMinute / Burst guard the redemption of a download token,
+	// which is reachable with no credentials at all (the token is the whole
 	// authority). A browser takes ONE of these per click, so ten in a row is
-	// already well past normal use.
+	// already well past normal use. The session-authenticated form of the same
+	// route is NOT limited — an operator with a Bearer token is not who this is
+	// for, and sharing a NAT address with a prober must not cost them downloads.
 	downloadRedeemPerMinute = 30
 	downloadRedeemBurst     = 10
 	// loginPerMinute / Burst guard POST /auth/login. A human logging in takes
@@ -31,34 +34,44 @@ const (
 	loginBurst     = 20
 )
 
-// Limiter table bounds. The table is keyed by client IP — attacker-chosen
+// Limiter table bounds. The table is keyed by client address — attacker-chosen
 // input — so it is swept and capped rather than allowed to grow.
 const (
 	// rateLimiterIdleTTL is how long an untouched entry survives a sweep. Well
-	// past the time any bucket needs to refill, so evicting an idle entry can
-	// never hand its owner a fresh burst it had not earned.
+	// past the time any bucket needs to refill, so an entry that ages out has
+	// nothing left to forget: its bucket was full again long before.
 	rateLimiterIdleTTL = 10 * time.Minute
 	// rateLimiterSweepEvery is the minimum gap between sweeps; the sweep runs
 	// inline on an admission, so there is no goroutine to own or stop.
 	rateLimiterSweepEvery = time.Minute
-	// rateLimiterMaxEntries caps the table outright. Past it, the
-	// least-recently-seen entries are evicted so a flood of distinct source
-	// addresses cannot grow the map without bound.
+	// rateLimiterMaxEntries caps the table outright. Past it, entries are
+	// evicted down to rateLimiterWatermark so the O(n log n) eviction amortises
+	// over the entries it freed rather than running on every later admission —
+	// and only FULL buckets are evicted, so a client in the middle of being
+	// limited cannot buy a fresh burst by flooding the table with new keys.
 	rateLimiterMaxEntries = 8192
+	rateLimiterWatermark  = rateLimiterMaxEntries * 3 / 4
+	// rateLimiterNotifyEvery is how often one key's refusals may raise the
+	// "first trip" signal (an audit row for login). Once a window, not once a
+	// request: a flood must leave a trace, not write one row per packet.
+	rateLimiterNotifyEvery = time.Minute
 )
 
 // rateLimiterEntry is one client's token bucket plus when it was last used.
 type rateLimiterEntry struct {
-	lim  *rate.Limiter
-	seen time.Time
+	lim      *rate.Limiter
+	seen     time.Time
+	notified time.Time // last time this key's refusal raised the first-trip signal
 }
 
-// rateLimiter is a per-key (per-IP) token-bucket limiter over a bounded map.
-// No new dependency and no background goroutine: x/time/rate does the bucket,
-// and the table is swept on the way through.
+// rateLimiter is a per-key (per-client-address) token-bucket limiter over a
+// bounded map. No new dependency and no background goroutine: x/time/rate does
+// the bucket, and the table is swept on the way through.
 type rateLimiter struct {
-	limit rate.Limit
-	burst int
+	name    string // metrics label: "download", "login"
+	limit   rate.Limit
+	burst   int
+	enabled bool
 
 	mu        sync.Mutex
 	entries   map[string]*rateLimiterEntry
@@ -67,59 +80,115 @@ type rateLimiter struct {
 	// now is the clock, injectable so a test can drive the window rather than
 	// sleep through it.
 	now func() time.Time
+
+	// onFirstTrip, when set, is called the first time a given key is refused in
+	// a window — how the login limiter leaves an audit row for a brute-force
+	// flood that never reaches the handler that would have audited it.
+	onFirstTrip func(*http.Request)
 }
 
 // newRateLimiter builds a limiter admitting perMinute requests per key per
-// minute, with burst available immediately.
-func newRateLimiter(perMinute float64, burst int) *rateLimiter {
+// minute, with burst available immediately. enabled=false makes every call a
+// pass-through (KRAKEN_RATE_LIMITS=off).
+func newRateLimiter(name string, perMinute float64, burst int, enabled bool) *rateLimiter {
 	return &rateLimiter{
+		name:    name,
 		limit:   rate.Limit(perMinute / 60),
 		burst:   burst,
+		enabled: enabled,
 		entries: map[string]*rateLimiterEntry{},
 		now:     time.Now,
 	}
 }
 
+// limiterKey normalizes a client address into the unit a limit applies to.
+// IPv4 is one address, one bucket. IPv6 is aggregated to the /64: the smallest
+// block anyone is routinely delegated is a /64, so keying on the full address
+// would hand a single subscriber 2^64 independent buckets and no limit at all.
+func limiterKey(addr string) string {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return addr
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
 // allow reports whether this key may proceed and, when it may not, how long it
-// should wait. The wait comes from the bucket itself rather than a guessed
-// constant, so the Retry-After a caller is handed is the truth.
-func (l *rateLimiter) allow(key string) (bool, time.Duration) {
+// should wait and whether this is the first refusal for that key in a window.
+// The wait comes from the bucket itself rather than a guessed constant, so the
+// Retry-After a caller is handed is the truth.
+func (l *rateLimiter) allow(key string) (ok bool, retry time.Duration, firstTrip bool) {
+	if l == nil || !l.enabled {
+		return true, 0, false
+	}
+	key = limiterKey(key)
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sweepLocked(now)
-	e, ok := l.entries[key]
-	if !ok {
+	e, found := l.entries[key]
+	if !found {
 		e = &rateLimiterEntry{lim: rate.NewLimiter(l.limit, l.burst)}
 		l.entries[key] = e
 	}
 	e.seen = now
 	res := e.lim.ReserveN(now, 1)
 	if !res.OK() { // burst of 0 — nothing is ever admitted
-		return false, time.Second
+		return false, time.Second, l.noteTripLocked(e, now)
 	}
 	if d := res.DelayFrom(now); d > 0 {
 		// Hand the token back: a refused request must not also consume future
 		// capacity, or a client hammering the door would never get back in.
 		res.CancelAt(now)
-		return false, d
+		return false, d, l.noteTripLocked(e, now)
 	}
-	return true, 0
+	return true, 0, false
 }
 
-// sweepLocked drops entries nobody has used lately, and — if the table is still
-// over its cap — the least-recently-seen of what is left. Caller holds l.mu.
+// noteTripLocked reports whether this refusal is the first for its key in a
+// window, and records it. Caller holds l.mu.
+func (l *rateLimiter) noteTripLocked(e *rateLimiterEntry, now time.Time) bool {
+	if !e.notified.IsZero() && now.Sub(e.notified) < rateLimiterNotifyEvery {
+		return false
+	}
+	e.notified = now
+	return true
+}
+
+// sweepLocked drops entries nobody has used lately, and — when the table has
+// reached its cap — evicts down to the watermark, oldest-seen first. Caller
+// holds l.mu.
+//
+// Two things make that eviction safe rather than a way around the limiter.
+// It frees a QUARTER of the table rather than the one entry that was over the
+// line, so the sort amortises over everything it bought instead of running
+// under the mutex on every later admission. And it passes over any client that
+// cannot make a request right now — a bucket with less than one token, which is
+// precisely the set currently being refused — because dropping one of those
+// would hand it a full burst and make filling the table the cheapest way past
+// the limit.
+//
+// That protection yields to the cap if it has to: if every candidate is
+// currently refused, the oldest go anyway. A bounded table is not negotiable —
+// it is the reason any of this exists — and the alternative is a map an
+// attacker grows without limit by keeping every bucket spent.
 func (l *rateLimiter) sweepLocked(now time.Time) {
-	if now.Sub(l.lastSweep) < rateLimiterSweepEvery && len(l.entries) < rateLimiterMaxEntries {
+	due := now.Sub(l.lastSweep) >= rateLimiterSweepEvery
+	if !due && len(l.entries) < rateLimiterMaxEntries {
 		return
 	}
-	l.lastSweep = now
-	for k, e := range l.entries {
-		if now.Sub(e.seen) > rateLimiterIdleTTL {
-			delete(l.entries, k)
+	if due {
+		l.lastSweep = now
+		for k, e := range l.entries {
+			if now.Sub(e.seen) > rateLimiterIdleTTL {
+				delete(l.entries, k)
+			}
 		}
 	}
-	if len(l.entries) <= rateLimiterMaxEntries {
+	if len(l.entries) < rateLimiterMaxEntries {
 		return
 	}
 	keys := make([]string, 0, len(l.entries))
@@ -129,8 +198,20 @@ func (l *rateLimiter) sweepLocked(now time.Time) {
 	sort.Slice(keys, func(i, j int) bool {
 		return l.entries[keys[i]].seen.Before(l.entries[keys[j]].seen)
 	})
-	for _, k := range keys[:len(l.entries)-rateLimiterMaxEntries] {
-		delete(l.entries, k)
+	for _, protectRefused := range []bool{true, false} {
+		for _, k := range keys {
+			if len(l.entries) <= rateLimiterWatermark {
+				return
+			}
+			e, ok := l.entries[k]
+			if !ok {
+				continue // already evicted on the first pass
+			}
+			if protectRefused && e.lim.TokensAt(now) < 1 {
+				continue // being refused right now; its penalty is not ours to forgive
+			}
+			delete(l.entries, k)
+		}
 	}
 }
 
@@ -141,26 +222,43 @@ func (l *rateLimiter) size() int {
 	return len(l.entries)
 }
 
-// middleware applies the limiter per client IP, answering 429 with the same
-// JSON error envelope as every other refusal plus a Retry-After the caller can
-// act on.
+// reject applies the limiter to one request, writing the 429 itself and
+// reporting whether the caller should stop. It is what both the middleware and
+// the token branch of a download route go through, so there is one refusal.
 //
-// The key is clientIP(), which is the real TCP peer: the Panel deliberately
-// does not trust X-Forwarded-For / X-Real-IP anywhere (middleware.RealIP was
-// removed for exactly that reason — see routes()), and a limiter keyed on a
-// spoofable header is a limiter an attacker can step around one fake address
-// at a time.
-func (l *rateLimiter) middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if ok, retry := l.allow(clientIP(r)); !ok {
-			secs := int(math.Ceil(retry.Seconds()))
-			if secs < 1 {
-				secs = 1
+// The key is Server.clientIP — the real TCP peer, or, when the peer is a
+// configured trusted proxy, the address that proxy says the client has (see
+// clientip.go). Getting that wrong in either direction breaks the limiter: with
+// no trusted set a forwarded header would let an attacker mint a new bucket per
+// request, and behind an unconfigured proxy every caller shares one bucket.
+func (s *Server) reject(l *rateLimiter, w http.ResponseWriter, r *http.Request) bool {
+	ok, retry, first := l.allow(s.clientIP(r))
+	if ok {
+		return false
+	}
+	incRateLimited(l.name)
+	if first && l.onFirstTrip != nil {
+		l.onFirstTrip(r)
+	}
+	secs := int(math.Ceil(retry.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	writeError(w, http.StatusTooManyRequests, "too many requests")
+	return true
+}
+
+// limit wraps a handler in the limiter, for routes where every request is
+// subject to it (login). The download routes call reject directly instead,
+// because only their token branch is limited.
+func (s *Server) limit(l *rateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.reject(l, w, r) {
+				return
 			}
-			w.Header().Set("Retry-After", strconv.Itoa(secs))
-			writeError(w, http.StatusTooManyRequests, "too many requests")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }

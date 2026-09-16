@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ func (c *fixedClock) add(d time.Duration) { c.t = c.t.Add(d) }
 
 func testLimiter(perMinute float64, burst int) (*rateLimiter, *fixedClock) {
 	clk := &fixedClock{t: time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)}
-	l := newRateLimiter(perMinute, burst)
+	l := newRateLimiter("test", perMinute, burst, true)
 	l.now = clk.now
 	return l, clk
 }
@@ -25,16 +26,23 @@ func testLimiter(perMinute float64, burst int) (*rateLimiter, *fixedClock) {
 func TestRateLimiterAdmitsTheBurstThenRefuses(t *testing.T) {
 	l, _ := testLimiter(30, 10)
 	for i := range 10 {
-		if ok, _ := l.allow("198.51.100.7"); !ok {
+		if ok, _, _ := l.allow("198.51.100.7"); !ok {
 			t.Fatalf("request %d of the burst was refused", i+1)
 		}
 	}
-	ok, retry := l.allow("198.51.100.7")
+	ok, retry, first := l.allow("198.51.100.7")
 	if ok {
 		t.Fatal("the request past the burst was admitted")
 	}
 	if retry <= 0 {
 		t.Fatalf("Retry-After delay = %s, want a positive wait the caller can act on", retry)
+	}
+	if !first {
+		t.Fatal("the first refusal for this key did not raise the first-trip signal")
+	}
+	// A flood must leave one trace, not one per packet.
+	if _, _, again := l.allow("198.51.100.7"); again {
+		t.Fatal("a second refusal in the same window raised the signal again")
 	}
 }
 
@@ -44,19 +52,19 @@ func TestRateLimiterAdmitsTheBurstThenRefuses(t *testing.T) {
 func TestRateLimiterRecoversAfterTheWindow(t *testing.T) {
 	l, clk := testLimiter(30, 2) // one token every two seconds
 	for range 2 {
-		if ok, _ := l.allow("198.51.100.8"); !ok {
+		if ok, _, _ := l.allow("198.51.100.8"); !ok {
 			t.Fatal("the burst was refused")
 		}
 	}
-	if ok, _ := l.allow("198.51.100.8"); ok {
+	if ok, _, _ := l.allow("198.51.100.8"); ok {
 		t.Fatal("admitted past the burst")
 	}
 	// Keep knocking while refused — this must not push recovery further out.
 	for range 5 {
-		_, _ = l.allow("198.51.100.8")
+		l.allow("198.51.100.8")
 	}
 	clk.add(2 * time.Second)
-	if ok, _ := l.allow("198.51.100.8"); !ok {
+	if ok, _, _ := l.allow("198.51.100.8"); !ok {
 		t.Fatal("still refused after the bucket had refilled")
 	}
 }
@@ -65,15 +73,43 @@ func TestRateLimiterRecoversAfterTheWindow(t *testing.T) {
 func TestRateLimiterIsolatesClients(t *testing.T) {
 	l, _ := testLimiter(30, 3)
 	for range 3 {
-		if ok, _ := l.allow("198.51.100.9"); !ok {
+		if ok, _, _ := l.allow("198.51.100.9"); !ok {
 			t.Fatal("the burst was refused")
 		}
 	}
-	if ok, _ := l.allow("198.51.100.9"); ok {
+	if ok, _, _ := l.allow("198.51.100.9"); ok {
 		t.Fatal("admitted past the burst")
 	}
-	if ok, _ := l.allow("203.0.113.4"); !ok {
+	if ok, _, _ := l.allow("203.0.113.4"); !ok {
 		t.Fatal("a different client was refused for someone else's traffic")
+	}
+}
+
+// IPv6 is limited per /64, not per address. A single subscriber is routinely
+// delegated a whole /64, so keying on the full address would hand one attacker
+// 2^64 independent buckets — a limiter that limits nothing. IPv4 stays per
+// address, where one address is the unit anyone actually gets.
+func TestRateLimiterAggregatesIPv6ToTheRoutedPrefix(t *testing.T) {
+	l, _ := testLimiter(30, 2)
+	if ok, _, _ := l.allow("2001:db8:1:2::1"); !ok {
+		t.Fatal("first address in the prefix was refused")
+	}
+	if ok, _, _ := l.allow("2001:db8:1:2::2"); !ok {
+		t.Fatal("second address in the prefix was refused")
+	}
+	// Third request from the same /64, from a "different" address.
+	if ok, _, _ := l.allow("2001:db8:1:2:ffff::dead"); ok {
+		t.Fatal("hopping addresses inside one /64 bought a fresh bucket")
+	}
+	// A different /64 is a different client.
+	if ok, _, _ := l.allow("2001:db8:1:3::1"); !ok {
+		t.Fatal("a separate /64 was refused for its neighbour's traffic")
+	}
+	if got := limiterKey("2001:db8:1:2::1"); got != "2001:db8:1:2::/64" {
+		t.Fatalf("limiterKey = %q, want the /64", got)
+	}
+	if got := limiterKey("198.51.100.7"); got != "198.51.100.7" {
+		t.Fatalf("limiterKey(v4) = %q, want the address itself", got)
 	}
 }
 
@@ -83,7 +119,7 @@ func TestRateLimiterIsolatesClients(t *testing.T) {
 func TestRateLimiterSweepsIdleEntries(t *testing.T) {
 	l, clk := testLimiter(30, 3)
 	for _, ip := range []string{"198.51.100.1", "198.51.100.2", "198.51.100.3"} {
-		if ok, _ := l.allow(ip); !ok {
+		if ok, _, _ := l.allow(ip); !ok {
 			t.Fatalf("%s was refused on its first request", ip)
 		}
 	}
@@ -91,7 +127,7 @@ func TestRateLimiterSweepsIdleEntries(t *testing.T) {
 		t.Fatalf("table holds %d entries, want 3", n)
 	}
 	clk.add(rateLimiterIdleTTL + rateLimiterSweepEvery)
-	if ok, _ := l.allow("203.0.113.9"); !ok {
+	if ok, _, _ := l.allow("203.0.113.9"); !ok {
 		t.Fatal("a fresh client was refused")
 	}
 	if n := l.size(); n != 1 {
@@ -99,11 +135,48 @@ func TestRateLimiterSweepsIdleEntries(t *testing.T) {
 	}
 }
 
+// At the cap the table is cut back to a watermark rather than to the cap
+// itself. Evicting exactly one entry per admission would leave every later
+// request doing a full scan and sort under the mutex; freeing a quarter of the
+// table amortises that work over the entries it bought.
+func TestRateLimiterEvictsDownToTheWatermark(t *testing.T) {
+	l, _ := testLimiter(60, 2)
+	for i := range rateLimiterMaxEntries + 1 {
+		l.allow(fmt.Sprintf("10.%d.%d.%d", i>>16&0xff, i>>8&0xff, i&0xff))
+	}
+	// One entry past the watermark: the eviction runs when the table reaches
+	// the cap, and the admission that triggered it is then inserted.
+	if n := l.size(); n > rateLimiterWatermark+1 {
+		t.Fatalf("table holds %d entries, want it cut back to the %d watermark", n, rateLimiterWatermark)
+	}
+}
+
+// Eviction must never forgive a penalty. A client in the middle of being
+// limited has a partly-spent bucket; dropping its entry would hand it a fresh
+// burst, which makes filling the table the cheapest way past the limiter.
+func TestRateLimiterEvictionKeepsAPenalisedClient(t *testing.T) {
+	l, clk := testLimiter(60, 2)
+	const victim = "198.51.100.77"
+	// Spend the victim's bucket, then let it go idle so it sorts oldest-first
+	// and is the very first candidate the eviction pass considers.
+	for range 3 {
+		l.allow(victim)
+	}
+	clk.add(time.Nanosecond) // enough to sort oldest-first, not enough to refill
+	for i := range rateLimiterMaxEntries + 1 {
+		l.allow(fmt.Sprintf("10.%d.%d.%d", i>>16&0xff, i>>8&0xff, i&0xff))
+	}
+	if ok, _, _ := l.allow(victim); ok {
+		t.Fatal("a table flood bought a penalised client a fresh bucket — eviction forgave the penalty")
+	}
+}
+
 // A refusal answers in the shape every other refusal does — the JSON error
 // envelope — plus the Retry-After a client needs to behave.
 func TestRateLimiterMiddlewareAnswers429WithRetryAfter(t *testing.T) {
+	s := testAPI(nil)
 	l, _ := testLimiter(30, 1)
-	h := l.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := s.limit(l)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	call := func() *httptest.ResponseRecorder {
@@ -125,5 +198,20 @@ func TestRateLimiterMiddlewareAnswers429WithRetryAfter(t *testing.T) {
 	}
 	if ct := rec.Header().Get("Content-Type"); ct == "" {
 		t.Fatal("a 429 went out with no content type — it must be the same JSON envelope as every other refusal")
+	}
+}
+
+// KRAKEN_RATE_LIMITS=off is a real off switch, not a looser limit: an operator
+// who has their own edge rate limiting (or is debugging one) gets the Panel out
+// of the way entirely.
+func TestRateLimiterDisabledAdmitsEverything(t *testing.T) {
+	l := newRateLimiter("test", 1, 1, false)
+	for i := range 50 {
+		if ok, _, _ := l.allow("198.51.100.5"); !ok {
+			t.Fatalf("request %d was refused although limiting is off", i+1)
+		}
+	}
+	if n := l.size(); n != 0 {
+		t.Fatalf("a disabled limiter kept %d entries; it should not even build a table", n)
 	}
 }

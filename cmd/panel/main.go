@@ -35,7 +35,16 @@ func main() {
 		return
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// KRAKEN_LOG_LEVEL (debug|info|warn|error, default info). Read straight
+	// from the environment rather than from config.Load, because the logger has
+	// to exist before anything that could fail while loading configuration.
+	// Debug is not decoration here: several diagnostics an unauthenticated
+	// caller can trigger — a rejected download token, for one — are logged at
+	// Debug precisely so a stranger cannot fill an operator's log, which makes
+	// this the switch that turns them on when something is actually being
+	// diagnosed.
+	logLevel := (&config.Config{LogLevel: os.Getenv("KRAKEN_LOG_LEVEL")}).SlogLevel()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 
 	if err := run(logger); err != nil {

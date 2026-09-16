@@ -9,6 +9,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -146,58 +147,87 @@ func (s *Server) handleCreateDownloadToken(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// tokenOrSession is the whole authorization of a GET download route, and the
-// only place it is spelled. The route's ORIGINAL handler is registered
-// unchanged behind it; what varies is where the identity in ctx comes from.
-//
-//   - With ?token= the one-time grant is the whole authority and the
-//     Authorization header is not consulted at all, so a live session can never
-//     rescue an invalid token. redeemDownloadToken puts the minting user and
-//     role into ctx and rewrites the query from the grant.
-//   - Without ?token= requireAuth resolves the ordinary Bearer session, exactly
-//     as the authenticated group does. allowSession is false on the GET zip
-//     route, which has no session form at all (its paths only ever come from a
-//     grant; the POST twin inside the group is the session-authenticated one).
-//
-// After that the SAME chain runs either way, in the order the authenticated
-// group uses (see routes()): audit → first-run password gate → permission. The
-// point is that there is one chain rather than a hand-rebuilt copy: nothing can
-// drift from the group it is meant to mirror. The audit middleware is a
+// gatedChain is the authorization a download route runs once identity is in
+// ctx, and the only place it is spelled: the same middleware, in the same
+// order, as the authenticated group in routes() — audit, first-run password
+// gate, then server.files.read. Both download entry points go through it, so
+// neither can drift from the group it mirrors. The audit middleware is a
 // pass-through on GET today and is included so it stops being one here the day
 // it stops being one there.
-func (s *Server) tokenOrSession(kind string, allowSession bool) func(http.Handler) http.Handler {
+func (s *Server) gatedChain(next http.Handler) http.Handler {
+	return s.auditMiddleware(s.requirePasswordCurrent(
+		s.requirePermission(rbac.PermServerFilesRead)(next)))
+}
+
+// tokenOnly authorizes a download route that has no session form at all: the
+// GET zip route, whose paths exist nowhere but the grant. (Its POST twin,
+// inside the authenticated group, is the session-authenticated one.)
+func (s *Server) tokenOnly(kind string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		gated := s.auditMiddleware(s.requirePasswordCurrent(
-			s.requirePermission(rbac.PermServerFilesRead)(next)))
+		gated := s.gatedChain(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("token") == "" {
+				writeError(w, http.StatusBadRequest, "token query param is required")
+				return
+			}
+			s.serveRedeemed(gated, kind, w, r)
+		})
+	}
+}
+
+// tokenOrSession authorizes the raw download route, which answers to either
+// credential. With ?token= the one-time grant is the whole authority and the
+// Authorization header is not consulted at all, so a live session can never
+// rescue an invalid token; without it, requireAuth resolves the ordinary Bearer
+// session exactly as the authenticated group does. Either way the request ends
+// up in gatedChain, so the two forms are authorized identically.
+func (s *Server) tokenOrSession(kind string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		gated := s.gatedChain(next)
 		sessioned := s.requireAuth(gated)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Query().Get("token") == "" {
-				if !allowSession {
-					writeError(w, http.StatusBadRequest, "token query param is required")
-					return
-				}
 				sessioned.ServeHTTP(w, r)
 				return
 			}
-			r, grant, ok := s.redeemDownloadToken(w, r, kind)
-			if !ok {
-				return
-			}
-			// Audit the OUTCOME, not the intent: the handler can still 404 on
-			// the ownership scope or 502 on an unreachable Agent, and a row
-			// that says every redemption streamed is worse than no row at all.
-			// The recorder is the audit middleware's (it forwards Unwrap, so
-			// the stream still flushes), and the row is deferred so a stream
-			// that aborts mid-way (streamChunks panics with
-			// http.ErrAbortHandler) is recorded too rather than unwound past.
-			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-			defer func() {
-				s.recordAuditDetail(r, rec.status, auditAction(r,
-					fmt.Sprintf("download token redeemed (%s, %s)", grant.kind, pathCount(len(grant.paths)))))
-			}()
-			gated.ServeHTTP(rec, r)
+			s.serveRedeemed(gated, kind, w, r)
 		})
 	}
+}
+
+// serveRedeemed is the token branch both entry points share: rate limit, redeem,
+// then run the shared chain and audit what actually happened.
+//
+// The limiter lives HERE rather than on the route, because only this branch is
+// reachable without credentials. A session-authenticated download must not be
+// refused for sharing a NAT address with somebody probing tokens — the operator
+// with a Bearer token is not who the limit is for.
+func (s *Server) serveRedeemed(gated http.Handler, kind string, w http.ResponseWriter, r *http.Request) {
+	if s.reject(s.downloadLimit, w, r) {
+		return
+	}
+	r, grant, ok := s.redeemDownloadToken(w, r, kind)
+	if !ok {
+		return
+	}
+	// Audit the OUTCOME, not the intent: the handler can still 404 on the
+	// ownership scope, 403 on the first-run password gate or 502 on an
+	// unreachable Agent, and a row that says every redemption streamed is worse
+	// than no row at all — so even the verb comes from the status. The recorder
+	// is the audit middleware's (it forwards Unwrap, so the stream still
+	// flushes), and the row is deferred so a stream that aborts mid-way
+	// (streamChunks panics with http.ErrAbortHandler) is recorded too rather
+	// than unwound past.
+	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	defer func() {
+		verb := "refused"
+		if rec.status >= 200 && rec.status < 300 {
+			verb = "redeemed"
+		}
+		s.recordAuditDetail(r, rec.status, auditAction(r,
+			fmt.Sprintf("download token %s (%s, %s)", verb, grant.kind, pathCount(len(grant.paths)))))
+	}()
+	gated.ServeHTTP(rec, r)
 }
 
 // redeemDownloadToken consumes the ?token= on a download route and returns a
@@ -220,8 +250,11 @@ func (s *Server) redeemDownloadToken(w http.ResponseWriter, r *http.Request, kin
 		// all, so every bad token would otherwise be a log line an anonymous
 		// caller chose to write. The server id is attacker-chosen too — it is
 		// whatever the URL said — so it is capped before it reaches the log.
+		// The counter is what an operator watches instead of the log level;
+		// see kraken_download_tokens_rejected_total.
+		metricsDownloadTokenRejected.Add(1)
 		s.logger.Debug("file download token rejected", "reason", reason,
-			"server", clipForLog(chi.URLParam(r, "id")), "ip", clientIP(r))
+			"server", clipForLog(chi.URLParam(r, "id")), "ip", s.clientIP(r))
 		writeError(w, http.StatusUnauthorized, "invalid or expired download token")
 		return nil, downloadGrant{}, false
 	}
@@ -308,13 +341,19 @@ func downloadPathsFrom(ctx context.Context) []string {
 // behind it, and a log file is not somewhere to let a stranger write 4 KiB.
 const maxLoggedIDLen = 64
 
-// clipForLog truncates a caller-supplied value to maxLoggedIDLen, marking that
-// it was cut so a clipped id never reads as a real one.
+// clipForLog truncates a caller-supplied value to maxLoggedIDLen bytes, marking
+// that it was cut so a clipped id never reads as a real one. The cut is pulled
+// back to a rune boundary: slicing bytes mid-rune would put an invalid UTF-8
+// sequence into the log, which a JSON handler then has to mangle.
 func clipForLog(v string) string {
 	if len(v) <= maxLoggedIDLen {
 		return v
 	}
-	return v[:maxLoggedIDLen] + "…"
+	cut := maxLoggedIDLen
+	for cut > 0 && !utf8.RuneStart(v[cut]) {
+		cut--
+	}
+	return v[:cut] + "…"
 }
 
 // pathCount renders a path count for the audit log ("1 path" / "3 paths").

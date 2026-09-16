@@ -90,10 +90,15 @@ type Server struct {
 	// and never persisted — see filedownloadtokens.go.
 	downloads *downloadTokenRegistry
 
-	// Per-IP limiters on the two surfaces an unauthenticated stranger can
-	// reach: the token-redemption downloads and login (see ratelimit.go).
+	// Per-client limiters on the two surfaces an unauthenticated stranger can
+	// reach: download-token redemption and login (see ratelimit.go).
 	downloadLimit *rateLimiter
 	loginLimit    *rateLimiter
+
+	// trustedProxies is the parsed KRAKEN_TRUSTED_PROXIES allowlist. Empty (the
+	// default) means no forwarding header is believed and every caller is its
+	// real TCP peer — see clientip.go.
+	trustedProxies []*net.IPNet
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -141,8 +146,16 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		telemetry:  newTelemetryCache(),
 		downloads:  newDownloadTokenRegistry(),
 
-		downloadLimit: newRateLimiter(downloadRedeemPerMinute, downloadRedeemBurst),
-		loginLimit:    newRateLimiter(loginPerMinute, loginBurst),
+		downloadLimit: newRateLimiter("download", downloadRedeemPerMinute, downloadRedeemBurst,
+			cfg.RateLimitsEnabled()),
+		loginLimit: newRateLimiter("login", loginPerMinute, loginBurst, cfg.RateLimitsEnabled()),
+	}
+	// A brute-force flood never reaches handleLogin, which is what audits a
+	// failed attempt — so the limiter leaves the row itself, once per client
+	// per window rather than once per request.
+	s.loginLimit.onFirstTrip = func(r *http.Request) {
+		s.appendAudit(r, http.StatusTooManyRequests, "anonymous",
+			"POST /auth/login — rate limited (too many attempts from this address)")
 	}
 	for _, o := range opts {
 		o(s)
@@ -166,7 +179,21 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 	if len(cidrs) == 0 {
 		cidrs = config.DefaultSetupAllowedCIDRs()
 	}
-	s.setupNets = s.parseSetupCIDRs(cidrs)
+	s.setupNets = s.parseCIDRList(cidrs, "KRAKEN_SETUP_ALLOWED_CIDRS")
+	// Reverse proxies whose forwarding headers may be believed. Empty by
+	// default — every caller is then its real TCP peer — but a Panel behind
+	// Caddy, nginx, Traefik or a Cloudflare Tunnel sees the proxy on every
+	// request unless this is set, which would put every audit row and every
+	// rate-limit bucket under one address (see clientip.go).
+	s.trustedProxies = s.parseCIDRList(cfg.TrustedProxies, "KRAKEN_TRUSTED_PROXIES")
+	if len(s.trustedProxies) > 0 {
+		logger.Info("trusting reverse-proxy forwarding headers from these networks",
+			"networks", cfg.TrustedProxies)
+	}
+	if !cfg.RateLimitsEnabled() {
+		logger.Warn("rate limiting is DISABLED (KRAKEN_RATE_LIMITS=off) — login and " +
+			"download-token redemption will accept unlimited requests per client")
+	}
 	// Reverse-tunnel listener, if enabled and there is a CA to authenticate
 	// agents against. Built before the pool so the pool can route tunnel
 	// targets through it.
@@ -375,7 +402,7 @@ func (s *Server) routes() chi.Router {
 		// password-checking, so it is rate limited per source IP — generously,
 		// because a whole team can share one NAT address and being locked out
 		// of your own Panel is worse than the guessing being slowed.
-		r.With(s.loginLimit.middleware).Post("/auth/login", s.handleLogin)
+		r.With(s.limit(s.loginLimit)).Post("/auth/login", s.handleLogin)
 
 		// Agent enrollment: authenticated by a one-time bootstrap token (the Agent
 		// has no session/cert yet), so this is intentionally outside requireAuth.
@@ -400,17 +427,15 @@ func (s *Server) routes() chi.Router {
 		// unchanged and there is nothing to drift. The zip route's POST twin
 		// (paths in the body) stays in the group below.
 		//
-		// Both are reachable with no credentials, so both are rate limited per
-		// source IP: a bad token costs an attacker a request and the Panel a
-		// registry lock, and nothing else should be free.
-		r.Group(func(r chi.Router) {
-			r.Use(s.downloadLimit.middleware)
-			r.With(s.tokenOrSession(downloadKindRaw, true)).
-				Get("/servers/{id}/files/raw", s.handleDownloadFile)
-			// Zip: token only. Its paths exist nowhere but the grant.
-			r.With(s.tokenOrSession(downloadKindZip, false)).
-				Get("/servers/{id}/files/download", s.handleDownloadFilesByToken)
-		})
+		// The rate limit lives inside that middleware, on the token branch
+		// only: a bad token costs an attacker a request and the Panel a
+		// registry lock, while a session-authenticated download is never
+		// refused for sharing an address with somebody probing tokens.
+		r.With(s.tokenOrSession(downloadKindRaw)).
+			Get("/servers/{id}/files/raw", s.handleDownloadFile)
+		// Zip: token only. Its paths exist nowhere but the grant.
+		r.With(s.tokenOnly(downloadKindZip)).
+			Get("/servers/{id}/files/download", s.handleDownloadFilesByToken)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
 			r.Use(s.auditMiddleware)

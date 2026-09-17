@@ -1,6 +1,6 @@
 ---
 title: Releases
-description: Every Kraken release and what landed in it, rendered from CHANGELOG.md — plus how a release is cut, what the version number promises while the project is pre-1.0, and the one ordering rule that matters to an operator.
+description: How a release is cut, what the version number promises while the project is pre-1.0, where the release notes live, and the one ordering rule that matters to an operator.
 section: reference
 order: 62
 ---
@@ -8,12 +8,14 @@ order: 62
 Releases are cut by [release-please](https://github.com/googleapis/release-please)
 from the commit subjects on `main`. Every pull request is squash-merged, so its
 title becomes one commit, and that commit's Conventional-Commits type decides
-both the version bump and the section it lands in below. Nothing on this page is
-written by hand.
+both the version bump and the section it lands in under the release notes.
 
-Each release publishes the binaries with their `SHA256SUMS` on the GitHub
-release, and container images to `ghcr.io/briggleman/kraken-panel` and
-`ghcr.io/briggleman/kraken-agent`.
+Each release publishes the binaries with their `SHA256SUMS` on the [GitHub
+release](https://github.com/briggleman/kraken/releases), and container images
+to `ghcr.io/briggleman/kraken-panel` and `ghcr.io/briggleman/kraken-agent`.
+The notes for every version are on that releases page and in the repository's
+[CHANGELOG.md](https://github.com/briggleman/kraken/blob/main/CHANGELOG.md);
+this wiki does not repeat them.
 
 ## What a version number promises
 
@@ -39,10 +41,3 @@ the order wrong and nothing breaks — you simply do not get the new behaviour
 until both halves are current. Announced download lengths are the worked
 example, and [Upgrading](/wiki/install/upgrade/) has the rest.
 :::
-
-## Every release
-
-Each version below is a link target of its own — `#v0-52-0` for 0.52.0 — so a
-release can be cited directly.
-
-<!-- generated:changelog -->

@@ -1535,7 +1535,7 @@ components:
       required: [action, cron]
       properties:
         name: { type: string }
-        action: { type: string, enum: [restart, backup, command] }
+        action: { type: string, enum: [restart, backup, command, replicate], description: "what the task does on each run; `replicate` mirrors the server's existing backups to the node's configured off-node target (SFTP or SMB)" }
         cron: { type: string, description: "5-field cron expression (min hour dom month dow)" }
         command: { type: string, description: "required when action=command" }
         enabled: { type: boolean }

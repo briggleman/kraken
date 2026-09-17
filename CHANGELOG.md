@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.53.0](https://github.com/briggleman/kraken/compare/v0.52.0...v0.53.0) (2026-09-17)
+
+
+### Features
+
+* **panel:** login rate limiting that works when the client ip is unrecoverable ([#341](https://github.com/briggleman/kraken/issues/341)) ([50f3bcf](https://github.com/briggleman/kraken/commit/50f3bcfeb361b9d2ac3817f1502f21a526acf534))
+
+
+### Bug Fixes
+
+* **api:** schedule action enum and validation include replicate ([#336](https://github.com/briggleman/kraken/issues/336)) ([a5362bf](https://github.com/briggleman/kraken/commit/a5362bfd4a9a7b3ad3b1a0c2a7854d90399f0609))
+* **panel:** a failed pre-update stop keeps the server's state instead of landing in install_failed ([#339](https://github.com/briggleman/kraken/issues/339)) ([d1dfe3f](https://github.com/briggleman/kraken/commit/d1dfe3f031bcdc4fd765544c7a2741d764b8d5c4))
+* **panel:** prune the audit log to a configurable retention window ([#338](https://github.com/briggleman/kraken/issues/338)) ([3b7ce18](https://github.com/briggleman/kraken/commit/3b7ce18495e36bfd18e65ffe0ef9ff574dbdb784))
+
 ## [0.52.0](https://github.com/briggleman/kraken/compare/v0.51.0...v0.52.0) (2026-09-16)
 
 

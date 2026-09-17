@@ -81,24 +81,28 @@ table of who is allowed to reach what.
 `install_failed`, or `offline`, while players are still connected to it.
 
 **Cause.** A restart that failed at the *stop before update* step while the
-Agent was unreachable. The 0.50.0 update pass is stop, install, start. When the
-stop could not be delivered, the Panel recorded the failure as
-`install_failed` even though nothing on the node had changed: the container kept
-running throughout, and the Agent adopted it again when it came back.
+Agent was unreachable, on a Panel older than the fix for
+[#328](https://github.com/briggleman/kraken/issues/328). The 0.50.0 update pass
+is stop, install, start. When the stop could not be delivered, the Panel
+recorded the failure as `install_failed` even though nothing on the node had
+changed: the container kept running throughout, and the Agent adopted it again
+when it came back.
 
 That is a state lie rather than a data problem. `install_failed` means "the
 install tree is suspect", and a stop that never arrived says nothing about the
 tree. It also locks start and restart behind a reinstall, which is the part you
 feel.
 
-**Fix.** Get the Agent back first, then reinstall the server once the node is
-online. The reinstall runs the pass properly and the badge clears when the row
-and the node agree again.
+**Fix.** Get the Agent back, and wait one reconcile pass. The Panel now believes
+the Agent about its own containers: a managed container found running behind an
+`offline` or `install_failed` row moves that row to `running` and clears the
+stale error, so the badge clears itself with no reinstall. (On a Panel that
+predates the fix, reinstall the server once the node is online.)
 
-This one is a product bug, not an operator error, and it is tracked as
-[#328](https://github.com/briggleman/kraken/issues/328): a failed pre-update
-stop should leave the server in the state it was already in, record the reason,
-and refuse the pass up front when the node has no live session.
+The pass no longer produces this state either. A stop that fails before the
+install leaves the server exactly where it was — `running`, with the reason in
+`last_error` — and a power action aimed at a node the Panel cannot reach is
+refused with a `503` naming the node instead of starting a pass that cannot run.
 
 :::note
 A transient `1 untracked` during an install or update pass is **normal**. The

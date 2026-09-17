@@ -66,11 +66,37 @@ func (s *Server) reconcileNodesOnce(ctx context.Context) {
 	}
 }
 
-// reconcileLiveStates are the states worth polling the Agent about. Offline and
-// installing are driven by operator/install flows and left untouched.
+// reconcileLive are the states worth polling the Agent about for a running
+// server's live facts (state, players, exit code). Installing is driven by the
+// install flow and left untouched; the stopped states are handled by
+// reconcileAdoptable, which asks a narrower question.
 func reconcileLive(st store.ServerState) bool {
 	switch st {
 	case store.StateStarting, store.StateRunning, store.StateStopping, store.StateCrashed:
+		return true
+	default:
+		return false
+	}
+}
+
+// reconcileAdoptable are the stopped states the Agent is allowed to contradict
+// (#328): the Panel says this server is not running, and if the Agent has a
+// managed container running for it, the Agent is right.
+//
+// The Agent adopts running containers when it boots, so this is what a
+// reconnect after a Panel-side outage looks like from here — including the case
+// that produced the issue, where a server was marked install_failed by a pass
+// that never reached the node while the game kept running. install_failed is
+// adoptable for exactly that reason: a running container is proof the install
+// tree is fine, and clearing the state is what returns START/RESTART to the
+// operator.
+//
+// `installing` is deliberately absent. An install pass owns the row from the
+// moment it starts until it settles, and a stale container still running under
+// it must never be read as success.
+func reconcileAdoptable(st store.ServerState) bool {
+	switch st {
+	case store.StateOffline, store.StateInstallFailed:
 		return true
 	default:
 		return false
@@ -83,11 +109,19 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		return
 	}
 	for _, sv := range servers {
-		if !reconcileLive(sv.State) {
+		live := reconcileLive(sv.State)
+		adopt := !live && reconcileAdoptable(sv.State)
+		if !live && !adopt {
 			continue
 		}
 		node, err := s.store.GetNode(ctx, sv.NodeID)
 		if err != nil {
+			continue
+		}
+		// A stopped server is only worth a round trip when the node is believed
+		// reachable: this pass runs every few seconds, and a fleet of stopped
+		// servers on a dead node must not become a fleet of dial timeouts.
+		if adopt && !s.believedLive(node) {
 			continue
 		}
 		client, err := s.nodes.Client(node.DialTarget())
@@ -98,6 +132,10 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		status, err := client.GetServerStatus(cctx, &agentpb.GetServerStatusRequest{ServerId: sv.ID})
 		cancel()
 		if err != nil {
+			continue
+		}
+		if adopt {
+			s.adoptRunning(ctx, sv, status)
 			continue
 		}
 		newState := storeStateFromAgent(status.State)
@@ -128,4 +166,30 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 			continue
 		}
 	}
+}
+
+// adoptRunning corrects a stopped server row the Agent contradicts: its managed
+// container is running, so the Panel believes the Agent (#328). Anything else
+// the Agent reports for a stopped row is ignored — this pass answers one
+// question, and a stopped server the Agent also calls stopped is no divergence.
+func (s *Server) adoptRunning(ctx context.Context, sv *store.Server, status *agentpb.ServerStatus) {
+	if storeStateFromAgent(status.State) != store.StateRunning {
+		return
+	}
+	from := sv.State
+	sv.State = store.StateRunning
+	// The stored reason described a server that is plainly up, and while it
+	// stands the fleet shows a failure beside a running game. The exit code goes
+	// for the reason it goes on a power action: it explains a run that ended,
+	// and this one has not.
+	sv.LastError = ""
+	sv.LastExitCode, sv.LastExitCodeKnown = 0, false
+	if ls := status.LastStats; ls != nil && ls.PlayersKnown {
+		sv.Players, sv.MaxPlayers, sv.PlayersKnown = ls.Players, ls.MaxPlayers, true
+	}
+	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		s.logger.Warn("reconcile: adopt running failed", "server", sv.ID, "err", err)
+		return
+	}
+	s.logger.Info("reconcile: adopted the agent's running container", "server", sv.ID, "was", from)
 }

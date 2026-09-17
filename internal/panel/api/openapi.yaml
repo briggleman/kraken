@@ -355,10 +355,13 @@ paths:
         so the game picks up depot updates, unless the server pins its build or
         the spec sets skip_update_on_start. That pass is asynchronous: the
         response is then 202 with state `installing` (the console streams the
-        install log), and the server continues to `running` on its own. A failed
-        pass lands in `install_failed` with `last_error` set, and start is
-        refused until a reinstall. Stop/kill, and a start that skips the pass,
-        still answer 200 with the new state.
+        install log), and the server continues to `running` on its own. Where a
+        failed pass lands depends on the phase: a stop (or agent connection)
+        that fails before the install restores the previous state with
+        `last_error` set and no reinstall gate, a failed install script lands in
+        `install_failed` and refuses start until a reinstall, and a failed start
+        over a good install lands in `offline`. Stop/kill, and a start that
+        skips the pass, still answer 200 with the new state.
       requestBody:
         required: true
         content:
@@ -384,6 +387,10 @@ paths:
                   updating: { type: boolean }
         '409':
           description: The server is installing, or its install failed (reinstall first)
+        '503':
+          description: >
+            The panel has no live connection to the hosting node's agent. Nothing
+            was attempted and the server's state is unchanged.
   /servers/{id}/reinstall:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:

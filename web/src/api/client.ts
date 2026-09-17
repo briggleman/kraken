@@ -350,7 +350,7 @@ export const api = {
   listRoles(): Promise<{ roles: Role[] | null }> {
     return request("GET", "/roles");
   },
-  listAudit(): Promise<{ entries: AuditEntry[] | null }> {
+  listAudit(): Promise<{ entries: AuditEntry[] | null; retention_days?: number }> {
     return request("GET", "/audit");
   },
   async fetchOpenAPISpec(): Promise<string> {

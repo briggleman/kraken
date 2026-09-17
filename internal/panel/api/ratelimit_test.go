@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -198,6 +199,66 @@ func TestRateLimiterMiddlewareAnswers429WithRetryAfter(t *testing.T) {
 	}
 	if ct := rec.Header().Get("Content-Type"); ct == "" {
 		t.Fatal("a 429 went out with no content type — it must be the same JSON envelope as every other refusal")
+	}
+}
+
+// peek answers the same question allow does and leaves the bucket alone. It is
+// what makes a failures-only limiter possible: every request is measured
+// against the budget, and only a failure takes anything out of it.
+func TestRateLimiterPeekMeasuresWithoutSpending(t *testing.T) {
+	l, _ := testLimiter(10, 3)
+	for i := range 50 {
+		if ok, _, _ := l.peek("alice"); !ok {
+			t.Fatalf("peek %d was refused although nothing had been spent", i+1)
+		}
+	}
+	for i := range 3 {
+		l.charge("alice")
+		if i == 2 {
+			break // the budget is spent; the refusal is asserted below
+		}
+		if ok, _, _ := l.peek("alice"); !ok {
+			t.Fatalf("peek refused after %d of 3 charges", i+1)
+		}
+	}
+	ok, retry, first := l.peek("alice")
+	if ok {
+		t.Fatal("peek admitted with the budget spent")
+	}
+	if retry <= 0 {
+		t.Fatalf("Retry-After delay = %s, want a positive wait", retry)
+	}
+	if !first {
+		t.Fatal("the first refusal did not raise the first-trip signal")
+	}
+	// A spent budget cannot go further into the red: charging a refused key is
+	// a no-op, so knocking does not push recovery out.
+	for range 20 {
+		l.charge("alice")
+	}
+	if _, retryAgain, _ := l.peek("alice"); retryAgain > retry {
+		t.Fatalf("charging a spent budget pushed the wait out: %s → %s", retry, retryAgain)
+	}
+	// And it is per key.
+	if ok, _, _ := l.peek("bob"); !ok {
+		t.Fatal("a second key was refused for the first one's failures")
+	}
+}
+
+// The username limiter's keys are usernames, not addresses: nothing is folded
+// to a /64, and a key an unauthenticated caller chose cannot be arbitrarily
+// long.
+func TestUsernameLimiterKeysOnTheRawString(t *testing.T) {
+	l := newUsernameLimiter("test_user", 10, 1, true)
+	if got := l.key("2001:db8:1:2::1"); got != "2001:db8:1:2::1" {
+		t.Fatalf("key = %q, want the username verbatim — an operator named like an address is not a /64", got)
+	}
+	long := strings.Repeat("a", rateLimiterMaxKeyLen*4)
+	if got := l.key(long); len(got) != rateLimiterMaxKeyLen {
+		t.Fatalf("key kept %d bytes of an oversized username, want %d", len(got), rateLimiterMaxKeyLen)
+	}
+	if got := normalizeUsername("  AdMiN  "); got != "admin" {
+		t.Fatalf("normalizeUsername = %q, want the trimmed lowercase form", got)
 	}
 }
 

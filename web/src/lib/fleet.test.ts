@@ -80,6 +80,7 @@ beforeEach(() => {
   fleet.specs = [];
   fleet.nodes = [];
   fleet.audit = [];
+  fleet.auditRetentionDays = 90;
   fleet.panelVersion = "";
   fleet.pingMs = 0;
   fleet.lastError = null;
@@ -129,6 +130,24 @@ describe("refreshFleet", () => {
     await refreshFleet();
     expect(fleet.lastError).toBeNull();
     expect(fleet.lastOkMs).toBeGreaterThan(0);
+  });
+
+  it("takes the audit retention window from the response, and keeps the last one when the read fails", async () => {
+    // The audit sheet's footnote quotes this number, so a tick that could not
+    // read /audit must leave the previous window standing rather than fall back
+    // to a default that contradicts what the Panel is configured to keep.
+    listAudit.mockResolvedValue({ entries: [], retention_days: 7 });
+    await refreshFleet();
+    expect(fleet.auditRetentionDays).toBe(7);
+
+    listAudit.mockRejectedValue(new Error("403 forbidden"));
+    await refreshFleet();
+    expect(fleet.auditRetentionDays).toBe(7);
+
+    // 0 is a configured answer — keep everything — not a missing one.
+    listAudit.mockResolvedValue({ entries: [], retention_days: 0 });
+    await refreshFleet();
+    expect(fleet.auditRetentionDays).toBe(0);
   });
 
   it("never counts audit against freshness — a viewer may not be allowed to read it", async () => {

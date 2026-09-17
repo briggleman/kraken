@@ -678,6 +678,45 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	return info, nil
 }
 
+// nodeLabel is how a node is named to an operator: its name, or its id for one
+// registered before its Agent answered (the name is a placeholder until then).
+func nodeLabel(n *cluster.Node) string {
+	if n.Name != "" {
+		return n.Name
+	}
+	return n.ID
+}
+
+// believedLive is the cheap half of ensureNodeLive: whether the Panel already
+// has reason to think the node's Agent is reachable.
+//
+// A tunnel-mode node's liveness IS its live session — the Agent dials in and
+// the Panel has nothing to dial when it is gone (docs/design/reverse-connections.md)
+// — so that is asked directly rather than read off a stored status. A direct
+// node is believed unless the last probe said otherwise.
+func (s *Server) believedLive(n *cluster.Node) bool {
+	if n.Tunneled() {
+		return s.tunnel != nil && s.tunnel.Connected(n.ID)
+	}
+	return n.Status != cluster.NodeOffline
+}
+
+// ensureNodeLive reports nil when the node's Agent can be reached, and the
+// reason it cannot otherwise.
+//
+// A stored status can be a reconcile interval out of date, and a node that just
+// came back must not be refused work for the next twenty seconds — so a node
+// that reads offline is re-probed once rather than taken at its word. The probe
+// persists whatever it finds (reconcileNode), which is also how a node that has
+// gone away is recorded offline at the moment an operator asks it for something.
+func (s *Server) ensureNodeLive(ctx context.Context, n *cluster.Node) error {
+	if s.believedLive(n) {
+		return nil
+	}
+	_, err := s.reconcileNode(ctx, n)
+	return err
+}
+
 // reconcileNodeDNS re-points the host (A/CNAME) record of every server on the
 // node to newHost, fixing records that went stale when the node's public host
 // changed. SRV records reference the name (not the host), so they're unaffected.

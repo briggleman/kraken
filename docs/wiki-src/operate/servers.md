@@ -75,10 +75,25 @@ The sequence, once you press start:
    have to win.
 4. It starts the game.
 
-A pass that fails lands in `install_failed` with `last_error` set, and start is
-refused until you reinstall. A pass that succeeded over a start that then failed
-lands in `offline`, which is the correct distinction: the tree is fine, the game
-did not come up.
+Where a failed pass leaves the server depends on how far it got, because the
+three phases say different things about the install tree:
+
+| phase that failed | where the server lands |
+| --- | --- |
+| the stop before the update (or reaching the Agent at all) | **back where it was** — `running` if it was running — with `last_error` set. Nothing on the node was touched, so there is nothing to reinstall; press start again once the node is back. |
+| the install script | `install_failed` with `last_error` set. Start is refused until you reinstall — a half-written tree must not be launched over. |
+| the start after a good install | `offline`. The tree is fine, the game did not come up, and a plain start retries it. |
+
+The Panel also refuses the whole action up front when it has no live connection
+to the node's Agent: a power action against an offline node answers `503` naming
+the node, and the server's state is left alone. Before that, a restart aimed at
+an unreachable node could mark a server `install_failed` over a stop that never
+left the Panel, while the game went on serving players.
+
+If a node's Agent reconnects and the Panel's row still disagrees, the reconciler
+adopts what the Agent reports: a managed container found running behind an
+`offline` or `install_failed` row moves that row to `running` and clears the
+stale error.
 
 ### The two opt-outs
 

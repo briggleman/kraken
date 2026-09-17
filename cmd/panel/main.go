@@ -213,6 +213,10 @@ func run(logger *slog.Logger) error {
 	// Background scheduler: runs due cron tasks (restart / backup / command).
 	srv.StartScheduler(reconcileCtx, 30*time.Second)
 
+	// Audit retention: deletes audit rows past KRAKEN_AUDIT_RETENTION_DAYS, in
+	// batches, once shortly after boot and daily after that. No-op at 0.
+	srv.StartAuditPruner(reconcileCtx, 24*time.Hour)
+
 	// Reverse-tunnel listener: tunnel-mode Agents dial in here and the node
 	// pool routes their gRPC through the session. No-op when disabled.
 	srv.StartTunnel(reconcileCtx)

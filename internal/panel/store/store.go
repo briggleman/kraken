@@ -240,14 +240,32 @@ const (
 	ScheduleReplicate ScheduleAction = "replicate"
 )
 
+// scheduleActions is the ordered set of recognized schedule actions — the one
+// place the list lives. Valid(), the API's validation message, and the OpenAPI
+// enum all derive from it, so adding an action here reaches every one of them.
+var scheduleActions = []ScheduleAction{
+	ScheduleRestart,
+	ScheduleBackup,
+	ScheduleCommand,
+	ScheduleReplicate,
+}
+
+// ScheduleActions returns every recognized schedule action, in declaration
+// order. The returned slice is a copy; callers may not mutate the source.
+func ScheduleActions() []ScheduleAction {
+	out := make([]ScheduleAction, len(scheduleActions))
+	copy(out, scheduleActions)
+	return out
+}
+
 // Valid reports whether a is a recognized schedule action.
 func (a ScheduleAction) Valid() bool {
-	switch a {
-	case ScheduleRestart, ScheduleBackup, ScheduleCommand, ScheduleReplicate:
-		return true
-	default:
-		return false
+	for _, known := range scheduleActions {
+		if a == known {
+			return true
+		}
 	}
+	return false
 }
 
 // ScheduledTask is a cron-scheduled action against a server (restart, backup, or
@@ -280,6 +298,12 @@ type AuditEntry struct {
 	TargetID   string    `json:"target_id,omitempty"`
 	Status     int       `json:"status"`
 	IP         string    `json:"ip,omitempty"`
+	// ForwardedFor is the raw `X-Forwarded-For` chain as received, recorded
+	// only when IP cannot identify anybody — a NAT gateway standing in for
+	// every caller, or an address the operator exempted from the per-IP rate
+	// limiters. It is attacker-writable: it is forensics, never an input to a
+	// decision, and every surface that shows it says so.
+	ForwardedFor string `json:"forwarded_for,omitempty"`
 }
 
 // Session is an authenticated session mapping an opaque token to a user.
@@ -352,6 +376,17 @@ type ScheduleStore interface {
 type AuditStore interface {
 	AppendAudit(ctx context.Context, e *AuditEntry) error
 	ListAudit(ctx context.Context, limit int) ([]*AuditEntry, error)
+	// PruneAudit deletes entries recorded before the given instant, at most
+	// limit of them per call, and reports how many it removed. It is the one
+	// exception to "append-only": the retention window (see
+	// KRAKEN_AUDIT_RETENTION_DAYS) is enforced here, never by a handler.
+	//
+	// The limit is not a convenience — a log left to grow for years is a very
+	// large DELETE, and one statement holding every one of those rows locks the
+	// table against the writes the Panel is still taking. Callers loop until a
+	// pass removes fewer than limit, which is how they learn there is nothing
+	// older left.
+	PruneAudit(ctx context.Context, before time.Time, limit int) (int64, error)
 }
 
 // SessionStore persists authentication sessions.

@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.52.0</span>
+      <span class="stamp mono">v0.53.0</span>
     </nav>
   </div>
 </header>
@@ -127,6 +127,7 @@
 <a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
@@ -270,7 +271,8 @@ description.</p>
 <div class="tbl"><table class="envs">
 <thead><tr><th>variable</th><th>what it does</th></tr></thead>
 <tbody>
-<tr><td><code>KRAKEN_RATE_LIMITS</code><span class="def">default <b>on</b></span></td><td>RateLimits is the escape hatch for the per-IP limiters on login and the token-redemption downloads: &quot;off&quot; disables both (logged loudly at startup). Anything else leaves them on, which is the default.</td></tr>
+<tr><td><code>KRAKEN_RATE_LIMITS</code><span class="def">default <b>all</b></span></td><td>RateLimits selects which limiters run: &quot;all&quot; (the default; &quot;on&quot; is the historical alias), &quot;login&quot; for the login-side limiters only, &quot;downloads&quot; for the token-redemption limiter only, or &quot;off&quot; for neither — each logged loudly at startup when it is not &quot;all&quot;. The switch is split because the two surfaces fail differently: behind a NAT that erases the client address the per-IP login bucket is shared by the whole internet and an operator may want it out of the way, while the redemption limiter is still worth having. An unrecognized value is a startup error.</td></tr>
+<tr><td><code>KRAKEN_RATE_LIMIT_IP_SKIP</code><span class="def">default <span class="nil">unset</span></span></td><td>RateLimitIPSkip lists the CIDRs (bare IPs allowed) whose resolved client address is EXEMPT from the per-IP limiters. It exists for one situation: a NAT that rewrites every source address to one gateway — Docker Desktop&#39;s 192.168.65.1 is the case that prompted it — where the per-IP bucket is not a limit on anybody in particular and locks the whole internet out together. Exempting that address leaves the per-username login limiter, which needs no IP at all, doing the real work. Empty by default, and not a substitute for naming a real proxy in KRAKEN_TRUSTED_PROXIES.</td></tr>
 </tbody>
 </table></div>
 
@@ -279,6 +281,14 @@ description.</p>
 <thead><tr><th>variable</th><th>what it does</th></tr></thead>
 <tbody>
 <tr><td><code>KRAKEN_LOG_LEVEL</code><span class="def">default <b>info</b></span></td><td>LogLevel is the Panel&#39;s slog level: debug, info (default), warn, error. Several diagnostics — a rejected download token, for one — are Debug on purpose, because they are writable by an unauthenticated caller; this is how an operator turns them on when actually diagnosing something.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="audit-log">audit log <a class="hlink" href="#audit-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_AUDIT_RETENTION_DAYS</code><span class="def">default <b>90</b></span></td><td>AuditRetentionDays is how many days of audit log the Panel keeps. A daily job deletes entries older than the window in batches, shortly after startup and every 24 hours after that, and the console reads this number rather than promising a window nothing enforced. Set it to 0 to keep every entry forever — the right answer when an external log shipper or a compliance rule owns the retention instead. Must be a whole, non-negative number of days; anything else stops the Panel at startup rather than quietly pruning on a schedule nobody chose.</td></tr>
 </tbody>
 </table></div>
 
@@ -357,6 +367,7 @@ clicking around.</p>
 <a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
@@ -375,7 +386,7 @@ clicking around.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>documentation for v0.53.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

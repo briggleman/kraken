@@ -1,6 +1,15 @@
 package api
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// ReconcileOnceForTest runs a single pass of the server reconciler, which the
+// Panel otherwise only runs on a ticker started by cmd/panel. It lets a test in
+// the black-box package assert what one pass does to the stored rows without
+// racing a background loop.
+func (s *Server) ReconcileOnceForTest(ctx context.Context) { s.reconcileOnce(ctx) }
 
 // DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
 // a test in the black-box package can walk up to the edge of one without
@@ -8,7 +17,16 @@ import "time"
 const (
 	DownloadRedeemBurstForTest = downloadRedeemBurst
 	LoginBurstForTest          = loginBurst
+	LoginUserBurstForTest      = loginUserBurst
 )
+
+// AuditPruneBatchForTest is how many rows one retention pass deletes per
+// statement, so a test can stage exactly one batch too many.
+const AuditPruneBatchForTest = auditPruneBatch
+
+// PruneAuditOnceForTest runs a single retention pass and reports how many audit
+// entries it removed — the loop the daily job drives, without the ticker.
+func (s *Server) PruneAuditOnceForTest(ctx context.Context) int64 { return s.pruneAuditOnce(ctx) }
 
 // ExpireDownloadTokensForTest backdates every outstanding file-download token
 // so a test can exercise the expiry branch without waiting out the 60-second

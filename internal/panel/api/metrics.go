@@ -24,7 +24,8 @@ var (
 	// so this counter is how an operator sees a probe without turning the whole
 	// Panel's log level down.
 	metricsDownloadTokenRejected atomic.Int64
-	// metricsRateLimited counts 429s per limiter ("download", "login").
+	// metricsRateLimited counts 429s per limiter ("download", "login",
+	// "login_user").
 	metricsRateLimitMu    sync.Mutex
 	metricsRateLimitTotal = map[string]int64{}
 )
@@ -127,7 +128,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# TYPE kraken_download_tokens_rejected_total counter\n")
 	fmt.Fprintf(w, "kraken_download_tokens_rejected_total %d\n", metricsDownloadTokenRejected.Load())
 
-	fmt.Fprintf(w, "# HELP kraken_rate_limited_total Requests refused by a per-client rate limiter.\n")
+	fmt.Fprintf(w, "# HELP kraken_rate_limited_total Requests refused by a rate limiter, by limiter.\n")
 	fmt.Fprintf(w, "# TYPE kraken_rate_limited_total counter\n")
 	metricsRateLimitMu.Lock()
 	limiters := make([]string, 0, len(metricsRateLimitTotal))

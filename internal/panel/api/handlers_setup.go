@@ -68,7 +68,16 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	// The same per-username failure budget login spends from, keyed on the
+	// authenticated user. A stolen session should not be a place to guess the
+	// password it did not come with, and this route verifies the current one
+	// exactly as login does — so it belongs behind the same bucket rather than
+	// beside it as the way around it.
+	if s.rejectUsername(w, r, u.Username, credentialRotateRateLimitedAction) {
+		return
+	}
 	if err := auth.VerifyPassword(req.CurrentPassword, u.PasswordHash); err != nil {
+		s.loginUserLimit.charge(normalizeUsername(u.Username))
 		s.recordAudit(r, http.StatusUnauthorized, u.Username)
 		writeError(w, http.StatusUnauthorized, "current password is incorrect")
 		return

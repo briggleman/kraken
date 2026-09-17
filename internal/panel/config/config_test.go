@@ -162,3 +162,118 @@ func TestRateLimitsAndLogLevelDefaults(t *testing.T) {
 		t.Fatalf("an unrecognized level gave %s, want INFO", lvl)
 	}
 }
+
+// The retention window decides what gets deleted, so a value Load cannot make
+// sense of has to stop the process rather than fall back to the default.
+func TestLoadValidatesAuditRetention(t *testing.T) {
+	// Unset is the shipped window, and matches what the console used to claim.
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected the default: %v", err)
+	}
+	if cfg.AuditRetentionDays != 90 {
+		t.Fatalf("default retention is %d days, want 90", cfg.AuditRetentionDays)
+	}
+
+	// 0 is a real answer, not an error: keep every entry.
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "0")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected 0: %v", err)
+	}
+	if cfg.AuditRetentionDays != 0 {
+		t.Fatalf("retention 0 parsed as %d", cfg.AuditRetentionDays)
+	}
+
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "14")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected 14: %v", err)
+	}
+	if cfg.AuditRetentionDays != 14 {
+		t.Fatalf("retention 14 parsed as %d", cfg.AuditRetentionDays)
+	}
+
+	for _, bad := range []string{"-1", "90d", "ninety", "1.5"} {
+		t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load accepted KRAKEN_AUDIT_RETENTION_DAYS=%q", bad)
+		}
+	}
+}
+
+// The off switch is split, because the two limiters fail differently: behind a
+// NAT that erases the client address the per-IP login bucket is shared by the
+// whole internet, and an operator may want that one out of the way while the
+// download-token limiter stays. Each value must enable exactly its own set.
+func TestRateLimitModesEnableExactlyTheirOwnLimiters(t *testing.T) {
+	for _, tc := range []struct {
+		value           string
+		login, download bool
+	}{
+		{"", true, true}, // a directly-constructed Config defaults to all
+		{"all", true, true},
+		{"on", true, true}, // the historical spelling of "all"
+		{"ALL", true, true},
+		{"login", true, false},
+		{"downloads", false, true},
+		{"off", false, false},
+		{"OFF", false, false},
+		{"nonsense", true, true}, // Load refuses it; a direct construction keeps the limiters
+	} {
+		c := &Config{RateLimits: tc.value}
+		if got := c.LoginRateLimitsEnabled(); got != tc.login {
+			t.Errorf("RateLimits=%q: login limiters enabled = %v, want %v", tc.value, got, tc.login)
+		}
+		if got := c.DownloadRateLimitsEnabled(); got != tc.download {
+			t.Errorf("RateLimits=%q: download limiter enabled = %v, want %v", tc.value, got, tc.download)
+		}
+		if got := c.RateLimitsEnabled(); got != (tc.login || tc.download) {
+			t.Errorf("RateLimits=%q: RateLimitsEnabled = %v", tc.value, got)
+		}
+	}
+}
+
+// Every value is a deliberate posture, so a typo stops the process rather than
+// being guessed at — a misspelled "of" must not read as "limits are on" any
+// more than it should read as "limits are off".
+func TestLoadRefusesAnUnknownRateLimitMode(t *testing.T) {
+	t.Setenv("KRAKEN_RATE_LIMITS", "of")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted an unrecognized KRAKEN_RATE_LIMITS value")
+	}
+	for _, v := range []string{"all", "on", "login", "downloads", "off", "OFF"} {
+		t.Setenv("KRAKEN_RATE_LIMITS", v)
+		if _, err := Load(); err != nil {
+			t.Fatalf("Load rejected KRAKEN_RATE_LIMITS=%q: %v", v, err)
+		}
+	}
+	// "on" is normalized to "all" so nothing downstream has to know both.
+	t.Setenv("KRAKEN_RATE_LIMITS", "on")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.RateLimits != RateLimitsAll {
+		t.Fatalf("KRAKEN_RATE_LIMITS=on stored %q, want %q", cfg.RateLimits, RateLimitsAll)
+	}
+}
+
+// The per-IP skip list is validated like the trusted-proxy list, and for the
+// same reason: an entry that quietly dropped would leave an operator believing
+// a gateway is exempt when it is not.
+func TestLoadRejectsAnUnparseableRateLimitSkipEntry(t *testing.T) {
+	t.Setenv("KRAKEN_RATE_LIMIT_IP_SKIP", "192.168.65.1,not-a-cidr")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted an unparseable KRAKEN_RATE_LIMIT_IP_SKIP entry")
+	}
+	t.Setenv("KRAKEN_RATE_LIMIT_IP_SKIP", "192.168.65.1,10.0.0.0/8")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected a valid skip list: %v", err)
+	}
+	if len(cfg.RateLimitIPSkip) != 2 {
+		t.Fatalf("skip list parsed as %v", cfg.RateLimitIPSkip)
+	}
+}

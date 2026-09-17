@@ -550,8 +550,11 @@ func TestRateLimitsOffSwitch(t *testing.T) {
 }
 
 // A brute-force flood never reaches the handler that audits a failed login, so
-// the limiter leaves the row itself — once per client per window, not once per
-// request, or the flood would just move into the audit table.
+// the limiter leaves the row itself — once per key per window, not once per
+// request, or the flood would just move into the audit table. Two limiters
+// guard this route now, on different keys, so a flood that trips both leaves
+// one row EACH: "this username is being guessed at" and "this address is
+// hammering the door" are different findings.
 func TestLoginRateLimitLeavesOneAuditRow(t *testing.T) {
 	h := newTestServer(t)
 	admin := login(t, h)
@@ -569,14 +572,25 @@ func TestLoginRateLimitLeavesOneAuditRow(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode audit: %v", err)
 	}
-	limited := 0
+	byKey := map[string]int{}
 	for _, ent := range out.Entries {
-		if ent.Status == http.StatusTooManyRequests && strings.Contains(ent.Action, "rate limited") {
-			limited++
+		if ent.Status != http.StatusTooManyRequests || !strings.Contains(ent.Action, "rate limited") {
+			continue
+		}
+		switch {
+		case strings.Contains(ent.Action, "this username"):
+			byKey["username"]++
+		case strings.Contains(ent.Action, "this address"):
+			byKey["address"]++
+		default:
+			t.Fatalf("unrecognized rate-limit audit action %q", ent.Action)
 		}
 	}
-	if limited != 1 {
-		t.Fatalf("the flood left %d rate-limit audit rows, want exactly 1", limited)
+	if byKey["username"] != 1 {
+		t.Fatalf("the flood left %d per-username rate-limit rows, want exactly 1", byKey["username"])
+	}
+	if byKey["address"] != 1 {
+		t.Fatalf("the flood left %d per-address rate-limit rows, want exactly 1", byKey["address"])
 	}
 }
 

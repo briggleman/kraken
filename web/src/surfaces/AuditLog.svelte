@@ -42,6 +42,23 @@
     return "s2";
   }
 
+  // The window the Panel is actually keeping to (KRAKEN_AUDIT_RETENTION_DAYS),
+  // not a number typed into the copy. 0 means the daily prune is off entirely.
+  const retention = $derived(
+    fleet.auditRetentionDays > 0
+      ? `retained ${fleet.auditRetentionDays} day${fleet.auditRetentionDays === 1 ? "" : "s"}`
+      : "retained indefinitely",
+  );
+
+  // the forwarded chain is what the caller wrote, so it is never the source —
+  // it hangs off the source cell as a hover, marked "fwd", for the one case it
+  // is useful: a NAT erased the address and this is the only copy of the real
+  // one anywhere in the row
+  function srcTitle(e: AuditEntry): string | undefined {
+    if (!e.forwarded_for) return undefined;
+    return `X-Forwarded-For as received: ${e.forwarded_for} — untrusted, sent by the caller. forensics only.`;
+  }
+
   function fmtTime(iso: string): string {
     const d = new Date(iso);
     const mon = d.toLocaleString("en-US", { month: "short" }).toLowerCase();
@@ -89,7 +106,7 @@
           <span class="a-who">{e.actor}</span>
           <span class="a-act"><b class="a-verb">{e.action}</b><em class="a-route">{e.method} {e.path}</em></span>
           <span class="a-tgt">{e.target_type || "—"}{#if e.target_id}<em> · {e.target_id}</em>{/if}</span>
-          <span class="a-src">{e.ip || "—"}</span>
+          <span class="a-src" title={srcTitle(e)}>{e.ip || "—"}{#if e.forwarded_for}<em class="a-route"> · fwd</em>{/if}</span>
           <span class="a-res {resClass(e.status)}">{e.status}</span>
         </div>
       {:else}
@@ -98,8 +115,9 @@
     </div>
 
     <div class="audit-foot">
-      <span class="audit-note">written by the api and retained 90 days — entries cannot be edited or removed here. 2xx is green, 4xx violet (the caller got it wrong), 5xx magenta (we did).</span>
+      <span class="audit-note">written by the api and {retention} — entries cannot be edited or removed here. 2xx is green, 4xx violet (the caller got it wrong), 5xx magenta (we did).</span>
       <span class="audit-note">source is the address the api saw. behind a reverse proxy that is the proxy, not the client, unless the panel is trusting X-Forwarded-For — until it does, treat this column as advisory.</span>
+      <span class="audit-note">a source marked · fwd carries the forwarded chain the caller sent — hover to read it. the panel kept it because the address it resolved identifies nobody (a nat gateway). it is written by the caller: forensics, never proof.</span>
     </div>
   </div>
 </div>

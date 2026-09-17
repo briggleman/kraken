@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Limits and logging — Kraken wiki</title>
-<meta name="description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<meta name="description" content="The three rate limiters and their numbers, the per-username limiter that works when the client address does not, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
 <link rel="canonical" href="https://krakenserver.io/wiki/configure/limits-and-logging/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/configure/limits-and-logging/" />
 <meta property="og:title" content="Limits and logging — Kraken wiki" />
-<meta property="og:description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<meta property="og:description" content="The three rate limiters and their numbers, the per-username limiter that works when the client address does not, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Limits and logging — Kraken wiki" />
-<meta name="twitter:description" content="The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
+<meta name="twitter:description" content="The three rate limiters and their numbers, the per-username limiter that works when the client address does not, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.52.0</span>
+      <span class="stamp mono">v0.53.0</span>
     </nav>
   </div>
 </header>
@@ -110,34 +110,47 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Limits and logging</span></nav>
     <h1>Limits and logging</h1>
-    <p class="lede">The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down.</p>
+    <p class="lede">The three rate limiters and their numbers, the per-username limiter that works when the client address does not, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#rate-limits">Rate limits</a>
+<a class="toc-link lvl-2" href="#the-per-username-login-limiter">The per-username login limiter</a>
+<a class="toc-link lvl-3" href="#exempting-an-address-the-per-ip-limit-cannot-help">exempting an address the per-IP limit cannot help</a>
 <a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
 <a class="toc-link lvl-2" href="#body-caps">Body caps</a>
 <a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#audit-retention">Audit retention</a>
 <a class="toc-link lvl-2" href="#metrics">Metrics</a>
 </div></details>
     <article class="prose">
 <h2 id="rate-limits">Rate limits <a class="hlink" href="#rate-limits" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>The Panel limits the two things an unauthenticated caller can reach:</p>
+<p>The Panel limits the two things an unauthenticated caller can reach, and limits
+login along a second axis that needs no address at all:</p>
 <div class="tbl"><table>
 <thead>
 <tr>
 <th>what</th>
+<th>keyed on</th>
 <th>rate</th>
 <th>burst</th>
 </tr>
 </thead>
 <tbody><tr>
 <td>download-token redemption</td>
+<td>client address</td>
 <td>30/min</td>
 <td>10</td>
 </tr>
 <tr>
 <td><code>POST /auth/login</code></td>
+<td>client address</td>
 <td>20/min</td>
 <td>20</td>
+</tr>
+<tr>
+<td>login + change-password <strong>failures</strong></td>
+<td>submitted username</td>
+<td>10/min</td>
+<td>10</td>
 </tr>
 </tbody></table>
 </div>
@@ -156,13 +169,61 @@ evicted down to a watermark; entries that cannot make a request right now are
 passed over, so filling the table is not a way to buy back a spent bucket.</p>
 <p>&quot;Per client&quot; means whatever <a href="/wiki/configure/reverse-proxy/"><code>clientIP</code></a>
 resolves to. Behind a proxy with no <code>KRAKEN_TRUSTED_PROXIES</code> set, that is <em>the
-proxy</em>, for everybody, and both limiters become one shared bucket a stranger can
-exhaust for the whole fleet. Of the ways to misconfigure a Panel, it is the one
-I would check first.</p>
+proxy</em>, for everybody, and the per-address limiters become one shared bucket a
+stranger can exhaust for the whole fleet. Of the ways to misconfigure a Panel,
+it is the one I would check first.</p>
+<h2 id="the-per-username-login-limiter">The per-username login limiter <a class="hlink" href="#the-per-username-login-limiter" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The address-keyed limiter has a topology it cannot survive. On Docker Desktop
+every connection to a published port arrives rewritten to the VM gateway
+<code>192.168.65.1</code> — including the connections a reverse proxy on the same host
+publishes — so the Panel resolves the entire internet to one address. The login
+bucket is then twenty attempts a minute for everybody at once: protective of
+nobody, and a self-inflicted lockout the first time a stranger finds the login
+page. <a href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a> has the full
+story and the fix.</p>
+<p>So login is limited on a second key that owes nothing to the network: <strong>the
+submitted username</strong>, normalised (trimmed, lower-cased), at ten a minute with a
+burst of ten. Three things about it are worth knowing:</p>
+<ul>
+<li><strong>It counts failures only.</strong> A correct password spends nothing. Somebody
+guessing at your username cannot keep you out of your own Panel by exhausting
+a budget you never touch — they can only keep <em>themselves</em> out, which is the
+point.</li>
+<li><strong>It applies to every submitted username, whether or not the account
+exists.</strong> A 429 that came back only for real accounts would answer &quot;does this
+user exist?&quot; for anybody patient enough to ask eleven times.</li>
+<li><strong><code>POST /auth/change-password</code> spends the same budget</strong>, keyed on the
+authenticated user, when the <em>current</em> password is wrong. That route verifies
+a password exactly as login does, so leaving it outside would make a stolen
+session the way around the login limiter. The consequence is worth stating
+plainly: fumble your current password ten times on the change-password screen
+and your own sign-in is refused for the rest of that minute.</li>
+</ul>
+<p>A brute-force against one account is therefore slowed even when the Panel has
+no idea who is calling, and every other account carries on unaffected.</p>
+<h3 id="exempting-an-address-the-per-ip-limit-cannot-help">exempting an address the per-IP limit cannot help <a class="hlink" href="#exempting-an-address-the-per-ip-limit-cannot-help" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMIT_IP_SKIP=192.168.65.1</code></pre></div>
+<p>A comma-separated list of CIDRs (bare IPs allowed) whose resolved client address
+is exempt from <strong>the per-address limiters</strong>. It exists for exactly the situation
+above: an address that stands in for everybody is not a client, and limiting it
+refuses the whole internet together rather than refusing anyone in particular.</p>
+<p>It does <strong>not</strong> exempt anything from the per-username limiter, which is what
+makes it safe to set: password guessing is still capped at ten a minute per
+account. An unparseable entry is a startup error, the same as
+<code>KRAKEN_TRUSTED_PROXIES</code>.</p>
+<p>Reach for the shared-Docker-network fix first. This is for when you cannot.</p>
 <h3 id="the-off-switch">the off switch <a class="hlink" href="#the-off-switch" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMITS=off</code></pre></div>
-<p>Disables both limiters, logged loudly at startup, for an edge that already does
-this. Anything other than <code>off</code> leaves them on, which is the default.</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMITS=all        # the default; &quot;on&quot; is accepted as its old spelling
+KRAKEN_RATE_LIMITS=login      # the login limiters only
+KRAKEN_RATE_LIMITS=downloads  # the download-token limiter only
+KRAKEN_RATE_LIMITS=off        # neither</code></pre></div>
+<p>Anything else is a <strong>startup error</strong>: every value here is a deliberate posture,
+and a typo must not be read as one of them. Anything other than <code>all</code> is logged
+loudly at startup.</p>
+<p>The switch is split because the two surfaces fail differently. The advice for a
+Panel behind a NAT that erases the client used to be <code>off</code>, which threw away the
+token-redemption limiter as well — a limiter that has no such problem, since it
+guards a credential nobody shares.</p>
 <h2 id="body-caps">Body caps <a class="hlink" href="#body-caps" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Not configurable, listed here because the answers arrive as HTTP errors:</p>
 <ul>
@@ -191,6 +252,14 @@ write into the log an operator actually reads.</p>
 journalctl -u kraken-panel -f</code></pre></div>
 <p>The Agent keeps its own log: <code>journalctl -u kraken-agent</code> on Linux,
 <code>C:\kraken\state\agent.log</code> on Windows (JSON, rotated at 10 MiB).</p>
+<h2 id="audit-retention">Audit retention <a class="hlink" href="#audit-retention" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The audit log is the one thing the Panel keeps in Postgres rather than on
+stdout, so it has a window of its own:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever</code></pre></div>
+<p>A daily job deletes entries past the window in batches. The value must be a
+whole number of days, <code>0</code> or more; anything else stops startup. The mechanics,
+and what the console shows for each setting, are on <a href="/wiki/operate/audit/">the audit
+log</a>.</p>
 <h2 id="metrics">Metrics <a class="hlink" href="#metrics" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The Panel exports Prometheus metrics at <strong><code>GET /metrics</code></strong>, unauthenticated
 alongside <code>/healthz</code> and <code>/readyz</code>. It belongs on a network your scrapers can
@@ -236,10 +305,15 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.</p
 </tr>
 </tbody></table>
 </div>
+<p><code>kraken_rate_limited_total</code> carries a <code>limiter</code> label: <code>download</code>, <code>login</code> (the
+per-address one) and <code>login_user</code> (the per-username one). A spike on
+<code>login_user</code> with nothing on <code>login</code> is somebody working through one account
+from many addresses — or from behind a NAT, where <code>login</code> cannot see them apart
+in the first place.</p>
 <p>The last two are why the quiet <code>Debug</code> lines are also counted: they give an
 operator the signal without turning the log level down. A 429&#39;d login never
 reaches the handler that audits a failed attempt, so the limiter writes that row
-itself, once per client per window rather than once per request.</p>
+itself, once per key per window rather than once per request.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
 <div class="callout-b"><p>A steady trickle on <code>kraken_download_tokens_rejected_total</code> is somebody probing,
@@ -266,9 +340,12 @@ limiter, with one client address behind it, is worth reading the audit log over.
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#rate-limits">Rate limits</a>
+<a class="toc-link lvl-2" href="#the-per-username-login-limiter">The per-username login limiter</a>
+<a class="toc-link lvl-3" href="#exempting-an-address-the-per-ip-limit-cannot-help">exempting an address the per-IP limit cannot help</a>
 <a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
 <a class="toc-link lvl-2" href="#body-caps">Body caps</a>
 <a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#audit-retention">Audit retention</a>
 <a class="toc-link lvl-2" href="#metrics">Metrics</a>
     </div>
   </aside>
@@ -285,7 +362,7 @@ limiter, with one client address behind it, is worth reading the audit log over.
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>documentation for v0.53.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

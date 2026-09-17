@@ -104,11 +104,16 @@ address. [Behind a reverse proxy](/wiki/configure/reverse-proxy/) has the exact
 configuration, and the failure mode that looks like a certificate problem and is
 not.
 
-**4. Leave the rate limiters on.** `KRAKEN_RATE_LIMITS` defaults to `on`:
+**4. Leave the rate limiters on.** `KRAKEN_RATE_LIMITS` defaults to `all`:
 login at 20 a minute with a burst of 20, download-token redemption at 30 a
 minute with a burst of 10, keyed per client with "**IPv6 … aggregated to the
-/64**". Turn them off only for an edge that already does this, and know the
-Panel logs that loudly at startup when you do.
+/64**", plus login failures at 10 a minute keyed on the submitted username,
+which needs no client address at all and so survives a NAT that erases one. The
+value can also be `login`, `downloads` or `off`, and anything else is a startup
+error. Turn a limiter off only for an edge that already does this, and know the
+Panel logs that loudly at startup when you do. If a NAT is the problem rather
+than the limiter, `KRAKEN_RATE_LIMIT_IP_SKIP` exempts the gateway from the
+per-address limiters without giving up the rest.
 
 **5. Decide your log level.** `KRAKEN_LOG_LEVEL` defaults to `info`. Rejected
 download-token redemptions log at `debug` on purpose, since "an unauthenticated

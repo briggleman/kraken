@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,80 @@ func proxyAPI(t *testing.T, trusted ...string) *Server {
 	t.Helper()
 	return New(&config.Config{Env: "test", SessionTTL: time.Hour, TrustedProxies: trusted},
 		memory.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// skipAPI is proxyAPI with an address taken out of the per-IP limiters.
+func skipAPI(t *testing.T, skip ...string) *Server {
+	t.Helper()
+	return New(&config.Config{Env: "test", SessionTTL: time.Hour, RateLimitIPSkip: skip},
+		memory.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// The forwarded chain rides along ONLY when the resolved address identifies
+// nobody. A row whose source is a real client address already says everything
+// there is to say, and copying an attacker-written header into every row would
+// be noise at best.
+func TestForwardedChainIsRecordedOnlyWhenTheSourceIdentifiesNobody(t *testing.T) {
+	s := proxyAPI(t)
+	hdr := map[string]string{"X-Forwarded-For": "203.0.113.9, 192.168.65.1"}
+
+	if got := s.forwardedChain(request("198.51.100.7:1234", hdr), "198.51.100.7"); got != "" {
+		t.Fatalf("a public client carried a forwarded chain: %q", got)
+	}
+	// A NAT gateway: this is the case the chain exists for.
+	if got := s.forwardedChain(request("192.168.65.1:1234", hdr), "192.168.65.1"); got != "203.0.113.9, 192.168.65.1" {
+		t.Fatalf("forwardedChain = %q, want the raw chain as received", got)
+	}
+	// No header, nothing to record.
+	if got := s.forwardedChain(request("192.168.65.1:1234", nil), "192.168.65.1"); got != "" {
+		t.Fatalf("forwardedChain invented a chain: %q", got)
+	}
+	// A public address the operator exempted: they have said that one stands in
+	// for others, so the chain is worth keeping there too.
+	ex := skipAPI(t, "198.51.100.7")
+	if got := ex.forwardedChain(request("198.51.100.7:1234", hdr), "198.51.100.7"); got == "" {
+		t.Fatal("an exempted address carried no chain — it is the only place a real client survives there")
+	}
+}
+
+// The header is written by the caller, so what lands in the store is bounded
+// and printable. It is forensics, not a place to park a megabyte.
+func TestForwardedChainIsBoundedAndPrintable(t *testing.T) {
+	s := proxyAPI(t)
+	long := strings.Repeat("203.0.113.9, ", 200) + "10.0.0.1"
+	got := s.forwardedChain(request("10.0.0.1:1234", map[string]string{"X-Forwarded-For": long}), "10.0.0.1")
+	if len(got) > auditForwardedMaxLen {
+		t.Fatalf("forwardedChain kept %d bytes, want at most %d", len(got), auditForwardedMaxLen)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("forwardedChain produced invalid UTF-8: %q", got)
+	}
+}
+
+// End to end: an audit row written from behind a NAT carries the chain, and the
+// same row written from a real client address does not.
+func TestAuditRowCarriesTheForwardedChain(t *testing.T) {
+	st := memory.New()
+	s := New(&config.Config{Env: "test", SessionTTL: time.Hour}, st,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hdr := map[string]string{"X-Forwarded-For": "203.0.113.9"}
+	s.appendAudit(request("192.168.65.1:1234", hdr), 401, "alice", "")
+	s.appendAudit(request("198.51.100.7:1234", hdr), 401, "bob", "")
+
+	entries, err := st.ListAudit(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit: %v", err)
+	}
+	got := map[string]string{}
+	for _, e := range entries {
+		got[e.Actor] = e.ForwardedFor
+	}
+	if got["alice"] != "203.0.113.9" {
+		t.Fatalf("the row from behind a NAT carries %q, want the forwarded chain", got["alice"])
+	}
+	if got["bob"] != "" {
+		t.Fatalf("the row from a real client address carries %q, want nothing", got["bob"])
+	}
 }
 
 func request(peer string, headers map[string]string) *http.Request {

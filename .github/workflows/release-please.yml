@@ -47,6 +47,40 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # The wiki under docs/wiki is committed output: every page embeds the
+      # Panel version from internal/shared/version/version.go and the releases
+      # page is generated from CHANGELOG.md. A release PR rewrites both, so the
+      # committed wiki goes stale on its branch and the ci workflow's drift
+      # gate refuses the PR. Regenerate on the release branch and push the
+      # result back, the same way release-please keeps the branch current.
+      # Skipped entirely when there is no open release PR.
+      - uses: actions/checkout@v4
+        if: ${{ steps.rp.outputs.pr }}
+        with:
+          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ steps.rp.outputs.pr }}
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: regenerate the wiki for the release version
+        if: ${{ steps.rp.outputs.pr }}
+        run: |
+          npm ci --prefix web
+          node web/scripts/build-wiki.mjs
+          if git diff --quiet -- docs/wiki; then
+            echo "docs/wiki already matches the release version"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/wiki
+          git commit -m "chore(wiki): regenerate for the release version"
+          git push
+
   binaries:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'

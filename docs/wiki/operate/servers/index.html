@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.52.0</span>
+      <span class="stamp mono">v0.53.0</span>
     </nav>
   </div>
 </header>
@@ -213,10 +213,38 @@ before, because the pass can restore a file the depot owns and your settings
 have to win.</li>
 <li>It starts the game.</li>
 </ol>
-<p>A pass that fails lands in <code>install_failed</code> with <code>last_error</code> set, and start is
-refused until you reinstall. A pass that succeeded over a start that then failed
-lands in <code>offline</code>, which is the correct distinction: the tree is fine, the game
-did not come up.</p>
+<p>Where a failed pass leaves the server depends on how far it got, because the
+three phases say different things about the install tree:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>phase that failed</th>
+<th>where the server lands</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>the stop before the update (or reaching the Agent at all)</td>
+<td><strong>back where it was</strong> — <code>running</code> if it was running — with <code>last_error</code> set. Nothing on the node was touched, so there is nothing to reinstall; press start again once the node is back.</td>
+</tr>
+<tr>
+<td>the install script</td>
+<td><code>install_failed</code> with <code>last_error</code> set. Start is refused until you reinstall — a half-written tree must not be launched over.</td>
+</tr>
+<tr>
+<td>the start after a good install</td>
+<td><code>offline</code>. The tree is fine, the game did not come up, and a plain start retries it.</td>
+</tr>
+</tbody></table>
+</div>
+<p>The Panel also refuses the whole action up front when it has no live connection
+to the node&#39;s Agent: a power action against an offline node answers <code>503</code> naming
+the node, and the server&#39;s state is left alone. Before that, a restart aimed at
+an unreachable node could mark a server <code>install_failed</code> over a stop that never
+left the Panel, while the game went on serving players.</p>
+<p>If a node&#39;s Agent reconnects and the Panel&#39;s row still disagrees, the reconciler
+adopts what the Agent reports: a managed container found running behind an
+<code>offline</code> or <code>install_failed</code> row moves that row to <code>running</code> and clears the
+stale error.</p>
 <h3 id="the-two-opt-outs">The two opt-outs <a class="hlink" href="#the-two-opt-outs" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <ul>
 <li><strong>Per server: pin build.</strong> The Config tab&#39;s toggle. A pinned server never runs
@@ -369,7 +397,7 @@ worth knowing before you go looking for one.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>documentation for v0.53.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

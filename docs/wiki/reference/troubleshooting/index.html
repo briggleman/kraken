@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.52.0</span>
+      <span class="stamp mono">v0.53.0</span>
     </nav>
   </div>
 </header>
@@ -176,21 +176,25 @@ table of who is allowed to reach what.</p>
 <code>running</code> rows for, and it stays that way. The server in question shows
 <code>install_failed</code>, or <code>offline</code>, while players are still connected to it.</p>
 <p><strong>Cause.</strong> A restart that failed at the <em>stop before update</em> step while the
-Agent was unreachable. The 0.50.0 update pass is stop, install, start. When the
-stop could not be delivered, the Panel recorded the failure as
-<code>install_failed</code> even though nothing on the node had changed: the container kept
-running throughout, and the Agent adopted it again when it came back.</p>
+Agent was unreachable, on a Panel older than the fix for
+<a href="https://github.com/briggleman/kraken/issues/328">#328</a>. The 0.50.0 update pass
+is stop, install, start. When the stop could not be delivered, the Panel
+recorded the failure as <code>install_failed</code> even though nothing on the node had
+changed: the container kept running throughout, and the Agent adopted it again
+when it came back.</p>
 <p>That is a state lie rather than a data problem. <code>install_failed</code> means &quot;the
 install tree is suspect&quot;, and a stop that never arrived says nothing about the
 tree. It also locks start and restart behind a reinstall, which is the part you
 feel.</p>
-<p><strong>Fix.</strong> Get the Agent back first, then reinstall the server once the node is
-online. The reinstall runs the pass properly and the badge clears when the row
-and the node agree again.</p>
-<p>This one is a product bug, not an operator error, and it is tracked as
-<a href="https://github.com/briggleman/kraken/issues/328">#328</a>: a failed pre-update
-stop should leave the server in the state it was already in, record the reason,
-and refuse the pass up front when the node has no live session.</p>
+<p><strong>Fix.</strong> Get the Agent back, and wait one reconcile pass. The Panel now believes
+the Agent about its own containers: a managed container found running behind an
+<code>offline</code> or <code>install_failed</code> row moves that row to <code>running</code> and clears the
+stale error, so the badge clears itself with no reinstall. (On a Panel that
+predates the fix, reinstall the server once the node is online.)</p>
+<p>The pass no longer produces this state either. A stop that fails before the
+install leaves the server exactly where it was — <code>running</code>, with the reason in
+<code>last_error</code> — and a power action aimed at a node the Panel cannot reach is
+refused with a <code>503</code> naming the node instead of starting a pass that cannot run.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
 <div class="callout-b"><p>A transient <code>1 untracked</code> during an install or update pass is <strong>normal</strong>. The
@@ -277,7 +281,7 @@ firing while your tab is out of date.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.52.0</span><span class="sep">·</span>
+      <span>documentation for v0.53.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

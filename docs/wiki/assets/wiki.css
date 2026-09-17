@@ -404,15 +404,31 @@ table.envs td:last-child{min-width:34ch;white-space:normal}
 .callout.is-security{border-color:rgba(var(--crisis-rgb),.4);background:rgba(var(--crisis-rgb),.05)}
 .callout.is-security .callout-k{color:var(--crisis)}
 
-/* ---------- screenshot placeholder ----------
-   The dashed edge is the mark the house already spends on data that
-   is real-but-not-yours / different-in-kind. Nothing here is a
-   screenshot yet, and the page says so rather than pretending. */
-.shot{
+/* ---------- screenshots ----------
+   A figure sits on the same edge and well as a callout: it is a
+   thing the page shows, not a thing the page says. The image is
+   captured at 2x, so it stays crisp at any column width; the link
+   opens it at full size. Captions are set small in the third ink,
+   as data about the picture rather than prose beside it.
+   Placeholder (p.shot): the dashed edge is the mark the house
+   already spends on data that is real-but-not-yours /
+   different-in-kind. Nothing there is a screenshot yet, and the
+   page says so rather than pretending. */
+figure.shot{
+  margin:0;display:grid;gap:10px;
+  border:1px solid var(--edge);border-radius:6px;
+  padding:10px 10px 12px;background:rgba(5,13,20,.55);
+}
+figure.shot a{display:block;line-height:0;border-radius:3px;overflow:hidden}
+figure.shot img{display:block;width:100%;height:auto;border-radius:3px}
+figure.shot figcaption{
+  padding:0 6px;color:var(--ink-3);font-size:12.5px;line-height:1.55;
+}
+p.shot{
   border:1px dashed rgba(var(--ink-3-rgb),.5);border-radius:4px;
   padding:14px 16px;color:var(--ink-3);font-size:13.5px;
 }
-.shot em{font-style:italic}
+p.shot em{font-style:italic}
 
 /* ============================================================
    API REFERENCE — generated from internal/panel/api/openapi.yaml.

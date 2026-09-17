@@ -15,8 +15,8 @@ Two ways in: the Files tab in the drill-in, and SFTP.
 
 ## The Files tab
 
-:::shot
-the Files tab showing a breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on a row
+:::shot files
+the Files tab: breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on the hovered row
 :::
 
 Breadcrumb navigation, one row per entry with its size and modified time, and
@@ -130,8 +130,8 @@ serves it directly on `:2022` by default, which is `KRAKEN_SFTP_ADDR`.
 - The host key is a persisted ed25519 key, generated on first run, at
   `KRAKEN_SFTP_HOST_KEY` under the Agent's state directory.
 
-:::shot
-the SFTP card on a server showing host, port, username and the one-time password after a reset
+:::shot sftp
+the SFTP card after a password rotation: host, port, the per-server username and the one-time password, shown exactly once
 :::
 
 Reading credentials needs `server.files.read`; resetting the password, setting

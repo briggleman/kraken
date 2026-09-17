@@ -34,8 +34,8 @@ Factor, Windrose and the demo have no block and fall back to the Panel's
 built-in policy. See [Who is online](/wiki/operate/players/) and
 [Backups](/wiki/operate/backups/).
 
-:::shot
-the catalog screen with the bundled specs as cards, one marked as already imported
+:::shot specs
+the game specs sheet: every bundled spec, imported on first boot, with its platforms and version and a manage and deploy action per row
 :::
 
 ## Seeding, and importing

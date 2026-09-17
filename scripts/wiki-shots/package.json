@@ -1,0 +1,13 @@
+{
+  "name": "kraken-wiki-shots",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot harness for docs/wiki — drives the fake-live stack in the local Edge and converts the captures to WebP",
+  "scripts": {
+    "webp": "node webp.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.50.0",
+    "sharp": "^0.34.0"
+  }
+}

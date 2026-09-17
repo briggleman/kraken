@@ -126,8 +126,10 @@ API, which is why they behave the same on both operating systems and why they
 keep working while a node is <code>partial</code>.</p>
 <p>Two ways in: the Files tab in the drill-in, and SFTP.</p>
 <h2 id="the-files-tab">The Files tab <a class="hlink" href="#the-files-tab" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<!-- SCREENSHOT: the Files tab showing a breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on a row -->
-<p class="shot"><em>screenshot: the Files tab showing a breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on a row</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/files.webp"><img src="/wiki/assets/shots/files.webp" alt="the Files tab: breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on the hovered row" width="1920" height="1080" loading="lazy" decoding="async" /></a>
+<figcaption>the Files tab: breadcrumb, a directory listing with sizes and modified times, and the download and delete actions on the hovered row</figcaption>
+</figure>
 
 
 <p>Breadcrumb navigation, one row per entry with its size and modified time, and
@@ -233,8 +235,10 @@ exists. Copy it then.</li>
 <li>The host key is a persisted ed25519 key, generated on first run, at
 <code>KRAKEN_SFTP_HOST_KEY</code> under the Agent&#39;s state directory.</li>
 </ul>
-<!-- SCREENSHOT: the SFTP card on a server showing host, port, username and the one-time password after a reset -->
-<p class="shot"><em>screenshot: the SFTP card on a server showing host, port, username and the one-time password after a reset</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/sftp.webp"><img src="/wiki/assets/shots/sftp.webp" alt="the SFTP card after a password rotation: host, port, the per-server username and the one-time password, shown exactly once" width="1920" height="1080" loading="lazy" decoding="async" /></a>
+<figcaption>the SFTP card after a password rotation: host, port, the per-server username and the one-time password, shown exactly once</figcaption>
+</figure>
 
 
 <p>Reading credentials needs <code>server.files.read</code>; resetting the password, setting

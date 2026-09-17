@@ -231,15 +231,15 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml ps
 
 Then open `http://<host>:8080` and sign in as the bootstrap admin.
 
-:::shot
-the Kraken sign-in screen at http://host:8080, with the bootstrap admin username filled in
+:::shot signin
+the sign-in screen with the bootstrap admin username filled in
 :::
 
 The UI forces a password change on first login. Do it: the one you typed is
 sitting in a log file.
 
-:::shot
-the fleet view immediately after first login, empty, with the Add node affordance visible
+:::shot fleet-empty
+the fleet view right after the first sign-in: no nodes, no servers, and Add node in the top bar
 :::
 
 From here:

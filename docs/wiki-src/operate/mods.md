@@ -22,8 +22,8 @@ At deploy time the toggle is `install bepinex (mod loader)`, and it appears only
 when the selected spec sets `bepinex_compatible`. What you choose is stored on
 the server, not on the spec, so two servers from one spec can differ.
 
-:::shot
-the deploy sheet for a BepInEx-compatible spec with the mod-loader toggle visible under the operations group
+:::shot deploy-bepinex
+the deploy sheet for Valheim, a BepInEx-compatible spec, with the mod-loader toggle switched on under operations
 :::
 
 ## What branches, and where

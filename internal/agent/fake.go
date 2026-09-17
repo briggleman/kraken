@@ -45,6 +45,11 @@ type FakeRuntime struct {
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
 	installErr string
+	// installDelay, when set, is how long each install step lingers, so the
+	// installing state is observable from a browser instead of flashing past
+	// in microseconds. The install-progress UI is otherwise unreachable on the
+	// fake-live stack. Zero (the default) keeps tests fast.
+	installDelay time.Duration
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -69,6 +74,13 @@ func WithFakeBinarySHA(sha string) FakeOption {
 // are reachable without a container runtime.
 func WithFakeInstallFailure(reason string) FakeOption {
 	return func(f *FakeRuntime) { f.installErr = reason }
+}
+
+// WithFakeInstallDelay makes every install step linger for d before the next
+// one is emitted (see installDelay). cmd/agent wires KRAKEN_FAKE_INSTALL_DELAY
+// to it for the fake-live stack.
+func WithFakeInstallDelay(d time.Duration) FakeOption {
+	return func(f *FakeRuntime) { f.installDelay = d }
 }
 
 // NewFakeRuntime returns a fake runtime identifying as the given node.
@@ -470,6 +482,7 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	}
 	f.installScripts[req.ServerId] = append(f.installScripts[req.ServerId], req.InstallScript)
 	failure := f.installErr
+	delay := f.installDelay
 	f.mu.Unlock()
 	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_INSTALLING)
 	if failure != "" {
@@ -485,6 +498,13 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	for i, line := range steps {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
 		}
 		if err := emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_LogLine{LogLine: line}}); err != nil {
 			return err
@@ -568,7 +588,14 @@ func (f *FakeRuntime) StreamConsole(ctx context.Context, serverID string, tail i
 	}
 }
 
-func (f *FakeRuntime) SendCommand(_ context.Context, _ string, _ string) error {
+// SendCommand accepts anything and does nothing with it, with one exception:
+// the console command "crash" drops the server into the crashed state. Nothing
+// else on the fake ever crashes, so without it the Panel's crash notice and the
+// fleet's crashed card can only be exercised against a real container runtime.
+func (f *FakeRuntime) SendCommand(_ context.Context, serverID string, cmd string) error {
+	if strings.TrimSpace(cmd) == "crash" {
+		f.setState(serverID, agentpb.ServerState_SERVER_STATE_CRASHED)
+	}
 	return nil
 }
 

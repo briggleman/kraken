@@ -719,18 +719,64 @@ function changelogMarkdown() {
  * Container directives, resolved before marked sees the text:
  *
  *   :::note / :::warning / :::security   the three callouts
- *   :::shot                              a screenshot placeholder — an HTML
- *                                        comment for whoever captures it, plus
- *                                        a dashed italic line on the page, the
- *                                        same dashed mark the house already
- *                                        spends on synthetic data
+ *   :::shot <name>                       a screenshot: docs/wiki/assets/shots/
+ *                                        <name>.webp rendered as a figure, the
+ *                                        body as its caption and alt text. The
+ *                                        images are committed, not generated —
+ *                                        captured on the fake-live stack with
+ *                                        fictional data only.
+ *   :::shot                              (no name, or the file is missing) a
+ *                                        placeholder — an HTML comment for
+ *                                        whoever captures it, plus a dashed
+ *                                        italic line on the page, the same
+ *                                        dashed mark the house already spends
+ *                                        on synthetic data
  */
+const shotsDir = join(outDir, "assets", "shots");
+
+/**
+ * Pixel size of a WebP file, from its header: the VP8 (lossy), VP8L (lossless)
+ * and VP8X (extended) chunk layouts all carry the canvas size up front.
+ */
+function webpSize(buf) {
+  if (buf.length < 30 || buf.toString("latin1", 0, 4) !== "RIFF" || buf.toString("latin1", 8, 12) !== "WEBP") return null;
+  const chunk = buf.toString("latin1", 12, 16);
+  if (chunk === "VP8 ") return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+  if (chunk === "VP8L") {
+    const b = buf.readUInt32LE(21);
+    return { w: (b & 0x3fff) + 1, h: ((b >> 14) & 0x3fff) + 1 };
+  }
+  if (chunk === "VP8X") return { w: buf.readUIntLE(24, 3) + 1, h: buf.readUIntLE(27, 3) + 1 };
+  return null;
+}
+
+function renderShot(name, text) {
+  const caption = text.replace(/\s+/g, " ");
+  const file = name ? join(shotsDir, `${name}.webp`) : null;
+  if (!file || !existsSync(file)) {
+    if (name) console.warn(`build-wiki: shot "${name}" has no file at docs/wiki/assets/shots/${name}.webp — placeholder emitted`);
+    return [`<!-- SCREENSHOT: ${caption} -->`, `<p class="shot"><em>screenshot: ${esc(caption)}</em></p>`];
+  }
+  // Captured at device-pixel-ratio 2, so the CSS size is half the pixel size;
+  // the attributes exist for the aspect ratio, which stops the layout shifting
+  // while the image loads.
+  const size = webpSize(readFileSync(file));
+  const dims = size ? ` width="${Math.round(size.w / 2)}" height="${Math.round(size.h / 2)}"` : "";
+  const src = `${BASE}assets/shots/${name}.webp`;
+  return [
+    `<figure class="shot">`,
+    `<a href="${src}"><img src="${src}" alt="${esc(caption)}"${dims} loading="lazy" decoding="async" /></a>`,
+    `<figcaption>${esc(caption)}</figcaption>`,
+    `</figure>`,
+  ];
+}
+
 function renderDirectives(md, render) {
   const kinds = { note: "note", warning: "warning", security: "security", shot: "shot" };
   const lines = md.split("\n");
   const out = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = /^:::(note|warning|security|shot)\s*$/.exec(lines[i]);
+    const open = /^:::(note|warning|security|shot)(?:\s+([a-z0-9-]+))?\s*$/.exec(lines[i]);
     if (!open) {
       out.push(lines[i]);
       continue;
@@ -741,8 +787,7 @@ function renderDirectives(md, render) {
     while (i < lines.length && lines[i].trim() !== ":::") inner.push(lines[i]), i++;
     const text = inner.join("\n").trim();
     if (kind === "shot") {
-      out.push(`<!-- SCREENSHOT: ${text.replace(/\s+/g, " ")} -->`);
-      out.push(`<p class="shot"><em>screenshot: ${esc(text.replace(/\s+/g, " "))}</em></p>`);
+      out.push(...renderShot(open[2], text));
     } else {
       out.push(`<aside class="callout is-${kind}">`);
       out.push(`<span class="callout-k">${kind}</span>`);

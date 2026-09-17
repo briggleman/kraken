@@ -166,8 +166,10 @@ sudo systemctl restart kraken-panel</code></pre></div>
 <strong>update</strong> action per node. The Panel streams the matching build over the
 existing mTLS channel; the Agent checksum-verifies it, swaps its binary and
 restarts.</p>
-<!-- SCREENSHOT: the Nodes list with one node showing the agent-update affordance, the panel version and the node's older agent version side by side -->
-<p class="shot"><em>screenshot: the Nodes list with one node showing the agent-update affordance, the panel version and the node's older agent version side by side</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/node-agent-update.webp"><img src="/wiki/assets/shots/node-agent-update.webp" alt="two node bands: reef-01 still runs agent 0.51.0 while the Panel is 0.52.0, so its band carries the update affordance; trench-02 already matches and shows nothing" width="1440" height="560" loading="lazy" decoding="async" /></a>
+<figcaption>two node bands: reef-01 still runs agent 0.51.0 while the Panel is 0.52.0, so its band carries the update affordance; trench-02 already matches and shows nothing</figcaption>
+</figure>
 
 
 <p>Once the Panel is current, this is the ordinary path. Per node, confirmed per

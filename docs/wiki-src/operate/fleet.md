@@ -11,8 +11,8 @@ looking at is current. It is designed to be parked on a second monitor and read
 in a glance rather than studied, so most of this page is about what a glance
 should tell you.
 
-:::shot
-the fleet view with two node bands and four server cards, one running, one installing and one crashed
+:::shot fleet
+the fleet view: two node bands, then four server cards, with running, installing and crashed among them
 :::
 
 ## A node band

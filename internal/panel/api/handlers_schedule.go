@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -38,12 +39,22 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"schedules": tasks})
 }
 
+// scheduleActionError names every action the store accepts, so an operator who
+// mistypes one is told the full set rather than a stale subset of it.
+func scheduleActionError() error {
+	names := make([]string, 0, len(store.ScheduleActions()))
+	for _, a := range store.ScheduleActions() {
+		names = append(names, string(a))
+	}
+	return errors.New("action must be one of " + strings.Join(names, "|"))
+}
+
 // validateSchedule parses+validates a request and returns the resolved action,
 // canonical cron text, and the next run time. enabled defaults to true.
 func validateSchedule(req scheduleRequest) (store.ScheduleAction, string, time.Time, error) {
 	action := store.ScheduleAction(req.Action)
 	if !action.Valid() {
-		return "", "", time.Time{}, errors.New("action must be one of restart|backup|command")
+		return "", "", time.Time{}, scheduleActionError()
 	}
 	if action == store.ScheduleCommand && req.Command == "" {
 		return "", "", time.Time{}, errors.New("command is required for the command action")

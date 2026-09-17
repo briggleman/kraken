@@ -240,14 +240,32 @@ const (
 	ScheduleReplicate ScheduleAction = "replicate"
 )
 
+// scheduleActions is the ordered set of recognized schedule actions — the one
+// place the list lives. Valid(), the API's validation message, and the OpenAPI
+// enum all derive from it, so adding an action here reaches every one of them.
+var scheduleActions = []ScheduleAction{
+	ScheduleRestart,
+	ScheduleBackup,
+	ScheduleCommand,
+	ScheduleReplicate,
+}
+
+// ScheduleActions returns every recognized schedule action, in declaration
+// order. The returned slice is a copy; callers may not mutate the source.
+func ScheduleActions() []ScheduleAction {
+	out := make([]ScheduleAction, len(scheduleActions))
+	copy(out, scheduleActions)
+	return out
+}
+
 // Valid reports whether a is a recognized schedule action.
 func (a ScheduleAction) Valid() bool {
-	switch a {
-	case ScheduleRestart, ScheduleBackup, ScheduleCommand, ScheduleReplicate:
-		return true
-	default:
-		return false
+	for _, known := range scheduleActions {
+		if a == known {
+			return true
+		}
 	}
+	return false
 }
 
 // ScheduledTask is a cron-scheduled action against a server (restart, backup, or

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0](https://github.com/briggleman/kraken/compare/v0.53.0...v0.54.0) (2026-09-17)
+
+
+### Features
+
+* **panel:** the untracked-container badge names the containers it counts ([#344](https://github.com/briggleman/kraken/issues/344)) ([7bb789c](https://github.com/briggleman/kraken/commit/7bb789c03c38760e4af6c80e5af3c97d65ad1c4b))
+
 ## [0.53.0](https://github.com/briggleman/kraken/compare/v0.52.0...v0.53.0) (2026-09-17)
 
 

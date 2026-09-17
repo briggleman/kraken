@@ -144,6 +144,16 @@ type Config struct {
 	// purpose, because they are writable by an unauthenticated caller; this is
 	// how an operator turns them on when actually diagnosing something.
 	LogLevel string
+
+	// AuditRetentionDays is how many days of audit log the Panel keeps. A daily
+	// job deletes entries older than the window in batches, shortly after
+	// startup and every 24 hours after that, and the console reads this number
+	// rather than promising a window nothing enforced. Set it to 0 to keep
+	// every entry forever — the right answer when an external log shipper or a
+	// compliance rule owns the retention instead. Must be a whole, non-negative
+	// number of days; anything else stops the Panel at startup rather than
+	// quietly pruning on a schedule nobody chose.
+	AuditRetentionDays int
 }
 
 // RateLimitsEnabled reports whether the per-IP limiters should run.
@@ -199,6 +209,21 @@ func DefaultSetupAllowedCIDRs() []string {
 	}
 }
 
+// validateAuditRetention rejects a KRAKEN_AUDIT_RETENTION_DAYS that is set but
+// is not a whole, non-negative number of days. Unset or blank is fine — that is
+// the default window.
+func validateAuditRetention() error {
+	v, ok := os.LookupEnv("KRAKEN_AUDIT_RETENTION_DAYS")
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return fmt.Errorf("config: KRAKEN_AUDIT_RETENTION_DAYS=%q must be a whole number of days, 0 or more (0 keeps every entry)", v)
+	}
+	return nil
+}
+
 // ValidateCIDRList reports the first entry that is neither a CIDR nor a bare
 // IP. Hostnames are refused on purpose: a name is not source-verifiable, and a
 // list of trusted addresses cannot depend on what DNS says today.
@@ -247,6 +272,14 @@ func Load() (*Config, error) {
 		TrustedProxies:         envList("KRAKEN_TRUSTED_PROXIES"),
 		RateLimits:             env("KRAKEN_RATE_LIMITS", "on"),
 		LogLevel:               env("KRAKEN_LOG_LEVEL", "info"),
+		AuditRetentionDays:     envInt("KRAKEN_AUDIT_RETENTION_DAYS", 90),
+	}
+	// envInt falls back silently on anything it cannot parse, which is the
+	// wrong failure for a retention window: "90d", "ninety" or "-1" would leave
+	// the Panel running and deleting audit rows on a schedule the operator
+	// never chose. Deletion is not recoverable, so a typo here stops startup.
+	if err := validateAuditRetention(); err != nil {
+		return nil, err
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()

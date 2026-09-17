@@ -31,6 +31,11 @@ export const fleet = $state({
   specs: [] as Spec[],
   nodes: [] as Node[],
   audit: [] as AuditEntry[],
+  // How many days of audit log the Panel keeps, straight from GET /audit, so
+  // the sheet's footnote quotes the configured window rather than a literal
+  // nobody enforced. 0 = nothing is pruned. The default mirrors the Panel's
+  // own, which is what a tick that has not landed yet should read as.
+  auditRetentionDays: 90,
   panelVersion: "",
   // The embedded agent build's SHA-256 per "os/arch". Preferred over panelVersion
   // for skew detection (#93): a panel-only release leaves the agent artifact
@@ -92,7 +97,7 @@ export async function refreshFleet(): Promise<void> {
     api.listServers(),
     api.listSpecs(),
     api.listNodes(),
-    api.listAudit().catch(() => ({ entries: null })), // viewers may lack audit read
+    api.listAudit().catch(() => ({ entries: null, retention_days: undefined })), // viewers may lack audit read
   ]);
   if (gen <= appliedGen) return; // a newer tick already landed; this one is history
   appliedGen = gen;
@@ -123,7 +128,10 @@ export async function refreshFleet(): Promise<void> {
 
   // Audit is already best-effort above (a viewer may not be allowed to read
   // it), so it never counts against freshness.
-  if (a.status === "fulfilled") fleet.audit = a.value.entries ?? [];
+  if (a.status === "fulfilled") {
+    fleet.audit = a.value.entries ?? [];
+    if (typeof a.value.retention_days === "number") fleet.auditRetentionDays = a.value.retention_days;
+  }
 
   if (everAnswered.servers && everAnswered.specs && everAnswered.nodes) fleet.loaded = true;
 

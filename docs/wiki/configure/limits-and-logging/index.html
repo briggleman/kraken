@@ -116,6 +116,7 @@
 <a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
 <a class="toc-link lvl-2" href="#body-caps">Body caps</a>
 <a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#audit-retention">Audit retention</a>
 <a class="toc-link lvl-2" href="#metrics">Metrics</a>
 </div></details>
     <article class="prose">
@@ -191,6 +192,14 @@ write into the log an operator actually reads.</p>
 journalctl -u kraken-panel -f</code></pre></div>
 <p>The Agent keeps its own log: <code>journalctl -u kraken-agent</code> on Linux,
 <code>C:\kraken\state\agent.log</code> on Windows (JSON, rotated at 10 MiB).</p>
+<h2 id="audit-retention">Audit retention <a class="hlink" href="#audit-retention" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The audit log is the one thing the Panel keeps in Postgres rather than on
+stdout, so it has a window of its own:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever</code></pre></div>
+<p>A daily job deletes entries past the window in batches. The value must be a
+whole number of days, <code>0</code> or more; anything else stops startup. The mechanics,
+and what the console shows for each setting, are on <a href="/wiki/operate/audit/">the audit
+log</a>.</p>
 <h2 id="metrics">Metrics <a class="hlink" href="#metrics" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The Panel exports Prometheus metrics at <strong><code>GET /metrics</code></strong>, unauthenticated
 alongside <code>/healthz</code> and <code>/readyz</code>. It belongs on a network your scrapers can
@@ -269,6 +278,7 @@ limiter, with one client address behind it, is worth reading the audit log over.
 <a class="toc-link lvl-3" href="#the-off-switch">the off switch</a>
 <a class="toc-link lvl-2" href="#body-caps">Body caps</a>
 <a class="toc-link lvl-2" href="#log-level">Log level</a>
+<a class="toc-link lvl-2" href="#audit-retention">Audit retention</a>
 <a class="toc-link lvl-2" href="#metrics">Metrics</a>
     </div>
   </aside>

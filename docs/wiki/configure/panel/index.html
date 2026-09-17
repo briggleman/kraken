@@ -127,6 +127,7 @@
 <a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
@@ -282,6 +283,14 @@ description.</p>
 </tbody>
 </table></div>
 
+<h3 id="audit-log">audit log <a class="hlink" href="#audit-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_AUDIT_RETENTION_DAYS</code><span class="def">default <b>90</b></span></td><td>AuditRetentionDays is how many days of audit log the Panel keeps. A daily job deletes entries older than the window in batches, shortly after startup and every 24 hours after that, and the console reads this number rather than promising a window nothing enforced. Set it to 0 to keep every entry forever — the right answer when an external log shipper or a compliance rule owns the retention instead. Must be a whole, non-negative number of days; anything else stops the Panel at startup rather than quietly pruning on a schedule nobody chose.</td></tr>
+</tbody>
+</table></div>
+
 
 <h2 id="reading-the-defaults">Reading the defaults <a class="hlink" href="#reading-the-defaults" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
@@ -357,6 +366,7 @@ clicking around.</p>
 <a class="toc-link lvl-3" href="#behind-a-reverse-proxy">behind a reverse proxy</a>
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
+<a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>

@@ -19,6 +19,14 @@ const (
 	LoginBurstForTest          = loginBurst
 )
 
+// AuditPruneBatchForTest is how many rows one retention pass deletes per
+// statement, so a test can stage exactly one batch too many.
+const AuditPruneBatchForTest = auditPruneBatch
+
+// PruneAuditOnceForTest runs a single retention pass and reports how many audit
+// entries it removed — the loop the daily job drives, without the ticker.
+func (s *Server) PruneAuditOnceForTest(ctx context.Context) int64 { return s.pruneAuditOnce(ctx) }
+
 // ExpireDownloadTokensForTest backdates every outstanding file-download token
 // so a test can exercise the expiry branch without waiting out the 60-second
 // TTL. It lives in a _test.go file, so it is compiled only into the test

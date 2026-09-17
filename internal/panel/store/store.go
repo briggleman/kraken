@@ -370,6 +370,17 @@ type ScheduleStore interface {
 type AuditStore interface {
 	AppendAudit(ctx context.Context, e *AuditEntry) error
 	ListAudit(ctx context.Context, limit int) ([]*AuditEntry, error)
+	// PruneAudit deletes entries recorded before the given instant, at most
+	// limit of them per call, and reports how many it removed. It is the one
+	// exception to "append-only": the retention window (see
+	// KRAKEN_AUDIT_RETENTION_DAYS) is enforced here, never by a handler.
+	//
+	// The limit is not a convenience — a log left to grow for years is a very
+	// large DELETE, and one statement holding every one of those rows locks the
+	// table against the writes the Panel is still taking. Callers loop until a
+	// pass removes fewer than limit, which is how they learn there is nothing
+	// older left.
+	PruneAudit(ctx context.Context, before time.Time, limit int) (int64, error)
 }
 
 // SessionStore persists authentication sessions.

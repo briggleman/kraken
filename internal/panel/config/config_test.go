@@ -162,3 +162,43 @@ func TestRateLimitsAndLogLevelDefaults(t *testing.T) {
 		t.Fatalf("an unrecognized level gave %s, want INFO", lvl)
 	}
 }
+
+// The retention window decides what gets deleted, so a value Load cannot make
+// sense of has to stop the process rather than fall back to the default.
+func TestLoadValidatesAuditRetention(t *testing.T) {
+	// Unset is the shipped window, and matches what the console used to claim.
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected the default: %v", err)
+	}
+	if cfg.AuditRetentionDays != 90 {
+		t.Fatalf("default retention is %d days, want 90", cfg.AuditRetentionDays)
+	}
+
+	// 0 is a real answer, not an error: keep every entry.
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "0")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected 0: %v", err)
+	}
+	if cfg.AuditRetentionDays != 0 {
+		t.Fatalf("retention 0 parsed as %d", cfg.AuditRetentionDays)
+	}
+
+	t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", "14")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected 14: %v", err)
+	}
+	if cfg.AuditRetentionDays != 14 {
+		t.Fatalf("retention 14 parsed as %d", cfg.AuditRetentionDays)
+	}
+
+	for _, bad := range []string{"-1", "90d", "ninety", "1.5"} {
+		t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load accepted KRAKEN_AUDIT_RETENTION_DAYS=%q", bad)
+		}
+	}
+}

@@ -12,7 +12,7 @@ import (
 )
 
 // TestOpenAPISpecValid parses the embedded OpenAPI document and asserts it is
-// well-formed and covers the major endpoints — a guard against the spec drifting
+// well-formed and covers the major endpoints â€” a guard against the spec drifting
 // into invalid YAML or losing routes.
 func TestOpenAPISpecValid(t *testing.T) {
 	var doc struct {
@@ -44,7 +44,7 @@ func TestOpenAPISpecValid(t *testing.T) {
 
 // A YAML flow mapping ends its value at the first comma, so an unquoted
 // `{ description: A, B }` parses as a truncated description plus a key named
-// "B" with no value — valid YAML, silently wrong document, and invisible in a
+// "B" with no value â€” valid YAML, silently wrong document, and invisible in a
 // rendered reference until someone reads the missing half. Nothing in the
 // document legitimately has a null value, so that is the thing to assert.
 func TestOpenAPIHasNoTruncatedFlowValues(t *testing.T) {
@@ -58,7 +58,7 @@ func TestOpenAPIHasNoTruncatedFlowValues(t *testing.T) {
 		case map[string]any:
 			for k, val := range v {
 				if val == nil {
-					t.Errorf("openapi.yaml: %s/%s has no value — an unquoted comma in a flow mapping truncated it", path, k)
+					t.Errorf("openapi.yaml: %s/%s has no value â€” an unquoted comma in a flow mapping truncated it", path, k)
 					continue
 				}
 				walk(val, path+"/"+k)
@@ -107,7 +107,7 @@ func TestOpenAPIScheduleActionEnumMatchesStore(t *testing.T) {
 }
 
 // TestValidateScheduleAcceptsEveryAction asserts the handler accepts the store's
-// full action set and that its 400 message names all of it — the drift that left
+// full action set and that its 400 message names all of it â€” the drift that left
 // `replicate` both undocumented and unnamed in the rejection.
 func TestValidateScheduleAcceptsEveryAction(t *testing.T) {
 	for _, a := range store.ScheduleActions() {
@@ -133,5 +133,38 @@ func TestValidateScheduleAcceptsEveryAction(t *testing.T) {
 		if !strings.Contains(err.Error(), string(a)) {
 			t.Errorf("validation error %q does not name the %q action", err, a)
 		}
+	}
+}
+
+// The console reads the audit log's retention window off the list response
+// rather than hard-coding a number, which only works while the document keeps
+// describing it â€” the drift between copy and behaviour is what #332 was.
+func TestOpenAPIAuditListDeclaresRetentionDays(t *testing.T) {
+	var doc struct {
+		Paths map[string]struct {
+			Get struct {
+				Responses map[string]struct {
+					Content map[string]struct {
+						Schema struct {
+							Properties map[string]struct {
+								Type string `json:"type"`
+							} `json:"properties"`
+						} `json:"schema"`
+					} `json:"content"`
+				} `json:"responses"`
+			} `json:"get"`
+		} `json:"paths"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	props := doc.Paths["/audit"].Get.Responses["200"].Content["application/json"].Schema.Properties
+	for _, name := range []string{"entries", "retention_days"} {
+		if _, ok := props[name]; !ok {
+			t.Errorf("GET /audit 200 schema is missing %q", name)
+		}
+	}
+	if got := props["retention_days"].Type; got != "integer" {
+		t.Errorf("retention_days is typed %q, want integer", got)
 	}
 }

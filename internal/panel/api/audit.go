@@ -176,5 +176,11 @@ func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list audit log")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+	// retention_days travels with the list so the console can say how long these
+	// entries live without hard-coding a number the Panel might not be keeping
+	// to. 0 means nothing is pruned.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entries":        entries,
+		"retention_days": s.cfg.AuditRetentionDays,
+	})
 }

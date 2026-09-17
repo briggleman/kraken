@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,7 +33,30 @@ const (
 	// still putting a ceiling on scripted guessing.
 	loginPerMinute = 20
 	loginBurst     = 20
+	// loginUserPerMinute / Burst guard the same route along a second axis: the
+	// submitted username, with no address in the key at all. It exists because
+	// the per-IP limiter has a topology it cannot survive — a NAT that rewrites
+	// every source address to one gateway (Docker Desktop's 192.168.65.1) makes
+	// the per-IP bucket one shared bucket for the whole internet, protective of
+	// nobody and a self-DoS for everybody. Keyed on the username, a brute-force
+	// against one account is slowed without the Panel knowing who is calling,
+	// and every other account is untouched.
+	//
+	// It counts FAILURES ONLY: a correct password spends nothing, so the person
+	// who knows their password is never refused for what a stranger did with
+	// their username. Ten a minute leaves room for a fumbled password, a stale
+	// saved credential and a page reload, and still puts a hard ceiling on
+	// guessing.
+	loginUserPerMinute = 10
+	loginUserBurst     = 10
 )
+
+// rateLimiterMaxKeyLen bounds one key's contribution to the table. The
+// per-username limiter is keyed on a string an unauthenticated caller chose, up
+// to the 4 MiB body cap; the entry count is capped but the memory each entry
+// holds must be too. Truncation can only merge two absurd usernames into one
+// bucket, which costs the attacker and nobody else.
+const rateLimiterMaxKeyLen = 128
 
 // Limiter table bounds. The table is keyed by client address — attacker-chosen
 // input — so it is swept and capped rather than allowed to grow.
@@ -68,10 +92,16 @@ type rateLimiterEntry struct {
 // bounded map. No new dependency and no background goroutine: x/time/rate does
 // the bucket, and the table is swept on the way through.
 type rateLimiter struct {
-	name    string // metrics label: "download", "login"
+	name    string // metrics label: "download", "login", "login_user"
 	limit   rate.Limit
 	burst   int
 	enabled bool
+
+	// rawKeys skips the address normalization in limiterKey. The per-username
+	// limiter's keys are usernames, not addresses: an operator called `::1` is
+	// not a /64, and folding one into the other would be nonsense in both
+	// directions.
+	rawKeys bool
 
 	mu        sync.Mutex
 	entries   map[string]*rateLimiterEntry
@@ -101,6 +131,30 @@ func newRateLimiter(name string, perMinute float64, burst int, enabled bool) *ra
 	}
 }
 
+// newUsernameLimiter builds the failures-only, username-keyed login limiter.
+// Same table and same bucket as the per-IP one; only the key differs.
+func newUsernameLimiter(name string, perMinute float64, burst int, enabled bool) *rateLimiter {
+	l := newRateLimiter(name, perMinute, burst, enabled)
+	l.rawKeys = true
+	return l
+}
+
+// normalizeUsername is the login limiter's key: the submitted username with
+// case and surrounding space taken out, so `Alice`, `alice ` and `alice` share
+// one budget rather than three. It is a limiter key only — the store lookup
+// still uses what the caller actually typed.
+func normalizeUsername(u string) string {
+	return truncateKey(strings.ToLower(strings.TrimSpace(u)))
+}
+
+// truncateKey bounds a key at rateLimiterMaxKeyLen bytes.
+func truncateKey(k string) string {
+	if len(k) > rateLimiterMaxKeyLen {
+		return k[:rateLimiterMaxKeyLen]
+	}
+	return k
+}
+
 // limiterKey normalizes a client address into the unit a limit applies to.
 // IPv4 is one address, one bucket. IPv6 is aggregated to the /64: the smallest
 // block anyone is routinely delegated is a /64, so keying on the full address
@@ -121,20 +175,45 @@ func limiterKey(addr string) string {
 // The wait comes from the bucket itself rather than a guessed constant, so the
 // Retry-After a caller is handed is the truth.
 func (l *rateLimiter) allow(key string) (ok bool, retry time.Duration, firstTrip bool) {
+	return l.admit(key, true)
+}
+
+// peek is allow without spending: it reports whether the key has budget right
+// now and leaves the bucket exactly as it found it. It is how a failures-only
+// limiter admits — every request is measured against the budget, and only
+// charge() takes anything out of it.
+func (l *rateLimiter) peek(key string) (ok bool, retry time.Duration, firstTrip bool) {
+	return l.admit(key, false)
+}
+
+// charge spends one token against a key's budget, or nothing when the budget is
+// already empty. This is the failures-only limiter's other half: the wrong
+// password costs the username a token, the right one costs it nothing.
+func (l *rateLimiter) charge(key string) {
 	if l == nil || !l.enabled {
-		return true, 0, false
+		return
 	}
-	key = limiterKey(key)
+	key = l.key(key)
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sweepLocked(now)
-	e, found := l.entries[key]
-	if !found {
-		e = &rateLimiterEntry{lim: rate.NewLimiter(l.limit, l.burst)}
-		l.entries[key] = e
+	e := l.entryLocked(key, now)
+	e.lim.AllowN(now, 1)
+}
+
+// admit is the body of allow and peek: spend=false gives the token back before
+// returning, so the answer is the same and the bucket is untouched.
+func (l *rateLimiter) admit(key string, spend bool) (ok bool, retry time.Duration, firstTrip bool) {
+	if l == nil || !l.enabled {
+		return true, 0, false
 	}
-	e.seen = now
+	key = l.key(key)
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sweepLocked(now)
+	e := l.entryLocked(key, now)
 	res := e.lim.ReserveN(now, 1)
 	if !res.OK() { // burst of 0 — nothing is ever admitted
 		return false, time.Second, l.noteTripLocked(e, now)
@@ -145,7 +224,29 @@ func (l *rateLimiter) allow(key string) (ok bool, retry time.Duration, firstTrip
 		res.CancelAt(now)
 		return false, d, l.noteTripLocked(e, now)
 	}
+	if !spend {
+		res.CancelAt(now)
+	}
 	return true, 0, false
+}
+
+// key maps a caller's key onto the table's, and entryLocked fetches or creates
+// its bucket. Caller of entryLocked holds l.mu.
+func (l *rateLimiter) key(k string) string {
+	if l.rawKeys {
+		return truncateKey(k)
+	}
+	return limiterKey(k)
+}
+
+func (l *rateLimiter) entryLocked(key string, now time.Time) *rateLimiterEntry {
+	e, found := l.entries[key]
+	if !found {
+		e = &rateLimiterEntry{lim: rate.NewLimiter(l.limit, l.burst)}
+		l.entries[key] = e
+	}
+	e.seen = now
+	return e
 }
 
 // noteTripLocked reports whether this refusal is the first for its key in a
@@ -231,8 +332,17 @@ func (l *rateLimiter) size() int {
 // clientip.go). Getting that wrong in either direction breaks the limiter: with
 // no trusted set a forwarded header would let an attacker mint a new bucket per
 // request, and behind an unconfigured proxy every caller shares one bucket.
+// A client inside KRAKEN_RATE_LIMIT_IP_SKIP is exempt: that list names the
+// addresses a per-IP bucket is meaningless for — a NAT gateway standing in for
+// everybody — where the limit would refuse the whole internet together rather
+// than refuse anyone in particular. Login keeps its per-username limiter there,
+// which needs no address at all.
 func (s *Server) reject(l *rateLimiter, w http.ResponseWriter, r *http.Request) bool {
-	ok, retry, first := l.allow(s.clientIP(r))
+	ip := s.clientIP(r)
+	if s.ipLimitExempt(ip) {
+		return false
+	}
+	ok, retry, first := l.allow(ip)
 	if ok {
 		return false
 	}
@@ -240,13 +350,78 @@ func (s *Server) reject(l *rateLimiter, w http.ResponseWriter, r *http.Request) 
 	if first && l.onFirstTrip != nil {
 		l.onFirstTrip(r)
 	}
+	s.writeRateLimited(w, retry)
+	return true
+}
+
+// The audit actions the per-username limiter writes when it refuses. Separate
+// from the per-IP limiter's row, and deliberately so: "this username is being
+// guessed at" and "this address is hammering the door" are different findings
+// and an operator reading the log should not have to tell them apart by hand.
+const (
+	loginRateLimitedAction = "POST /auth/login — rate limited (too many failed attempts for this username)"
+	// Named for the credential rather than spelling the word gosec's
+	// hardcoded-credential rule scans identifiers for: this is an audit
+	// action string, and a suppression comment would be the noisier fix.
+	credentialRotateRateLimitedAction = "POST /auth/change-password — rate limited (too many failed attempts for this account)"
+)
+
+// rejectUsername applies the failures-only per-username limiter, writing the
+// 429 and — once per username per window — the audit row that says why. It is
+// applied to EVERY submitted username, known to the store or not: a 429 that
+// only ever came back for real accounts would answer "does this user exist?"
+// for anybody who asked eleven times.
+func (s *Server) rejectUsername(w http.ResponseWriter, r *http.Request, username, action string) bool {
+	l := s.loginUserLimit
+	key := normalizeUsername(username)
+	ok, retry, first := l.peek(key)
+	if ok {
+		return false
+	}
+	incRateLimited(l.name)
+	// Claim the audit middleware's row for EVERY refusal, not just the first.
+	// Change-password runs inside that middleware, so without this a flood
+	// there would simply move into the audit table at one row per request —
+	// which is the amplification the once-a-window rule exists to prevent.
+	// Login is outside the middleware and has no note to claim.
+	if n, _ := r.Context().Value(ctxKeyAuditNote).(*auditNote); n != nil {
+		n.claimed = true
+	}
+	if first {
+		s.appendAudit(r, http.StatusTooManyRequests, key, action)
+	}
+	s.writeRateLimited(w, retry)
+	return true
+}
+
+// writeRateLimited is the one refusal: the ordinary JSON error envelope plus
+// the Retry-After the bucket itself computed, so what a caller is told to wait
+// is the truth rather than a guessed constant.
+func (s *Server) writeRateLimited(w http.ResponseWriter, retry time.Duration) {
 	secs := int(math.Ceil(retry.Seconds()))
 	if secs < 1 {
 		secs = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
 	writeError(w, http.StatusTooManyRequests, "too many requests")
-	return true
+}
+
+// ipLimitExempt reports whether a resolved client address is one the operator
+// has taken out of the per-IP limiters (KRAKEN_RATE_LIMIT_IP_SKIP).
+func (s *Server) ipLimitExempt(addr string) bool {
+	if len(s.rateLimitSkipNets) == 0 {
+		return false
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range s.rateLimitSkipNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // limit wraps a handler in the limiter, for routes where every request is

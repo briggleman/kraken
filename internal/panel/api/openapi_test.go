@@ -42,6 +42,32 @@ func TestOpenAPISpecValid(t *testing.T) {
 	}
 }
 
+// The audit schema is what a client codes against, so a field the Panel now
+// writes has to be declared. forwarded_for is the one an operator behind a NAT
+// reads the real client address out of, and a client that does not know about
+// it will not show it.
+func TestOpenAPIAuditEntryDeclaresTheForwardedChain(t *testing.T) {
+	var doc struct {
+		Comp struct {
+			Schemas map[string]struct {
+				Properties map[string]any `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	entry, ok := doc.Comp.Schemas["AuditEntry"]
+	if !ok {
+		t.Fatal("openapi.yaml has no AuditEntry schema")
+	}
+	for _, f := range []string{"ip", "forwarded_for"} {
+		if _, ok := entry.Properties[f]; !ok {
+			t.Errorf("AuditEntry does not declare %q", f)
+		}
+	}
+}
+
 // A YAML flow mapping ends its value at the first comma, so an unquoted
 // `{ description: A, B }` parses as a truncated description plus a key named
 // "B" with no value â€” valid YAML, silently wrong document, and invisible in a

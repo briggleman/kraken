@@ -17,6 +17,7 @@ func (s *Server) ReconcileOnceForTest(ctx context.Context) { s.reconcileOnce(ctx
 const (
 	DownloadRedeemBurstForTest = downloadRedeemBurst
 	LoginBurstForTest          = loginBurst
+	LoginUserBurstForTest      = loginUserBurst
 )
 
 // AuditPruneBatchForTest is how many rows one retention pass deletes per

@@ -218,6 +218,12 @@ export interface AuditEntry {
   target_id?: string;
   status: number;
   ip?: string;
+  /**
+   * Raw X-Forwarded-For chain, present only when `ip` is an address that
+   * identifies nobody (a NAT gateway, or one exempted from per-IP limiting).
+   * The caller wrote it: show it as forensics, never treat it as the source.
+   */
+  forwarded_for?: string;
 }
 
 export type ScheduleAction = "restart" | "backup" | "command" | "replicate";

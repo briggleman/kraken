@@ -74,6 +74,56 @@ func (s *Server) clientIP(r *http.Request) string {
 	return peer
 }
 
+// auditForwardedMaxLen bounds the forwarded chain an audit row carries. The
+// header is written by the caller, so the row must not be.
+const auditForwardedMaxLen = 256
+
+// forwardedChain returns the raw `X-Forwarded-For` an audit row should carry
+// beside its resolved source address, or "" when the row does not need one.
+//
+// It is populated for exactly one case: the resolved address identifies nobody.
+// Either the operator has exempted it from the per-IP limiters, or it is a
+// private/gateway address — which, with no trusted proxy configured, is the
+// signature of a NAT that overwrote the real client. Behind Cloudflare → a
+// proxy → a Docker Desktop published port, the true address is in that chain
+// and nowhere else the Panel can reach, so an operator tracing a sign-in has
+// the only copy of it here.
+//
+// It is UNTRUSTED and treated as such: never resolved to, never limited on,
+// never compared against an allowlist. Nothing decides anything on it. It is
+// bounded, stripped of anything unprintable, and labelled as forensics
+// wherever it is displayed.
+func (s *Server) forwardedChain(r *http.Request, resolved string) string {
+	ip := net.ParseIP(resolved)
+	informative := ip != nil && !isGatewayish(ip)
+	if informative && !s.ipLimitExempt(resolved) {
+		return ""
+	}
+	var hops []string
+	for _, h := range r.Header.Values("X-Forwarded-For") {
+		for _, part := range strings.Split(h, ",") {
+			if p := strings.TrimSpace(part); p != "" {
+				hops = append(hops, p)
+			}
+		}
+	}
+	if len(hops) == 0 {
+		return ""
+	}
+	chain := strings.Map(func(c rune) rune {
+		if c < 0x20 || c == 0x7f {
+			return -1
+		}
+		return c
+	}, strings.Join(hops, ", "))
+	if len(chain) > auditForwardedMaxLen {
+		// ToValidUTF8 so a cut through a multi-byte rune does not put a broken
+		// one in the store and then in the browser.
+		chain = strings.ToValidUTF8(chain[:auditForwardedMaxLen], "")
+	}
+	return chain
+}
+
 // isTrustedProxy reports whether an address is one of the operator-declared
 // reverse proxies.
 func (s *Server) isTrustedProxy(addr string) bool {

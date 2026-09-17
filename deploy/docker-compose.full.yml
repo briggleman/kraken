@@ -81,9 +81,16 @@ services:
       # debug|info|warn|error. Debug surfaces the per-request diagnostics that
       # are deliberately quiet, including refused download-token redemptions.
       KRAKEN_LOG_LEVEL: ${KRAKEN_LOG_LEVEL:-info}
-      # Escape hatch: "off" disables the per-client limiters on login and
-      # download-token redemption (for an edge that already rate limits).
-      KRAKEN_RATE_LIMITS: ${KRAKEN_RATE_LIMITS:-on}
+      # Which limiters run: all (default) | login | downloads | off. Anything
+      # else is a startup error. Split so an edge that already rate limits one
+      # surface can leave the Panel doing the other.
+      KRAKEN_RATE_LIMITS: ${KRAKEN_RATE_LIMITS:-all}
+      # Addresses exempt from the PER-ADDRESS limiters (CIDRs, bare IPs ok).
+      # For a NAT that rewrites every source to one gateway — Docker Desktop's
+      # 192.168.65.1 — where the bucket refuses the whole internet at once.
+      # Login there is still limited per username. Not a trust list: see
+      # KRAKEN_TRUSTED_PROXIES for that.
+      KRAKEN_RATE_LIMIT_IP_SKIP: ${KRAKEN_RATE_LIMIT_IP_SKIP:-}
       # Days of audit log to keep; a daily job deletes what is older, in
       # batches. 0 keeps every entry forever.
       KRAKEN_AUDIT_RETENTION_DAYS: ${KRAKEN_AUDIT_RETENTION_DAYS:-90}

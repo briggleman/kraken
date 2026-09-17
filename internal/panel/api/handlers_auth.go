@@ -49,6 +49,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
+	// The per-username budget, checked before the store is touched and applied
+	// to every username alike — a 429 that only came back for real accounts
+	// would answer "does this user exist?" for anyone patient enough to ask
+	// eleven times. Nothing is spent here; only a failure below costs a token,
+	// so somebody who knows their password is never refused for what a
+	// stranger did with their username.
+	if s.rejectUsername(w, r, req.Username, loginRateLimitedAction) {
+		return
+	}
 
 	ctx := r.Context()
 	user, err := s.store.GetUserByUsername(ctx, req.Username)
@@ -56,11 +65,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// user exists, then fail uniformly to avoid username enumeration.
 	if err != nil {
 		_ = auth.VerifyPassword(req.Password, dummyHash)
+		s.loginUserLimit.charge(normalizeUsername(req.Username))
 		s.recordAudit(r, http.StatusUnauthorized, req.Username)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 	if verr := auth.VerifyPassword(req.Password, user.PasswordHash); verr != nil {
+		s.loginUserLimit.charge(normalizeUsername(req.Username))
 		s.recordAudit(r, http.StatusUnauthorized, req.Username)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return

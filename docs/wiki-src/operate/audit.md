@@ -20,6 +20,7 @@ is a log nobody reads.
 | `target_type` · `target_id` | `server`, `node`, `spec`, `user` or `auth`, and the `{id}` from the route |
 | `status` | the response status the request actually ended on |
 | `ip` | the resolved client address |
+| `forwarded_for` | the raw `X-Forwarded-For` as received — only when `ip` identifies nobody, and never trusted |
 
 The `action` field uses the **route pattern**, not the concrete path, so rows
 group: `POST /servers/{id}/power` is one action whichever server it was, and the
@@ -67,13 +68,24 @@ token cannot amplify writes into the audit table. Turn `KRAKEN_LOG_LEVEL` to
 ## Rate limiting leaves one row per window
 
 A login refused by the rate limiter never reaches the handler that would audit a
-failed attempt, so the limiter writes the row itself:
+failed attempt, so the limiter writes the row itself. Two limiters guard that
+route, on different keys, and each leaves its own row:
 
 `POST /auth/login — rate limited (too many attempts from this address)`
 
-as `anonymous`, at status 429, and **once per client per window** rather than
-once per request. That is the difference between a signal and a flood: somebody
-hammering login produces one row a minute, not one row a request.
+as `anonymous`, when one client address has exhausted its twenty a minute, and
+
+`POST /auth/login — rate limited (too many failed attempts for this username)`
+
+as the username, when one account has taken ten failed guesses in a minute. The
+second one is the finding: *this account is being worked on*. It is written even
+when the Panel cannot tell one caller from another, which is the whole reason
+that limiter exists. `POST /auth/change-password` writes the same row when the
+current password is fumbled past the same budget.
+
+Either row is written **once per key per window** rather than once per request.
+That is the difference between a signal and a flood: somebody hammering login
+produces one row a minute, not one row a request.
 
 ## Reading the source column
 
@@ -100,6 +112,22 @@ that looks fine and an audit log that records nothing useful.
 
 The whole configuration, with the working examples, is on [behind a reverse
 proxy](/wiki/configure/reverse-proxy/).
+
+### when the address identifies nobody
+
+Some topologies cannot be fixed by naming a proxy — Docker Desktop rewrites the
+source of every published-port connection to its own gateway, and the real
+address is gone before the Panel sees a byte. For those rows the Panel keeps the
+raw `X-Forwarded-For` chain alongside the resolved address, and the audit log
+marks the source cell `· fwd` with the chain on hover. It does this only when
+the resolved address is private or is one you exempted with
+`KRAKEN_RATE_LIMIT_IP_SKIP`; a row with a real client address does not need it.
+
+**Read it as forensics, never as proof.** The caller wrote that header. Behind
+Cloudflare → a proxy → a published port it is where the visitor's true address
+survives and the one place you can go looking for it, but nothing in the Panel
+resolves to it, limits on it or gates anything behind it, and neither should
+you.
 
 ## How long entries are kept
 

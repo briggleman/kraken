@@ -117,6 +117,7 @@
 <a class="toc-link lvl-2" href="#download-tokens-leave-two-rows">Download tokens leave two rows</a>
 <a class="toc-link lvl-2" href="#rate-limiting-leaves-one-row-per-window">Rate limiting leaves one row per window</a>
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
+<a class="toc-link lvl-3" href="#when-the-address-identifies-nobody">when the address identifies nobody</a>
 <a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
 </div></details>
@@ -160,6 +161,10 @@ is a log nobody reads.</p>
 <td><code>ip</code></td>
 <td>the resolved client address</td>
 </tr>
+<tr>
+<td><code>forwarded_for</code></td>
+<td>the raw <code>X-Forwarded-For</code> as received — only when <code>ip</code> identifies nobody, and never trusted</td>
+</tr>
 </tbody></table>
 </div>
 <p>The <code>action</code> field uses the <strong>route pattern</strong>, not the concrete path, so rows
@@ -202,11 +207,19 @@ token cannot amplify writes into the audit table. Turn <code>KRAKEN_LOG_LEVEL</c
 <code>debug</code> when you want to watch them.</p>
 <h2 id="rate-limiting-leaves-one-row-per-window">Rate limiting leaves one row per window <a class="hlink" href="#rate-limiting-leaves-one-row-per-window" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>A login refused by the rate limiter never reaches the handler that would audit a
-failed attempt, so the limiter writes the row itself:</p>
+failed attempt, so the limiter writes the row itself. Two limiters guard that
+route, on different keys, and each leaves its own row:</p>
 <p><code>POST /auth/login — rate limited (too many attempts from this address)</code></p>
-<p>as <code>anonymous</code>, at status 429, and <strong>once per client per window</strong> rather than
-once per request. That is the difference between a signal and a flood: somebody
-hammering login produces one row a minute, not one row a request.</p>
+<p>as <code>anonymous</code>, when one client address has exhausted its twenty a minute, and</p>
+<p><code>POST /auth/login — rate limited (too many failed attempts for this username)</code></p>
+<p>as the username, when one account has taken ten failed guesses in a minute. The
+second one is the finding: <em>this account is being worked on</em>. It is written even
+when the Panel cannot tell one caller from another, which is the whole reason
+that limiter exists. <code>POST /auth/change-password</code> writes the same row when the
+current password is fumbled past the same budget.</p>
+<p>Either row is written <strong>once per key per window</strong> rather than once per request.
+That is the difference between a signal and a flood: somebody hammering login
+produces one row a minute, not one row a request.</p>
 <h2 id="reading-the-source-column">Reading the source column <a class="hlink" href="#reading-the-source-column" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><code>ip</code> is whatever the Panel resolved the client to be, and the default is the
 real TCP peer with no forwarding header believed at all.</p>
@@ -227,6 +240,19 @@ this reason: a typo that silently emptied the list would leave you with a Panel
 that looks fine and an audit log that records nothing useful.</p>
 <p>The whole configuration, with the working examples, is on <a href="/wiki/configure/reverse-proxy/">behind a reverse
 proxy</a>.</p>
+<h3 id="when-the-address-identifies-nobody">when the address identifies nobody <a class="hlink" href="#when-the-address-identifies-nobody" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>Some topologies cannot be fixed by naming a proxy — Docker Desktop rewrites the
+source of every published-port connection to its own gateway, and the real
+address is gone before the Panel sees a byte. For those rows the Panel keeps the
+raw <code>X-Forwarded-For</code> chain alongside the resolved address, and the audit log
+marks the source cell <code>· fwd</code> with the chain on hover. It does this only when
+the resolved address is private or is one you exempted with
+<code>KRAKEN_RATE_LIMIT_IP_SKIP</code>; a row with a real client address does not need it.</p>
+<p><strong>Read it as forensics, never as proof.</strong> The caller wrote that header. Behind
+Cloudflare → a proxy → a published port it is where the visitor&#39;s true address
+survives and the one place you can go looking for it, but nothing in the Panel
+resolves to it, limits on it or gates anything behind it, and neither should
+you.</p>
 <h2 id="how-long-entries-are-kept">How long entries are kept <a class="hlink" href="#how-long-entries-are-kept" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The Panel keeps <strong>90 days</strong> by default and deletes what is older:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever</code></pre></div>
@@ -278,6 +304,7 @@ into the copy.</p>
 <a class="toc-link lvl-2" href="#download-tokens-leave-two-rows">Download tokens leave two rows</a>
 <a class="toc-link lvl-2" href="#rate-limiting-leaves-one-row-per-window">Rate limiting leaves one row per window</a>
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
+<a class="toc-link lvl-3" href="#when-the-address-identifies-nobody">when the address identifies nobody</a>
 <a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
     </div>

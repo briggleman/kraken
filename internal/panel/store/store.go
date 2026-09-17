@@ -298,6 +298,12 @@ type AuditEntry struct {
 	TargetID   string    `json:"target_id,omitempty"`
 	Status     int       `json:"status"`
 	IP         string    `json:"ip,omitempty"`
+	// ForwardedFor is the raw `X-Forwarded-For` chain as received, recorded
+	// only when IP cannot identify anybody — a NAT gateway standing in for
+	// every caller, or an address the operator exempted from the per-IP rate
+	// limiters. It is attacker-writable: it is forensics, never an input to a
+	// decision, and every surface that shows it says so.
+	ForwardedFor string `json:"forwarded_for,omitempty"`
 }
 
 // Session is an authenticated session mapping an opaque token to a user.

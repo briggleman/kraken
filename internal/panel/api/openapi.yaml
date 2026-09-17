@@ -1565,3 +1565,11 @@ components:
         target_id: { type: string }
         status: { type: integer }
         ip: { type: string }
+        forwarded_for:
+          type: string
+          description: >-
+            The raw X-Forwarded-For chain as received. Present only when `ip`
+            cannot identify anybody — a NAT gateway standing in for every
+            caller, or an address exempted with KRAKEN_RATE_LIMIT_IP_SKIP.
+            Written by the caller and therefore untrusted: forensics, never an
+            input to a decision.

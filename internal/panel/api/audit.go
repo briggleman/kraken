@@ -122,6 +122,9 @@ func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionO
 		action = actionOverride
 	}
 
+	ip := s.clientIP(r)
+	s.noteClientIP(ip)
+
 	e := &store.AuditEntry{
 		ID:         uuid.NewString(),
 		Time:       time.Now(),
@@ -133,7 +136,13 @@ func (s *Server) appendAudit(r *http.Request, status int, actorOverride, actionO
 		TargetType: targetType(short),
 		TargetID:   chi.URLParam(r, "id"),
 		Status:     status,
-		IP:         s.clientIP(r),
+		IP:         ip,
+		// Only when the resolved address is one that cannot identify anybody —
+		// a NAT gateway, or an address the operator has exempted. There the
+		// chain is the only place a real client address survives, and an
+		// operator diagnosing a sign-in has nothing else to read. It is
+		// attacker-writable and labelled as such wherever it is shown.
+		ForwardedFor: s.forwardedChain(r, ip),
 	}
 	metricsAuditTotal.Add(1)
 	// The append does NOT inherit the request's cancellation. An entry is

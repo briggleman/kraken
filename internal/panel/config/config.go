@@ -134,10 +134,25 @@ type Config struct {
 	// proxy's address. See clientIP in internal/panel/api.
 	TrustedProxies []string
 
-	// RateLimits is the escape hatch for the per-IP limiters on login and the
-	// token-redemption downloads: "off" disables both (logged loudly at
-	// startup). Anything else leaves them on, which is the default.
+	// RateLimits selects which limiters run: "all" (the default; "on" is the
+	// historical alias), "login" for the login-side limiters only, "downloads"
+	// for the token-redemption limiter only, or "off" for neither — each
+	// logged loudly at startup when it is not "all". The switch is split
+	// because the two surfaces fail differently: behind a NAT that erases the
+	// client address the per-IP login bucket is shared by the whole internet
+	// and an operator may want it out of the way, while the redemption limiter
+	// is still worth having. An unrecognized value is a startup error.
 	RateLimits string
+	// RateLimitIPSkip lists the CIDRs (bare IPs allowed) whose resolved client
+	// address is EXEMPT from the per-IP limiters. It exists for one situation:
+	// a NAT that rewrites every source address to one gateway — Docker
+	// Desktop's 192.168.65.1 is the case that prompted it — where the per-IP
+	// bucket is not a limit on anybody in particular and locks the whole
+	// internet out together. Exempting that address leaves the per-username
+	// login limiter, which needs no IP at all, doing the real work. Empty by
+	// default, and not a substitute for naming a real proxy in
+	// KRAKEN_TRUSTED_PROXIES.
+	RateLimitIPSkip []string
 
 	// LogLevel is the Panel's slog level: debug, info (default), warn, error.
 	// Several diagnostics — a rejected download token, for one — are Debug on
@@ -156,8 +171,47 @@ type Config struct {
 	AuditRetentionDays int
 }
 
-// RateLimitsEnabled reports whether the per-IP limiters should run.
-func (c *Config) RateLimitsEnabled() bool { return !strings.EqualFold(c.RateLimits, "off") }
+// The accepted values of KRAKEN_RATE_LIMITS. "on" is accepted too as the
+// backward-compatible alias of RateLimitsAll, since it is what every existing
+// deployment and compose file spells.
+const (
+	RateLimitsAll       = "all"
+	RateLimitsLogin     = "login"
+	RateLimitsDownloads = "downloads"
+	RateLimitsOff       = "off"
+)
+
+// RateLimitMode normalizes RateLimits onto one of the four modes. Anything
+// unrecognized reads as "all": Load refuses a typo outright, so this only
+// covers a directly-constructed Config (tests, embedders), and there the safe
+// reading of a value nobody recognizes is the one that keeps the limiters.
+func (c *Config) RateLimitMode() string {
+	switch m := strings.ToLower(strings.TrimSpace(c.RateLimits)); m {
+	case RateLimitsOff, RateLimitsLogin, RateLimitsDownloads:
+		return m
+	default:
+		return RateLimitsAll
+	}
+}
+
+// LoginRateLimitsEnabled reports whether the login-side limiters — per-IP and
+// per-username alike — should run.
+func (c *Config) LoginRateLimitsEnabled() bool {
+	m := c.RateLimitMode()
+	return m == RateLimitsAll || m == RateLimitsLogin
+}
+
+// DownloadRateLimitsEnabled reports whether the download-token redemption
+// limiter should run.
+func (c *Config) DownloadRateLimitsEnabled() bool {
+	m := c.RateLimitMode()
+	return m == RateLimitsAll || m == RateLimitsDownloads
+}
+
+// RateLimitsEnabled reports whether any limiter at all should run.
+func (c *Config) RateLimitsEnabled() bool {
+	return c.LoginRateLimitsEnabled() || c.DownloadRateLimitsEnabled()
+}
 
 // SlogLevel maps LogLevel onto a slog level, defaulting to Info for anything
 // unrecognized — a typo must not silence the Panel.
@@ -270,7 +324,8 @@ func Load() (*Config, error) {
 		CSPScriptSrc:           envList("KRAKEN_CSP_SCRIPT_SRC"),
 		CSPConnectSrc:          envList("KRAKEN_CSP_CONNECT_SRC"),
 		TrustedProxies:         envList("KRAKEN_TRUSTED_PROXIES"),
-		RateLimits:             env("KRAKEN_RATE_LIMITS", "on"),
+		RateLimits:             strings.ToLower(strings.TrimSpace(env("KRAKEN_RATE_LIMITS", RateLimitsAll))),
+		RateLimitIPSkip:        envList("KRAKEN_RATE_LIMIT_IP_SKIP"),
 		LogLevel:               env("KRAKEN_LOG_LEVEL", "info"),
 		AuditRetentionDays:     envInt("KRAKEN_AUDIT_RETENTION_DAYS", 90),
 	}
@@ -292,6 +347,23 @@ func Load() (*Config, error) {
 	// nothing on screen to say so. A typo here has to stop the process.
 	if err := ValidateCIDRList(c.TrustedProxies); err != nil {
 		return nil, fmt.Errorf("KRAKEN_TRUSTED_PROXIES: %w", err)
+	}
+	// The skip list fails the same way and so is refused the same way: an
+	// entry that quietly dropped would leave an operator believing a gateway
+	// is exempt when it is not, or — worse on a re-read — believing one is
+	// still limited when the entry beside it took the whole list down.
+	if err := ValidateCIDRList(c.RateLimitIPSkip); err != nil {
+		return nil, fmt.Errorf("KRAKEN_RATE_LIMIT_IP_SKIP: %w", err)
+	}
+	// A typo here must not silently turn a limiter off (or on): every value is
+	// a deliberate posture, so an unrecognized one stops the process rather
+	// than being guessed at. "on" is the pre-split spelling of "all".
+	switch c.RateLimits {
+	case "on":
+		c.RateLimits = RateLimitsAll
+	case RateLimitsAll, RateLimitsLogin, RateLimitsDownloads, RateLimitsOff:
+	default:
+		return nil, fmt.Errorf("KRAKEN_RATE_LIMITS: %q is not one of all, login, downloads, off", c.RateLimits)
 	}
 	// An unrecognized mode falls back to enforcing rather than silently serving
 	// no policy: a typo in KRAKEN_CSP must not disable a security header.

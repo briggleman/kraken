@@ -137,13 +137,15 @@ rather than the change being small.</li>
 <p>Pre-1.0 means the surface can move between minors. Read the entry before you
 upgrade a fleet you care about, and read
 <a href="/wiki/install/upgrade/">Upgrading</a> before your first one.</p>
-<aside class="callout is-warning">
-<span class="callout-k">warning</span>
-<div class="callout-b"><p><strong>Agents before Panels.</strong> The Panel↔Agent protocol is versioned by tolerance,
-not negotiation: a new field arrives in a shape where an older Agent&#39;s zero
-value means &quot;unknown&quot; and the Panel falls back to its previous behaviour. Get
-the order wrong and nothing breaks — you simply do not get the new behaviour
-until both halves are current. Announced download lengths are the worked
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p><strong>Panel first, then push the Agents from it.</strong> The Panel carries the Agent
+builds of its own release and is the only thing that can install them, so the
+Nodes page offers an update per node once the Panel is current. The protocol is
+versioned by tolerance, not negotiation: a new field arrives in a shape where an
+older Agent&#39;s zero value means &quot;unknown&quot; and the new Panel falls back to its
+previous behaviour, so a half-upgraded fleet keeps working and each node gains
+the new behaviour when you push it. Announced download lengths are the worked
 example, and <a href="/wiki/install/upgrade/">Upgrading</a> has the rest.</p>
 </div>
 </aside>

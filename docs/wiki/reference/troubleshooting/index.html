@@ -197,11 +197,14 @@ install leaves the server exactly where it was — <code>running</code>, with th
 refused with a <code>503</code> naming the node instead of starting a pass that cannot run.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
-<div class="callout-b"><p>A transient <code>1 untracked</code> during an install or update pass is <strong>normal</strong>. The
-one-shot install container carries the same managed label the game container
-does, so while it runs the node is running one more than the Panel counts. It
-clears when the pass ends. It is only the badge that persists that means
-something.</p>
+<div class="callout-b"><p>On an Agent older than 0.54.0, a transient <code>1 untracked</code> during an install or
+update pass is <strong>normal</strong>. The one-shot install container carries the same
+managed label the game container does, so while it runs the node is running one
+more than the Panel counts, and it clears when the pass ends. From Agent 0.54.0
+the Agent names its containers and the Panel matches the install container to
+the row it belongs to, so the badge no longer appears for a pass at all, and
+when it does appear its tooltip names the container. Either way it is only the
+badge that persists that means something.</p>
 </div>
 </aside>
 

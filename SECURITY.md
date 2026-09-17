@@ -825,3 +825,92 @@ the `TestClientIP*` set (including
 `TestRateLimiterMiddlewareAnswers429WithRetryAfter` (`internal/panel/api`),
 alongside every test the original feature shipped with, which still passes
 unchanged.
+
+## Login rate limiting without a client address (2026-09-17)
+
+Found rolling 0.52.0 onto the live Panel (**#327**). The per-IP limiters added
+in the download-token pass assume the Panel, or a trusted proxy in front of it,
+can see the caller. **On Docker Desktop it cannot.** Every connection to a
+published port arrives with its source rewritten to the VM gateway
+`192.168.65.1` — including the connections Nginx Proxy Manager's own published
+80/443 carry — so NPM appends the gateway to `X-Forwarded-For`, the Panel's
+rightmost-untrusted walk correctly resolves every visitor to `192.168.65.1`, and
+nothing downstream can recover the real address. The login limiter was then one
+shared bucket for the whole internet: twenty failed attempts from anyone locked
+every operator out for a minute, with no protective value whatever. The only
+advice that worked was `KRAKEN_RATE_LIMITS=off`, which threw away the
+token-redemption limiter as well.
+
+**A per-username login limiter, which needs no address.** Keyed on the submitted
+username, normalised (trimmed, lower-cased) and capped at 128 bytes so a key an
+unauthenticated caller chose cannot grow the table's memory without bound. Ten
+failures a minute, burst ten. It **counts failures only**: a request is measured
+against the budget without spending it, and only a wrong password takes a token,
+so the person who knows their password is never refused for what a stranger did
+with their username. It is applied to **every submitted username, known to the
+store or not** — a 429 that came back only for real accounts would answer "does
+this account exist?" for anyone willing to ask eleven times, undoing the
+dummy-verify timing equalisation that has guarded login enumeration since the
+first audit.
+
+**`POST /auth/change-password` spends the same budget**, keyed on the
+authenticated user, when the *current* password is wrong. That route verifies a
+password exactly as login does; leaving it outside the bucket would have made a
+stolen session the unthrottled way around the login limiter. The cost is
+accepted and documented: ten fumbles there refuse that account's sign-in for the
+rest of the minute.
+
+**`KRAKEN_RATE_LIMIT_IP_SKIP`** exempts a resolved client address from the
+**per-address** limiters — validated as CIDRs like `KRAKEN_TRUSTED_PROXIES`, and
+a startup error when an entry does not parse. It is deliberately not a trust
+list: it takes an address out of a *limit*, where `KRAKEN_TRUSTED_PROXIES`
+decides whose `X-Forwarded-For` is *believed*. Trusting the Docker Desktop
+gateway would hand header-forging to everyone who can reach a published port;
+exempting it gives away only a rate limit that was refusing everybody anyway,
+and the per-username limiter — which the skip list does not reach — still caps
+guessing at ten a minute per account.
+
+**`KRAKEN_RATE_LIMITS` is now `all` | `login` | `downloads` | `off`** (`on`
+kept as the alias of `all`), so the redemption limiter can stay on while the
+login side is loosened, or the reverse. **An unrecognised value is a startup
+error** rather than a guess: each value is a deliberate posture, and a typo must
+not read as one of them.
+
+**The Panel now names the situation.** With no trusted proxy configured, if the
+first twenty audited requests all resolve to the same private, loopback or
+link-local address, it logs one Warn naming that address and pointing at the
+reverse-proxy page. Once per process, disarmed as soon as two distinct callers
+are seen, and suppressed for an address already in the skip list.
+
+**Audit rows keep the forwarded chain when, and only when, the resolved address
+identifies nobody** — a private/gateway address, or one in the skip list. The
+new `forwarded_for` field carries the raw `X-Forwarded-For` as received,
+stripped of control characters and capped at 256 bytes on a rune boundary. It is
+**untrusted by construction**: nothing resolves to it, limits on it or gates on
+it, and both the audit surface and the wiki label it forensics rather than
+proof. It rides in the existing `audit_log.data` JSONB, so no migration was
+needed. Behind Cloudflare → NPM → Docker Desktop it is the only place the
+visitor's true address survives.
+
+Covered by `TestLoginLimiterThrottlesTheEleventhFailureForOneUsername`,
+`TestLoginLimiterChargesFailuresOnly`,
+`TestLoginLimiterThrottlesUnknownUsernamesIdentically`,
+`TestLoginLimiterNormalisesTheUsernameKey`,
+`TestLoginPerIPLimiterStillRefusesABurstFromOneAddress`,
+`TestRateLimitIPSkipBypassesThePerIPLimiterOnly`,
+`TestRateLimitsDownloadsModeLeavesLoginUnlimited`,
+`TestRateLimitsLoginModeKeepsThePerUsernameLimiter`,
+`TestRateLimitsOffLeavesTheUsernameLimiterOff`,
+`TestChangePasswordSharesTheLoginFailureBudget`,
+`TestLoginLimiterRefusalIsTheOrdinaryErrorEnvelope`,
+`TestRateLimiterPeekMeasuresWithoutSpending`,
+`TestUsernameLimiterKeysOnTheRawString`,
+`TestForwardedChainIsRecordedOnlyWhenTheSourceIdentifiesNobody`,
+`TestForwardedChainIsBoundedAndPrintable`,
+`TestAuditRowCarriesTheForwardedChain`, the `TestNATDetector*` set and
+`TestNATWarningIsLoggedOnceAndSuppressedForAnExemptAddress`
+(`internal/panel/api`), plus
+`TestRateLimitModesEnableExactlyTheirOwnLimiters`,
+`TestLoadRefusesAnUnknownRateLimitMode` and
+`TestLoadRejectsAnUnparseableRateLimitSkipEntry`
+(`internal/panel/config`).

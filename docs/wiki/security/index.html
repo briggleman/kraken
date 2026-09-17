@@ -218,11 +218,16 @@ Pulls so your origin only answers Cloudflare, not anyone who learned its
 address. <a href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a> has the exact
 configuration, and the failure mode that looks like a certificate problem and is
 not.</p>
-<p><strong>4. Leave the rate limiters on.</strong> <code>KRAKEN_RATE_LIMITS</code> defaults to <code>on</code>:
+<p><strong>4. Leave the rate limiters on.</strong> <code>KRAKEN_RATE_LIMITS</code> defaults to <code>all</code>:
 login at 20 a minute with a burst of 20, download-token redemption at 30 a
 minute with a burst of 10, keyed per client with &quot;<strong>IPv6 … aggregated to the
-/64</strong>&quot;. Turn them off only for an edge that already does this, and know the
-Panel logs that loudly at startup when you do.</p>
+/64</strong>&quot;, plus login failures at 10 a minute keyed on the submitted username,
+which needs no client address at all and so survives a NAT that erases one. The
+value can also be <code>login</code>, <code>downloads</code> or <code>off</code>, and anything else is a startup
+error. Turn a limiter off only for an edge that already does this, and know the
+Panel logs that loudly at startup when you do. If a NAT is the problem rather
+than the limiter, <code>KRAKEN_RATE_LIMIT_IP_SKIP</code> exempts the gateway from the
+per-address limiters without giving up the rest.</p>
 <p><strong>5. Decide your log level.</strong> <code>KRAKEN_LOG_LEVEL</code> defaults to <code>info</code>. Rejected
 download-token redemptions log at <code>debug</code> on purpose, since &quot;an unauthenticated
 caller chooses when they are written&quot;, and they are counted at every level as

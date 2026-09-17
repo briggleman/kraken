@@ -195,9 +195,19 @@ services:
       # redemptions and the other deliberately quiet per-request diagnostics.
       # KRAKEN_LOG_LEVEL: "debug"
 
-      # "off" disables the per-client limiters on login and download-token
-      # redemption, for an edge that already rate limits.
-      # KRAKEN_RATE_LIMITS: "off"
+      # Which limiters run: all (default) | login | downloads | off. Anything
+      # else is a startup error. "downloads" keeps the token-redemption limiter
+      # while an edge handles login; "off" is both.
+      # KRAKEN_RATE_LIMITS: "downloads"
+
+      # Addresses exempt from the PER-ADDRESS limiters (CIDRs, bare IPs ok).
+      # For a NAT that rewrites every source to one gateway — Docker Desktop's
+      # 192.168.65.1 — where a per-address bucket refuses the whole internet at
+      # once. Login is still limited per username there, so this is not a way
+      # to stop limiting. It is NOT a trust list: KRAKEN_TRUSTED_PROXIES is
+      # what decides whose X-Forwarded-For is believed, and putting a gateway
+      # in that one hands header-forging to your whole LAN.
+      # KRAKEN_RATE_LIMIT_IP_SKIP: "192.168.65.1"
 
       KRAKEN_QUICKSTART: "true"
       KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090

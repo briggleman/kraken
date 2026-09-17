@@ -1,6 +1,6 @@
 ---
 title: Behind a reverse proxy
-description: Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works.
+description: Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, what still protects you when it does, and the exact Authenticated Origin Pulls configuration that works.
 section: configure
 order: 22
 ---
@@ -87,6 +87,51 @@ The fix is a shorter path, not a wider trust list:
 3. Trust the **Docker network's subnet**, which only containers on it can
    originate from: `KRAKEN_TRUSTED_PROXIES=172.18.0.0/16` (read your own with
    `docker network inspect <name>`).
+
+The Panel will tell you when it is in this hole. If no trusted proxy is
+configured and the first twenty audited requests all resolve to the same
+private address, it logs one warning naming that address and pointing back at
+this page. Once per process, and never once it has seen two callers apart.
+
+### when you cannot take the shorter path
+
+Some topologies genuinely cannot: a published port is the only way in, and the
+real address is gone before the Panel sees a byte. Two things make that
+survivable.
+
+**Login is limited per username as well as per address**, at ten failures a
+minute per account, counting failures only. That limiter owes nothing to the
+network, so password guessing is still capped when the Panel cannot tell one
+caller from another. It is the reason `KRAKEN_RATE_LIMITS=off` is no longer the
+only advice here. See [limits and
+logging](/wiki/configure/limits-and-logging/).
+
+**The gateway can be exempted from the per-address limiters** without turning
+limiting off:
+
+```sh
+KRAKEN_RATE_LIMIT_IP_SKIP=192.168.65.1
+```
+
+An address that stands in for everybody is not a client, and a bucket on it
+refuses the whole internet at once. Exempt it, keep the per-username limiter,
+and keep the download-token limiter — which never had this problem, since its
+key is a credential and not an address.
+
+:::warning
+Exempting an address is not trusting it. `KRAKEN_RATE_LIMIT_IP_SKIP` takes an
+address out of a *limit*; `KRAKEN_TRUSTED_PROXIES` decides whose
+`X-Forwarded-For` is *believed*. Putting the gateway in the second one hands
+header-forging to everyone on your LAN, as above. The first one gives away
+nothing but a rate limit that was refusing everybody anyway.
+:::
+
+**Audit rows keep the chain.** When the resolved address is private or
+exempted, the row also stores the raw `X-Forwarded-For` exactly as received, and
+the audit log shows it on the source column as `· fwd` with the chain on hover.
+Behind Cloudflare → a proxy → a published port, the visitor's true address is in
+that chain and nowhere else the Panel can reach. It is written by the caller, so
+it is forensics and never proof: nothing in the Panel decides anything on it.
 
 My own view: Docker Desktop is the wrong place to run an internet-facing Panel
 at all. Its port publishing is a NAT you cannot see into, and the first thing it

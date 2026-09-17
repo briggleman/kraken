@@ -92,13 +92,27 @@ type Server struct {
 
 	// Per-client limiters on the two surfaces an unauthenticated stranger can
 	// reach: download-token redemption and login (see ratelimit.go).
-	downloadLimit *rateLimiter
-	loginLimit    *rateLimiter
+	// loginUserLimit is the second axis on the login side — keyed on the
+	// submitted username, counting failures only — so password guessing is
+	// still slowed on a deployment where every request resolves to one NAT
+	// gateway and the per-IP bucket is shared by the whole internet.
+	downloadLimit  *rateLimiter
+	loginLimit     *rateLimiter
+	loginUserLimit *rateLimiter
 
 	// trustedProxies is the parsed KRAKEN_TRUSTED_PROXIES allowlist. Empty (the
 	// default) means no forwarding header is believed and every caller is its
 	// real TCP peer — see clientip.go.
 	trustedProxies []*net.IPNet
+
+	// rateLimitSkipNets is the parsed KRAKEN_RATE_LIMIT_IP_SKIP list: resolved
+	// client addresses the per-IP limiters do not apply to.
+	rateLimitSkipNets []*net.IPNet
+
+	// nat watches the first handful of resolved client addresses and warns once
+	// if they are all the same private address — the signature of a NAT that
+	// has erased the client (see natwarn.go).
+	nat natDetector
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -147,8 +161,10 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		downloads:  newDownloadTokenRegistry(),
 
 		downloadLimit: newRateLimiter("download", downloadRedeemPerMinute, downloadRedeemBurst,
-			cfg.RateLimitsEnabled()),
-		loginLimit: newRateLimiter("login", loginPerMinute, loginBurst, cfg.RateLimitsEnabled()),
+			cfg.DownloadRateLimitsEnabled()),
+		loginLimit: newRateLimiter("login", loginPerMinute, loginBurst, cfg.LoginRateLimitsEnabled()),
+		loginUserLimit: newUsernameLimiter("login_user", loginUserPerMinute, loginUserBurst,
+			cfg.LoginRateLimitsEnabled()),
 	}
 	// A brute-force flood never reaches handleLogin, which is what audits a
 	// failed attempt — so the limiter leaves the row itself, once per client
@@ -200,10 +216,31 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		logger.Info("trusting reverse-proxy forwarding headers from these networks",
 			"networks", cfg.TrustedProxies)
 	}
-	if !cfg.RateLimitsEnabled() {
+	// Addresses the per-IP limiters do not apply to. Same refusal-on-typo
+	// reasoning as the trusted-proxy list, and the same reason to say so here:
+	// config.Load stops the process on an entry that does not parse, so this
+	// path only covers a directly-constructed config.
+	if err := config.ValidateCIDRList(cfg.RateLimitIPSkip); err != nil {
+		logger.Error("KRAKEN_RATE_LIMIT_IP_SKIP has an entry that does not parse — it is "+
+			"skipped; config.Load refuses this list outright", "err", err)
+	}
+	s.rateLimitSkipNets = s.parseCIDRList(cfg.RateLimitIPSkip, "KRAKEN_RATE_LIMIT_IP_SKIP")
+	if len(s.rateLimitSkipNets) > 0 {
+		logger.Info("these networks are exempt from the per-IP rate limiters; login there "+
+			"is limited per username instead", "networks", cfg.RateLimitIPSkip)
+	}
+	switch cfg.RateLimitMode() {
+	case config.RateLimitsOff:
 		logger.Warn("rate limiting is DISABLED (KRAKEN_RATE_LIMITS=off) — login and " +
 			"download-token redemption will accept unlimited requests per client")
+	case config.RateLimitsLogin:
+		logger.Warn("only the login rate limiters are on (KRAKEN_RATE_LIMITS=login) — " +
+			"download-token redemption will accept unlimited requests per client")
+	case config.RateLimitsDownloads:
+		logger.Warn("only the download rate limiter is on (KRAKEN_RATE_LIMITS=downloads) — " +
+			"login will accept unlimited attempts per client and per username")
 	}
+	s.nat.arm(len(cfg.TrustedProxies) == 0)
 	// Reverse-tunnel listener, if enabled and there is a CA to authenticate
 	// agents against. Built before the pool so the pool can route tunnel
 	// targets through it.

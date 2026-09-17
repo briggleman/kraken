@@ -1,18 +1,20 @@
 ---
 title: Limits and logging
-description: The two rate limiters and their numbers, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down.
+description: The three rate limiters and their numbers, the per-username limiter that works when the client address does not, the body caps, what the Panel logs at each level, and the Prometheus metrics that show you refusals without turning the log level down.
 section: configure
 order: 24
 ---
 
 ## Rate limits
 
-The Panel limits the two things an unauthenticated caller can reach:
+The Panel limits the two things an unauthenticated caller can reach, and limits
+login along a second axis that needs no address at all:
 
-| what | rate | burst |
-| --- | --- | --- |
-| download-token redemption | 30/min | 10 |
-| `POST /auth/login` | 20/min | 20 |
+| what | keyed on | rate | burst |
+| --- | --- | --- | --- |
+| download-token redemption | client address | 30/min | 10 |
+| `POST /auth/login` | client address | 20/min | 20 |
+| login + change-password **failures** | submitted username | 10/min | 10 |
 
 A refusal is a **429** in the ordinary JSON error envelope with `Retry-After`,
 and a refused request does not consume future capacity.
@@ -32,18 +34,77 @@ passed over, so filling the table is not a way to buy back a spent bucket.
 
 "Per client" means whatever [`clientIP`](/wiki/configure/reverse-proxy/)
 resolves to. Behind a proxy with no `KRAKEN_TRUSTED_PROXIES` set, that is *the
-proxy*, for everybody, and both limiters become one shared bucket a stranger can
-exhaust for the whole fleet. Of the ways to misconfigure a Panel, it is the one
-I would check first.
+proxy*, for everybody, and the per-address limiters become one shared bucket a
+stranger can exhaust for the whole fleet. Of the ways to misconfigure a Panel,
+it is the one I would check first.
+
+## The per-username login limiter
+
+The address-keyed limiter has a topology it cannot survive. On Docker Desktop
+every connection to a published port arrives rewritten to the VM gateway
+`192.168.65.1` — including the connections a reverse proxy on the same host
+publishes — so the Panel resolves the entire internet to one address. The login
+bucket is then twenty attempts a minute for everybody at once: protective of
+nobody, and a self-inflicted lockout the first time a stranger finds the login
+page. [Behind a reverse proxy](/wiki/configure/reverse-proxy/) has the full
+story and the fix.
+
+So login is limited on a second key that owes nothing to the network: **the
+submitted username**, normalised (trimmed, lower-cased), at ten a minute with a
+burst of ten. Three things about it are worth knowing:
+
+- **It counts failures only.** A correct password spends nothing. Somebody
+  guessing at your username cannot keep you out of your own Panel by exhausting
+  a budget you never touch — they can only keep *themselves* out, which is the
+  point.
+- **It applies to every submitted username, whether or not the account
+  exists.** A 429 that came back only for real accounts would answer "does this
+  user exist?" for anybody patient enough to ask eleven times.
+- **`POST /auth/change-password` spends the same budget**, keyed on the
+  authenticated user, when the *current* password is wrong. That route verifies
+  a password exactly as login does, so leaving it outside would make a stolen
+  session the way around the login limiter. The consequence is worth stating
+  plainly: fumble your current password ten times on the change-password screen
+  and your own sign-in is refused for the rest of that minute.
+
+A brute-force against one account is therefore slowed even when the Panel has
+no idea who is calling, and every other account carries on unaffected.
+
+### exempting an address the per-IP limit cannot help
+
+```sh
+KRAKEN_RATE_LIMIT_IP_SKIP=192.168.65.1
+```
+
+A comma-separated list of CIDRs (bare IPs allowed) whose resolved client address
+is exempt from **the per-address limiters**. It exists for exactly the situation
+above: an address that stands in for everybody is not a client, and limiting it
+refuses the whole internet together rather than refusing anyone in particular.
+
+It does **not** exempt anything from the per-username limiter, which is what
+makes it safe to set: password guessing is still capped at ten a minute per
+account. An unparseable entry is a startup error, the same as
+`KRAKEN_TRUSTED_PROXIES`.
+
+Reach for the shared-Docker-network fix first. This is for when you cannot.
 
 ### the off switch
 
 ```sh
-KRAKEN_RATE_LIMITS=off
+KRAKEN_RATE_LIMITS=all        # the default; "on" is accepted as its old spelling
+KRAKEN_RATE_LIMITS=login      # the login limiters only
+KRAKEN_RATE_LIMITS=downloads  # the download-token limiter only
+KRAKEN_RATE_LIMITS=off        # neither
 ```
 
-Disables both limiters, logged loudly at startup, for an edge that already does
-this. Anything other than `off` leaves them on, which is the default.
+Anything else is a **startup error**: every value here is a deliberate posture,
+and a typo must not be read as one of them. Anything other than `all` is logged
+loudly at startup.
+
+The switch is split because the two surfaces fail differently. The advice for a
+Panel behind a NAT that erases the client used to be `off`, which threw away the
+token-redemption limiter as well — a limiter that has no such problem, since it
+guards a credential nobody shares.
 
 ## Body caps
 
@@ -116,10 +177,16 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.
 | `kraken_download_tokens_rejected_total` | refused download-token redemptions |
 | `kraken_rate_limited_total` | refusals, per limiter |
 
+`kraken_rate_limited_total` carries a `limiter` label: `download`, `login` (the
+per-address one) and `login_user` (the per-username one). A spike on
+`login_user` with nothing on `login` is somebody working through one account
+from many addresses — or from behind a NAT, where `login` cannot see them apart
+in the first place.
+
 The last two are why the quiet `Debug` lines are also counted: they give an
 operator the signal without turning the log level down. A 429'd login never
 reaches the handler that audits a failed attempt, so the limiter writes that row
-itself, once per client per window rather than once per request.
+itself, once per key per window rather than once per request.
 
 :::note
 A steady trickle on `kraken_download_tokens_rejected_total` is somebody probing,

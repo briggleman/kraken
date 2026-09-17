@@ -271,7 +271,8 @@ description.</p>
 <div class="tbl"><table class="envs">
 <thead><tr><th>variable</th><th>what it does</th></tr></thead>
 <tbody>
-<tr><td><code>KRAKEN_RATE_LIMITS</code><span class="def">default <b>on</b></span></td><td>RateLimits is the escape hatch for the per-IP limiters on login and the token-redemption downloads: &quot;off&quot; disables both (logged loudly at startup). Anything else leaves them on, which is the default.</td></tr>
+<tr><td><code>KRAKEN_RATE_LIMITS</code><span class="def">default <b>all</b></span></td><td>RateLimits selects which limiters run: &quot;all&quot; (the default; &quot;on&quot; is the historical alias), &quot;login&quot; for the login-side limiters only, &quot;downloads&quot; for the token-redemption limiter only, or &quot;off&quot; for neither — each logged loudly at startup when it is not &quot;all&quot;. The switch is split because the two surfaces fail differently: behind a NAT that erases the client address the per-IP login bucket is shared by the whole internet and an operator may want it out of the way, while the redemption limiter is still worth having. An unrecognized value is a startup error.</td></tr>
+<tr><td><code>KRAKEN_RATE_LIMIT_IP_SKIP</code><span class="def">default <span class="nil">unset</span></span></td><td>RateLimitIPSkip lists the CIDRs (bare IPs allowed) whose resolved client address is EXEMPT from the per-IP limiters. It exists for one situation: a NAT that rewrites every source address to one gateway — Docker Desktop&#39;s 192.168.65.1 is the case that prompted it — where the per-IP bucket is not a limit on anybody in particular and locks the whole internet out together. Exempting that address leaves the per-username login limiter, which needs no IP at all, doing the real work. Empty by default, and not a substitute for naming a real proxy in KRAKEN_TRUSTED_PROXIES.</td></tr>
 </tbody>
 </table></div>
 

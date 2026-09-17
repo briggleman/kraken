@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Behind a reverse proxy — Kraken wiki</title>
-<meta name="description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<meta name="description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, what still protects you when it does, and the exact Authenticated Origin Pulls configuration that works." />
 <link rel="canonical" href="https://krakenserver.io/wiki/configure/reverse-proxy/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/configure/reverse-proxy/" />
 <meta property="og:title" content="Behind a reverse proxy — Kraken wiki" />
-<meta property="og:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<meta property="og:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, what still protects you when it does, and the exact Authenticated Origin Pulls configuration that works." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Behind a reverse proxy — Kraken wiki" />
-<meta name="twitter:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works." />
+<meta name="twitter:description" content="Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, what still protects you when it does, and the exact Authenticated Origin Pulls configuration that works." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,10 +110,11 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Behind a reverse proxy</span></nav>
     <h1>Behind a reverse proxy</h1>
-    <p class="lede">Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, and the exact Authenticated Origin Pulls configuration that works.</p>
+    <p class="lede">Nginx Proxy Manager, Caddy or Cloudflare in front of the Panel — what KRAKEN_TRUSTED_PROXIES actually does, why Docker Desktop erases every client address, what still protects you when it does, and the exact Authenticated Origin Pulls configuration that works.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#what-clientip-does">What <code>clientIP</code> does</a>
 <a class="toc-link lvl-2" href="#docker-desktop-erases-the-client-address">Docker Desktop erases the client address</a>
+<a class="toc-link lvl-3" href="#when-you-cannot-take-the-shorter-path">when you cannot take the shorter path</a>
 <a class="toc-link lvl-2" href="#nginx-proxy-manager">Nginx Proxy Manager</a>
 <a class="toc-link lvl-2" href="#caddy">Caddy</a>
 <a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>
@@ -197,6 +198,44 @@ rather than to <code>host.docker.internal</code> or a published port.</li>
 originate from: <code>KRAKEN_TRUSTED_PROXIES=172.18.0.0/16</code> (read your own with
 <code>docker network inspect &lt;name&gt;</code>).</li>
 </ol>
+<p>The Panel will tell you when it is in this hole. If no trusted proxy is
+configured and the first twenty audited requests all resolve to the same
+private address, it logs one warning naming that address and pointing back at
+this page. Once per process, and never once it has seen two callers apart.</p>
+<h3 id="when-you-cannot-take-the-shorter-path">when you cannot take the shorter path <a class="hlink" href="#when-you-cannot-take-the-shorter-path" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>Some topologies genuinely cannot: a published port is the only way in, and the
+real address is gone before the Panel sees a byte. Two things make that
+survivable.</p>
+<p><strong>Login is limited per username as well as per address</strong>, at ten failures a
+minute per account, counting failures only. That limiter owes nothing to the
+network, so password guessing is still capped when the Panel cannot tell one
+caller from another. It is the reason <code>KRAKEN_RATE_LIMITS=off</code> is no longer the
+only advice here. See <a href="/wiki/configure/limits-and-logging/">limits and
+logging</a>.</p>
+<p><strong>The gateway can be exempted from the per-address limiters</strong> without turning
+limiting off:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMIT_IP_SKIP=192.168.65.1</code></pre></div>
+<p>An address that stands in for everybody is not a client, and a bucket on it
+refuses the whole internet at once. Exempt it, keep the per-username limiter,
+and keep the download-token limiter — which never had this problem, since its
+key is a credential and not an address.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p>Exempting an address is not trusting it. <code>KRAKEN_RATE_LIMIT_IP_SKIP</code> takes an
+address out of a <em>limit</em>; <code>KRAKEN_TRUSTED_PROXIES</code> decides whose
+<code>X-Forwarded-For</code> is <em>believed</em>. Putting the gateway in the second one hands
+header-forging to everyone on your LAN, as above. The first one gives away
+nothing but a rate limit that was refusing everybody anyway.</p>
+</div>
+</aside>
+
+
+<p><strong>Audit rows keep the chain.</strong> When the resolved address is private or
+exempted, the row also stores the raw <code>X-Forwarded-For</code> exactly as received, and
+the audit log shows it on the source column as <code>· fwd</code> with the chain on hover.
+Behind Cloudflare → a proxy → a published port, the visitor&#39;s true address is in
+that chain and nowhere else the Panel can reach. It is written by the caller, so
+it is forensics and never proof: nothing in the Panel decides anything on it.</p>
 <p>My own view: Docker Desktop is the wrong place to run an internet-facing Panel
 at all. Its port publishing is a NAT you cannot see into, and the first thing it
 costs you is the client address that three security decisions depend on. If the
@@ -333,6 +372,7 @@ firewall</a>.</li>
     <div class="toc">
 <a class="toc-link lvl-2" href="#what-clientip-does">What <code>clientIP</code> does</a>
 <a class="toc-link lvl-2" href="#docker-desktop-erases-the-client-address">Docker Desktop erases the client address</a>
+<a class="toc-link lvl-3" href="#when-you-cannot-take-the-shorter-path">when you cannot take the shorter path</a>
 <a class="toc-link lvl-2" href="#nginx-proxy-manager">Nginx Proxy Manager</a>
 <a class="toc-link lvl-2" href="#caddy">Caddy</a>
 <a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>

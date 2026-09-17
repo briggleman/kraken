@@ -105,11 +105,14 @@ install leaves the server exactly where it was — `running`, with the reason in
 refused with a `503` naming the node instead of starting a pass that cannot run.
 
 :::note
-A transient `1 untracked` during an install or update pass is **normal**. The
-one-shot install container carries the same managed label the game container
-does, so while it runs the node is running one more than the Panel counts. It
-clears when the pass ends. It is only the badge that persists that means
-something.
+On an Agent older than 0.54.0, a transient `1 untracked` during an install or
+update pass is **normal**. The one-shot install container carries the same
+managed label the game container does, so while it runs the node is running one
+more than the Panel counts, and it clears when the pass ends. From Agent 0.54.0
+the Agent names its containers and the Panel matches the install container to
+the row it belongs to, so the badge no longer appears for a pass at all, and
+when it does appear its tooltip names the container. Either way it is only the
+badge that persists that means something.
 :::
 
 ## Cloudflare returns 400 `The SSL certificate error`

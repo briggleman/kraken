@@ -15,13 +15,12 @@
 //      Abyssal design language (see docs/wiki/assets/wiki.css)
 //   3. derives the sidebar nav, the breadcrumb, the on-page TOC, and the
 //      prev/next pager from the source tree + front-matter
-//   4. injects the three GENERATED references wherever a page carries the
+//   4. injects the two GENERATED references wherever a page carries the
 //      matching marker:
 //        <!-- generated:panel-env -->   the Panel's KRAKEN_* variables, parsed
 //                                       out of internal/panel/config/config.go
 //        <!-- generated:api -->         the REST surface, parsed out of
 //                                       internal/panel/api/openapi.yaml
-//        <!-- generated:changelog -->   the release history, from CHANGELOG.md
 //   5. writes docs/wiki/sitemap.xml
 //
 // Determinism is load-bearing: no timestamps, no build ids, stable ordering,
@@ -58,7 +57,6 @@ const outDir = resolve(repoRoot, "docs", "wiki");
 const configGo = resolve(repoRoot, "internal", "panel", "config", "config.go");
 const versionGo = resolve(repoRoot, "internal", "shared", "version", "version.go");
 const openapiYaml = resolve(repoRoot, "internal", "panel", "api", "openapi.yaml");
-const changelogMd = resolve(repoRoot, "CHANGELOG.md");
 
 const SITE = "https://krakenserver.io";
 const BASE = "/wiki/";
@@ -647,73 +645,6 @@ function apiMarkdown() {
   return out.join("\n");
 }
 
-// ------------------------------------------ GENERATED: the release history
-//
-// CHANGELOG.md is written by release-please from the squashed commit subjects,
-// so the page is that file rendered rather than a second account of it. The
-// version headings become stable `#v0-52-0` anchors and are deliberately NOT
-// collected into the on-this-page rail: eighty-odd releases is a list nobody
-// navigates by.
-
-function changelogMarkdown() {
-  const src = lf(readFileSync(changelogMd, "utf8"));
-  const lines = src.split("\n");
-  const releases = [];
-  let rel = null;
-  let group = null;
-
-  for (const line of lines) {
-    const head = /^## \[?([0-9][^\]\s]*)\]?(?:\(([^)]+)\))?\s*(?:\(([^)]+)\))?\s*$/.exec(line);
-    if (head) {
-      rel = { version: head[1], compare: head[2] ?? "", date: head[3] ?? "", groups: [] };
-      releases.push(rel);
-      group = null;
-      continue;
-    }
-    if (!rel) continue;
-    const sub = /^###+\s+(.*\S)\s*$/.exec(line);
-    if (sub) {
-      group = { title: sub[1], items: [] };
-      rel.groups.push(group);
-      continue;
-    }
-    const item = /^\s*[*-]\s+(.*\S)\s*$/.exec(line);
-    if (item) {
-      if (!group) {
-        group = { title: "", items: [] };
-        rel.groups.push(group);
-      }
-      group.items.push(item[1]);
-    }
-  }
-  if (!releases.length) die("CHANGELOG.md: no version headings found — the release renderer has nothing to render");
-
-  const out = [];
-  for (const r of releases) {
-    const id = "v" + r.version.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    // Only an absolute https URL becomes a link. The source is release-please's
-    // own output, but an href is the one place on this page where a string from
-    // a file would become a scheme, and "compare" has exactly one shape.
-    const compare = /^https:\/\/[^\s"'<>]+$/.test(r.compare) ? r.compare : "";
-    const parts = [`<div class="rel" id="${esc(id)}">`];
-    parts.push(
-      `<div class="rel-h"><span class="rel-v">${esc(r.version)}</span>` +
-        (r.date ? `<span class="rel-d">${esc(r.date)}</span>` : "") +
-        (compare ? `<a class="rel-c" href="${esc(compare)}">compare</a>` : "") +
-        "</div>",
-    );
-    for (const g of r.groups) {
-      if (g.title) parts.push(`<div class="rel-k">${esc(g.title)}</div>`);
-      parts.push("<ul class=\"rel-l\">");
-      for (const item of g.items) parts.push(`<li>${inlineSafe(item)}</li>`);
-      parts.push("</ul>");
-    }
-    parts.push("</div>");
-    out.push(parts.join(""), "");
-  }
-  return out.join("\n");
-}
-
 // ------------------------------------------------------------- markdown
 
 /**
@@ -980,7 +911,6 @@ function renderPage({ page, nav, byUrl, version }) {
   for (const [marker, build] of [
     ["<!-- generated:panel-env -->", panelEnvMarkdown],
     ["<!-- generated:api -->", apiMarkdown],
-    ["<!-- generated:changelog -->", changelogMarkdown],
   ]) {
     if (body.includes(marker)) body = body.replace(marker, build());
   }

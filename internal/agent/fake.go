@@ -136,25 +136,33 @@ func (f *FakeRuntime) getState(serverID string) agentpb.ServerState {
 
 func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 	f.mu.Lock()
-	running := 0
-	for _, st := range f.states {
+	// The running set named as well as counted, exactly as the Docker runtime
+	// reports it — the two are built from one walk here for the same reason they
+	// come from one container list there: a count that disagrees with its own
+	// list would show up as drift the Panel invented.
+	var managed []*agentpb.ManagedContainer
+	for id, st := range f.states {
 		if st == agentpb.ServerState_SERVER_STATE_RUNNING {
-			running++
+			managed = append(managed, &agentpb.ManagedContainer{ServerId: id, ContainerName: "kraken_" + id})
 		}
 	}
 	f.mu.Unlock()
+	// Map order is random; sort so a test reading the list twice reads it the same
+	// way, and so the Panel's set comparison isn't handed gratuitous churn.
+	sort.Slice(managed, func(i, j int) bool { return managed[i].ServerId < managed[j].ServerId })
 	return &agentpb.NodeInfo{
-		NodeId:         f.nodeID,
-		Os:             f.os,
-		WineEnabled:    f.wineEnabled,
-		AgentVersion:   f.version,
-		BinarySha256:   f.binarySHA, // empty unless WithFakeBinarySHA was used
-		TotalMemoryMb:  16384,
-		RunningServers: int32(running),
-		Host:           PrimaryIP(),
-		HostAddresses:  CandidateIPs(),
-		ExternalIp:     "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
-		RuntimeStatus:  agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
+		NodeId:            f.nodeID,
+		Os:                f.os,
+		WineEnabled:       f.wineEnabled,
+		AgentVersion:      f.version,
+		BinarySha256:      f.binarySHA, // empty unless WithFakeBinarySHA was used
+		TotalMemoryMb:     16384,
+		RunningServers:    int32(len(managed)),
+		ManagedContainers: managed,
+		Host:              PrimaryIP(),
+		HostAddresses:     CandidateIPs(),
+		ExternalIp:        "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
+		RuntimeStatus:     agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
 	}, nil
 }
 

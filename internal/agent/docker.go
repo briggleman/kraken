@@ -677,8 +677,28 @@ func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error)
 	running, _ := d.cli.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("label", labelManaged+"=true")),
 	})
+	// The count and the list are the same query read two ways, so they can never
+	// disagree: the count is what an older Panel reads, the list is what lets a
+	// current one name the container it has no row for. The server id comes from
+	// the label the runtime writes at create time rather than from the name, so a
+	// container renamed by hand still identifies itself.
 	out.RunningServers = int32(len(running))
+	for _, c := range running {
+		out.ManagedContainers = append(out.ManagedContainers, &agentpb.ManagedContainer{
+			ServerId:      c.Labels[labelServerID],
+			ContainerName: containerDisplayName(c.Names),
+		})
+	}
 	return out, nil
+}
+
+// containerDisplayName is the name Docker would print for a container: the first
+// of its names with the leading slash stripped. Empty when Docker reported none.
+func containerDisplayName(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(names[0], "/")
 }
 
 func (d *DockerRuntime) Create(ctx context.Context, spec *agentpb.ServerSpec) error {

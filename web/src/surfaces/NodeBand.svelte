@@ -65,6 +65,21 @@
   // the drift is information about the fleet either way.
   const drift = $derived(agentDrift(node));
   const containers = $derived(containerDrift(node));
+  // The drifting containers, named. Inline only while the line stays readable —
+  // past three the badge keeps its count and the title carries the roll call,
+  // each entry as name plus server id so it can be matched to a row or to
+  // `docker ps` without guessing which half is which.
+  const driftNames = $derived(
+    containers && containers.items.length > 0 && containers.items.length <= 3
+      ? containers.items.map((c) => c.label).join(", ")
+      : "",
+  );
+  const driftTitle = $derived(
+    containers && containers.items.length > 0
+      ? `${containers.word}: ` +
+          containers.items.map((c) => `${c.label} (${c.server_id})`).join(", ")
+      : undefined,
+  );
 
   // One state at a time, named, so the CSS can grant the sweep to the two idle
   // states rather than revoke it from the three busy ones. "rest" and "ahead"
@@ -272,9 +287,12 @@
     {/if}
     {#if containers}
       <!-- The one comparison that runs from the agent's own count inward. A
-           surplus is holding memory and ports the scheduler believes are free. -->
-      <span class="node-meta node-cond container-drift">
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>
+           surplus is holding memory and ports the scheduler believes are free.
+           An agent that names its containers turns the count into something an
+           operator can act on: up to three read inline, more stay in the title,
+           and an agent too old to name them leaves both empty. -->
+      <span class="node-meta node-cond container-drift" title={driftTitle}>
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if driftNames}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{driftNames}</b>{/if}
       </span>
     {/if}
     <span class="node-actions">

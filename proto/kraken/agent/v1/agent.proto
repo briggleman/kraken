@@ -443,6 +443,20 @@ message NodeInfo {
   // Panel over its reverse tunnel and therefore survives a failed bind, so
   // without this the conflict is invisible outside the node's own agent.log.
   string listen_error = 17;
+  // Every `kraken.managed` container the Agent currently sees running, named.
+  // `running_servers` above is the same set counted, and stays authoritative for
+  // an Agent too old to fill this in; the list is what lets the Panel say *which*
+  // container it has lost track of instead of only how many.
+  repeated ManagedContainer managed_containers = 18;
+}
+
+// ManagedContainer is one running `kraken.managed` container as the Agent sees
+// it: the server id from the container's own label, and the container name.
+// Both are reported because the id is what the Panel matches against its rows
+// and the name is what an operator types into `docker`.
+message ManagedContainer {
+  string server_id = 1;
+  string container_name = 2;
 }
 
 // HostAddress is one interface/IPv4 pair on the agent host.

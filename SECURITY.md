@@ -880,7 +880,11 @@ not read as one of them.
 first twenty audited requests all resolve to the same private, loopback or
 link-local address, it logs one Warn naming that address and pointing at the
 reverse-proxy page. Once per process, disarmed as soon as two distinct callers
-are seen, and suppressed for an address already in the skip list.
+are seen, and suppressed for an address already in the skip list. The Warn
+states the observation and **both** readings rather than asserting the NAT: a
+single admin on the LAN, or on a localhost dev Panel, produces the same twenty
+samples, and telling them to trust a proxy network that does not exist would be
+a misconfiguration talked into existence by a log line.
 
 **Audit rows keep the forwarded chain when, and only when, the resolved address
 identifies nobody** — a private/gateway address, or one in the skip list. The

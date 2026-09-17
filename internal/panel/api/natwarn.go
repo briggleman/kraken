@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net"
 	"sync"
 )
@@ -93,11 +94,20 @@ func (s *Server) noteClientIP(addr string) {
 	if !s.nat.observe(addr) {
 		return
 	}
-	s.logger.Warn("every request so far resolves to one private address — a NAT in front "+
-		"of the Panel is erasing the client, so per-IP rate limiting protects nobody and "+
-		"the audit log records this address for everyone. Proxy to the Panel over a shared "+
-		"Docker network and name that network in KRAKEN_TRUSTED_PROXIES, or exempt this "+
-		"address with KRAKEN_RATE_LIMIT_IP_SKIP and rely on the per-username login limiter",
+	// State what was observed, then BOTH readings of it. The heuristic cannot
+	// tell a NAT that erased every client from a Panel with one operator on it,
+	// and a single admin working from the LAN or from localhost produces the
+	// same twenty samples. Asserting the NAT would be wrong for them, and the
+	// fix it names — trusting a proxy network that is not there — would be a
+	// misconfiguration talked into existence by a log line.
+	s.logger.Warn(fmt.Sprintf("the first %d audited requests all came from one private "+
+		"address. If more than one person reaches this Panel, a NAT — Docker Desktop's "+
+		"published-port gateway, for one — is rewriting every client to that address: "+
+		"per-IP rate limits then protect nobody and the audit log records it for everyone. "+
+		"Fix: proxy to the Panel over a shared Docker network and name it in "+
+		"KRAKEN_TRUSTED_PROXIES, or exempt the address with KRAKEN_RATE_LIMIT_IP_SKIP and "+
+		"rely on the per-username login limiter. If you are the only client, this is "+
+		"expected and needs nothing.", natSampleSize),
 		"client", addr, "samples", natSampleSize,
 		"docs", "https://krakenserver.io/wiki/configure/reverse-proxy/")
 }

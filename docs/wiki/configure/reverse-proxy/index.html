@@ -198,10 +198,17 @@ rather than to <code>host.docker.internal</code> or a published port.</li>
 originate from: <code>KRAKEN_TRUSTED_PROXIES=172.18.0.0/16</code> (read your own with
 <code>docker network inspect &lt;name&gt;</code>).</li>
 </ol>
-<p>The Panel will tell you when it is in this hole. If no trusted proxy is
+<p>The Panel will tell you when it might be in this hole. If no trusted proxy is
 configured and the first twenty audited requests all resolve to the same
 private address, it logs one warning naming that address and pointing back at
 this page. Once per process, and never once it has seen two callers apart.</p>
+<p>It is phrased as an observation with two readings, because it cannot tell them
+apart and neither can anything else at that point: twenty requests from one
+private address is what a NAT erasing every client looks like, and it is also
+exactly what a Panel with one admin on the LAN looks like. <strong>If you are the only
+person who reaches this Panel, the warning is expected and wants nothing from
+you</strong> — and in particular, do not make it go away by naming a proxy network that
+is not there.</p>
 <h3 id="when-you-cannot-take-the-shorter-path">when you cannot take the shorter path <a class="hlink" href="#when-you-cannot-take-the-shorter-path" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <p>Some topologies genuinely cannot: a published port is the only way in, and the
 real address is gone before the Panel sees a byte. Two things make that

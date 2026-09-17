@@ -78,9 +78,11 @@ func TestNATDetectorIsDisarmedWhenAProxyIsTrusted(t *testing.T) {
 	}
 }
 
-// The warning reaches the log once, names the address and points at the page
-// that explains the fix — and stays quiet for an address the operator has
-// already exempted from the per-IP limiters, because they plainly know.
+// The warning reaches the log once, names the address, points at the page that
+// explains the fix, and — because the heuristic cannot tell a NAT from a Panel
+// with one operator on it — offers BOTH readings rather than asserting the
+// alarming one. It stays quiet for an address the operator has already
+// exempted from the per-IP limiters, because they plainly know.
 func TestNATWarningIsLoggedOnceAndSuppressedForAnExemptAddress(t *testing.T) {
 	logged := func(skip []string) string {
 		var buf bytes.Buffer
@@ -96,7 +98,7 @@ func TestNATWarningIsLoggedOnceAndSuppressedForAnExemptAddress(t *testing.T) {
 	}
 
 	out := logged(nil)
-	if n := strings.Count(out, "erasing the client"); n != 1 {
+	if n := strings.Count(out, natWarnMarker); n != 1 {
 		t.Fatalf("the NAT warning was logged %d times, want exactly 1:\n%s", n, out)
 	}
 	if !strings.Contains(out, "192.168.65.1") {
@@ -105,8 +107,20 @@ func TestNATWarningIsLoggedOnceAndSuppressedForAnExemptAddress(t *testing.T) {
 	if !strings.Contains(out, "reverse-proxy") {
 		t.Fatalf("the warning does not point at the docs:\n%s", out)
 	}
+	// Both readings, or the message is wrong for the single-operator Panel that
+	// produces exactly the same twenty samples — and the fix it names would be
+	// a misconfiguration talked into existence by a log line.
+	if !strings.Contains(out, "If more than one person reaches this Panel") {
+		t.Fatalf("the warning asserts the NAT rather than offering it as a reading:\n%s", out)
+	}
+	if !strings.Contains(out, "If you are the only client") {
+		t.Fatalf("the warning does not say the benign reading is expected:\n%s", out)
+	}
 
-	if out := logged([]string{"192.168.65.1"}); strings.Contains(out, "erasing the client") {
+	if out := logged([]string{"192.168.65.1"}); strings.Contains(out, natWarnMarker) {
 		t.Fatalf("warned about an address the operator had already exempted:\n%s", out)
 	}
 }
+
+// natWarnMarker is a phrase unique to the warning, used to count occurrences.
+const natWarnMarker = "rewriting every client to that address"

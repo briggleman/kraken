@@ -88,10 +88,18 @@ The fix is a shorter path, not a wider trust list:
    originate from: `KRAKEN_TRUSTED_PROXIES=172.18.0.0/16` (read your own with
    `docker network inspect <name>`).
 
-The Panel will tell you when it is in this hole. If no trusted proxy is
+The Panel will tell you when it might be in this hole. If no trusted proxy is
 configured and the first twenty audited requests all resolve to the same
 private address, it logs one warning naming that address and pointing back at
 this page. Once per process, and never once it has seen two callers apart.
+
+It is phrased as an observation with two readings, because it cannot tell them
+apart and neither can anything else at that point: twenty requests from one
+private address is what a NAT erasing every client looks like, and it is also
+exactly what a Panel with one admin on the LAN looks like. **If you are the only
+person who reaches this Panel, the warning is expected and wants nothing from
+you** — and in particular, do not make it go away by naming a proxy network that
+is not there.
 
 ### when you cannot take the shorter path
 

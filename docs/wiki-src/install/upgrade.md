@@ -1,6 +1,6 @@
 ---
 title: Upgrading
-description: How a release reaches your fleet — GitHub releases and GHCR images, why Agents go before Panels, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back.
+description: How a release reaches your fleet — GitHub releases and GHCR images, why the Panel goes first and pushes the Agents, what the Agent's self-update does when a new binary will not start, and which log to read when a node does not come back.
 section: install
 order: 14
 ---
@@ -11,29 +11,29 @@ beside them; container images are published to
 same run. The changelog is
 [CHANGELOG.md](https://github.com/briggleman/kraken/blob/main/CHANGELOG.md).
 
-## The rule: Agents before Panels
+## The order: Panel first, then the Agents from it
 
-**When a release changes the Agent↔Panel protocol, upgrade the Agents first,
-then the Panel.**
+**Upgrade the Panel, then push each node's Agent from the Panel.** There is no
+other order to choose. The Panel carries the Agent builds of its own release
+inside its binary, and the **update** action on the Nodes page is how an Agent
+moves from one version to the next: the Panel streams the matching build over
+the mTLS channel it already has, the Agent verifies the checksum, swaps its
+binary and restarts. An Agent cannot fetch a release on its own.
 
-The protocol is versioned by tolerance rather than negotiation. A new field
-arrives in a shape where an older Agent's zero value means "unknown" and the
-Panel falls back to what it did before. Tokenised downloads are the worked
-example: the Agent learned to announce a file's size on the first chunk, the
-Panel turns a non-zero size into `Content-Length`, and an Agent older than the
-field sends 0 throughout so the Panel behaves precisely as it did before. Get
-the order wrong and nothing breaks. You just do not get the new behaviour until
-both halves are current.
+That order is safe because the protocol is versioned by tolerance rather than
+negotiation. A new field arrives in a shape where an older Agent's zero value
+means "unknown", and the new Panel falls back to what the old one did.
+Tokenised downloads are the worked example: a current Agent announces a file's
+size on the first chunk and the Panel turns it into `Content-Length`; an Agent
+older than the field sends 0 throughout and the Panel behaves precisely as it
+did before. So a fleet is allowed to sit half-upgraded. Nothing breaks while a
+node still runs the previous Agent. You just do not get the new behaviour on
+that node until you push it.
 
-Which is the point of stating the order as a discipline: it is what keeps that
-tolerance cheap to maintain, release after release.
-
-It does cut against the in-Panel update button, so read this part twice. **The
-Panel can only push its own version.** It carries the Agent builds matching its
-own release inside the binary, so an Agent it updates lands on the Panel's
-version and no other. Agents-first therefore means upgrading them from their own
-installers, since `install.sh` and `install.ps1` pull from the GitHub release
-rather than from the Panel, before the new Panel starts.
+The corollary is worth reading twice: **the Panel can only push its own
+version.** An Agent it updates lands on the Panel's release and no other, which
+is why the Panel goes first. Nothing on the Nodes page can offer an update
+before the Panel itself has one.
 
 ## Panel: compose
 
@@ -85,7 +85,11 @@ people, and I would rather click four times than surprise four servers.
 
 ## Agents: from their own installer
 
-Which is what "Agents first" means in practice.
+The installers pull from the GitHub release rather than from the Panel. That is
+how a new node gets its first Agent, and it is the fallback for a node the Panel
+cannot push to: an Agent whose self-update rolled back, or one enrolled against
+a Panel that is not yet running the release you want on it. Re-running the
+installer over an existing Agent keeps its state directory and its certificate.
 
 ```sh
 # linux

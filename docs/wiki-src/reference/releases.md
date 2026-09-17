@@ -33,11 +33,13 @@ Pre-1.0 means the surface can move between minors. Read the entry before you
 upgrade a fleet you care about, and read
 [Upgrading](/wiki/install/upgrade/) before your first one.
 
-:::warning
-**Agents before Panels.** The Panel↔Agent protocol is versioned by tolerance,
-not negotiation: a new field arrives in a shape where an older Agent's zero
-value means "unknown" and the Panel falls back to its previous behaviour. Get
-the order wrong and nothing breaks — you simply do not get the new behaviour
-until both halves are current. Announced download lengths are the worked
+:::note
+**Panel first, then push the Agents from it.** The Panel carries the Agent
+builds of its own release and is the only thing that can install them, so the
+Nodes page offers an update per node once the Panel is current. The protocol is
+versioned by tolerance, not negotiation: a new field arrives in a shape where an
+older Agent's zero value means "unknown" and the new Panel falls back to its
+previous behaviour, so a half-upgraded fleet keeps working and each node gains
+the new behaviour when you push it. Announced download lengths are the worked
 example, and [Upgrading](/wiki/install/upgrade/) has the rest.
 :::

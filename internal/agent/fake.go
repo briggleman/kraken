@@ -11,6 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
@@ -45,6 +48,10 @@ type FakeRuntime struct {
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
 	installErr string
+	// powerErrs makes the named power actions fail instead of running (see
+	// WithFakePowerFailure). The recorded state is left alone, the way it is on
+	// a node the Panel cannot reach: the container goes on doing what it was.
+	powerErrs map[agentpb.PowerAction]string
 	// installDelay, when set, is how long each install step lingers, so the
 	// installing state is observable from a browser instead of flashing past
 	// in microseconds. The install-progress UI is otherwise unreachable on the
@@ -74,6 +81,21 @@ func WithFakeBinarySHA(sha string) FakeOption {
 // are reachable without a container runtime.
 func WithFakeInstallFailure(reason string) FakeOption {
 	return func(f *FakeRuntime) { f.installErr = reason }
+}
+
+// WithFakePowerFailure makes the given power action fail with
+// codes.Unavailable, the way one does when the Panel's channel to the node has
+// gone (a tunnel session that dropped, an Agent that is not answering). The
+// server's recorded state is untouched — that is the point: the game keeps
+// running while the Panel's call fails, which is the divergence the Panel's
+// update pass has to handle without lying about the install tree (#328).
+func WithFakePowerFailure(action agentpb.PowerAction, reason string) FakeOption {
+	return func(f *FakeRuntime) {
+		if f.powerErrs == nil {
+			f.powerErrs = make(map[agentpb.PowerAction]string)
+		}
+		f.powerErrs[action] = reason
+	}
 }
 
 // WithFakeInstallDelay makes every install step linger for d before the next
@@ -518,6 +540,12 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 }
 
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
+	f.mu.Lock()
+	reason, failing := f.powerErrs[action]
+	f.mu.Unlock()
+	if failing {
+		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, grpcstatus.Error(codes.Unavailable, reason)
+	}
 	var st agentpb.ServerState
 	switch action {
 	case agentpb.PowerAction_POWER_ACTION_START, agentpb.PowerAction_POWER_ACTION_RESTART:

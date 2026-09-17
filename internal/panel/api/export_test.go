@@ -1,6 +1,15 @@
 package api
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// ReconcileOnceForTest runs a single pass of the server reconciler, which the
+// Panel otherwise only runs on a ticker started by cmd/panel. It lets a test in
+// the black-box package assert what one pass does to the stored rows without
+// racing a background loop.
+func (s *Server) ReconcileOnceForTest(ctx context.Context) { s.reconcileOnce(ctx) }
 
 // DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
 // a test in the black-box package can walk up to the edge of one without

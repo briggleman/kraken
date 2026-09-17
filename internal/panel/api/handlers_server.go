@@ -309,6 +309,28 @@ func (s *Server) failServer(server *store.Server, reason string) {
 	s.installs.Finish(server.ID)
 }
 
+// abortUpdate ends a pre-start update pass that failed before it could touch
+// the install tree, putting the server back in the state it was in when the
+// pass was asked for (#328).
+//
+// This is deliberately NOT failServer. install_failed means "the install tree
+// is suspect", and it locks start/restart behind a reinstall — a fair price for
+// an installer that half-wrote a game, and a lie about a pass that never got
+// that far. The failures that land here (no route to the Agent, a stop that the
+// Agent never answered) say nothing about the tree: the container is exactly as
+// it was, which for the case that produced this is still running the game. So
+// the state goes back, the reason lands in last_error where the operator reads
+// it, and the retry is the button they already pressed.
+func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason string) {
+	s.logger.Error("update pass aborted before install", "id", sv.ID, "reason", reason, "state", prev)
+	s.installs.AppendError(sv.ID, "[panel] "+reason)
+	// State before Finish, for the reason failServer gives: a subscriber
+	// released by Finish reconnects immediately and should find the settled
+	// state rather than a still-installing one.
+	s.setServerState(sv.ID, prev, reason)
+	s.installs.Finish(sv.ID)
+}
+
 // setServerState reloads the server and updates only its state (plus the
 // provisioning error that travels with it), so a concurrent settings edit
 // during async install isn't clobbered by a stale write. lastError replaces
@@ -483,6 +505,18 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, "could not load hosting node")
 		return
 	}
+	// Refuse the whole action when the Panel cannot reach the node (#328).
+	//
+	// Without this, an update-on-start against an unreachable node answered 202
+	// and then flipped the server's state on the strength of a failure that had
+	// happened entirely on the Panel side — while the container on the node was
+	// still running the game. Nothing here can succeed without the Agent, so the
+	// operator is told now, and the stored state is left exactly as it is.
+	if lerr := s.ensureNodeLive(ctx, node); lerr != nil {
+		writeError(w, http.StatusServiceUnavailable,
+			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
+		return
+	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
@@ -503,6 +537,10 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 			// server already in `installing` — which gates a racing start and
 			// routes the console to the live install log for free.
 			if s.updatesOnStart(ctx, sv, sp, node) {
+				// The state to fall back to if the pass aborts before it has
+				// touched the install tree (see updateThenStart): captured here,
+				// because the next line overwrites it.
+				prev := sv.State
 				sv.State = store.StateInstalling
 				sv.LastError = ""
 				sv.LastExitCode, sv.LastExitCodeKnown = 0, false
@@ -511,7 +549,7 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 					return
 				}
 				s.logger.Info("server update-on-start requested", "id", sv.ID, "name", sv.Name, "action", req.Action)
-				go s.updateThenStart(sv, sp, node)
+				go s.updateThenStart(sv, sp, node, prev)
 				writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State, "updating": true})
 				return
 			}
@@ -591,13 +629,22 @@ func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.
 
 // updateThenStart runs the pre-start update pass and then starts the server.
 // Runs in its own goroutine with a background context (the pass outlives the
-// request that asked for it); the server is already in `installing`.
+// request that asked for it); the server is already in `installing`. prev is
+// the state it was in before that, for the phases that leave it untouched.
 //
-// A failed pass lands in install_failed with last_error set, exactly like a
-// failed create: the power handler then refuses start until a reinstall, which
-// is the right outcome — an update that half-wrote the install tree must not be
-// launched over.
-func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.Node) {
+// The three phases fail differently, and the difference is the whole point
+// (#328):
+//
+//   - Before the install — connecting to the Agent, the pre-update stop —
+//     nothing on the node has been touched, so the server goes back to prev
+//     with the reason in last_error. See abortUpdate.
+//   - The install itself — install_failed with last_error set, exactly like a
+//     failed create: the power handler then refuses start until a reinstall,
+//     which is the right outcome, since an update that half-wrote the install
+//     tree must not be launched over.
+//   - The start after a good install — offline. The tree is fine and a plain
+//     start can be retried.
+func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.Node, prev store.ServerState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -606,7 +653,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		s.failServer(sv, "connect agent: "+err.Error())
+		s.abortUpdate(sv, prev, "connect agent: "+err.Error())
 		return
 	}
 	// Stop first, always. The install container and the game container
@@ -619,7 +666,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	})
 	scancel()
 	if perr != nil {
-		s.failServer(sv, "stop before update: "+perr.Error())
+		s.abortUpdate(sv, prev, "stop before update: "+perr.Error())
 		return
 	}
 

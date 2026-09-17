@@ -424,6 +424,29 @@ func (s *Store) ListAudit(_ context.Context, limit int) ([]*store.AuditEntry, er
 	return out, nil
 }
 
+// PruneAudit drops up to limit entries older than before, keeping the rest in
+// order. The slice is already bounded (maxAuditEntries), so batching buys this
+// store nothing — it honours the limit anyway so the pruning loop behaves the
+// same way against either store.
+func (s *Store) PruneAudit(_ context.Context, before time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := make([]*store.AuditEntry, 0, len(s.auditLog))
+	var removed int64
+	for _, e := range s.auditLog {
+		if removed < int64(limit) && e.Time.Before(before) {
+			removed++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	s.auditLog = kept
+	return removed, nil
+}
+
 // ---- Sessions ----
 
 func (s *Store) CreateSession(_ context.Context, sess *store.Session) error {

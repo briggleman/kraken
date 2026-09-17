@@ -621,6 +621,26 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]*store.AuditEntry, 
 	return out, rows.Err()
 }
 
+// PruneAudit deletes up to limit entries older than before, oldest first, and
+// reports how many went. The inner SELECT is what bounds the statement: a plain
+// `DELETE … WHERE ts < $1` takes every matching row in one transaction, and on
+// a log that has been accumulating since the Panel was installed that is a long
+// lock held against the audit writes still arriving. The ts index serves both
+// the range and the ordering.
+func (s *Store) PruneAudit(ctx context.Context, before time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM audit_log WHERE id IN (
+			SELECT id FROM audit_log WHERE ts < $1 ORDER BY ts LIMIT $2
+		)`, before, limit)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ---- Sessions ----
 
 // Sessions are keyed by a SHA-256 hash of the bearer token, never the token

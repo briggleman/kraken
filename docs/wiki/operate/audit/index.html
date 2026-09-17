@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>The audit log — Kraken wiki</title>
-<meta name="description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, and why the source column is worth nothing until you name your proxy." />
+<meta name="description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, how long entries are kept, and why the source column is worth nothing until you name your proxy." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/audit/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/audit/" />
 <meta property="og:title" content="The audit log — Kraken wiki" />
-<meta property="og:description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, and why the source column is worth nothing until you name your proxy." />
+<meta property="og:description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, how long entries are kept, and why the source column is worth nothing until you name your proxy." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="The audit log — Kraken wiki" />
-<meta name="twitter:description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, and why the source column is worth nothing until you name your proxy." />
+<meta name="twitter:description" content="What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, how long entries are kept, and why the source column is worth nothing until you name your proxy." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,13 +110,14 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">The audit log</span></nav>
     <h1>The audit log</h1>
-    <p class="lede">What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, and why the source column is worth nothing until you name your proxy.</p>
+    <p class="lede">What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, how long entries are kept, and why the source column is worth nothing until you name your proxy.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#what-a-row-holds">What a row holds</a>
 <a class="toc-link lvl-2" href="#the-colour-rule">The colour rule</a>
 <a class="toc-link lvl-2" href="#download-tokens-leave-two-rows">Download tokens leave two rows</a>
 <a class="toc-link lvl-2" href="#rate-limiting-leaves-one-row-per-window">Rate limiting leaves one row per window</a>
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
+<a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
 </div></details>
     <article class="prose">
@@ -226,10 +227,36 @@ this reason: a typo that silently emptied the list would leave you with a Panel
 that looks fine and an audit log that records nothing useful.</p>
 <p>The whole configuration, with the working examples, is on <a href="/wiki/configure/reverse-proxy/">behind a reverse
 proxy</a>.</p>
+<h2 id="how-long-entries-are-kept">How long entries are kept <a class="hlink" href="#how-long-entries-are-kept" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel keeps <strong>90 days</strong> by default and deletes what is older:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever</code></pre></div>
+<p>A background job runs the sweep a minute after startup and every 24 hours after
+that. It deletes in batches of 5000 rather than in one statement, so a log that
+has been accumulating since the Panel was installed is drained over a few short
+deletes instead of one long lock held against the audit writes still arriving. A
+pass that removed something logs a single line with the count; a pass that found
+nothing says nothing.</p>
+<p>Set the window to <code>0</code> when something else owns retention — an external log
+shipper, or a compliance rule that says the trail outlives the database&#39;s
+convenience. Nothing is deleted then, and the console says <code>retained indefinitely</code> instead of naming a window.</p>
+<p>The value has to be a whole number of days, <code>0</code> or more. Anything else stops the
+Panel at startup: deletion is not recoverable, and a Panel that fell back to the
+default after a typo would be pruning on a schedule nobody chose.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p>Retention is enforced in one place, the pruning job, and nowhere else. No handler
+deletes an audit row, and the API offers no way to — the log is append-only to
+everything except the window.</p>
+</div>
+</aside>
+
+
 <h2 id="getting-at-it">Getting at it <a class="hlink" href="#getting-at-it" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><code>GET /api/v1/audit</code> returns the most recent entries, newest first, and needs the
-<code>audit.view</code> permission, which Owner and Admin hold. Rows are not pruned by the
-Panel; they accumulate in Postgres for as long as you keep the database.</p>
+<code>audit.view</code> permission, which Owner and Admin hold. The response also carries
+<code>retention_days</code>, which is where the console&#39;s footnote gets its number — the
+screen quotes what the Panel is actually keeping to rather than a figure typed
+into the copy.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -251,6 +278,7 @@ Panel; they accumulate in Postgres for as long as you keep the database.</p>
 <a class="toc-link lvl-2" href="#download-tokens-leave-two-rows">Download tokens leave two rows</a>
 <a class="toc-link lvl-2" href="#rate-limiting-leaves-one-row-per-window">Rate limiting leaves one row per window</a>
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
+<a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
     </div>
   </aside>

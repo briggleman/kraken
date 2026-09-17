@@ -85,6 +85,20 @@ journalctl -u kraken-panel -f
 The Agent keeps its own log: `journalctl -u kraken-agent` on Linux,
 `C:\kraken\state\agent.log` on Windows (JSON, rotated at 10 MiB).
 
+## Audit retention
+
+The audit log is the one thing the Panel keeps in Postgres rather than on
+stdout, so it has a window of its own:
+
+```sh
+KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever
+```
+
+A daily job deletes entries past the window in batches. The value must be a
+whole number of days, `0` or more; anything else stops startup. The mechanics,
+and what the console shows for each setting, are on [the audit
+log](/wiki/operate/audit/).
+
 ## Metrics
 
 The Panel exports Prometheus metrics at **`GET /metrics`**, unauthenticated

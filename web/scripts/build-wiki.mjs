@@ -276,6 +276,7 @@ const GROUP_TITLES = {
   TrustedProxies: "behind a reverse proxy",
   RateLimits: "rate limits",
   LogLevel: "logging",
+  AuditRetentionDays: "audit log",
 };
 const LOOSE_GROUPS = { KRAKEN_SECRETS_KEY: { title: "secrets at rest", after: "state on disk" } };
 

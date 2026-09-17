@@ -1223,6 +1223,7 @@ paths:
                 type: object
                 properties:
                   entries: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+                  retention_days: { type: integer, description: 'how many days of audit log the Panel keeps (KRAKEN_AUDIT_RETENTION_DAYS); 0 means entries are never pruned' }
 
 components:
   securitySchemes:

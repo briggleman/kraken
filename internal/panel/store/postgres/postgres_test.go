@@ -349,3 +349,77 @@ func TestPostgresNodeConfigEncryptionAtRest(t *testing.T) {
 		t.Fatalf("node config non-secret fields did not round-trip: %+v", out)
 	}
 }
+
+// PruneAudit against real SQL: the LIMIT actually bounds the statement, the
+// cutoff is exclusive of what is inside the window, and a pass with nothing
+// left to take reports zero. The suite shares a database, so this marks its own
+// rows with a unique actor and only ever counts those.
+func TestPostgresPruneAudit(t *testing.T) {
+	st := testDB(t)
+	ctx := context.Background()
+
+	actor := "prune-" + uuid.NewString()[:8]
+	now := time.Now().UTC()
+	write := func(age time.Duration) {
+		t.Helper()
+		e := &store.AuditEntry{
+			ID: uuid.NewString(), Time: now.Add(-age), Actor: actor,
+			Action: "POST /servers", Method: "POST", Path: "/api/v1/servers", Status: 201,
+		}
+		if err := st.AppendAudit(ctx, e); err != nil {
+			t.Fatalf("AppendAudit: %v", err)
+		}
+	}
+	mine := func() int {
+		t.Helper()
+		// ListAudit has no filter, so count from the full recent window.
+		all, err := st.ListAudit(ctx, 10000)
+		if err != nil {
+			t.Fatalf("ListAudit: %v", err)
+		}
+		n := 0
+		for _, e := range all {
+			if e.Actor == actor {
+				n++
+			}
+		}
+		return n
+	}
+
+	const day = 24 * time.Hour
+	for i := 0; i < 5; i++ {
+		write(time.Duration(100+i) * day) // past the window
+	}
+	write(time.Minute) // inside it
+	if got := mine(); got != 6 {
+		t.Fatalf("seeded %d rows, want 6", got)
+	}
+
+	cutoff := now.Add(-90 * day)
+	// A bounded pass takes its batch and no more.
+	n, err := st.PruneAudit(ctx, cutoff, 2)
+	if err != nil {
+		t.Fatalf("PruneAudit: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("bounded pass removed %d rows, want 2", n)
+	}
+	// Then the loop drains the rest and stops short of the recent row.
+	total := n
+	for {
+		n, err = st.PruneAudit(ctx, cutoff, 2)
+		if err != nil {
+			t.Fatalf("PruneAudit: %v", err)
+		}
+		total += n
+		if n < 2 {
+			break
+		}
+	}
+	if total != 5 {
+		t.Fatalf("removed %d rows in total, want 5", total)
+	}
+	if got := mine(); got != 1 {
+		t.Fatalf("%d rows left, want the one inside the window", got)
+	}
+}

@@ -84,6 +84,9 @@ services:
       # Escape hatch: "off" disables the per-client limiters on login and
       # download-token redemption (for an edge that already rate limits).
       KRAKEN_RATE_LIMITS: ${KRAKEN_RATE_LIMITS:-on}
+      # Days of audit log to keep; a daily job deletes what is older, in
+      # batches. 0 keeps every entry forever.
+      KRAKEN_AUDIT_RETENTION_DAYS: ${KRAKEN_AUDIT_RETENTION_DAYS:-90}
     volumes:
       - panel-state:/var/lib/kraken
 

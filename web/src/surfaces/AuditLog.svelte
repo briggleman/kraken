@@ -42,6 +42,14 @@
     return "s2";
   }
 
+  // The window the Panel is actually keeping to (KRAKEN_AUDIT_RETENTION_DAYS),
+  // not a number typed into the copy. 0 means the daily prune is off entirely.
+  const retention = $derived(
+    fleet.auditRetentionDays > 0
+      ? `retained ${fleet.auditRetentionDays} day${fleet.auditRetentionDays === 1 ? "" : "s"}`
+      : "retained indefinitely",
+  );
+
   function fmtTime(iso: string): string {
     const d = new Date(iso);
     const mon = d.toLocaleString("en-US", { month: "short" }).toLowerCase();
@@ -98,7 +106,7 @@
     </div>
 
     <div class="audit-foot">
-      <span class="audit-note">written by the api and retained 90 days — entries cannot be edited or removed here. 2xx is green, 4xx violet (the caller got it wrong), 5xx magenta (we did).</span>
+      <span class="audit-note">written by the api and {retention} — entries cannot be edited or removed here. 2xx is green, 4xx violet (the caller got it wrong), 5xx magenta (we did).</span>
       <span class="audit-note">source is the address the api saw. behind a reverse proxy that is the proxy, not the client, unless the panel is trusting X-Forwarded-For — until it does, treat this column as advisory.</span>
     </div>
   </div>

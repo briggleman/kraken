@@ -1,6 +1,6 @@
 ---
 title: The audit log
-description: What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, and why the source column is worth nothing until you name your proxy.
+description: What the Panel records about every change, the colour rule that tells you whose fault a row is, the download-token and rate-limit rows, how long entries are kept, and why the source column is worth nothing until you name your proxy.
 section: operate
 order: 36
 ---
@@ -101,8 +101,40 @@ that looks fine and an audit log that records nothing useful.
 The whole configuration, with the working examples, is on [behind a reverse
 proxy](/wiki/configure/reverse-proxy/).
 
+## How long entries are kept
+
+The Panel keeps **90 days** by default and deletes what is older:
+
+```sh
+KRAKEN_AUDIT_RETENTION_DAYS=90   # 0 keeps every entry forever
+```
+
+A background job runs the sweep a minute after startup and every 24 hours after
+that. It deletes in batches of 5000 rather than in one statement, so a log that
+has been accumulating since the Panel was installed is drained over a few short
+deletes instead of one long lock held against the audit writes still arriving. A
+pass that removed something logs a single line with the count; a pass that found
+nothing says nothing.
+
+Set the window to `0` when something else owns retention — an external log
+shipper, or a compliance rule that says the trail outlives the database's
+convenience. Nothing is deleted then, and the console says `retained
+indefinitely` instead of naming a window.
+
+The value has to be a whole number of days, `0` or more. Anything else stops the
+Panel at startup: deletion is not recoverable, and a Panel that fell back to the
+default after a typo would be pruning on a schedule nobody chose.
+
+:::note
+Retention is enforced in one place, the pruning job, and nowhere else. No handler
+deletes an audit row, and the API offers no way to — the log is append-only to
+everything except the window.
+:::
+
 ## Getting at it
 
 `GET /api/v1/audit` returns the most recent entries, newest first, and needs the
-`audit.view` permission, which Owner and Admin hold. Rows are not pruned by the
-Panel; they accumulate in Postgres for as long as you keep the database.
+`audit.view` permission, which Owner and Admin hold. The response also carries
+`retention_days`, which is where the console's footnote gets its number — the
+screen quotes what the Panel is actually keeping to rather than a figure typed
+into the copy.

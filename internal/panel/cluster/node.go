@@ -99,6 +99,13 @@ type Node struct {
 	// Zero is indistinguishable from "never contacted"; pair it with Status.
 	RunningServers int `json:"running_servers,omitempty"`
 
+	// ManagedContainers is the same set RunningServers counts, named: every
+	// `kraken.managed` container the Agent reported running on last contact.
+	// It is what turns "1 untracked" into the id and container name an operator
+	// can act on, and it is absent from an Agent too old to report it — so the
+	// count remains the thing to fall back on, never derived from this list.
+	ManagedContainers []ManagedContainer `json:"managed_containers,omitempty"`
+
 	// AgentSHA is the hex SHA-256 of the Agent's running binary, self-reported
 	// on last contact. Preferred over AgentVersion for skew detection: a
 	// panel-only release leaves the agent artifact byte-identical, and flagging
@@ -160,6 +167,15 @@ type Node struct {
 	TunnelFingerprint string `json:"tunnel_fingerprint,omitempty"`
 
 	Ports *PortPool `json:"ports"`
+}
+
+// ManagedContainer is one `kraken.managed` container the Agent reported running,
+// as the Agent named it. ServerID comes from the container's own label, which is
+// what the Panel matches against its server rows; ContainerName is what an
+// operator would type into `docker` on the host.
+type ManagedContainer struct {
+	ServerID      string `json:"server_id"`
+	ContainerName string `json:"container_name"`
 }
 
 // ConnectionMode is the transport direction between Panel and a node's Agent.

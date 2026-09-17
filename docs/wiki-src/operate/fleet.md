@@ -77,22 +77,33 @@ the node.
 When a node's band reads `containers 4 running · 1 untracked`, the Panel is
 telling you that its own books and the node's disagree, and by how much.
 
-The Agent counts containers carrying the `kraken.managed=true` label that are
-running right now. The Panel counts its own server rows on that node in state
-`running`. The badge appears only when those two numbers differ, and only for a
+The Agent reports the containers carrying the `kraken.managed=true` label that
+are running right now. The Panel compares them against its own server rows on
+that node. The badge appears only when the two accounts differ, and only for a
 node that is not offline and has been contacted at least once.
 
 - **`untracked`** means the node is running more than the Panel expects. Some
-  container is up that no `running` row accounts for.
+  container is up that no server row accounts for.
 - **`missing`** means the Panel expects more than the node has. A row says
   `running` over a container that is not.
 
-**`1 untracked` during an install or an update pass is normal and transient.**
-The one-shot install container is named `kraken_<server-id>_install` and carries
-the same managed label the game container does, quite deliberately, so the
-Agent's adoption scan and its cleanup both find it. While it runs, the node is
-running one more managed container than the Panel has `running` rows for, and
-the badge says so. It clears when the pass ends.
+**From Agent 0.54.0 the badge names what it counts.** The Agent sends the
+server id and the container name of every managed container it sees, so the
+badge reads `containers 4 running · 1 untracked · kraken_9f3c…` — up to three
+names inline, and the full roll call (container name plus server id) in the
+badge's tooltip whatever the number. An older Agent sends only the count, and
+the badge falls back to `4 running · 1 untracked` with nothing to hover: to get
+the names, update the Agent.
+
+Naming the containers also settles what used to be a routine false alarm.
+**`1 untracked` during an install or an update pass was normal and transient**
+on an Agent that only counted: the one-shot install container is named
+`kraken_<server-id>_install` and carries the same managed label the game
+container does, quite deliberately, so the Agent's adoption scan and its cleanup
+both find it, and while it ran the node had one more managed container than the
+Panel had `running` rows for. An Agent that names its containers reports that
+one against the server id it belongs to, the Panel finds the row, and the badge
+stays quiet for the length of the pass.
 
 A badge that does *not* clear is worth acting on. The usual cause is a
 restart that failed at the "stop before update" step while the Agent was

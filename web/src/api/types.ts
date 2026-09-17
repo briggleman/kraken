@@ -440,6 +440,11 @@ export interface Node {
    *  contact. Compared against the servers the panel placed here it surfaces
    *  containers the panel has lost track of — see containerDrift(). */
   running_servers?: number;
+  /** The same containers running_servers counts, named — one entry per
+   *  `kraken.managed` container the agent reported running. Absent from an agent
+   *  older than 0.54.0, which reports only the count, so an empty list means
+   *  "this agent did not say", never "nothing is running" — see containerDrift(). */
+  managed_containers?: { server_id: string; container_name: string }[];
   /** Operator hold: excluded from new placements while its servers keep running. */
   cordoned?: boolean;
   /** Registered before its agent answered; name is a placeholder until first contact. */

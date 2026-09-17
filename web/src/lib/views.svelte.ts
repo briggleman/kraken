@@ -163,36 +163,80 @@ function versionCompare(a: string, b: string): number {
   return 0;
 }
 
+/** One container the drift badge is talking about. `label` is the agent's own
+ *  container name for an untracked one (what an operator types into `docker`)
+ *  and the panel's server name for a missing one, where no container exists to
+ *  be named. */
+export interface DriftItem {
+  server_id: string;
+  label: string;
+}
+
 /**
  * Containers the panel has lost track of on a node, or undefined when the two
- * counts agree. The comparison is deliberately between opposite directions:
- * node.running_servers is the AGENT's count of its own kraken.managed containers
- * (adopted on reconcile), and the tracked figure is what the panel placed here.
- * Everywhere else the panel reasons from its own rows outward, so this is the one
- * question asked the other way — and the only way an untracked container is seen.
+ * accounts agree. The comparison is deliberately between opposite directions:
+ * the agent reports its own kraken.managed containers (adopted on reconcile),
+ * and the tracked figure is what the panel placed here. Everywhere else the
+ * panel reasons from its own rows outward, so this is the one question asked the
+ * other way — and the only way an untracked container is seen.
  *
  * Reachable state, not a hypothetical: deleting a server while its node is
  * unreachable drops the row and leaves the container running, because the agent
  * call is best-effort. A deficit is reported too — containers stopped behind the
  * panel's back is the same class of divergence.
  *
+ * An agent from 0.54.0 on names the containers (node.managed_containers), and
+ * then the answer is computed from identities rather than from two totals:
+ * untracked is a reported container whose server id matches no row on this node
+ * in any state, missing is a `running` row with no container behind it. Matching
+ * on any state is what keeps an install pass quiet — the one-shot install
+ * container carries the same managed label and the same server id, so it belongs
+ * to a row the panel knows about even while that row is `installing`, and an
+ * `installing` row is never itself missing because it was never claimed running.
+ * An older agent sends no list, and the count comparison stands in unchanged.
+ *
  * Skipped for a node that has never been contacted (no reported count to trust)
  * and for one that is offline, where a stale count would invent a discrepancy.
  */
 export function containerDrift(
   node: Node,
-): { running: number; delta: number; word: "untracked" | "missing" } | undefined {
+):
+  | { running: number; delta: number; word: "untracked" | "missing"; items: DriftItem[] }
+  | undefined {
   if (node.status === "offline" || !node.agent_version) return undefined;
   const reported = node.running_servers ?? 0;
-  const tracked = fleet.servers.filter(
-    (sv) => sv.node_id === node.id && sv.state === "running",
-  ).length;
-  const delta = reported - tracked;
+  const rows = fleet.servers.filter((sv) => sv.node_id === node.id);
+  const tracked = rows.filter((sv) => sv.state === "running");
+
+  const named = node.managed_containers;
+  if (named) {
+    const known = new Set(rows.map((sv) => sv.id));
+    const onNode = new Set(named.map((c) => c.server_id));
+    const untracked = named
+      .filter((c) => !known.has(c.server_id))
+      .map((c) => ({ server_id: c.server_id, label: c.container_name || c.server_id }));
+    // Reported first: a container running outside the panel's books is holding
+    // memory and ports the scheduler believes are free, which outranks a row
+    // whose container has gone. Both are rare and both together rarer still.
+    if (untracked.length > 0) {
+      return { running: reported, delta: untracked.length, word: "untracked", items: untracked };
+    }
+    const missing = tracked
+      .filter((sv) => !onNode.has(sv.id))
+      .map((sv) => ({ server_id: sv.id, label: sv.name }));
+    if (missing.length > 0) {
+      return { running: reported, delta: missing.length, word: "missing", items: missing };
+    }
+    return undefined;
+  }
+
+  const delta = reported - tracked.length;
   if (delta === 0) return undefined;
   return {
     running: reported,
     delta: Math.abs(delta),
     word: delta > 0 ? "untracked" : "missing",
+    items: [],
   };
 }
 

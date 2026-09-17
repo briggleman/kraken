@@ -1434,6 +1434,26 @@ components:
             from new placements.
         runtime_error: { type: string, description: why the container runtime is unreachable (set while status is partial) }
         agent_version: { type: string, description: Agent build seen on last contact; compare with panel_version on the list response }
+        running_servers:
+          type: integer
+          description: >-
+            The AGENT's own count of the `kraken.managed` containers it had
+            running on last contact. Compared against the server rows the Panel
+            placed on this node it is what surfaces a container the Panel has
+            lost track of; it is not derived from those rows.
+        managed_containers:
+          type: array
+          description: >-
+            The same containers running_servers counts, named — one entry per
+            `kraken.managed` container the Agent reported running. Absent from
+            an Agent older than 0.54.0, which reports only the count, so a
+            client must fall back to running_servers rather than treat an empty
+            list as "nothing running".
+          items:
+            type: object
+            properties:
+              server_id: { type: string, description: from the container's own `kraken.server_id` label; what the Panel matches against its rows }
+              container_name: { type: string, description: the container's name on the host (e.g. `kraken_<server-id>`) }
         address: { type: string }
         public_host: { type: string }
         external_ip: { type: string }

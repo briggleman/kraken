@@ -63,6 +63,33 @@ func hostAddressStrings(in []*agentpb.HostAddress) []string {
 	return out
 }
 
+// managedContainers converts the Agent's reported container list into the node
+// record's own type, sorted by server id. The sort is what makes the comparison
+// below a set comparison: Docker's listing order is its own business and must
+// not decide whether the Panel writes to its store.
+func managedContainers(in []*agentpb.ManagedContainer) []cluster.ManagedContainer {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]cluster.ManagedContainer, 0, len(in))
+	for _, c := range in {
+		out = append(out, cluster.ManagedContainer{ServerID: c.GetServerId(), ContainerName: c.GetContainerName()})
+	}
+	slices.SortFunc(out, func(a, b cluster.ManagedContainer) int {
+		if c := strings.Compare(a.ServerID, b.ServerID); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ContainerName, b.ContainerName)
+	})
+	return out
+}
+
+// sameManagedContainers reports whether two already-sorted container lists carry
+// the same containers.
+func sameManagedContainers(a, b []cluster.ManagedContainer) bool {
+	return slices.Equal(a, b)
+}
+
 // agentIdentityFromPeer extracts the Panel-minted agent identity from the TLS
 // serving cert observed on a gRPC call. Empty for plaintext (dev) and
 // tunnel-routed connections (whose identity lives on the tunnel session).
@@ -548,6 +575,16 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.RunningServers = int(info.RunningServers)
 		changed = true
 	}
+	// The same set, named — this is what lets the UI say *which* container the
+	// Panel has no row for instead of only how many. Compared as a set: Docker
+	// lists containers in whatever order it pleases, and rewriting the node record
+	// every reconcile over a reshuffle is churn with no fact behind it. An Agent
+	// too old to report the list sends none, which clears the stored one rather
+	// than freezing a snapshot that nothing will refresh.
+	if managed := managedContainers(info.GetManagedContainers()); !sameManagedContainers(n.ManagedContainers, managed) {
+		n.ManagedContainers = managed
+		changed = true
+	}
 	if n.LastUpdateError != info.LastUpdateError {
 		n.LastUpdateError = info.LastUpdateError
 		changed = true
@@ -773,8 +810,11 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		"panel_version":   version.Version,
 		"total_memory_mb": info.TotalMemoryMb,
 		"running_servers": info.RunningServers,
-		"host":            info.Host,
-		"public_host":     n.PublicHost,
+		// The same containers named, so this endpoint answers "which one?" and not
+		// just "how many?". Absent from an Agent that predates the field.
+		"managed_containers": managedContainers(info.GetManagedContainers()),
+		"host":               info.Host,
+		"public_host":        n.PublicHost,
 		// The Agent answered; status distinguishes a node ready for work from one
 		// whose container runtime is down (see reconcileNode).
 		"status":        string(n.Status),

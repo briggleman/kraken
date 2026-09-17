@@ -296,14 +296,18 @@ Agents straight at it with <code>--tunnel-addr</code>.</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml up -d
 docker compose --env-file deploy/.env -f deploy/docker-compose.full.yml ps</code></pre></div>
 <p>Then open <code>http://&lt;host&gt;:8080</code> and sign in as the bootstrap admin.</p>
-<!-- SCREENSHOT: the Kraken sign-in screen at http://host:8080, with the bootstrap admin username filled in -->
-<p class="shot"><em>screenshot: the Kraken sign-in screen at http://host:8080, with the bootstrap admin username filled in</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/signin.webp"><img src="/wiki/assets/shots/signin.webp" alt="the sign-in screen with the bootstrap admin username filled in" width="1440" height="900" loading="lazy" decoding="async" /></a>
+<figcaption>the sign-in screen with the bootstrap admin username filled in</figcaption>
+</figure>
 
 
 <p>The UI forces a password change on first login. Do it: the one you typed is
 sitting in a log file.</p>
-<!-- SCREENSHOT: the fleet view immediately after first login, empty, with the Add node affordance visible -->
-<p class="shot"><em>screenshot: the fleet view immediately after first login, empty, with the Add node affordance visible</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/fleet-empty.webp"><img src="/wiki/assets/shots/fleet-empty.webp" alt="the fleet view right after the first sign-in: no nodes, no servers, and Add node in the top bar" width="1440" height="700" loading="lazy" decoding="async" /></a>
+<figcaption>the fleet view right after the first sign-in: no nodes, no servers, and Add node in the top bar</figcaption>
+</figure>
 
 
 <p>From here:</p>

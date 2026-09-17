@@ -412,7 +412,18 @@ func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
 	wine := cfg.WineEnabled()
 	if cfg.Runtime == "fake" {
 		logger.Warn("using fake runtime (runtime=fake)")
-		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version)
+		var opts []agent.FakeOption
+		// Dev-only knob for the fake-live stack: a per-step install delay so
+		// the installing state can be watched in a browser. Not part of the
+		// Agent's configuration surface; the Docker runtime never reads it.
+		if v := os.Getenv("KRAKEN_FAKE_INSTALL_DELAY"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+				opts = append(opts, agent.WithFakeInstallDelay(d))
+			} else {
+				logger.Warn("ignoring KRAKEN_FAKE_INSTALL_DELAY: not a positive duration", "value", v)
+			}
+		}
+		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version, opts...)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

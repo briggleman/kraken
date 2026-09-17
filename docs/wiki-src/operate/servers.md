@@ -13,8 +13,8 @@ lands, how much memory it reserves, and what its settings say.
 
 Pick a spec, pick a node or let the scheduler pick, name it, deploy.
 
-:::shot
-the deploy sheet with a spec selected, the memory field, the node selector and the BepInEx toggle visible
+:::shot deploy
+the deploy sheet on reef-01 with Valheim selected: the spec's variables, the memory field and the operations toggles. The node is chosen by which band's New Server you pressed.
 :::
 
 What the dialog is asking:

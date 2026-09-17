@@ -247,8 +247,10 @@ either.</p>
 <p>A node whose pool is empty reads <strong>online and unschedulable</strong>: deploys are
 refused with &quot;no node can host this spec&quot; while the fleet looks healthy. Set the
 range when you register the node and the whole class of confusion goes away.</p>
-<!-- SCREENSHOT: a node's settings showing its game-port pool range, with an assigned server port beneath it -->
-<p class="shot"><em>screenshot: a node's settings showing its game-port pool range, with an assigned server port beneath it</em></p>
+<figure class="shot">
+<a href="/wiki/assets/shots/node-port-pool.webp"><img src="/wiki/assets/shots/node-port-pool.webp" alt="reef-01's node settings: the schedulable memory and the game-port pool the scheduler allocates from. Each server card on the fleet view shows the port it drew from that pool, :27000 and :27002 on this node." width="1440" height="810" loading="lazy" decoding="async" /></a>
+<figcaption>reef-01's node settings: the schedulable memory and the game-port pool the scheduler allocates from. Each server card on the fleet view shows the port it drew from that pool, :27000 and :27002 on this node.</figcaption>
+</figure>
     </article>
 
     <nav class="pager" aria-label="more pages">

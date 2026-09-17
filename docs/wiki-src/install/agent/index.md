@@ -199,8 +199,8 @@ HTTP call from the Agent to the Panel, answered with a signed certificate.
    dialog can prefill itself, and starts serving.
 6. Confirm the address in the dialog and register the node.
 
-:::shot
-the Add node dialog with a freshly minted enrollment token, CA fingerprint and the rendered Linux install command, with tunnel mode selected
+:::shot node-add
+the Add node sheet with a freshly minted enrollment token, the CA fingerprint and the rendered Linux install command, in tunnel mode
 :::
 
 The bundle lands in the Agent's state directory: `agent.pem`, `agent-key.pem`

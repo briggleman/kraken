@@ -75,8 +75,8 @@ When a node's Agent version drifts behind the Panel's, the Nodes page offers an
 existing mTLS channel; the Agent checksum-verifies it, swaps its binary and
 restarts.
 
-:::shot
-the Nodes list with one node showing the agent-update affordance, the panel version and the node's older agent version side by side
+:::shot node-agent-update
+two node bands: reef-01 still runs agent 0.51.0 while the Panel is 0.52.0, so its band carries the update affordance; trench-02 already matches and shows nothing
 :::
 
 Once the Panel is current, this is the ordinary path. Per node, confirmed per

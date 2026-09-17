@@ -198,8 +198,8 @@ extra hop only matters if Cloudflare ever inserts an intermediate.
   refusing everybody: [limits and
   logging](/wiki/configure/limits-and-logging/).
 
-:::shot
-the audit log after a proxy is configured, showing distinct client addresses per row rather than one repeated proxy address
+:::shot audit-client-addresses
+the audit log once the Panel trusts its proxy: three sign-in attempts, each carrying the client's own address in the source column rather than the proxy's
 :::
 
 ## While you are here

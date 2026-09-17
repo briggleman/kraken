@@ -132,8 +132,8 @@ before you take it. If you want more history than five, mirror to a target you
 control and let your own tooling keep what it wants; the mirror copy is a
 `.tar.gz` like any other.
 
-:::shot
-the backups section of a server drill-in with three collapsed rows, one expanded showing captured, archive and mirror lines, and the keep-5 footer
+:::shot backups
+the backups section of a server drill-in: three archives, one expanded to show what was captured and the archive name, the keep-5 footer and the node's mirror target
 :::
 
 ## Restoring

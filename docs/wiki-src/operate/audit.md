@@ -42,8 +42,8 @@ A 4xx is never painted crisis, because a mistyped password is not an outage. It
 is a small rule and it does a lot of work on a filtered view: a screen of violet
 is somebody fumbling, a screen of magenta is something to go and fix.
 
-:::shot
-the audit log sheet filtered to failures, showing a mix of 4xx and 5xx rows with their status colours
+:::shot audit-failures
+the audit log filtered to failures: 4xx rows in violet where the caller got it wrong, 5xx in magenta where the Panel could not reach a node
 :::
 
 ## Download tokens leave two rows

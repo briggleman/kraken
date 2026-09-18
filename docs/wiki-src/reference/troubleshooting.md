@@ -10,23 +10,40 @@ first, because that is all you have at the time.
 
 ## Every install ends with `state is 0x6`
 
-**Symptom.** The install log runs, SteamCMD reports progress, and the pass ends
-with
+**Symptom.** The pass ends with
 
 ```text
 Error! App '4019830' state is 0x6 after update job.
 ```
 
-on every attempt, including a reinstall. Before 0.50.1 this was worse than a
-failure: the Agent did not recognise the line, treated the pass as fine, and
-started the server on the **old** build, so the symptom was a server that
-refused to update and never said why.
+on every attempt, including a reinstall. It arrives one of two ways. SteamCMD
+may report download progress first and fail at the end; or — the clearer
+signature — the whole exchange lands inside a single second, having asked for
+no bytes at all:
+
+```text
+16:02:29 Connecting anonymously to Steam Public...OK
+16:02:29  Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
+16:02:29 Error! App '4019830' state is 0x6 after update job.
+```
+
+Zero of zero bytes means this is not a download that failed. It is an update job
+that never started, which is worth recognising: it rules out flaky content
+servers and a full disk, both of which fail later and say so.
+
+Before 0.50.1 this was worse than a failure: the Agent did not recognise the
+line, treated the pass as fine, and started the server on the **old** build, so
+the symptom was a server that refused to update and never said why.
 
 **Cause.** A stale download state from an earlier failed attempt. SteamCMD keeps
 `steamapps/appmanifest_<appid>.acf` and a `steamapps/downloading/` directory
 between runs, and when they disagree with what the depot now holds, every
-subsequent `app_update` gives up in the same place. Validating does not clear
-it, because validation trusts the manifest.
+subsequent `app_update` gives up in the same place. `0x6` is
+`StateUpdateRequired | StateFullyInstalled` — SteamCMD holding both beliefs at
+once and abandoning the job meant to settle them. Validating does not clear it,
+because validation trusts the manifest, which is also why the failure repeats
+exactly rather than intermittently.
 
 **Fix.** Delete both, then run the install again.
 

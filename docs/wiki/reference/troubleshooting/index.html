@@ -122,18 +122,30 @@
 <p>Four failures that happened, each written the way you will meet it: the symptom
 first, because that is all you have at the time.</p>
 <h2 id="every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code> <a class="hlink" href="#every-install-ends-with-state-is-0x6" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p><strong>Symptom.</strong> The install log runs, SteamCMD reports progress, and the pass ends
-with</p>
+<p><strong>Symptom.</strong> The pass ends with</p>
 <div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>Error! App '4019830' state is 0x6 after update job.</code></pre></div>
-<p>on every attempt, including a reinstall. Before 0.50.1 this was worse than a
-failure: the Agent did not recognise the line, treated the pass as fine, and
-started the server on the <strong>old</strong> build, so the symptom was a server that
-refused to update and never said why.</p>
+<p>on every attempt, including a reinstall. It arrives one of two ways. SteamCMD
+may report download progress first and fail at the end; or — the clearer
+signature — the whole exchange lands inside a single second, having asked for
+no bytes at all:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>16:02:29 Connecting anonymously to Steam Public...OK
+16:02:29  Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
+16:02:29 Error! App '4019830' state is 0x6 after update job.</code></pre></div>
+<p>Zero of zero bytes means this is not a download that failed. It is an update job
+that never started, which is worth recognising: it rules out flaky content
+servers and a full disk, both of which fail later and say so.</p>
+<p>Before 0.50.1 this was worse than a failure: the Agent did not recognise the
+line, treated the pass as fine, and started the server on the <strong>old</strong> build, so
+the symptom was a server that refused to update and never said why.</p>
 <p><strong>Cause.</strong> A stale download state from an earlier failed attempt. SteamCMD keeps
 <code>steamapps/appmanifest_&lt;appid&gt;.acf</code> and a <code>steamapps/downloading/</code> directory
 between runs, and when they disagree with what the depot now holds, every
-subsequent <code>app_update</code> gives up in the same place. Validating does not clear
-it, because validation trusts the manifest.</p>
+subsequent <code>app_update</code> gives up in the same place. <code>0x6</code> is
+<code>StateUpdateRequired | StateFullyInstalled</code> — SteamCMD holding both beliefs at
+once and abandoning the job meant to settle them. Validating does not clear it,
+because validation trusts the manifest, which is also why the failure repeats
+exactly rather than intermittently.</p>
 <p><strong>Fix.</strong> Delete both, then run the install again.</p>
 <ol>
 <li>Open the server&#39;s <strong>Files</strong> tab, or connect over SFTP.</li>

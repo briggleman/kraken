@@ -331,11 +331,6 @@ func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason st
 	s.installs.Finish(sv.ID)
 }
 
-// setServerState reloads the server and updates only its state (plus the
-// provisioning error that travels with it), so a concurrent settings edit
-// during async install isn't clobbered by a stale write. lastError replaces
-// the stored value: pass "" to clear it (any non-failed state), the failure
-// reason otherwise.
 // markProvisioned records a successful create or reinstall: the server is
 // offline and ready to start, with no error, and its tree was installed at `at`
 // — which is what lets the first start after it skip a redundant update pass.
@@ -353,6 +348,36 @@ func (s *Server) markProvisioned(id string, at time.Time) {
 	}
 }
 
+// requiredSettingsMessage is the sentence an operator reads when a start is
+// refused for empty required settings. It names the fields by their labels —
+// the words on the Settings tab — and says where to fix them.
+func requiredSettingsMessage(missing []spec.SettingField) string {
+	names := make([]string, 0, len(missing))
+	for _, f := range missing {
+		name := f.Label
+		if name == "" {
+			name = f.Key
+		}
+		names = append(names, name)
+	}
+	var list, verb, pronoun string
+	switch len(names) {
+	case 1:
+		list, verb, pronoun = names[0], "is", "it"
+	case 2:
+		list, verb, pronoun = names[0]+" and "+names[1], "are", "them"
+	default:
+		list = strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+		verb, pronoun = "are", "them"
+	}
+	return list + " " + verb + " required before this server can start — set " + pronoun + " on the Settings tab"
+}
+
+// setServerState reloads the server and updates only its state (plus the
+// provisioning error that travels with it), so a concurrent settings edit
+// during async install isn't clobbered by a stale write. lastError replaces
+// the stored value: pass "" to clear it (any non-failed state), the failure
+// reason otherwise.
 func (s *Server) setServerState(id string, st store.ServerState, lastError string) {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
@@ -515,6 +540,24 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		case store.StateInstallFailed:
 			writeError(w, http.StatusConflict, "server install failed; POST /api/v1/servers/{id}/reinstall to retry")
 			return
+		}
+		// Refuse to boot a server into a crash its own spec predicts. Checked
+		// before the node is contacted and before any update pass, so a refusal
+		// changes nothing — no install container, no state change. Judged on the
+		// EFFECTIVE settings, so a field the spec added later counts its default.
+		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
+			if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
+				keys := make([]string, 0, len(missing))
+				for _, f := range missing {
+					keys = append(keys, f.Key)
+				}
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"error":            requiredSettingsMessage(missing),
+					"code":             "required_settings_missing",
+					"missing_settings": keys,
+				})
+				return
+			}
 		}
 	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)

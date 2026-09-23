@@ -146,3 +146,84 @@ func TestValidateSettings_RejectsUnknownBinding(t *testing.T) {
 		t.Fatalf("expected unknown-setting error, got %v", err)
 	}
 }
+
+func TestMissingRequiredSettings(t *testing.T) {
+	s := &Spec{Settings: Settings{Groups: []SettingGroup{
+		{ID: "server", Fields: []SettingField{
+			{Key: "OwnerId", Label: "Owner Player ID", Type: FieldString, Required: true},
+			{Key: "ServerName", Type: FieldString, Default: "Kraken"},
+			{Key: "Seed", Type: FieldString, Required: true},
+		}},
+		{ID: "extra", Fields: []SettingField{
+			// Required with a default: satisfied until the operator blanks it.
+			{Key: "Region", Type: FieldString, Default: "us", Required: true},
+		}},
+	}}}
+
+	keys := func(fs []SettingField) []string {
+		out := make([]string, 0, len(fs))
+		for _, f := range fs {
+			out = append(out, f.Key)
+		}
+		return out
+	}
+
+	cases := []struct {
+		name   string
+		values map[string]string
+		want   []string
+	}{
+		// A fresh server's effective settings are the spec defaults — this is the
+		// Dragonwilds deploy: every required field without a default is missing.
+		{"spec defaults", s.ResolveSettings(nil), []string{"OwnerId", "Seed"}},
+		{"all set", s.ResolveSettings(map[string]string{"OwnerId": "0002a", "Seed": "42"}), nil},
+		// Whitespace is not a value. An owner id of three spaces is still blank to
+		// the game, and still crashes it.
+		{"whitespace only", s.ResolveSettings(map[string]string{"OwnerId": "   ", "Seed": "42"}), []string{"OwnerId"}},
+		{"required default blanked", s.ResolveSettings(map[string]string{
+			"OwnerId": "0002a", "Seed": "42", "Region": "",
+		}), []string{"Region"}},
+		// A key absent from the map entirely — a caller that forgot to resolve —
+		// reads as missing rather than as satisfied.
+		{"absent from values", map[string]string{}, []string{"OwnerId", "Seed", "Region"}},
+		// Non-required empties never count.
+		{"optional blank", s.ResolveSettings(map[string]string{
+			"OwnerId": "0002a", "Seed": "42", "ServerName": "",
+		}), nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := keys(s.MissingRequiredSettings(c.values))
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Fatalf("missing: got %v, want %v (declared order)", got, c.want)
+			}
+		})
+	}
+}
+
+func TestRequiredSettingParsesFromJSON(t *testing.T) {
+	var f SettingField
+	if err := json.Unmarshal([]byte(`{"key":"OwnerId","type":"string","required":true}`), &f); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !f.Required {
+		t.Fatal("required: true must survive decoding")
+	}
+	// And stays out of the encoding when false, like read_only.
+	out, _ := json.Marshal(SettingField{Key: "x", Type: FieldString})
+	if strings.Contains(string(out), "required") {
+		t.Fatalf("a non-required field must not serialize the key: %s", out)
+	}
+}
+
+func TestValidateSettings_RejectsRequiredReadOnly(t *testing.T) {
+	s := validSpec()
+	s.Settings = Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "a", Type: FieldString, Required: true, ReadOnly: true},
+	}}}}
+	// An operator cannot change it, so it would either be satisfied forever or
+	// block every start of every server built from the spec.
+	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "both required and read_only") {
+		t.Fatalf("expected required+read_only rejection, got %v", err)
+	}
+}

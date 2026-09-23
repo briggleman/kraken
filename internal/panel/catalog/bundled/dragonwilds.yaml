@@ -134,7 +134,7 @@ settings:
         account that should own this server. The server crashes on boot until
         this is set.
       fields:
-        - { key: OwnerId, label: Owner Player ID, type: string, default: "", help: "Your in-game Player ID (Settings menu → bottom). The server refuses to start without it." }
+        - { key: OwnerId, label: Owner Player ID, type: string, default: "", required: true, help: "Your in-game Player ID (Settings menu → bottom). The server refuses to start without it." }
         - { key: ServerName, label: Server name, type: string, default: "Kraken Dragonwilds" }
         - { key: DefaultWorldName, label: Default world name, type: string, default: "Kraken World" }
         - { key: AdminPassword, label: Admin password, type: password, default: "", help: "Required for the in-game Server Management screen." }

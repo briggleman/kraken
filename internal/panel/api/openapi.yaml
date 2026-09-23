@@ -386,7 +386,20 @@ paths:
                   state: { $ref: '#/components/schemas/ServerState' }
                   updating: { type: boolean }
         '409':
-          description: The server is installing, or its install failed (reinstall first)
+          description: >
+            Start or restart refused: the server is installing, its install
+            failed (reinstall first), or a setting its spec marks `required` is
+            empty. The last carries `code: required_settings_missing` and the
+            keys in `missing_settings`; nothing was attempted and the server's
+            state is unchanged. Stop and kill are never refused for it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, enum: [required_settings_missing] }
+                  missing_settings: { type: array, items: { type: string } }
         '503':
           description: >
             The panel has no live connection to the hosting node's agent. Nothing

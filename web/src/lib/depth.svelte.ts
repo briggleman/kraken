@@ -461,6 +461,10 @@ export async function refreshInstallLog() {
 export async function power(action: PowerActionName) {
   if (!depth.serverId || depth.powerBusy) return;
   depth.powerBusy = true;
+  // A new attempt starts clean, as a reinstall does. Otherwise a refusal outlives
+  // its own fix: fill in the required setting it named, start, and the server
+  // runs under a banner still saying it cannot.
+  depth.error = null;
   try {
     await api.powerServer(depth.serverId, action);
     await refreshFleet();

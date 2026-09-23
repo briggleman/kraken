@@ -201,6 +201,14 @@ type Server struct {
 	// POST /servers/{id}/reinstall remains the explicit "update now" for a
 	// pinned server.
 	PinBuild bool `json:"pin_build,omitempty"`
+	// ProvisionedAt is when this server's most recent create or reinstall
+	// install pass completed. A start within the Panel's fresh-install window of
+	// it skips the update-on-start pass: that pass exists so a server does not
+	// stay on its creation-day build, and a tree installed minutes ago is not
+	// that. Re-running the installer over it only costs time and adds one more
+	// chance to fail. Nil for a server provisioned before the field existed,
+	// which then updates on start exactly as before.
+	ProvisionedAt *time.Time `json:"provisioned_at,omitempty"`
 	// Players / MaxPlayers / PlayersKnown are the last-known online-player count,
 	// refreshed by the reconciler from the Agent so the fleet list can show it
 	// without an open stats stream. PlayersKnown separates "0 online" from "unknown".

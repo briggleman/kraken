@@ -948,7 +948,12 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 		if info.State != nil && info.State.Running {
 			return nil // already running
 		}
-		_ = d.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
+		// The remove and the create that follows share one name, and Docker
+		// frees it asynchronously — so wait for it, and report a removal that
+		// failed instead of walking into the conflict. See containername.go.
+		if err := d.removeAndAwaitName(ctx, info.ID, name); err != nil {
+			return err
+		}
 	}
 	spec, ok := d.getSpec(serverID)
 	if !ok {
@@ -963,7 +968,60 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 			return fmt.Errorf("docker: refresh image for %s: %w", serverID, err)
 		}
 	}
+	err := d.createRuntimeContainer(ctx, spec)
+	if !isNameConflict(err) {
+		return err
+	}
+	// Someone else holds the name: an orphan from a removal that never landed,
+	// or a container made outside the Agent. Clear it once and retry, so a
+	// stuck name resolves itself rather than needing an operator with
+	// `docker rm` — which is what this cost us live (#353).
+	slog.Warn("container name already in use — clearing the orphan and retrying",
+		"server", serverID, "name", name, "err", err)
+	if cerr := d.clearContainerName(ctx, name); cerr != nil {
+		return fmt.Errorf("docker: create %s: %w (clearing the name that held it: %v)", name, err, cerr)
+	}
 	return d.createRuntimeContainer(ctx, spec)
+}
+
+// removeAndAwaitName force-removes a container and does not return until its
+// name is free for reuse.
+//
+// It removes by ID rather than by name on purpose: the name is the thing being
+// raced for, and an ID cannot resolve to some container created after the
+// inspect that produced it. A removal that finds nothing has already done its
+// job and is not an error.
+func (d *DockerRuntime) removeAndAwaitName(ctx context.Context, id, name string) error {
+	if err := d.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil && !isNotFound(err) {
+		return fmt.Errorf("docker: remove %s: %w", name, err)
+	}
+	if err := awaitNameFree(ctx, func(ctx context.Context) (bool, error) {
+		_, err := d.cli.ContainerInspect(ctx, name)
+		switch {
+		case err == nil:
+			return true, nil
+		case isNotFound(err):
+			return false, nil
+		default:
+			return false, err
+		}
+	}, containerNameFreeAttempts, containerNameFreeDelay); err != nil {
+		return fmt.Errorf("docker: waiting for %s to be reusable: %w", name, err)
+	}
+	return nil
+}
+
+// clearContainerName removes whatever currently answers to name, whether or not
+// the Agent put it there. A name that resolves to nothing needs no clearing.
+func (d *DockerRuntime) clearContainerName(ctx context.Context, name string) error {
+	info, err := d.cli.ContainerInspect(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return d.removeAndAwaitName(ctx, info.ID, name)
 }
 
 // ApplyConfig writes rendered config files into the server's data dir on the

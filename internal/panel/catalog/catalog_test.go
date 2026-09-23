@@ -86,3 +86,30 @@ func TestGet(t *testing.T) {
 		t.Error("Get returned ok for an unknown id")
 	}
 }
+
+// TestDragonwildsOwnerIdIsRequired pins the incident this field exists for. A
+// fresh Dragonwilds server boots on the spec's own defaults, where OwnerId is
+// blank, and the game crashes on a blank OwnerId. The spec must mark it required
+// so the Panel refuses that start instead of launching it into a crash loop.
+func TestDragonwildsOwnerIdIsRequired(t *testing.T) {
+	entries, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var dw *spec.Spec
+	for _, e := range entries {
+		if e.Spec != nil && e.Spec.Slug == "dragonwilds" {
+			dw = e.Spec
+		}
+	}
+	if dw == nil {
+		t.Fatal("bundled dragonwilds spec not found")
+	}
+	missing := dw.MissingRequiredSettings(dw.ResolveSettings(nil))
+	if len(missing) != 1 || missing[0].Key != "OwnerId" {
+		t.Fatalf("a fresh dragonwilds server must be missing exactly OwnerId, got %+v", missing)
+	}
+	if missing[0].Label == "" {
+		t.Fatal("OwnerId needs a label: it is what the refusal message names")
+	}
+}

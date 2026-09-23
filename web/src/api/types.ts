@@ -325,6 +325,9 @@ export interface Spec {
   ports?: SpecPort[];
   resources: { min_memory_mb: number; recommended_memory_mb?: number };
   install?: { requires_steam_login?: boolean; bepinex_compatible?: boolean; skip_update_on_start?: boolean };
+  /** The game's editable settings. The list endpoint has always sent them; the
+   *  deploy form reads them to know whether a fresh server can start at once. */
+  settings?: { groups?: SettingGroup[]; hot_reload?: boolean };
   /**
    * What a backup of this game captures, as doublestar globs. Omitted means the
    * whole data dir (minus what's unambiguously ephemeral). Drives the backup
@@ -495,6 +498,10 @@ export interface SettingField {
   max?: number;
   pattern?: string;
   read_only?: boolean;
+  /** The game will not start without a value. The panel refuses to start or
+   *  restart a server while one is empty (409, code required_settings_missing);
+   *  saving settings is never blocked by it. */
+  required?: boolean;
 }
 
 export interface SettingGroup {

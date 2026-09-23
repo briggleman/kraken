@@ -137,7 +137,8 @@ resources:
 - `name`, `slug` required. `slug` doubles as the catalog id (`catalog.Get(slug)`) and must be
   unique across the live Panel — `POST /api/v1/specs` returns 409 on a duplicate.
 - `description` is operator-facing prose. Bundled specs use it for the appid, the OS story, and
-  the one thing that will otherwise bite (Dragonwilds' OwnerId, Enshrouded's role passwords).
+  the one thing an operator must know before the first start (Dragonwilds' OwnerId,
+  Enshrouded's role passwords). A value the game cannot boot without also gets `required: true`.
 - `banner_url` = `library_hero_2x.jpg` (fallback `library_hero.jpg`); `icon_url` = community
   icon. Both from the **game** appid. See SPECS.md for the exact curl.
 
@@ -226,6 +227,12 @@ non-Steam games; `{{APP_ID}}` then stays unrendered, so do not reference it.
 - Field types: `string`, `text`, `int`, `float`, `bool`, `enum` (needs `options`), `password`.
   `min`/`max` for numerics, `read_only` to display-but-lock, `help` for a tooltip, `pattern`
   (regex; carried to the UI — server-side validation checks type/min/max/enum).
+- `required: true` for a value the game **will not boot without** (Dragonwilds' `OwnerId`).
+  The Panel refuses start/restart while it is empty — a 409 naming the field, code
+  `required_settings_missing` — and the deploy form won't auto-start the game. Only for an
+  unconditional requirement: a value needed only when another setting is on (Factorio's
+  public-listing token) must NOT be marked, or it blocks every private server. Never combine
+  with `read_only` — `Validate()` rejects it. Give the field a `label`; the refusal names it.
 - Every `default` is validated against its own field (`"true"`/`"false"` for bool, a listed
   option for enum, within bounds for numerics) or the spec fails `Validate()`.
 - `hot_reload: true` only changes what the UI says after a save; files are pushed either way.

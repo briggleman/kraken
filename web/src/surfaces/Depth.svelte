@@ -35,6 +35,7 @@
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
+  import { isMissing } from "@/lib/required";
   import type { FileEntry, ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
@@ -712,9 +713,14 @@
                     >
                   {:else if field.type === "enum"}
                     <label class="cfg-row"
-                      ><span>{field.label || field.key}</span><select
+                      ><span>{field.label || field.key}{#if field.required}<em
+                        class="cfg-req"
+                        class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
+                        >· required</em
+                      >{/if}</span><select
                         class="cfg-in"
                         disabled={field.read_only}
+                        aria-required={field.required || undefined}
                         value={fieldValue(field.key, field.default)}
                         onchange={(e) => (edited[field.key] = e.currentTarget.value)}
                         >{#each field.options ?? [] as opt}<option value={opt}>{opt}</option>{/each}</select
@@ -722,10 +728,15 @@
                     >
                   {:else}
                     <label class="cfg-row"
-                      ><span>{field.label || field.key}</span><input
+                      ><span>{field.label || field.key}{#if field.required}<em
+                        class="cfg-req"
+                        class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
+                        >· required</em
+                      >{/if}</span><input
                         class="cfg-in"
                         type={field.type === "password" ? "password" : "text"}
                         disabled={field.read_only}
+                        aria-required={field.required || undefined}
                         value={fieldValue(field.key, field.default)}
                         oninput={(e) => (edited[field.key] = e.currentTarget.value)}
                       />{#if field.help}<p class="cfg-help">{field.help}</p>{/if}</label
@@ -1114,5 +1125,18 @@
   }
   .log-more:hover {
     color: var(--ink);
+  }
+
+  /* A required setting (spec `required: true`). It stays in the label's own ink
+     while it holds a value, and takes Caution Violet while it is empty — because
+     an empty one PREVENTS the server from starting, which is the house's test for
+     violet (DESIGN.md, the One Light Rule). Nothing new is invented: the colour
+     is the house variable and the type is the label's. */
+  .cfg-req {
+    margin-left: 0.5ch;
+    font-style: normal;
+  }
+  .cfg-req.is-missing {
+    color: var(--caution);
   }
 </style>

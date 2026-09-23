@@ -6,6 +6,7 @@
   import { fleet, refreshFleet } from "@/lib/fleet.svelte";
   import { api, errMsg } from "@/api/client";
   import { fmtGb } from "@/lib/fmt";
+  import { fieldList, missingOnDeploy } from "@/lib/required";
   import type { Spec } from "@/api/types";
 
   // The form is real: games come from the specs you have, settings are the
@@ -27,6 +28,9 @@
   let err = $state<string | null>(null);
 
   const spec = $derived<Spec | undefined>(fleet.specs.find((s) => s.id === specId));
+  // Required settings a fresh server of this game boots without. While there are
+  // any, the panel refuses the start, so the form does not offer to make one.
+  const blockedStart = $derived(missingOnDeploy(spec));
   const node = $derived(
     fleet.nodes.find((n) => n.id === ui.nsFormNodeId) ?? fleet.nodes[0],
   );
@@ -134,7 +138,9 @@
       }
       closeSheet("nsForm");
       await refreshFleet();
-      if (startAfter) {
+      // Never auto-start a game the panel will refuse: it would only come back
+      // as a 409 that the poll below swallows, leaving the operator wondering.
+      if (startAfter && blockedStart.length === 0) {
         // start once the install finishes: watch until the container exists
         const poll = setInterval(async () => {
           try {
@@ -244,7 +250,18 @@
         </div>
 
         <div class="ns-legend"><h4>operations</h4><i></i><small>changeable later in the server's own settings</small></div>
-        <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install finishes</label>
+        <!-- A game with required settings cannot start on its spec's defaults,
+             and the panel refuses it until they are set — so rather than offer
+             a switch that could only fail, say what to do instead. -->
+        {#if blockedStart.length === 0}
+          <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install finishes</label>
+        {:else}
+          <p class="cfg-help">
+            won't start on its own — {fieldList(blockedStart)} must be set first, and the game will not boot
+            without {blockedStart.length === 1 ? "it" : "them"}. fill {blockedStart.length === 1 ? "it" : "them"} in
+            on the server's settings tab once it is deployed, then start.
+          </p>
+        {/if}
         <label class="tgl"><input type="checkbox" bind:checked={nightlyBackup} /><i></i>nightly backup at 04:00</label>
         {#if spec?.install?.bepinex_compatible}
           <label class="tgl"><input type="checkbox" bind:checked={bepinex} /><i></i>install bepinex (mod loader)</label>

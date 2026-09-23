@@ -46,6 +46,14 @@ type SettingField struct {
 	// ReadOnly marks a field as display-only: the UI renders it disabled and the
 	// Panel rejects attempts to change its value via the settings API.
 	ReadOnly bool `json:"read_only,omitempty"`
+	// Required marks a value the game will not start without — Dragonwilds'
+	// OwnerId is the case that motivated it: with it blank the server crashes on
+	// boot. The Panel refuses to start or restart a server while any required
+	// field is empty, naming the fields, instead of launching it into a crash
+	// loop. Saving settings is never blocked by it, so an operator can fill a
+	// form in any order. It is for values required unconditionally; a value
+	// needed only when some other setting is on cannot be expressed with it.
+	Required bool `json:"required,omitempty"`
 }
 
 // SettingGroup is a labeled cluster of fields (a UI section/tab).
@@ -149,6 +157,21 @@ func (s *Spec) ResolveSettings(overrides map[string]string) map[string]string {
 		out[f.Key] = val
 	}
 	return out
+}
+
+// MissingRequiredSettings returns the required fields whose value in values is
+// empty or only whitespace, in the order the spec declares them. Pass the
+// server's EFFECTIVE settings (ResolveSettings over what it has saved), so a
+// field added to the spec after the server was created is judged by its default
+// rather than read as absent.
+func (s *Spec) MissingRequiredSettings(values map[string]string) []SettingField {
+	var missing []SettingField
+	for _, f := range s.Settings.fields() {
+		if f.Required && strings.TrimSpace(values[f.Key]) == "" {
+			missing = append(missing, f)
+		}
+	}
+	return missing
 }
 
 // RenderConfig renders a single ConfigFile from the context, returning the file
@@ -257,6 +280,12 @@ func (s *Spec) validateSettings() error {
 			}
 			if f.Type == FieldEnum && len(f.Options) == 0 {
 				return fmt.Errorf("spec %q: enum setting %q: options are required", s.Slug, f.Key)
+			}
+			// An operator cannot change a read-only value, so a required one would
+			// either be satisfied forever by its default or block every start of
+			// every server built from the spec. Neither is worth expressing.
+			if f.Required && f.ReadOnly {
+				return fmt.Errorf("spec %q: setting %q cannot be both required and read_only", s.Slug, f.Key)
 			}
 			if f.Default != "" {
 				if err := ValidateFieldValue(f, f.Default); err != nil {

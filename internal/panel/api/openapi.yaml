@@ -1328,6 +1328,13 @@ components:
             Pinned to the build on disk — the panel skips the install/update
             pass it otherwise runs before every start or restart.
         last_error: { type: string, description: why the most recent provisioning attempt failed }
+        provisioned_at:
+          type: string
+          format: date-time
+          description: >-
+            When the most recent create or reinstall install pass completed. A
+            start within 30 minutes of it skips the update pass, which would
+            only repeat an install that just ran.
         created_at: { type: string, format: date-time }
     ServerDNS:
       type: object

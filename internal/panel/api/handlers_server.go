@@ -276,7 +276,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
-	s.setServerState(server.ID, store.StateOffline, "")
+	s.markProvisioned(server.ID, time.Now().UTC())
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
 	// and once the state leaves `installing` the console has no container to
@@ -336,6 +336,23 @@ func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason st
 // during async install isn't clobbered by a stale write. lastError replaces
 // the stored value: pass "" to clear it (any non-failed state), the failure
 // reason otherwise.
+// markProvisioned records a successful create or reinstall: the server is
+// offline and ready to start, with no error, and its tree was installed at `at`
+// — which is what lets the first start after it skip a redundant update pass.
+func (s *Server) markProvisioned(id string, at time.Time) {
+	sv, err := s.store.GetServer(context.Background(), id)
+	if err != nil {
+		s.logger.Error("could not load server to mark it provisioned", "id", id, "err", err)
+		return
+	}
+	sv.State = store.StateOffline
+	sv.LastError = ""
+	sv.ProvisionedAt = &at
+	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
+		s.logger.Error("could not mark server provisioned", "id", id, "err", err)
+	}
+}
+
 func (s *Server) setServerState(id string, st store.ServerState, lastError string) {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
@@ -593,14 +610,30 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"state": sv.State})
 }
 
+// freshInstallWindow is how long after a create or reinstall a start skips the
+// update-on-start pass. It covers the deploy form's "start once the install
+// finishes", which fires the moment the install lands, and an operator who stops
+// to fill in settings before starting. It is deliberately short: a server created
+// and then left for days must still update on its first start, which is why
+// this is a window and not a "never started" flag.
+const freshInstallWindow = 30 * time.Minute
+
+// freshlyProvisioned reports whether sv's install pass completed within
+// freshInstallWindow of now — in which case the tree is already current and an
+// update pass would only repeat it.
+func freshlyProvisioned(sv *store.Server, now time.Time) bool {
+	return sv.ProvisionedAt != nil && now.Sub(*sv.ProvisionedAt) < freshInstallWindow
+}
+
 // updatesOnStart reports whether an operator-initiated start/restart of sv
 // should re-run the install pass first (#307). It is on by default — a server
 // that never re-runs its installer stays on its creation-day build forever, and
 // every bundled install script is an idempotent `app_update … validate`.
 //
 // It is off when the spec opts out (per-spec or per-platform
-// skip_update_on_start), when the operator pinned this server's build, or when
-// the pass could not succeed unattended:
+// skip_update_on_start), when the operator pinned this server's build, when the
+// server was created or reinstalled within freshInstallWindow (the pass just
+// ran), or when the pass could not succeed unattended:
 //
 //   - An authenticated-Steam install can be asked for a Steam Guard code, and a
 //     start request carries none. Without stored node credentials the pass could
@@ -614,6 +647,11 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 // nightly restart is not an invitation to validate a 30GB tree nightly.
 func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.Spec, node *cluster.Node) bool {
 	if sp == nil || sv.PinBuild || sp.SkipUpdateOnStartFor(sv.Kind) {
+		return false
+	}
+	if freshlyProvisioned(sv, time.Now()) {
+		s.logger.Info("skipping update-on-start: the install pass just ran",
+			"server", sv.ID, "provisioned_at", sv.ProvisionedAt)
 		return false
 	}
 	if sp.Install.RequiresSteamLogin {

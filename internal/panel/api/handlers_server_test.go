@@ -119,11 +119,13 @@ func TestServerLifecycle_CreateInstallStart(t *testing.T) {
 	// Wait for install (fake agent) to flip the server to offline.
 	waitForState(t, h, token, created.ID, "offline")
 
-	// Start it. The spec does not opt out and the server is not pinned, so the
-	// start re-runs the install pass first (#307): the request returns 202 with
-	// the server already installing, and the pass finishes into running.
+	// Start it. The install just ran, so this first start is the plain
+	// synchronous call — no update-on-start pass (#307) over a tree that is
+	// seconds old. This assertion briefly expected a 202 update pass here, which
+	// recorded exactly the redundant double install a fresh deploy suffered.
+	// Update-on-start itself is covered in handlers_server_update_test.go.
 	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/power", token, map[string]string{"action": "start"})
-	if rec.Code != http.StatusAccepted {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("power start: status %d, body %s", rec.Code, rec.Body.String())
 	}
 	waitForState(t, h, token, created.ID, "running")

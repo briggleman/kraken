@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -73,6 +74,35 @@ func (d *DockerRuntime) fileErr(serverID, op, p, detail string, err error) error
 	}
 }
 
+// fileFailure marks err as a file operation's failure without rewriting it, for
+// a runtime whose messages name no host path to begin with (the fake). It is
+// what makes such a failure eligible for the filesystem classes at the gRPC
+// boundary — see classifyError, which gives them to file operations only.
+func fileFailure(op, p string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &fileOpError{op: op, path: p, causeMsg: hostCause(err).Error(), cause: err, msg: err.Error()}
+}
+
+// readErrs wraps a reader so that its READ failures, and only those, pass
+// through wrap. io.Copy returns the reader's error and the writer's alike, and
+// the two need different handling: a failed read of a node file carries the
+// file's host path and must be rendered against the logical one, while a failed
+// write is the gRPC stream going away and must reach the caller as it is.
+type readErrs struct {
+	r    io.Reader
+	wrap func(error) error
+}
+
+func (e readErrs) Read(p []byte) (int, error) {
+	n, err := e.r.Read(p)
+	if err != nil && err != io.EOF {
+		err = e.wrap(err)
+	}
+	return n, err
+}
+
 // scrubbed keeps err's whole chain (so it classifies exactly as before) but
 // replaces its text with one that names no host path. It is for failures whose
 // own message carries context worth keeping — a restore that "stopped at" a
@@ -101,7 +131,31 @@ func (d *DockerRuntime) scrubHostPaths(serverID, s string) string {
 		}
 		s = strings.ReplaceAll(s, root, "<data dir>")
 	}
+	// A restore reads its archive from the backup store, which lives outside
+	// the data dir: the node's default backup dir, or whatever dir the Panel
+	// last configured (up to its first {{TOKEN}}, which is expanded per server).
+	for _, root := range d.backupRoots() {
+		if len(root) <= 3 {
+			continue
+		}
+		s = strings.ReplaceAll(s, root, "<backup dir>")
+	}
 	return s
+}
+
+// backupRoots lists the local backup directories a message could name.
+func (d *DockerRuntime) backupRoots() []string {
+	roots := []string{d.backupDir}
+	d.bmu.RLock()
+	if d.nodeCfg != nil {
+		dir := d.nodeCfg.GetBackupDir()
+		if i := strings.Index(dir, "{{"); i >= 0 {
+			dir = dir[:i]
+		}
+		roots = append(roots, strings.TrimRight(dir, `/\`))
+	}
+	d.bmu.RUnlock()
+	return roots
 }
 
 // statError renders a filesystem failure (stat, open, read) against the

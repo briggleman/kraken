@@ -54,6 +54,9 @@ type FakeRuntime struct {
 	// WithFakePowerFailure). The recorded state is left alone, the way it is on
 	// a node the Panel cannot reach: the container goes on doing what it was.
 	powerErrs map[agentpb.PowerAction]string
+	// powerFailures makes the named power actions fail with exactly this
+	// error, the way the Docker runtime's would (see WithFakePowerError).
+	powerFailures map[agentpb.PowerAction]error
 	// installDelay, when set, is how long each install step lingers, so the
 	// installing state is observable from a browser instead of flashing past
 	// in microseconds. The install-progress UI is otherwise unreachable on the
@@ -107,6 +110,19 @@ func WithFakePowerFailure(action agentpb.PowerAction, reason string) FakeOption 
 			f.powerErrs = make(map[agentpb.PowerAction]string)
 		}
 		f.powerErrs[action] = reason
+	}
+}
+
+// WithFakePowerError makes the given power action fail with err as the runtime
+// returned it — a Docker engine that is down, a socket the Agent may not open —
+// so the Panel's answer to a non-file failure is testable through the real
+// gRPC path, classification included.
+func WithFakePowerError(action agentpb.PowerAction, err error) FakeOption {
+	return func(f *FakeRuntime) {
+		if f.powerFailures == nil {
+			f.powerFailures = make(map[agentpb.PowerAction]error)
+		}
+		f.powerFailures[action] = err
 	}
 }
 
@@ -405,11 +421,11 @@ func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ i
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return nil, 0, false, false, f.fileErr
+		return nil, 0, false, false, fileFailure("read", p, f.fileErr)
 	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return nil, 0, false, false, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist)
+		return nil, 0, false, false, fileFailure("read", p, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist))
 	}
 	return ff.data, int64(len(ff.data)), false, false, nil
 }
@@ -420,11 +436,11 @@ func (f *FakeRuntime) StatFile(_ context.Context, serverID string, p string) (in
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return 0, f.fileErr
+		return 0, fileFailure("read", p, f.fileErr)
 	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return 0, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist)
+		return 0, fileFailure("read", p, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist))
 	}
 	return int64(len(ff.data)), nil
 }
@@ -448,6 +464,10 @@ func (f *FakeRuntime) CopyPath(_ context.Context, serverID string, src, dst stri
 }
 
 func (f *FakeRuntime) transplant(serverID, src, dst string, move bool) error {
+	op := "copy"
+	if move {
+		op = "move"
+	}
 	s, d := fakePath(src), fakePath(dst)
 	if s == fakeDataRoot || d == fakeDataRoot {
 		return badPath("fake: cannot move the data root")
@@ -455,11 +475,11 @@ func (f *FakeRuntime) transplant(serverID, src, dst string, move bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return f.fileErr
+		return fileFailure(op, src, f.fileErr)
 	}
 	t := f.tree(serverID)
 	if _, ok := t[s]; !ok {
-		return fmt.Errorf("fake: %s: %w", src, fs.ErrNotExist)
+		return fileFailure(op, src, fmt.Errorf("fake: %s: %w", src, fs.ErrNotExist))
 	}
 	moved := make(map[string]*fakeFile)
 	for k, ff := range t {
@@ -555,7 +575,7 @@ func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return f.fileErr
+		return fileFailure("mkdir", p, f.fileErr)
 	}
 	f.putDir(f.tree(serverID), fakePath(p))
 	return nil
@@ -569,7 +589,7 @@ func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, co
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return f.fileErr
+		return fileFailure("write", p, f.fileErr)
 	}
 	f.putFile(f.tree(serverID), fp, append([]byte(nil), content...))
 	return nil
@@ -581,7 +601,7 @@ func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []st
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fileErr != nil {
-		return f.fileErr
+		return fileFailure("delete", strings.Join(paths, ", "), f.fileErr)
 	}
 	t := f.tree(serverID)
 	for _, p := range paths {
@@ -592,7 +612,7 @@ func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []st
 		if _, ok := t[fp]; !ok {
 			// Wrapped, not flattened: the gRPC boundary classifies it as a
 			// NotFound exactly as it does the real runtime's os error.
-			return fmt.Errorf("fake: delete %s: %w", p, fs.ErrNotExist)
+			return fileFailure("delete", p, fmt.Errorf("fake: delete %s: %w", p, fs.ErrNotExist))
 		}
 		for k := range t {
 			if k == fp || strings.HasPrefix(k, fp+"/") {
@@ -656,7 +676,11 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
 	f.mu.Lock()
 	reason, failing := f.powerErrs[action]
+	perr := f.powerFailures[action]
 	f.mu.Unlock()
+	if perr != nil {
+		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, perr
+	}
 	if failing {
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, grpcstatus.Error(codes.Unavailable, reason)
 	}

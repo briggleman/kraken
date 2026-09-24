@@ -5,34 +5,64 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/docker/docker/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
+
+// fileOp marks err the way the Docker runtime's file operations do, which is
+// what makes it eligible for the filesystem codes.
+func fileOp(op string, err error) error {
+	return fileFailure(op, "/data/x", err)
+}
 
 // Every runtime failure crosses the gRPC boundary with the code its cause
 // deserves, and the Agent's own words intact. Before this, all of them were
 // codes.Unknown, and the Panel answered every one with the same 502 (#352).
+//
+// The filesystem codes go to file operations ONLY. The same fs sentinels turn
+// up in failures that have nothing to do with a file the operator asked about
+// — a Docker engine that is down on Windows is ERROR_FILE_NOT_FOUND on its
+// named pipe, docker.sock refusing the Agent is EACCES — and a start that
+// answered "404 not found" would send the operator looking in the wrong place.
 func TestClassifyError(t *testing.T) {
 	cases := []struct {
 		name string
 		err  error
 		want codes.Code
 	}{
-		{"missing file", &fs.PathError{Op: "remove", Path: "x", Err: fs.ErrNotExist}, codes.NotFound},
-		{"wrapped missing file", fmt.Errorf("fake: delete /data/x: %w", fs.ErrNotExist), codes.NotFound},
-		{"permission", &fs.PathError{Op: "open", Path: "x", Err: fs.ErrPermission}, codes.PermissionDenied},
-		{"already exists", &fs.PathError{Op: "mkdir", Path: "x", Err: fs.ErrExist}, codes.AlreadyExists},
-		{"in use (sentinel)", fmt.Errorf("fake: %w", ErrInUse), codes.FailedPrecondition},
+		{"missing file", fileOp("delete", &fs.PathError{Op: "remove", Path: "x", Err: fs.ErrNotExist}), codes.NotFound},
+		{"wrapped missing file", fileOp("delete", fmt.Errorf("fake: delete /data/x: %w", fs.ErrNotExist)), codes.NotFound},
+		{"permission", fileOp("read", &fs.PathError{Op: "open", Path: "x", Err: fs.ErrPermission}), codes.PermissionDenied},
+		{"mkdir onto an existing path", fileOp("mkdir", &fs.PathError{Op: "mkdir", Path: "x", Err: fs.ErrExist}), codes.AlreadyExists},
+		{"move onto an existing path", fileOp("move", &fs.PathError{Op: "rename", Path: "x", Err: fs.ErrExist}), codes.AlreadyExists},
+		// A delete whose folder is "not empty" (Go: fs.ErrExist) lost a race
+		// with a writer, or holds a delete-pending child: it is in use.
+		{"delete of a folder still being written", fileOp("delete", &fs.PathError{Op: "remove", Path: "x", Err: fs.ErrExist}), codes.FailedPrecondition},
+		{"held file", fileOp("delete", &fs.PathError{Op: "remove", Path: "x", Err: inUseErrno}), codes.FailedPrecondition},
 		{"path escape", badPath("docker: path %q escapes %s", "../x", "/data"), codes.InvalidArgument},
-		{"deadline", fmt.Errorf("docker: stop: %w", context.DeadlineExceeded), codes.DeadlineExceeded},
-		{"canceled", fmt.Errorf("docker: stop: %w", context.Canceled), codes.Canceled},
+		// Not file operations: the same sentinels, no file codes.
+		{"docker engine pipe missing", &fs.PathError{Op: "open", Path: `\\.\pipe\docker_engine`, Err: fs.ErrNotExist}, codes.Unknown},
+		{"docker.sock refused", &os.PathError{Op: "dial", Path: "/var/run/docker.sock", Err: fs.ErrPermission}, codes.Unknown},
+		{"bare exists", fmt.Errorf("docker: create: %w", fs.ErrExist), codes.Unknown},
+		// A timeout inside the handler while the RPC is alive is the Agent's
+		// own wait on something else (an SMB share, a registry), not the node
+		// failing to answer.
+		{"agent-side timeout", fmt.Errorf("smb: dial nas:445: %w", os.ErrDeadlineExceeded), codes.Unknown},
+		{"agent-side deadline", fmt.Errorf("docker: pull: %w", context.DeadlineExceeded), codes.Unknown},
+		{"agent-side cancel", fmt.Errorf("docker: pull: %w", context.Canceled), codes.Unknown},
 		{"unrecognised", errors.New("docker daemon said something odd"), codes.Unknown},
 		// Already typed: the RPCs that pick their own codes meant them.
 		{"typed status", status.Error(codes.FailedPrecondition, "self-update is not available"), codes.FailedPrecondition},
@@ -42,7 +72,7 @@ func TestClassifyError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := classifyError(tc.err)
+			got := classifyError(context.Background(), tc.err)
 			st, ok := status.FromError(got)
 			if !ok {
 				t.Fatalf("classifyError(%v) = %v, not a gRPC status", tc.err, got)
@@ -64,8 +94,53 @@ func TestClassifyError(t *testing.T) {
 			}
 		})
 	}
-	if classifyError(nil) != nil {
+	if classifyError(context.Background(), nil) != nil {
 		t.Fatal("classifyError(nil) must stay nil")
+	}
+}
+
+// DeadlineExceeded and Canceled mean the RPC's OWN context ended — and then
+// they are that, whatever the handler wrapped around them.
+func TestClassifyErrorDeadlineOnlyWhenTheRPCContextEnded(t *testing.T) {
+	expired, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-expired.Done()
+	err := fmt.Errorf("docker: stop: %w", context.DeadlineExceeded)
+	st := status.Convert(classifyError(expired, err))
+	if st.Code() != codes.DeadlineExceeded || !strings.Contains(st.Message(), "docker: stop") {
+		t.Fatalf("expired RPC classified as %s %q, want DeadlineExceeded with the message", st.Code(), st.Message())
+	}
+	canceled, cancel2 := context.WithCancel(context.Background())
+	cancel2()
+	if c := status.Code(classifyError(canceled, fmt.Errorf("x: %w", context.Canceled))); c != codes.Canceled {
+		t.Fatalf("canceled RPC classified as %s, want Canceled", c)
+	}
+	// A live context with a non-deadline error stays what it is.
+	if c := status.Code(classifyError(expired, errors.New("boom"))); c != codes.Unknown {
+		t.Fatalf("an unrelated error on an expired RPC classified as %s, want Unknown", c)
+	}
+}
+
+// A container engine the Agent cannot reach is the node's own failure, said
+// plainly — not a file one, and not "the node did not answer" (it did).
+func TestClassifyErrorDockerConnectionFailure(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.WithHost("tcp://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("docker client: %v", err)
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, perr := cli.Ping(ctx)
+	if !client.IsErrConnectionFailed(perr) {
+		t.Fatalf("precondition: Ping against a closed port = %v, not a connection failure", perr)
+	}
+	st := status.Convert(classifyError(context.Background(), fmt.Errorf("docker: start: %w", perr)))
+	if st.Code() != codes.Internal {
+		t.Fatalf("docker connection failure classified as %s, want Internal", st.Code())
+	}
+	if !strings.HasPrefix(st.Message(), "docker: cannot connect to the daemon") {
+		t.Fatalf("message %q does not say the daemon is unreachable", st.Message())
 	}
 }
 
@@ -77,7 +152,7 @@ func TestClassifyErrorInUseNamesThePath(t *testing.T) {
 	host := filepath.Join(d.localDir("s1"), "Saves", "world.sav")
 	err := d.fileErr("s1", "delete", "/data/Saves/world.sav", "",
 		&fs.PathError{Op: "remove", Path: host, Err: inUseErrno})
-	st := status.Convert(classifyError(err))
+	st := status.Convert(classifyError(context.Background(), err))
 	if st.Code() != codes.FailedPrecondition {
 		t.Fatalf("code = %s, want FailedPrecondition", st.Code())
 	}
@@ -119,7 +194,7 @@ func TestMutatingFileOpErrorsDoNotLeakTheHostPath(t *testing.T) {
 		if !strings.Contains(err.Error(), logical) {
 			t.Fatalf("%s: error does not name the logical path %q: %v", what, logical, err)
 		}
-		if st := status.Convert(classifyError(err)); strings.Contains(st.Message(), d.dataDir) {
+		if st := status.Convert(classifyError(context.Background(), err)); strings.Contains(st.Message(), d.dataDir) {
 			t.Fatalf("%s: the classified message names the host path: %s", what, st.Message())
 		}
 	}
@@ -131,8 +206,8 @@ func TestMutatingFileOpErrorsDoNotLeakTheHostPath(t *testing.T) {
 	check("ZipFiles", "missing-dir", d.ZipFiles(ctx, sid, []string{"missing-dir"}, &bytes.Buffer{}))
 
 	// A missing source is still a missing source once sanitised.
-	if err := d.MovePath(ctx, sid, "missing.txt", "moved.txt"); status.Code(classifyError(err)) != codes.NotFound {
-		t.Fatalf("a move of a missing file classified as %s, want NotFound", status.Code(classifyError(err)))
+	if err := d.MovePath(ctx, sid, "missing.txt", "moved.txt"); status.Code(classifyError(context.Background(), err)) != codes.NotFound {
+		t.Fatalf("a move of a missing file classified as %s, want NotFound", status.Code(classifyError(context.Background(), err)))
 	}
 
 	// Delete: the #352 case. Forcing a real delete failure is OS-specific.
@@ -151,7 +226,7 @@ func TestMutatingFileOpErrorsDoNotLeakTheHostPath(t *testing.T) {
 		derr := d.DeletePaths(ctx, sid, []string{"held.sav"})
 		f.Close()
 		check("DeletePaths", "held.sav", derr)
-		if c := status.Code(classifyError(derr)); c != codes.FailedPrecondition {
+		if c := status.Code(classifyError(context.Background(), derr)); c != codes.FailedPrecondition {
 			t.Fatalf("deleting a held file classified as %s (%v), want FailedPrecondition", c, derr)
 		}
 	case os.Geteuid() != 0:
@@ -169,7 +244,7 @@ func TestMutatingFileOpErrorsDoNotLeakTheHostPath(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 		derr := d.DeletePaths(ctx, sid, []string{"ro/f"})
 		check("DeletePaths", "ro/f", derr)
-		if c := status.Code(classifyError(derr)); c != codes.PermissionDenied {
+		if c := status.Code(classifyError(context.Background(), derr)); c != codes.PermissionDenied {
 			t.Fatalf("a refused delete classified as %s (%v), want PermissionDenied", c, derr)
 		}
 	}
@@ -194,7 +269,7 @@ func TestBadPathsClassifyAsInvalidArgument(t *testing.T) {
 		if !errors.Is(err, ErrBadPath) {
 			t.Fatalf("%s: %v is not ErrBadPath", what, err)
 		}
-		if c := status.Code(classifyError(err)); c != codes.InvalidArgument {
+		if c := status.Code(classifyError(context.Background(), err)); c != codes.InvalidArgument {
 			t.Fatalf("%s: classified as %s, want InvalidArgument", what, c)
 		}
 	}
@@ -217,5 +292,62 @@ func TestScrubbedKeepsTheChainButNotTheHostPath(t *testing.T) {
 	}
 	if d.scrubbed("s1", nil) != nil {
 		t.Fatal("scrubbed(nil) must stay nil")
+	}
+}
+
+// archiveStub is a backup store whose archive is at a host path (the node's
+// backup dir, or a share) and fails the way a real one does: at Open, or at
+// the first read.
+type archiveStub struct {
+	path    string
+	openErr bool
+}
+
+func (a *archiveStub) Put(context.Context, string, string, io.Reader, int64) error { return nil }
+func (a *archiveStub) List(context.Context, string) ([]*agentpb.BackupInfo, error) {
+	return nil, nil
+}
+func (a *archiveStub) Delete(context.Context, string, string) error { return nil }
+func (a *archiveStub) Kind() string                                 { return "local" }
+func (a *archiveStub) Open(context.Context, string, string) (io.ReadCloser, error) {
+	if a.openErr {
+		return nil, &fs.PathError{Op: "open", Path: a.path, Err: fs.ErrPermission}
+	}
+	return io.NopCloser(failingReader{&fs.PathError{Op: "read", Path: a.path, Err: syscall.EIO}}), nil
+}
+
+type failingReader struct{ err error }
+
+func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// A restore names its archive by the backup's id, never by where the archive
+// lives: KRAKEN_BACKUP_DIR, a node-configured backup dir, a share. Both the
+// open and the reads that follow (gzip's header, every tar entry) fail with an
+// *fs.PathError carrying that location.
+func TestRestoreErrorsDoNotLeakTheArchivePath(t *testing.T) {
+	for _, openErr := range []bool{true, false} {
+		d := newFileOpsRuntime(t)
+		d.backupDir = t.TempDir()
+		const sid, id = "s1", "1726000000000__nightly"
+		archive := filepath.Join(d.backupDir, sid, id+".tar.gz")
+		d.backups = &archiveStub{path: archive, openErr: openErr}
+		err := d.RestoreBackup(context.Background(), sid, "", id)
+		if err == nil {
+			t.Fatalf("openErr=%v: expected an error", openErr)
+		}
+		if strings.Contains(err.Error(), d.backupDir) || strings.Contains(err.Error(), d.dataDir) {
+			t.Fatalf("openErr=%v: restore failure names a host path: %v", openErr, err)
+		}
+		if !strings.Contains(err.Error(), id) {
+			t.Fatalf("openErr=%v: restore failure does not name the backup: %v", openErr, err)
+		}
+	}
+
+	// A backup dir the Panel configured is scrubbed too, up to its first
+	// per-server token.
+	d := newFileOpsRuntime(t)
+	d.nodeCfg = &agentpb.NodeConfig{BackupDir: "/mnt/kraken-backups/{{SLUG}}"}
+	if got := d.scrubHostPaths("s1", "open /mnt/kraken-backups/palworld/s1/x.tar.gz: denied"); strings.Contains(got, "/mnt/kraken-backups") {
+		t.Fatalf("configured backup dir survived scrubbing: %s", got)
 	}
 }

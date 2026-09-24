@@ -1515,7 +1515,10 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 		return statError(p, err)
 	}
 	defer f.Close()
-	_, err = io.Copy(w, f)
+	// A read that fails mid-file (a byte-range lock a running game holds on its
+	// save, on Windows) is an *os.PathError naming the host path, so it is
+	// rendered like every other read failure; a write failure is the stream's.
+	_, err = io.Copy(w, readErrs{r: f, wrap: func(rerr error) error { return statError(p, rerr) }})
 	return err
 }
 
@@ -1971,7 +1974,14 @@ func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id st
 		return d.fileErr(serverID, "open backup", id, "", err)
 	}
 	defer r.Close()
-	gz, err := gzip.NewReader(r)
+	// Every read of the archive — gzip's header, then each tar entry — goes
+	// through the store, and a store's read failure names the archive where it
+	// lives (KRAKEN_BACKUP_DIR, a share). The backup's id is what the operator
+	// knows it by.
+	archive := readErrs{r: r, wrap: func(rerr error) error {
+		return d.fileErr(serverID, "read backup", id, "", rerr)
+	}}
+	gz, err := gzip.NewReader(archive)
 	if err != nil {
 		return fmt.Errorf("docker: gunzip backup: %w", err)
 	}

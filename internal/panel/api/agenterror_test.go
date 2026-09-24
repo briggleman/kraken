@@ -4,13 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/docker/docker/client"
 
 	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/panel/cluster"
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // These run the real Panel → gRPC → Agent path (agent.NewService over the fake
@@ -114,7 +120,9 @@ func TestAgentFileInUseIs409(t *testing.T) {
 	if b.Code != "file_in_use" {
 		t.Fatalf("code = %q, want file_in_use (body %+v)", b.Code, b)
 	}
-	if !strings.Contains(b.Error, inUseErrno.Error()) {
+	// Windows ends its system messages with a full stop, which the sentence
+	// drops inside its parenthesis.
+	if !strings.Contains(b.Error, strings.TrimSuffix(inUseErrno.Error(), ".")) {
 		t.Fatalf("message %q dropped the cause %q", b.Error, inUseErrno.Error())
 	}
 	if !strings.Contains(b.Error, "in use by another process") || !strings.Contains(b.Error, "game container may still be running") {
@@ -135,7 +143,9 @@ func TestAgentRefusalsMapToTheirStatus(t *testing.T) {
 		code   string
 	}{
 		{"permission", &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrPermission}, http.StatusConflict, "node_refused"},
-		{"exists", &fs.PathError{Op: "mkdir", Path: "/data/x", Err: fs.ErrExist}, http.StatusConflict, "already_exists"},
+		// A delete that finds its folder "not empty" (Go: fs.ErrExist) is a
+		// folder something is still writing into — in use, not a collision.
+		{"delete of a folder still being written", &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrExist}, http.StatusConflict, "file_in_use"},
 		{"bad path", agent.ErrBadPath, http.StatusBadRequest, "bad_path"},
 		// A failure the Agent could not classify is a 500, never a 502.
 		{"unclassified", errors.New("the disk is on fire"), http.StatusInternalServerError, "node_error"},
@@ -151,10 +161,104 @@ func TestAgentRefusalsMapToTheirStatus(t *testing.T) {
 			if b.Code != tc.code {
 				t.Fatalf("code = %q, want %q", b.Code, tc.code)
 			}
-			if !strings.Contains(b.Error, tc.err.Error()) {
-				t.Fatalf("message %q dropped the cause %q", b.Error, tc.err.Error())
+			// The OS's own words survive: the whole error, or — where the
+			// in-use sentence rebuilds the message around the path — its cause.
+			cause := tc.err.Error()
+			var pe *fs.PathError
+			if errors.As(tc.err, &pe) && tc.code == "file_in_use" {
+				cause = pe.Err.Error()
+			}
+			if !strings.Contains(b.Error, cause) {
+				t.Fatalf("message %q dropped the cause %q", b.Error, cause)
 			}
 		})
+	}
+}
+
+// A mkdir onto a path that exists is a real collision.
+func TestAgentMkdirOntoAnExistingPathIs409AlreadyExists(t *testing.T) {
+	e := newFilesEnv(t, agent.WithFakeFileError(&fs.PathError{Op: "mkdir", Path: "/data/x", Err: fs.ErrExist}))
+	rec := do(t, e.h, http.MethodPost, "/api/v1/servers/"+e.server+"/files/mkdir", e.token,
+		map[string]string{"path": "/data/x"})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("mkdir onto an existing path: got %d, want 409 (body %s)", rec.Code, rec.Body.String())
+	}
+	if b := decodeAgentError(t, rec); b.Code != "already_exists" {
+		t.Fatalf("code = %q, want already_exists", b.Code)
+	}
+}
+
+// A power action that fails for a reason that is not a file is the node's own
+// error, said plainly: a 500 carrying the message, and none of the file hints.
+// The same fs sentinels turn up here — a Docker engine that is down on Windows
+// is ERROR_FILE_NOT_FOUND on its named pipe, docker.sock refusing the Agent is
+// EACCES — and must not come back as "404 not found" or "check the agent can
+// write there" on a start.
+func TestAgentNonFileFailuresOnPowerAre500WithoutFileHints(t *testing.T) {
+	cli, err := client.NewClientWithOpts(client.WithHost("tcp://127.0.0.1:1"))
+	if err != nil {
+		t.Fatalf("docker client: %v", err)
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, dockerDown := cli.Ping(ctx)
+	if !client.IsErrConnectionFailed(dockerDown) {
+		t.Fatalf("precondition: Ping against a closed port = %v, not a connection failure", dockerDown)
+	}
+	cases := []struct {
+		name string
+		err  error
+		want string // a fragment the message must carry
+	}{
+		{"docker engine unreachable", fmt.Errorf("docker: stop: %w", dockerDown), "cannot connect to the daemon"},
+		{"docker engine pipe missing", &fs.PathError{Op: "open", Path: `\\.\pipe\docker_engine`, Err: fs.ErrNotExist}, "docker_engine"},
+		{"docker.sock refused", &fs.PathError{Op: "dial", Path: "/var/run/docker.sock", Err: fs.ErrPermission}, "docker.sock"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newFilesEnv(t, agent.WithFakePowerError(agentpb.PowerAction_POWER_ACTION_STOP, tc.err))
+			rec := do(t, e.h, http.MethodPost, "/api/v1/servers/"+e.server+"/power", e.token,
+				map[string]string{"action": "stop"})
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("got %d, want 500 (body %s)", rec.Code, rec.Body.String())
+			}
+			b := decodeAgentError(t, rec)
+			if b.Code != "node_error" {
+				t.Fatalf("code = %q, want node_error", b.Code)
+			}
+			if !strings.Contains(b.Error, tc.want) {
+				t.Fatalf("message %q does not carry %q", b.Error, tc.want)
+			}
+			for _, hint := range []string{"game container may still be running", "agent can write there"} {
+				if strings.Contains(b.Error, hint) {
+					t.Fatalf("a non-file failure carries the file hint %q: %s", hint, b.Error)
+				}
+			}
+		})
+	}
+}
+
+// A tunnel-mode node the Panel has no tunnel transport for gets no client at
+// all. That is the node being unreachable — a 503 — not a Panel 500.
+func TestNodeInfoWithoutATunnelTransportIs503(t *testing.T) {
+	e := newDownloadEnv(t)
+	ctx := context.Background()
+	node, err := e.st.GetNode(ctx, e.nodeID)
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	node.ConnectionMode = cluster.ConnTunnel
+	if err := e.st.UpdateNode(ctx, node); err != nil {
+		t.Fatalf("update node: %v", err)
+	}
+	rec := do(t, e.h, http.MethodGet, "/api/v1/nodes/"+e.nodeID+"/info", e.token, nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("node info without a tunnel transport: got %d, want 503 (body %s)", rec.Code, rec.Body.String())
+	}
+	b := decodeAgentError(t, rec)
+	if b.Code != "node_unreachable" || !strings.Contains(b.Error, "tunnel") {
+		t.Fatalf("answered %+v, want node_unreachable naming the missing tunnel transport", b)
 	}
 }
 

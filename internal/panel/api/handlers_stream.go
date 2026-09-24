@@ -140,7 +140,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeNodeUnreachable(w, err)
+		writeAgentError(w, err)
 		return
 	}
 

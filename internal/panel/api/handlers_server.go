@@ -664,7 +664,7 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeNodeUnreachable(w, err)
+		writeAgentError(w, err)
 		return
 	}
 

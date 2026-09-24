@@ -208,7 +208,7 @@ func (s *Server) agentForServer(w http.ResponseWriter, r *http.Request, id strin
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeNodeUnreachable(w, err)
+		writeAgentError(w, err)
 		return nil, nil, false
 	}
 	return client, sv, true

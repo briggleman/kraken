@@ -46,9 +46,20 @@ const (
 // every one of them.
 //
 // The code comes from the Agent's gRPC status (see agent.classifyError, which
-// gives each runtime failure the code its cause deserves). An error with no
-// gRPC status at all — a Panel-side failure dressed up as an Agent one — is the
+// gives each runtime failure the code its cause deserves, and gives the
+// filesystem codes to file operations only — so the file hints below never
+// attach to a failed start). A Panel that could not even build a client for
+// the node (nodeclient.ClientError) reads as Unavailable. An error with no gRPC
+// status at all — a Panel-side failure dressed up as an Agent one — is the
 // generic 500.
+//
+// The two 503s say different things, because they are different facts.
+// Unavailable means the Panel never reached the Agent, so nothing happened
+// there. DeadlineExceeded means the Panel's own deadline for the call ran out:
+// the Agent emits that code only when the RPC's context has ended (see
+// classifyError), and that context carries the Panel's deadline, so either way
+// it is the Panel that stopped waiting — and the action it asked for (a stop
+// still inside its graceful-stop window, say) may well still be running.
 func agentFailure(err error) (int, string, string) {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -59,7 +70,8 @@ func agentFailure(err error) (int, string, string) {
 	case codes.Unavailable:
 		return http.StatusServiceUnavailable, codeNodeUnreachable, "could not reach the node's agent: " + msg
 	case codes.DeadlineExceeded:
-		return http.StatusServiceUnavailable, codeNodeUnreachable, "the node's agent did not answer in time: " + msg
+		return http.StatusServiceUnavailable, codeNodeUnreachable,
+			"the node's agent did not answer within the time allowed — the action may still be completing on the node (" + msg + ")"
 	case codes.NotFound:
 		return http.StatusNotFound, codeNotFound, msg
 	case codes.InvalidArgument:
@@ -83,16 +95,4 @@ func agentFailure(err error) (int, string, string) {
 func writeAgentError(w http.ResponseWriter, err error) {
 	st, code, msg := agentFailure(err)
 	writeCoded(w, st, code, msg)
-}
-
-// writeNodeUnreachable answers when the Panel has no client for the node at
-// all — a dial target it cannot build, or a tunnel-mode node with no tunnel
-// transport. It is the same answer as an RPC that could not reach the Agent:
-// a 503, whose body survives the edge (see agentFailure).
-func writeNodeUnreachable(w http.ResponseWriter, err error) {
-	msg := "could not reach the node's agent"
-	if err != nil {
-		msg += ": " + err.Error()
-	}
-	writeCoded(w, http.StatusServiceUnavailable, codeNodeUnreachable, msg)
 }

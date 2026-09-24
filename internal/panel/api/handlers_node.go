@@ -892,7 +892,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	}
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
-		writeNodeUnreachable(w, err)
+		writeAgentError(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

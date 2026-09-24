@@ -23,9 +23,14 @@ import (
 // first.
 
 // errInstallRunning is the refusal a start gets while an install pass runs.
-// FailedPrecondition, because retrying once the pass has finished is exactly
-// right.
-var errInstallRunning = grpcstatus.Error(codes.FailedPrecondition, "an install pass is running for this server")
+// Aborted — gRPC's code for an operation that lost to a concurrent one, and
+// that is worth retrying once the other has finished — not FailedPrecondition:
+// the Panel reads FailedPrecondition as a file in use and appends "a game
+// container may still be running", which is the wrong thing to tell an
+// operator whose server is mid-install. The Panel answers Aborted with 409
+// `install_running` (agentFailure). It is a gRPC status already, so the
+// Agent's error interceptor passes it through untouched.
+var errInstallRunning = grpcstatus.Error(codes.Aborted, "an install pass is running for this server")
 
 // installGate is the set of servers with an install pass in progress. The zero
 // value is ready to use.

@@ -122,6 +122,9 @@ func adoptableCreated(info container.InspectResponse, serverID string, now time.
 	if err != nil {
 		return false
 	}
+	// Created is the daemon's clock and now is the Agent's. Skew between them
+	// (Docker Desktop's VM clock after the host sleeps) shifts this window;
+	// the worst case is an old leftover started rather than recreated.
 	return now.Sub(created) < createdAdoptWindow
 }
 

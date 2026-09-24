@@ -1,11 +1,16 @@
 package api_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/briggleman/kraken/internal/agent"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // TestPower_UpdateRefusedWhileAContainerHoldsTheDataDir — #351. The pre-update
@@ -74,6 +79,51 @@ func TestReinstall_RefusedWhileAContainerHoldsTheDataDir(t *testing.T) {
 	state, lastErr := waitForLastError(t, h, token, sv.ID)
 	if state != "offline" || !strings.Contains(lastErr, "stray") {
 		t.Errorf("refused reinstall: got state %q, last_error %q; want offline with the refusal", state, lastErr)
+	}
+}
+
+// TestPower_StartDuringAnInstallIsA409 — a START that reaches the Agent while
+// an install pass for the server is running there (the node-scoped endpoint,
+// which forwards straight to the Agent) is refused by the Agent's install
+// gate. The refusal survives the Agent's error interceptor as a typed status
+// and reaches the operator as 409 install_running — not the 500 an untyped
+// error would be, and not the file-in-use hint FailedPrecondition carries.
+func TestPower_StartDuringAnInstallIsA409(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-x", agent.WithFakeInstallDelay(150*time.Millisecond))
+	nodeID := registerNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "gate-409", map[string]any{"script": "install.sh"})
+	sv := seedOfflineServer(t, st, "sv-gate", nodeID, specID, nil)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- rt.Install(context.Background(), &agentpb.InstallServerRequest{ServerId: sv.ID, InstallScript: "install.sh"},
+			func(*agentpb.InstallEvent) error { return nil })
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for len(rt.InstallScripts(sv.ID)) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the install never started")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	rec := do(t, h, http.MethodPost, "/api/v1/nodes/"+nodeID+"/servers/"+sv.ID+"/power", token,
+		map[string]string{"action": "start"})
+	var body struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if rec.Code != http.StatusConflict || body.Code != "install_running" {
+		t.Errorf("START during an install: got %d %q (%s), want 409 install_running", rec.Code, body.Code, body.Error)
+	}
+	if strings.Contains(body.Error, "game container may still be running") {
+		t.Errorf("the refusal carries the file-in-use hint: %q", body.Error)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("install: %v", err)
 	}
 }
 

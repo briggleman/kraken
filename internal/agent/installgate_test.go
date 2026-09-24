@@ -16,7 +16,7 @@ import (
 )
 
 func isInstallRunning(err error) bool {
-	return grpcstatus.Code(err) == codes.FailedPrecondition && strings.Contains(err.Error(), "install pass is running")
+	return grpcstatus.Code(err) == codes.Aborted && strings.Contains(err.Error(), "install pass is running")
 }
 
 // While an install pass runs, neither a START nor a RESTART may reach the
@@ -30,7 +30,7 @@ func TestPower_RefusedWhileInstalling(t *testing.T) {
 
 	for _, action := range []agentpb.PowerAction{agentpb.PowerAction_POWER_ACTION_START, agentpb.PowerAction_POWER_ACTION_RESTART} {
 		if _, err := d.Power(context.Background(), guardServer, action); !isInstallRunning(err) {
-			t.Errorf("%v during an install: want FailedPrecondition, got %v", action, err)
+			t.Errorf("%v during an install: want Aborted, got %v", action, err)
 		}
 	}
 	if ops.stops != 0 || ops.inspects != 0 {
@@ -92,7 +92,7 @@ func TestFakePower_StartRefusedDuringInstall(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if _, err := f.Power(context.Background(), guardServer, agentpb.PowerAction_POWER_ACTION_START); !isInstallRunning(err) {
-		t.Errorf("START during an install: want FailedPrecondition, got %v", err)
+		t.Errorf("START during an install: want Aborted, got %v", err)
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("install: %v", err)

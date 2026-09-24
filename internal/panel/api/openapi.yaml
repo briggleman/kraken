@@ -415,7 +415,9 @@ paths:
             recreated), or a setting its spec marks `required` is empty (`code:
             required_settings_missing`, with the keys in `missing_settings`).
             Nothing was attempted and the server's state is unchanged. Stop and
-            kill are never refused for any of these.
+            kill are never refused for any of these. The node's agent can also
+            refuse a start or restart while an install pass for the server is
+            running on it (`code: install_running`); retry once it ends.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StartRefusal' }
@@ -1159,7 +1161,10 @@ paths:
             Start or restart refused: the server is installing, its install
             failed, its spec no longer exists (`code: spec_missing`), or a
             required setting is empty (`code: required_settings_missing`, with
-            the keys in `missing_settings`). Nothing was sent to the agent.
+            the keys in `missing_settings`). Nothing was sent to the agent. Or
+            the agent refused a start or restart because an install pass for the
+            server is running on the node (`code: install_running`); retry once
+            it ends.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StartRefusal' }
@@ -1650,7 +1655,8 @@ components:
             A stable, machine-readable reason, present on the failures a
             client may want to branch on — branch on this, never on `error`.
             A failed Agent operation carries one of node_unreachable,
-            not_found, bad_path, file_in_use, node_refused, already_exists or
+            not_found, bad_path, file_in_use, node_refused, already_exists,
+            install_running or
             node_error; a settings save whose config could not be rendered
             carries config_apply_failed.
     CodedError:
@@ -1977,7 +1983,7 @@ components:
       type: object
       properties:
         error: { type: string, description: the sentence to show the operator }
-        code: { type: string, enum: [required_settings_missing, spec_missing], description: absent for the install-state refusals }
+        code: { type: string, enum: [required_settings_missing, spec_missing, install_running], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there" }
         missing_settings: { type: array, items: { type: string }, description: "required_settings_missing only: the empty fields' keys" }
     ServerSettings:
       type: object

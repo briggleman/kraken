@@ -31,6 +31,7 @@ const (
 	codeFileInUse       = "file_in_use"      // 409: another process holds the file
 	codeNodeRefused     = "node_refused"     // 409: the node's filesystem refused the operation (permissions)
 	codeAlreadyExists   = "already_exists"   // 409: the target already exists
+	codeInstallRunning  = "install_running"  // 409: the node is running an install pass for this server; retry when it ends
 	codeNodeError       = "node_error"       // 500: anything else the node reported
 )
 
@@ -87,6 +88,10 @@ func agentFailure(err error) (int, string, string) {
 		return http.StatusConflict, codeNodeRefused, msg + " — the node refused this; check the server is stopped and the agent can write there"
 	case codes.AlreadyExists:
 		return http.StatusConflict, codeAlreadyExists, msg
+	case codes.Aborted:
+		// The Agent refused to start a server while an install pass for it is
+		// running (#351). Nothing is wrong with a file; retry once it is done.
+		return http.StatusConflict, codeInstallRunning, msg
 	}
 	return http.StatusInternalServerError, codeNodeError, msg
 }

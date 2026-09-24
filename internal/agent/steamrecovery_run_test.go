@@ -384,7 +384,7 @@ func TestDockerInstall_RetriesThroughTheGuard(t *testing.T) {
 		{"Update state (0x5) verifying install, progress: 80.32", live0x602},
 		{"Success! App '4019830' fully installed."},
 	}}
-	d.ctrOps = ops
+	d.containers = ops
 	write(t, d.localDir(guardServer), liveOrphanRel)
 
 	var failed string

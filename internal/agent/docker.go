@@ -925,13 +925,13 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 		}
 		return "", d.fail(emit, err.Error())
 	}
-	created, err := d.containers().ContainerCreate(ctx, cfg, host, nil, nil, installName)
+	created, err := d.containers.ContainerCreate(ctx, cfg, host, nil, nil, installName)
 	if err != nil {
 		return "", d.fail(emit, "create install container: "+err.Error())
 	}
 	defer d.removeInstallContainer(created.ID, installName)
 
-	if err := d.containers().ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+	if err := d.containers.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return "", d.fail(emit, "start install container: "+err.Error())
 	}
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: 10}})
@@ -950,7 +950,7 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 	}
 
 	// Wait for exit and check the code.
-	statusCh, errCh := d.containers().ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
+	statusCh, errCh := d.containers.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
 	select {
 	case werr := <-errCh:
 		if werr != nil {
@@ -2171,7 +2171,7 @@ func untouchedFailure(msg string) *agentpb.InstallEvent {
 // streamLogs streams a container's logs to fn until the stream ends (used for
 // the bounded install phase). demux is used for the unbounded console stream.
 func (d *DockerRuntime) streamLogs(ctx context.Context, id, tail string, fn func(stream, text string) error) error {
-	reader, err := d.containers().ContainerLogs(ctx, id, container.LogsOptions{
+	reader, err := d.containers.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: true, Tail: tail,
 	})
 	if err != nil {

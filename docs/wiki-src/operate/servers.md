@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.
+description: Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.
 section: operate
 order: 31
 ---
@@ -37,7 +37,7 @@ Ports come from the node's pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to `installing` and the install log streams into the console
 pane while SteamCMD works.
 
-## The nine states
+## The ten states
 
 | state | what is true |
 | --- | --- |
@@ -49,6 +49,7 @@ pane while SteamCMD works.
 | `stopping` | a graceful stop is in progress |
 | `crashed` | the process exited unexpectedly; the exit code is kept |
 | `restoring` | a backup restore is swapping save files on the node; start is refused until it ends ([Backups](/wiki/operate/backups/#restoring)) |
+| `retiring` | a retire is stopping the server, taking its final backup and removing it; everything that would change it waits ([below](#retiring-a-server)) |
 | `retired` | on no node: its containers and world are gone, its record, settings, schedules and backups are kept ([below](#retiring-a-server)) |
 
 Four power actions drive it: `start`, `stop`, `restart` and `kill`. `kill` is
@@ -238,31 +239,41 @@ worth knowing before you go looking for one.
 
 ## Retiring a server
 
-Servers come back far more often than they go for good, so the delete in the
-drill-in **retires** the server. It is behind the typed confirmation, and the
-confirmation says what happens in order: a final backup first, then the world
-and config go, and the backups are kept.
+Servers come back far more often than they go for good, so the button in the
+drill-in's danger block **retires** the server. It is behind the typed
+confirmation — type `retire` — and the confirmation says what happens in order:
+the server is stopped, a final backup is taken, then its world and config are
+removed from the node; its backups are kept, and it can be revived later from
+any of them.
 
 A retire, `POST /servers/{id}/retire`, runs in the background:
 
 1. **Stop.** A server that may be running is stopped, so the backup does not
    archive a world mid-save.
 2. **Final backup.** On by default (`final_backup: false` skips it). The Panel
-   waits for the archive to be ready, for at most 30 minutes. A backup that
-   fails does not stop the retire, and neither does one that is skipped because
-   the node cannot be reached or the server would not stop; the retired server
-   says which in `retire_note` ("final backup skipped: node unreachable").
+   waits for the archive to be ready, for at most 30 minutes.
 3. **Removal.** The node removes the server's containers and its data directory
    — the world and the rendered config. It never touches an archive.
 4. **Clean-up.** The memory and ports it reserved are released, its DNS records
    and port forwards are deleted, and **its schedules are switched off**, not
    deleted. The record stays, in state `retired`.
 
-While it runs the server carries a `retire` block whose phase moves `stopping`,
-`backing_up`, `removing`, and the state stays what it was until the server
-becomes `retired`. Anything else that would change the server — a start, a
-restore, a reinstall, a settings save, a file write — is refused with `409
-server_busy` for the duration.
+**While the node answers, the world is never removed without the final backup
+you asked for.** A final backup that fails, or is still being written at the
+30-minute mark, abandons the retire: nothing is removed, the server goes back
+to the state it was in (`offline` if the retire had already stopped it), and
+`last_error` says why, so the drill-in shows it. A backup that could not even be
+tried — the node did not answer the stop or the backup — is tried again when
+the removal is due, if the node answers then, and the same rule holds. Only a
+node that is unreachable at that moment gets its removal queued without a final
+backup; the retired server says so in `retire_note` ("final backup skipped: node
+unreachable").
+
+While it runs the server reads `retiring`, and carries a `retire` block with
+the state it came from, the phase (`stopping`, `backing_up`, `removing`) and the
+final backup's outcome so far. Anything else that would change the server — a
+start, a restore, a reinstall, a settings save, a file write, a backup — is
+refused with `409 server_busy` for the duration.
 
 **What a retired server keeps:** its id, name, spec, settings and launch
 variables, its schedules (switched off and flagged), its SFTP credentials, and
@@ -286,12 +297,13 @@ bound — and the band reads `removals · 1 pending`. The Panel's node reconcile
 retries it, backing off, until the node confirms; the allocation is released
 then. [The fleet page](/wiki/operate/fleet/) has the details. If the Panel
 cannot record the removal at all (its database is failing), the retire is
-abandoned: the server keeps its state and `retire_note` starts with `retire
-abandoned:`.
+abandoned: the server goes back to its state and `retire_note` and `last_error`
+start with `retire abandoned:`.
 
 A Panel that restarts mid-retire finishes the job on its next reconcile pass
 when the removal had begun (the removal is queued again, which is safe to
-repeat), and abandons it with a note when it had not.
+repeat, and the final backup's recorded outcome goes into the note), and
+abandons it with a note when it had not.
 
 ## Reviving a server
 
@@ -316,14 +328,15 @@ The response is `202` with the server `installing`. From there each step only
 runs when the one before it landed: a failed install lands `install_failed` as a
 failed create does; a restore runs through the same job as any restore
 (`restoring`, then `offline` with `restore_result`); a start that is refused or
-fails lands `offline` with the reason in `last_error`. The schedules the retire
-switched off are switched back on — only those, never one you had switched off
-yourself.
+fails lands `offline` with the reason in `last_error`. Once the install has
+landed, the schedules the retire switched off are switched back on — only
+those, never one you had switched off yourself.
 
 A revive is refused with `409 removal_pending` while the retire's removal is
 still owed to a node: the node would delete the revived world the moment it
-came back. Wait for the node to confirm, or dismiss the removal from the node's
-band if the node is gone for good.
+came back. Wait for the node to confirm or, if the node is gone for good,
+dismiss the removal through the API: `DELETE /api/v1/nodes/{id}/removals/{serverID}`
+(there is no control for it in the UI yet).
 
 ## Deleting a server permanently
 

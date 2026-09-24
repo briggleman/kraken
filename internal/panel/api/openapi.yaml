@@ -371,10 +371,11 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: >-
-            `code: server_not_retired` — the server is not retired (or a retire
-            or revive holds it); retire it first. `code: server_restoring` or
-            `server_busy` while a restore or a retire holds a live server.
-            Nothing was sent to the node.
+            `code: server_not_retired` — the server is not retired; retire it
+            first. `code: server_restoring` or `server_busy` while a restore or
+            a retire holds a live server, and `server_busy` while a revive holds
+            a retired one or its retire is still letting go ("the retire is
+            finishing — retry in a moment"). Nothing was sent to the node.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '500':
@@ -388,9 +389,10 @@ paths:
       summary: Retire a server — keep its id, config, schedules and backups; remove its containers and world
       description: >-
         What the delete button does. Runs in the background and answers at
-        once: 202 with the server, its state unchanged and a `retire` block
-        whose phase moves stopping → backing_up → removing; poll GET
-        /servers/{id} until the state is `retired`. The retire stops the
+        once: 202 with the server in state `retiring` and a `retire` block (the
+        state it came from, a phase moving stopping → backing_up → removing,
+        and the final backup's outcome); poll GET /servers/{id} until the state
+        is `retired` — or, for an abandoned retire, back to what it was. The retire stops the
         server, takes a final backup unless `final_backup` is false and waits
         for it to be ready (at most 30 minutes), then has the node remove the
         server's containers and data directory — never its archives — releases
@@ -401,14 +403,19 @@ paths:
         are, and `retired_ports` the ports it held.
 
 
-        A final backup that is skipped (the node is unreachable, or the server
-        could not be stopped) or fails does not stop the retire; `retire_note`
-        says what happened. A node that cannot be reached does not stop it
-        either: the removal is queued as a pending removal holding the
-        allocation (see Node.pending_removals), and `retire_note` says so. A
-        retire whose removal cannot be recorded is abandoned: the server keeps
-        its state and `retire_note` starts with "retire abandoned:". Requires
-        server.delete.
+        While the node answers, nothing is removed unless the final backup
+        that was asked for is READY. A final backup that fails, or is still
+        being written after 30 minutes, abandons the retire: nothing is
+        removed, the server goes back to the state it came from (`offline` if
+        the retire had stopped it) and `last_error` and `retire_note` say why,
+        starting "retire abandoned:". A backup that could not be tried (the
+        stop or the backup did not reach the node) is tried again when the
+        removal is due, if the node answers then; only a node unreachable at
+        that moment gets its removal queued without a backup — as a pending
+        removal holding the allocation (see Node.pending_removals) — and
+        `retire_note` says so ("final backup skipped: node unreachable"). A
+        retire whose removal cannot be recorded is abandoned too. While it
+        runs, every writer answers 409 `server_busy`. Requires server.delete.
       requestBody:
         required: false
         content:
@@ -419,10 +426,11 @@ paths:
                 final_backup: { type: boolean, default: true, description: take a backup after the stop and before the removal }
       responses:
         '202':
-          description: The retire started
+          description: The retire started; the server is retiring
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Server' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: >-
@@ -472,11 +480,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Server' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404':
+          description: >-
+            No such server (or one this user may not reach), or `code:
+            node_not_found` — the `node_id` asked for does not exist.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '409':
           description: >-
             Nothing was changed. `code: server_not_retired` — only a retired
-            server can be revived. `code: removal_pending` — the retire's
+            server can be revived. `code: server_busy` — a permanent delete or
+            another revive holds it, or its retire is still letting go ("the
+            retire is finishing — retry in a moment"). `code: removal_pending` — the retire's
             removal of the old containers and world is still owed to a node,
             and would delete the revived world when it landed; revive once it
             has, or dismiss it. `code: backup_not_found` / `backup_not_ready` —
@@ -976,6 +991,11 @@ paths:
     get:
       tags: [Backups]
       summary: List backups
+      description: >
+        Also answers for a retired server — keeping its archives listable is
+        the point of retiring — from the node it was retired from. When that
+        node no longer exists the answer is 404 `not_found`: its archives went
+        with it.
       responses:
         '200':
           description: Backups
@@ -1039,9 +1059,11 @@ paths:
         '409':
           description: >
             The server is not stopped, a restore is already running for it
-            (`code: restore_in_progress`), or a start, restart or reinstall is
+            (`code: restore_in_progress`), a start, restart or reinstall is
             in flight and still holds the server (`code: server_busy` — its row
-            may read offline until the agent answers). Nothing was started.
+            may read offline until the agent answers), a retire holds it
+            (`code: server_busy`, state `retiring`), or it is retired (`code:
+            server_retired`). Nothing was started.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '503': { $ref: '#/components/responses/NodeUnreachable' }
@@ -1706,6 +1728,7 @@ paths:
                 properties:
                   dns: { $ref: '#/components/schemas/ServerDNS' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/ServerHeld' }
         '502': { description: Cloudflare API error }
         '503': { description: Cloudflare not configured }
     delete:
@@ -1732,6 +1755,7 @@ paths:
       responses:
         '200': { description: Forward updated }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/ServerHeld' }
         '502': { description: UniFi API error }
         '503': { description: UniFi not configured }
   /audit:
@@ -1809,7 +1833,17 @@ components:
         running), `node_refused` (the node's filesystem denied it) or
         `already_exists`. `error` carries the node's own words. On an
         operation that writes the server's files, `server_restoring` means a
-        backup restore holds them and nothing was sent to the node.
+        backup restore holds them and `server_busy` that a retire, revive or
+        delete holds the server; nothing was sent to the node. On a retired
+        server every file and backup route but the backup list answers
+        `server_retired` (revive it first).
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    ServerHeld:
+      description: >
+        Refused, nothing changed: `server_retired` — the server is retired
+        (revive it first); `server_busy` — a retire, revive or delete holds it;
+        `server_restoring` — a backup restore holds it.
       content:
         application/json: { schema: { $ref: '#/components/schemas/Error' } }
     AgentError:
@@ -1953,11 +1987,13 @@ components:
         retire:
           type: object
           description: >-
-            Present only while a retire runs. The state is unchanged until the
-            server becomes `retired`.
+            Present only while a retire runs (state `retiring`).
           properties:
             phase: { type: string, enum: [stopping, backing_up, removing] }
-            final_backup: { type: boolean }
+            prev_state: { $ref: '#/components/schemas/ServerState' }
+            final_backup: { type: string, enum: ['off', requested, ready, failed, skipped], description: "the final backup so far; off = not asked for" }
+            final_backup_note: { type: string, description: "why it failed or was skipped" }
+            final_backup_id: { type: string, description: "the archive, once the node has one" }
             started_at: { type: string, format: date-time, description: "server clock" }
         retired_at: { type: string, format: date-time, description: "when the server was retired; only on a retired server" }
         retire_note:
@@ -2240,7 +2276,7 @@ components:
       type: object
       properties:
         error: { type: string, description: the sentence to show the operator }
-        code: { type: string, enum: [required_settings_missing, spec_missing, install_running, server_restoring, server_retired, server_busy], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there; server_restoring while a backup restore holds the server; server_retired on a retired server (revive it first); server_busy while a retire or revive holds it" }
+        code: { type: string, enum: [required_settings_missing, spec_missing, install_running, server_restoring, server_retired, server_busy], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there; server_restoring while a backup restore holds the server; server_retired on a retired server (revive it first); server_busy while a retire or revive holds it (state retiring)" }
         missing_settings: { type: array, items: { type: string }, description: "required_settings_missing only: the empty fields' keys" }
     ServerSettings:
       type: object
@@ -2305,6 +2341,7 @@ components:
             last_run_at: { type: string, format: date-time }
             next_run_at: { type: string, format: date-time }
             last_error: { type: string }
+            disabled_by_retire: { type: boolean, description: "switched off by its server's retire; a revive switches it back on once its install lands. An operator's own enable or disable clears it" }
             created_at: { type: string, format: date-time }
     AuditEntry:
       type: object

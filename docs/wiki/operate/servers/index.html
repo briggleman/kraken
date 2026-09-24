@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Servers — Kraken wiki</title>
-<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
 <meta property="og:title" content="Servers — Kraken wiki" />
-<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Servers — Kraken wiki" />
-<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,10 +110,10 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
     <h1>Servers</h1>
-    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
@@ -154,7 +154,7 @@ Steam login. Used for that one install and never persisted.</li>
 <p>Ports come from the node&#39;s pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to <code>installing</code> and the install log streams into the console
 pane while SteamCMD works.</p>
-<h2 id="the-seven-states">The seven states <a class="hlink" href="#the-seven-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<h2 id="the-eight-states">The eight states <a class="hlink" href="#the-eight-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -189,6 +189,10 @@ pane while SteamCMD works.</p>
 <tr>
 <td><code>crashed</code></td>
 <td>the process exited unexpectedly; the exit code is kept</td>
+</tr>
+<tr>
+<td><code>restoring</code></td>
+<td>a backup restore is swapping save files on the node; start is refused until it ends (<a href="/wiki/operate/backups/#restoring">Backups</a>)</td>
 </tr>
 </tbody></table>
 </div>
@@ -322,7 +326,7 @@ script once, immediately. It is both the retry for a failed install and the
 explicit update for a server whose start does not update it.</p>
 <p>It is accepted from <code>install_failed</code>, <code>offline</code> and <code>crashed</code>, and refused from
 <code>installing</code>, <code>starting</code>, <code>running</code> and <code>stopping</code> with a <code>409</code> that names the
-current state. It runs asynchronously, exactly like the create path: the server
+current state, and from <code>restoring</code> with a <code>409</code> carrying <code>code: server_restoring</code>. It runs asynchronously, exactly like the create path: the server
 flips to <code>installing</code> and the log streams.</p>
 <p>Unlike the update-on-start pass, a reinstall <em>does</em> re-run the spec&#39;s BepInEx
 overlay for a server deployed with it.</p>
@@ -427,7 +431,7 @@ refused with a <code>500</code> and nothing is deleted.</p>
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>

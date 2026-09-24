@@ -397,11 +397,41 @@ func (s *Service) ListBackups(ctx context.Context, req *agentpb.ListBackupsReque
 	return &agentpb.ListBackupsResponse{Backups: backups}, nil
 }
 
+// RestoreBackup is the unary restore, kept for Panels older than the stream.
+// It runs detached from the caller's cancellation: those Panels held this call
+// open under a 10-minute timeout, and before the restore honoured its context a
+// timeout or a dropped client simply left it running to completion. Cancelling
+// now would roll back a restore an old Agent would have finished. The stream
+// (RestoreBackupStream) is the cancellable path.
 func (s *Service) RestoreBackup(ctx context.Context, req *agentpb.RestoreBackupRequest) (*agentpb.RestoreBackupResponse, error) {
-	if err := s.rt.RestoreBackup(ctx, req.ServerId, req.Slug, req.Id); err != nil {
+	if err := s.rt.RestoreBackup(context.WithoutCancel(ctx), req.ServerId, req.Slug, req.Id); err != nil {
 		return nil, err
 	}
 	return &agentpb.RestoreBackupResponse{}, nil
+}
+
+// RestoreBackupStream runs the restore and narrates it. A restore that fails is
+// reported IN the stream as a `failed` event carrying the reason, not as the
+// RPC's status: the Panel reads a failed event as "the Agent tried and says
+// why", and a transport error as "the outcome is unknown" — the same split the
+// install stream makes. A cancelled context (the Panel went away) is the one
+// failure returned as a status, since nobody is left to read an event.
+func (s *Service) RestoreBackupStream(req *agentpb.RestoreBackupRequest, stream agentpb.NodeService_RestoreBackupStreamServer) error {
+	ctx := stream.Context()
+	err := s.rt.RestoreBackupStream(ctx, req.ServerId, req.Slug, req.Id, stream.Send)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	// A refusal before anything ran (the game is running, or it could not be
+	// checked) keeps its gRPC code, so the Panel reads it as "the restore did
+	// not start" rather than as an attempt that failed partway.
+	if c := status.Code(err); c == codes.FailedPrecondition || c == codes.Unavailable || c == codes.Aborted {
+		return err
+	}
+	return stream.Send(&agentpb.RestoreEvent{Phase: restorePhaseFailed, Failed: err.Error()})
 }
 
 func (s *Service) DeleteBackup(ctx context.Context, req *agentpb.DeleteBackupRequest) (*agentpb.DeleteBackupResponse, error) {

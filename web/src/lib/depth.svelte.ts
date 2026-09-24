@@ -8,6 +8,7 @@ import type {
   FileListing,
   InstallLog,
   PowerActionName,
+  RestoreProgress,
   ScheduledTask,
   Server,
   ServerDnsState,
@@ -21,6 +22,25 @@ import { fleet, refreshFleet } from "./fleet.svelte";
 export interface Origin {
   ox: string;
   oy: string;
+}
+
+export interface RestoreWatch {
+  serverId: string;
+  backupId: string;
+  /** When the watched restore began, by the SERVER's clock (its
+   *  restore.started_at). An outcome only counts if it finished after this —
+   *  which is what keeps an earlier restore's result, or a fleet read issued
+   *  before the POST and landing after the 202, from reading as this one's end.
+   *  Server time on both sides, so a skewed client clock cannot matter. */
+  since: string;
+}
+
+export interface RestoreNote {
+  kind: "done" | "failed";
+  /** The archive, by the name the ledger shows it under. */
+  name: string;
+  /** The agent's reason, for a failed restore. */
+  reason: string;
 }
 
 export const depth = $state({
@@ -60,7 +80,17 @@ export const depth = $state({
   // fact, this is only a finer name for one of its causes.
   updatePass: false,
   creatingBackup: false,
+  // The archive whose restore REQUEST is in flight — only the POST, which now
+  // answers at once (#361). The restore itself is the server's `restoring`
+  // state and its `restore` block, which outlive this by minutes.
   restoringBackup: null as string | null,
+  // The restore this drill-in is waiting on the end of, so the ledger can say
+  // how it ended: set when a restore starts here or the server is found
+  // mid-restore, cleared when the outcome note is made.
+  restoreWatch: null as RestoreWatch | null,
+  // How the watched restore ended — the one piece of feedback a restore that
+  // landed ever gave, since the button used to just go back to "restore".
+  restoreNote: null as RestoreNote | null,
   powerBusy: false,
   error: null as string | null,
   sftp: null as SftpStatus | null,
@@ -295,6 +325,8 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   // A fresh server, and a fresh socket: nothing is latched until this server's
   // own state and console say so.
   depth.updatePass = false;
+  depth.restoreWatch = null;
+  depth.restoreNote = null;
   depth.error = null;
   depth.sftp = null;
   depth.sftpOpen = false;
@@ -389,14 +421,16 @@ async function refreshDetail() {
   ]);
   if (depth.serverId !== id) return; // drilled elsewhere meanwhile
   const [srv, bk, sch, dns, settings, files, sftp, installLog] = results;
+  if (bk.status === "fulfilled") {
+    depth.backups = bk.value.backups ?? [];
+    depth.backupMirror = bk.value.mirror ?? "";
+  }
+  // After the backups, so a restore found in flight can name its archive.
   if (srv.status === "fulfilled") {
     depth.server = srv.value;
     stream.set(id, streamModeFor(srv.value.state));
     syncUpdatePass(srv.value.state, stream.lines);
-  }
-  if (bk.status === "fulfilled") {
-    depth.backups = bk.value.backups ?? [];
-    depth.backupMirror = bk.value.mirror ?? "";
+    syncRestore(srv.value);
   }
   if (sch.status === "fulfilled") depth.schedules = sch.value.schedules ?? [];
   if (dns.status === "fulfilled") depth.dns = dns.value;
@@ -434,6 +468,7 @@ export function syncDepthFromFleet() {
     // rather than left to a component effect to notice afterwards: the state is
     // what decides the label, so the label must not be able to outlive it.
     syncUpdatePass(s.state, stream.lines);
+    syncRestore(s);
     // An install that just ended leaves a retained log the open drill-in has
     // never read — and this is exactly the moment it matters, because the
     // console's socket is about to switch to a container that may not start.
@@ -607,6 +642,12 @@ export async function filesDownload(f: FileEntry) {
 
 // --- backups ---------------------------------------------------------------
 
+// The ledger's one poll, at one cadence (2s): it runs while an archive is
+// being created or a restore is in flight, and re-reads only what is moving —
+// the list for a pending archive, the server for a restore's meter.
+
+const LEDGER_POLL_MS = 2000;
+
 function stopBackupPoll() {
   if (backupPoll !== undefined) {
     clearInterval(backupPoll);
@@ -614,11 +655,49 @@ function stopBackupPoll() {
   }
 }
 
+function backupPending(): boolean {
+  return depth.backups.some((b) => b.state === "pending");
+}
+
+function ledgerNeedsPoll(): boolean {
+  return backupPending() || depth.restoreWatch !== null || depth.server?.state === "restoring";
+}
+
+function startLedgerPoll() {
+  if (depth.open && backupPoll === undefined) {
+    backupPoll = setInterval(() => void ledgerTick().catch(() => {}), LEDGER_POLL_MS);
+  }
+}
+
+// Every await in here can return after the drill-in has closed (or moved to
+// another server); anything it did then would reopen the console socket and
+// keep polling a sheet nobody is looking at, so each one re-checks.
+function stillOn(id: string): boolean {
+  return depth.open && depth.serverId === id;
+}
+
+async function ledgerTick() {
+  const id = depth.serverId;
+  if (!id || !depth.open) return stopBackupPoll();
+  if (backupPending()) await refreshBackups();
+  if (!stillOn(id)) return stopBackupPoll();
+  if (depth.restoreWatch !== null || depth.server?.state === "restoring") {
+    const s = await api.getServer(id);
+    if (!stillOn(id)) return stopBackupPoll();
+    depth.server = s;
+    stream.set(id, streamModeFor(s.state));
+    syncRestore(s);
+  }
+  if (!ledgerNeedsPoll()) stopBackupPoll();
+}
+
 async function refreshBackups() {
-  if (!depth.serverId) return;
-  const r = await api.listBackups(depth.serverId);
+  const id = depth.serverId;
+  if (!id) return;
+  const r = await api.listBackups(id);
+  if (depth.serverId !== id) return;
   depth.backups = r.backups ?? [];
-  if (!depth.backups.some((b) => b.state === "pending")) stopBackupPoll();
+  if (!ledgerNeedsPoll()) stopBackupPoll();
 }
 
 export async function backupCreate() {
@@ -629,8 +708,7 @@ export async function backupCreate() {
     await api.createBackup(depth.serverId, name);
     await refreshBackups();
     // archives run asynchronously — poll while one is pending
-    stopBackupPoll();
-    backupPoll = setInterval(() => void refreshBackups().catch(() => {}), 2000);
+    startLedgerPoll();
   } catch (e) {
     depth.error = errMsg(e);
   } finally {
@@ -638,11 +716,119 @@ export async function backupCreate() {
   }
 }
 
+// --- restore (#361) -----------------------------------------------------------
+
+/** What the ledger's restore meter draws. `sized` is whether there is a real
+ *  figure at all: an agent too old to report progress, or a target that cannot
+ *  size the archive, sends bytes_total 0, and the meter then reads "unknown" —
+ *  a breathing dot and the phase word — never a percentage it would have to
+ *  invent. Unsized also means the fill sits at 0 %, per DESIGN.md's "pushing
+ *  measures itself": no figure is no fill, never a full one. */
+export interface RestoreMeterView {
+  pct: number;
+  sized: boolean;
+  /** The words in the `.pct` slot: the percentage while extracting against a
+   *  known size, the phase otherwise. */
+  label: string;
+}
+
+const PHASE_WORDS: Record<string, string> = {
+  opening: "opening",
+  extracting: "extracting",
+  applying: "applying",
+  done: "done",
+  restoring: "restoring",
+};
+
+export function restoreMeter(r: RestoreProgress | null | undefined): RestoreMeterView {
+  const total = r?.bytes_total ?? 0;
+  const sized = total > 0;
+  const pct = sized ? Math.max(0, Math.min(100, Math.floor(((r?.bytes_done ?? 0) * 100) / total))) : 0;
+  const phase = r?.phase ?? "opening";
+  const word = PHASE_WORDS[phase] ?? phase;
+  return { pct, sized, label: sized && phase === "extracting" ? `${pct}%` : word };
+}
+
+/** Whether a restore is running or being asked for. Every restore button in
+ *  the ledger is disabled while this holds — the Panel refuses a second one
+ *  (409 restore_in_progress), so the control says so before the click. */
+export function restoreActive(server: Server | null | undefined, requesting: boolean): boolean {
+  return requesting || server?.state === "restoring" || server?.restore !== undefined;
+}
+
+/** How a watched restore ended, once the server says it has: the row is out
+ *  of `restoring`, carries no job, and holds a `restore_result` that finished
+ *  after the watch began. Read from restore_result and never from last_error —
+ *  a restore does not write last_error, and an install_failed server's own
+ *  reason there is not this restore's. */
+export function restoreOutcome(
+  watch: RestoreWatch | null,
+  server: Server | null | undefined,
+  backups: readonly Backup[],
+): RestoreNote | null {
+  if (!watch || !server || server.id !== watch.serverId) return null;
+  if (server.state === "restoring" || server.restore !== undefined) return null;
+  const res = server.restore_result;
+  // `>=`, not `>`: the Panel writes nanoseconds and Date.parse keeps
+  // milliseconds, so a restore that ends within the millisecond it began would
+  // otherwise never settle. Equal cannot be an earlier restore's result — each
+  // restore has its own start, and a new one clears the old result.
+  if (!res || !(Date.parse(res.finished_at) >= Date.parse(watch.since))) return null;
+  const id = res.backup_id || watch.backupId;
+  const name = backups.find((b) => b.id === id)?.name ?? id;
+  if (!res.ok) return { kind: "failed", name, reason: res.error ?? "" };
+  return { kind: "done", name, reason: "" };
+}
+
+/** Fold a fresh server read into the restore watch: adopt a restore found in
+ *  flight (the drill-in opened mid-restore, or another operator started it),
+ *  and turn a watched one that has ended into the ledger's note. */
+function syncRestore(s: Server) {
+  if (depth.serverId !== s.id) return;
+  if (depth.restoreWatch === null && (s.state === "restoring" || s.restore !== undefined)) {
+    depth.restoreWatch = {
+      serverId: s.id,
+      backupId: s.restore?.backup_id ?? "",
+      since: s.restore?.started_at ?? new Date().toISOString(),
+    };
+    depth.restoreNote = null;
+    startLedgerPoll();
+    return;
+  }
+  if (depth.restoreWatch !== null && !depth.restoreWatch.backupId && s.restore) {
+    depth.restoreWatch = {
+      ...depth.restoreWatch,
+      backupId: s.restore.backup_id,
+      since: s.restore.started_at,
+    };
+  }
+  const note = restoreOutcome(depth.restoreWatch, s, depth.backups);
+  if (note) {
+    depth.restoreNote = note;
+    depth.restoreWatch = null;
+  }
+}
+
 export async function backupRestore(b: Backup) {
-  if (!depth.serverId || depth.restoringBackup) return;
+  if (!depth.serverId || restoreActive(depth.server, depth.restoringBackup !== null)) return;
+  const id = depth.serverId;
   depth.restoringBackup = b.id;
+  depth.restoreNote = null;
   try {
-    await api.restoreBackup(depth.serverId, b.id);
+    const s = await api.restoreBackup(id, b.id);
+    if (!depth.open || depth.serverId !== id) return;
+    // The 202 already carries the server in `restoring`: take it now, so the
+    // meter replaces the row on this frame instead of the next poll's.
+    depth.restoreWatch = {
+      serverId: id,
+      backupId: b.id,
+      since: s.restore?.started_at ?? new Date().toISOString(),
+    };
+    depth.server = s;
+    stream.set(id, streamModeFor(s.state));
+    syncRestore(s);
+    startLedgerPoll();
+    void refreshFleet().catch(() => {});
   } catch (e) {
     depth.error = errMsg(e);
   } finally {

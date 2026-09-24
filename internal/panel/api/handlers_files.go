@@ -307,6 +307,9 @@ func (s *Server) handleMakeDir(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if s.refuseWhileRestoring(w, sv) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	if _, err := client.MakeDir(ctx, &agentpb.MakeDirRequest{ServerId: sv.ID, Path: req.Path}); err != nil {
@@ -331,6 +334,9 @@ func (s *Server) handleMovePath(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if s.refuseWhileRestoring(w, sv) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	if _, err := client.MovePath(ctx, &agentpb.MovePathRequest{ServerId: sv.ID, Src: req.Src, Dst: req.Dst}); err != nil {
@@ -348,6 +354,9 @@ func (s *Server) handleCopyPath(w http.ResponseWriter, r *http.Request) {
 	}
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	if s.refuseWhileRestoring(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
@@ -372,6 +381,9 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	}
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	if s.refuseWhileRestoring(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -411,6 +423,9 @@ func (s *Server) handleUploadFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	if s.refuseWhileRestoring(w, sv) {
 		return
 	}
 	files := r.MultipartForm.File["files"]
@@ -453,6 +468,9 @@ func (s *Server) handleDeleteFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	if s.refuseWhileRestoring(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)

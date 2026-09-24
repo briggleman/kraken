@@ -360,7 +360,9 @@ export const api = {
   createBackup(id: string, name: string): Promise<Backup> {
     return request("POST", `/servers/${id}/backups`, { name });
   },
-  restoreBackup(id: string, backupId: string): Promise<{ status: string }> {
+  /** Starts a restore and answers at once (202) with the server already in
+   *  `restoring`; the job's progress rides on getServer until it ends. */
+  restoreBackup(id: string, backupId: string): Promise<Server> {
     return request("POST", `/servers/${id}/backups/${backupId}/restore`);
   },
   deleteBackup(id: string, backupId: string): Promise<void> {

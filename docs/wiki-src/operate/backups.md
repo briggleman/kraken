@@ -142,6 +142,42 @@ the backups section of a server drill-in: three archives, one expanded to show w
 already in `offline`, `crashed` or `install_failed`, and answers `409` naming
 the current state otherwise. It will not stop a running game on your behalf.
 
+**A restore runs in the background.** The request answers at once and the
+server moves to `restoring`, where it stays until the restore ends. The server
+record carries a `restore` block while it runs: the archive, the state the
+server came from, when it began, and the live phase and byte counts.
+
+While it is `restoring`, **everything that writes the server's files is
+refused** with a `409` carrying `code: server_restoring`: start and restart,
+reinstall, deleting the server, saving its settings (a settings save pushes
+config files into the tree), creating or deleting a backup, and every file
+write, upload, move, copy, new folder and delete. Reading and downloading files
+still work. A second restore is refused with `restore_in_progress`. Scheduled
+restarts, backups, commands and replication are skipped, with the reason in the
+schedule's last error. The reconciler leaves the row alone, and stop and kill
+still reach the node.
+
+The other direction holds too. A start or restart holds the server until the
+Agent has answered its power call and the row is written; a reinstall, and a
+start that runs the update pass first, hold it only until `installing` is
+written, after which that state keeps a restore out by itself. A restore asked
+for while one of them holds the server is refused with `server_busy` — the row
+can still read `offline` while a start is booting the game. Below the Panel, the Agent refuses to restore while the server's container
+is running, restarting or paused, while an install pass for the server is
+running on the node (the same refusal a start gets there), and when it cannot
+check the container at all — in each case nothing in the tree is touched.
+
+The backups ledger draws the restore's progress as the compressed bytes read
+from the archive against its size. An Agent older than 0.56 cannot report
+progress, and the meter then shows the restore as running without a figure.
+
+When the restore ends the server goes back to **the state it came from**:
+`offline`, `crashed`, or `install_failed` — a restore puts saves back, it does
+not repair an install, so an `install_failed` server keeps its reinstall gate
+and its install's `last_error`. The outcome goes to `restore_result`
+(`ok`, the Agent's `error`, `finished_at`), never to `last_error`; a failed
+restore's reason says whether the files were rolled back.
+
 The restore is staged rather than streamed into place: the archive is extracted
 into a scratch directory inside the server's own data directory, and only then
 are the covered paths renamed into place, with the previous versions set aside
@@ -155,6 +191,13 @@ and again against the server's own host directory, and symlink and hardlink
 entries are **skipped rather than materialised**. A restore that skipped entries
 logs what it skipped.
 
-Restore has a ten-minute ceiling of its own. An archive only ever contains what
+Restore has a two-hour ceiling of its own. **A Panel restart mid-restore**
+loses the job, and the reconciler returns the server to the state its record
+says it came from — so an `install_failed` server stays behind its reinstall
+gate — with a `restore_result` saying the outcome is unknown. What happened on
+the node depends on the Agent: one that kept running saw its connection cut and
+rolled the files back, but one that crashed or restarted part-way through the
+swap did not, and the displaced originals are then left beside the tree as
+`*.kraken-aside-*` directories. Check the server's files before starting it. An archive only ever contains what
 was included, so a restore cannot bring back a file the globs never captured,
 which is the other reason to check that `captured` line early.

@@ -50,6 +50,10 @@ type Server struct {
 	// has in flight, so one node's slow removals never block the health pass
 	// and two passes never replay the same node at once (see removals.go).
 	replays removalReplays
+	// restores tracks in-flight backup restores, one per server, for the same
+	// reason: a restore is one process's gRPC stream, and the durable record is
+	// the server row's `restoring` state (see restorejobs.go).
+	restores *restoreJobs
 
 	// In-memory Panel client TLS bundle from WithClientTLSBytes. When set,
 	// the Agent pool uses these bytes rather than reading cfg.TLS{Cert,Key,CA}
@@ -160,6 +164,7 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		cfg: cfg, store: st, logger: logger,
 		bootstrap:  newBootstrapRegistry(),
 		agentJobs:  newAgentUpdateJobs(),
+		restores:   newRestoreJobs(),
 		lastRotate: map[string]time.Time{},
 		installs:   newInstallLog(),
 		telemetry:  newTelemetryCache(),

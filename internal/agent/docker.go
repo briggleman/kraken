@@ -2117,10 +2117,90 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 // the data dir) — the error chain is kept, so a locked file still classifies as
 // one at the gRPC boundary.
 func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id string) error {
-	return d.scrubbed(serverID, d.restoreBackup(ctx, serverID, slug, id))
+	return d.RestoreBackupStream(ctx, serverID, slug, id, nil)
 }
 
-func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string) error {
+// errRestoreOverRunning is the refusal for a restore aimed at a live game.
+var errRestoreOverRunning = grpcstatus.Error(codes.FailedPrecondition,
+	"the server's container is running — stop it before restoring; the live tree was not touched")
+
+// refuseRestoreOverRunningContainer refuses a restore while kraken_<id> is
+// running, restarting or paused: each of those holds the very save files the
+// swap replaces. No container (a server that never started), or a stopped
+// one, is what a restore wants. An inspect that fails for any other reason
+// fails CLOSED with Unavailable: this check exists because the Panel's
+// "stopped" can be stale, so it must not wave a restore through on the very
+// occasion it could not look.
+func (d *DockerRuntime) refuseRestoreOverRunningContainer(ctx context.Context, serverID string) error {
+	status, found, err := d.inspectGameContainer(ctx, containerName(serverID))
+	if err != nil {
+		return grpcstatus.Errorf(codes.Unavailable,
+			"could not check whether the server's container is running: %v; the live tree was not touched", err)
+	}
+	if !found {
+		return nil
+	}
+	switch status {
+	case "running", "restarting", "paused":
+		return errRestoreOverRunning
+	}
+	return nil
+}
+
+// inspectGameContainer reports the game container's status, or found=false
+// when there is none. It goes through the containerOps seam, so a test can
+// stand a fake daemon in for it.
+func (d *DockerRuntime) inspectGameContainer(ctx context.Context, name string) (status string, found bool, err error) {
+	if d.containers == nil {
+		return "", false, nil // file-ops-only runtime (tests): there is no container to hold anything
+	}
+	info, err := d.containers.ContainerInspect(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if info.ContainerJSONBase != nil && info.State != nil {
+		status = info.State.Status
+	}
+	return status, true, nil
+}
+
+// RestoreBackupStream is RestoreBackup narrated through emit (#361): the phase,
+// and the compressed bytes read against the archive's size. It is the one
+// restore path; the unary RestoreBackup passes a nil emit.
+//
+// Every failure before the swap leaves the live tree untouched, and says so; a
+// failure during the swap is unwound by applyRestore, which says whether the
+// rollback was complete. The Panel shows the message to the operator verbatim,
+// scrubbed of the node's host paths (see RestoreBackup).
+func (d *DockerRuntime) RestoreBackupStream(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error {
+	// The Agent's own check, behind the Panel's: the Panel refuses a restore on
+	// a server it believes is stopped, but its belief can be seconds stale — a
+	// start whose Power call is still in flight has not written the row yet.
+	// The container is the ground truth, so a running game is refused here.
+	// Returned outside the scrub: the refusal is a gRPC status already (the
+	// interceptor passes it through), names no host path, and must keep its
+	// code for the Panel to read it as a restore that did not start.
+	//
+	// An install pass holds the same tree the restore would swap, so the
+	// install gate refuses first, with the same Aborted a start gets there.
+	if err := d.installs.check(serverID); err != nil {
+		return err
+	}
+	if err := d.refuseRestoreOverRunningContainer(ctx, serverID); err != nil {
+		return err
+	}
+	return d.scrubbed(serverID, d.restoreBackup(ctx, serverID, slug, id, emit))
+}
+
+func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error {
+	const untouched = "; the live tree was not touched"
+	m := newRestoreMeter(ctx, emit)
+	if err := m.enter(restorePhaseOpening); err != nil {
+		return err
+	}
 	root := d.localDir(serverID)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
@@ -2129,21 +2209,27 @@ func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id st
 	if err != nil {
 		// The local store's *fs.PathError names the node's backup dir; the
 		// backup's id is what the operator knows it by.
-		return d.fileErr(serverID, "open backup", id, "", err)
+		return fmt.Errorf("%w%s", d.fileErr(serverID, "open backup", id, "", err), untouched)
 	}
 	defer r.Close()
+	m.total = archiveSize(r)
 	// Every read of the archive — gzip's header, then each tar entry — goes
 	// through the store, and a store's read failure names the archive where it
 	// lives (KRAKEN_BACKUP_DIR, a share). The backup's id is what the operator
-	// knows it by.
+	// knows it by. The meter counts outside that wrapper, so its own
+	// cancellation and stream errors reach the caller unrendered.
 	archive := readErrs{r: r, wrap: func(rerr error) error {
 		return d.fileErr(serverID, "read backup", id, "", rerr)
 	}}
-	gz, err := gzip.NewReader(archive)
+	counted := m.reader(archive)
+	gz, err := gzip.NewReader(counted)
 	if err != nil {
-		return fmt.Errorf("docker: gunzip backup: %w", err)
+		return fmt.Errorf("docker: gunzip backup: %w%s", restoreCause(ctx, m, err), untouched)
 	}
 	defer gz.Close()
+	if err := m.enter(restorePhaseExtracting); err != nil {
+		return err
+	}
 
 	staged, err := os.MkdirTemp(root, restoreScratchPrefix+"*")
 	if err != nil {
@@ -2157,15 +2243,38 @@ func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id st
 		}
 	}()
 
-	st, err := d.extractArchive(tar.NewReader(gz), serverID, staged)
+	st, err := d.extractArchive(ctx, tar.NewReader(gz), serverID, staged, m)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w%s", err, untouched)
 	}
 	if st.links+st.irregular > 0 {
 		slog.Warn("restore skipped archive entries it cannot materialize",
 			"server", serverID, "id", id, "links", st.links, "irregular", st.irregular)
 	}
-	return d.applyRestore(serverID, root, staged, st)
+	// The tar reader stops at the end-of-archive marker, which leaves the
+	// block padding and the gzip trailer unread. Reading them out is what makes
+	// the meter end at the archive's size, and it is also the first time the
+	// gzip CRC is checked at all. A mismatch only warns: every entry already
+	// staged cleanly, and the restore never used to look.
+	if _, derr := io.Copy(io.Discard, gz); derr != nil {
+		if cerr := restoreCause(ctx, m, derr); ctx.Err() != nil || m.err != nil {
+			return fmt.Errorf("docker: restore: %w%s", cerr, untouched)
+		}
+		slog.Warn("restore: the archive's gzip trailer did not verify", "server", serverID, "id", id, "err", derr)
+	}
+	_, _ = io.Copy(io.Discard, counted) // anything after the gzip member, e.g. a foreign writer's padding
+	if err := m.enter(restorePhaseApplying); err != nil {
+		return fmt.Errorf("%w%s", err, untouched)
+	}
+	if err := d.applyRestore(ctx, serverID, root, staged, st); err != nil {
+		return err
+	}
+	// Committed: the tree is restored whether or not anybody hears about it, so
+	// a stream that died at the last moment is not a failure.
+	if err := m.enter(restorePhaseDone); err != nil {
+		slog.Warn("restore landed but the done event could not be sent", "server", serverID, "id", id, "err", err)
+	}
+	return nil
 }
 
 func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id string) error {

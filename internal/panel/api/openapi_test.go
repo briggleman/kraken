@@ -194,3 +194,28 @@ func TestOpenAPIAuditListDeclaresRetentionDays(t *testing.T) {
 		t.Errorf("retention_days is typed %q, want integer", got)
 	}
 }
+
+// A client switches on the server state, so a state the Panel writes and the
+// document does not name is one the client renders as garbage. `restoring`
+// (#361) is the reason this exists; `install_failed` had already drifted out.
+func TestOpenAPIServerStateEnumMatchesStore(t *testing.T) {
+	var doc struct {
+		Components struct {
+			Schemas struct {
+				ServerState struct {
+					Enum []string `json:"enum"`
+				} `json:"ServerState"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	want := make([]string, 0, len(store.ServerStates()))
+	for _, st := range store.ServerStates() {
+		want = append(want, string(st))
+	}
+	if got := doc.Components.Schemas.ServerState.Enum; !slices.Equal(got, want) {
+		t.Errorf("ServerState enum = %v, want store.ServerStates() = %v", got, want)
+	}
+}

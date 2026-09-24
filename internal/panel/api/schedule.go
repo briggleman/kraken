@@ -96,6 +96,13 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 			return err
 		}
 	}
+	// A restore owns the data dir until it settles (#361): a 04:00 backup would
+	// archive a half-swapped tree and its retention pass could evict the very
+	// archive being read, on the node and the mirror. Every other action skips
+	// with the reason in last_error, as a refused restart does.
+	if s.restoreInProgress(sv) {
+		return fmt.Errorf("a backup restore is in progress, so the scheduled %s was skipped", task.Action)
+	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
 		return fmt.Errorf("load node: %w", err)
@@ -107,6 +114,13 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 
 	switch task.Action {
 	case store.ScheduleRestart:
+		// Held across the Power call and the write-back below, so a restore
+		// cannot begin on a crashed row while the Agent restarts it.
+		release, refusal := s.claimStart(sv.ID)
+		if refusal != nil {
+			return fmt.Errorf("a backup restore is in progress, so the scheduled restart was skipped")
+		}
+		defer release()
 		// Re-push the spec first so the Agent can recreate the container even if it
 		// lost its in-memory spec after a restart (mirrors the manual power path).
 		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
@@ -120,8 +134,19 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		if err != nil {
 			return fmt.Errorf("restart: %w", err)
 		}
-		sv.State = storeStateFromAgent(resp.State)
-		_ = s.store.UpdateServer(ctx, sv)
+		// Written onto a fresh read, and not at all over a restore: one that
+		// began while the restart was in flight owns the row now, and writing
+		// the Agent's `running` over `restoring` would lift its start gate.
+		fresh, ferr := s.store.GetServer(ctx, sv.ID)
+		if ferr != nil {
+			return nil
+		}
+		if s.restoreInProgress(fresh) {
+			s.logger.Warn("scheduler: a restore began during the restart; leaving the row to it", "server", sv.ID)
+			return nil
+		}
+		fresh.State = storeStateFromAgent(resp.State)
+		_ = s.store.UpdateServer(ctx, fresh)
 		return nil
 
 	case store.ScheduleBackup:

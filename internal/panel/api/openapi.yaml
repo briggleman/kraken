@@ -410,7 +410,10 @@ paths:
         '409':
           description: >
             Start or restart refused: the server is installing, its install
-            failed (reinstall first), the game spec it was built from no longer
+            failed (reinstall first), a backup restore is running (`code:
+            server_restoring` — stop and kill still reach the agent, and the
+            state stays `restoring` until the restore ends), the game spec it
+            was built from no longer
             exists (`code: spec_missing`; permanent, since a spec's id cannot be
             recreated), or a setting its spec marks `required` is empty (`code:
             required_settings_missing`, with the keys in `missing_settings`).
@@ -448,7 +451,8 @@ paths:
         server whose start does not update it (a pinned build, or a spec that
         opted out of update-on-start). Valid from the stopped states —
         install_failed, offline, crashed — and refused while the server is
-        installing, starting, running or stopping. Runs asynchronously: the
+        installing, starting, running, stopping or restoring (the last with
+        `code: server_restoring`). Runs asynchronously: the
         server flips to `installing` and the install log streams over the
         console socket.
       requestBody:
@@ -863,19 +867,35 @@ paths:
     post:
       tags: [Backups]
       summary: Restore a backup
-      description: Only valid while the server is stopped (state offline, crashed or install_failed).
+      description: >
+        Only valid while the server is stopped (state offline, crashed or
+        install_failed). Runs asynchronously: the server enters `restoring` at
+        once, and GET /servers/{id} carries a `restore` block (the archive, the
+        state to return to, when it began, the phase and the compressed bytes
+        read) until the restore ends. While it runs every writer of the
+        server's tree answers 409 `server_restoring` — start, restart,
+        reinstall, server delete, settings save, backup create and delete, and
+        every file write, upload, move, copy, mkdir and delete (reads and
+        downloads are not refused) — and scheduled restarts, backups, commands
+        and replication are skipped with the reason in the schedule's
+        last_error. When it ends the server goes back to the state it came from
+        (`restore.prev_state`), and `restore_result` records the outcome; a
+        failed restore's reason says whether the files were rolled back.
+        `last_error` is never written by a restore.
       responses:
-        '200': { description: Restored }
-        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '202':
+          description: Restore started; the server is restoring
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Server' }
         '409':
           description: >
-            The server is not stopped — or the node refused the restore:
-            `code` is `file_in_use` (another process holds a file the restore
-            replaces), `node_refused` or `already_exists`, and `error` carries
-            the node's own words.
+            The server is not stopped, a restore is already running for it
+            (`code: restore_in_progress`), or a start, restart or reinstall is
+            in flight and still holds the server (`code: server_busy` — its row
+            may read offline until the agent answers). Nothing was started.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
-        '500': { $ref: '#/components/responses/AgentError' }
         '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/backups/{backupId}:
     parameters:
@@ -1159,12 +1179,13 @@ paths:
         '409':
           description: >
             Start or restart refused: the server is installing, its install
-            failed, its spec no longer exists (`code: spec_missing`), or a
-            required setting is empty (`code: required_settings_missing`, with
-            the keys in `missing_settings`). Nothing was sent to the agent. Or
-            the agent refused a start or restart because an install pass for the
-            server is running on the node (`code: install_running`); retry once
-            it ends.
+            failed, a backup restore is running (`code: server_restoring`), its
+            spec no longer exists (`code: spec_missing`), or a required setting
+            is empty (`code: required_settings_missing`, with the keys in
+            `missing_settings`). Nothing was sent to the agent. Or the agent
+            refused a start or restart because an install pass for the server
+            is running on the node (`code: install_running`); retry once it
+            ends.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StartRefusal' }
@@ -1627,7 +1648,9 @@ components:
         The node refused the operation, and `code` says why: `file_in_use`
         (another process holds the file — usually the server's own game, still
         running), `node_refused` (the node's filesystem denied it) or
-        `already_exists`. `error` carries the node's own words.
+        `already_exists`. `error` carries the node's own words. On an
+        operation that writes the server's files, `server_restoring` means a
+        backup restore holds them and nothing was sent to the node.
       content:
         application/json: { schema: { $ref: '#/components/schemas/Error' } }
     AgentError:
@@ -1658,7 +1681,11 @@ components:
             not_found, bad_path, file_in_use, node_refused, already_exists,
             install_running or
             node_error; a settings save whose config could not be rendered
-            carries config_apply_failed.
+            carries config_apply_failed. A backup restore's refusals carry
+            server_restoring (a restore holds the server's files, so the
+            write, start or delete was refused), restore_in_progress (a second
+            restore) or server_busy (a start, restart or reinstall still holds
+            the server).
     CodedError:
       type: object
       properties:
@@ -1704,7 +1731,31 @@ components:
         already_imported: { type: boolean }
     ServerState:
       type: string
-      enum: [installing, offline, starting, running, stopping, crashed]
+      enum: [installing, install_failed, offline, starting, running, stopping, crashed, restoring]
+    RestoreProgress:
+      type: object
+      description: >
+        A running backup restore. Progress is compressed bytes read from the
+        archive against its size; bytes_total is 0 when the size is unknown (an
+        agent too old to report progress, or a target that cannot size the
+        archive), and a client must then show progress as unknown, not as zero.
+      properties:
+        backup_id: { type: string }
+        prev_state: { $ref: '#/components/schemas/ServerState' }
+        phase: { type: string, enum: [opening, extracting, applying, done, restoring], description: "restoring = an old agent restoring without progress" }
+        bytes_done: { type: integer, format: int64 }
+        bytes_total: { type: integer, format: int64 }
+        started_at: { type: string, format: date-time, description: "server clock" }
+    RestoreResult:
+      type: object
+      description: >
+        How the most recent backup restore ended. Kept on the server until the
+        next restore replaces it.
+      properties:
+        backup_id: { type: string }
+        ok: { type: boolean }
+        error: { type: string, description: "the agent's reason, which says whether the files were rolled back; absent when ok" }
+        finished_at: { type: string, format: date-time, description: "server clock" }
     Server:
       type: object
       properties:
@@ -1725,7 +1776,16 @@ components:
           description: >-
             Pinned to the build on disk — the panel skips the install/update
             pass it otherwise runs before every start or restart.
-        last_error: { type: string, description: why the most recent provisioning attempt failed }
+        last_error: { type: string, description: "why the most recent provisioning attempt failed (a backup restore never writes it)" }
+        restore:
+          allOf: [ { $ref: '#/components/schemas/RestoreProgress' } ]
+          description: >-
+            Present only while a backup restore is running (state `restoring`).
+            backup_id, prev_state and started_at are stored on the server; the
+            phase and byte counts are the running job's live reading.
+        restore_result:
+          allOf: [ { $ref: '#/components/schemas/RestoreResult' } ]
+          description: How the most recent backup restore ended.
         provisioned_at:
           type: string
           format: date-time
@@ -1983,7 +2043,7 @@ components:
       type: object
       properties:
         error: { type: string, description: the sentence to show the operator }
-        code: { type: string, enum: [required_settings_missing, spec_missing, install_running], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there" }
+        code: { type: string, enum: [required_settings_missing, spec_missing, install_running, server_restoring], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there; server_restoring while a backup restore holds the server" }
         missing_settings: { type: array, items: { type: string }, description: "required_settings_missing only: the empty fields' keys" }
     ServerSettings:
       type: object

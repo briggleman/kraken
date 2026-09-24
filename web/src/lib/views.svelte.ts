@@ -328,5 +328,6 @@ export function deadNote(server: Server): string {
     return "install failed · " + (server.last_error || "see reinstall");
   if (server.state === "crashed") return "crashed · logs held until next start";
   if (server.state === "installing") return "installing — first start follows";
+  if (server.state === "restoring") return "restoring a backup — start waits for it";
   return "stopped · world saved on shutdown";
 }

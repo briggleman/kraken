@@ -622,6 +622,14 @@ func cloneServer(sv *store.Server) *store.Server {
 			c.Forwards[k] = v
 		}
 	}
+	if sv.Restore != nil {
+		r := *sv.Restore
+		c.Restore = &r
+	}
+	if sv.RestoreResult != nil {
+		r := *sv.RestoreResult
+		c.RestoreResult = &r
+	}
 	return &c
 }
 

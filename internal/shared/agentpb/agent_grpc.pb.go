@@ -42,6 +42,7 @@ const (
 	NodeService_CreateBackup_FullMethodName         = "/kraken.agent.v1.NodeService/CreateBackup"
 	NodeService_ListBackups_FullMethodName          = "/kraken.agent.v1.NodeService/ListBackups"
 	NodeService_RestoreBackup_FullMethodName        = "/kraken.agent.v1.NodeService/RestoreBackup"
+	NodeService_RestoreBackupStream_FullMethodName  = "/kraken.agent.v1.NodeService/RestoreBackupStream"
 	NodeService_DeleteBackup_FullMethodName         = "/kraken.agent.v1.NodeService/DeleteBackup"
 	NodeService_InstallServer_FullMethodName        = "/kraken.agent.v1.NodeService/InstallServer"
 	NodeService_PowerAction_FullMethodName          = "/kraken.agent.v1.NodeService/PowerAction"
@@ -111,7 +112,15 @@ type NodeServiceClient interface {
 	// ListBackups lists a server's backups.
 	ListBackups(ctx context.Context, in *ListBackupsRequest, opts ...grpc.CallOption) (*ListBackupsResponse, error)
 	// RestoreBackup extracts a backup back into the server's data volume.
+	// Kept for Panels older than RestoreBackupStream; a current Panel calls the
+	// stream and falls back to this only when an old Agent answers Unimplemented.
 	RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*RestoreBackupResponse, error)
+	// RestoreBackupStream is RestoreBackup narrated: the same stage-then-swap
+	// restore, streaming its phase and the compressed bytes read so the Panel can
+	// show a real meter. The stream ends with a `done` event on success or a
+	// `failed` one (reason in RestoreEvent.failed) — the tree is rolled back on
+	// failure unless the reason says otherwise.
+	RestoreBackupStream(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RestoreEvent], error)
 	// DeleteBackup removes a backup archive.
 	DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*DeleteBackupResponse, error)
 	// InstallServer runs the install/update phase for a server (e.g. SteamCMD) in
@@ -356,6 +365,25 @@ func (c *nodeServiceClient) RestoreBackup(ctx context.Context, in *RestoreBackup
 	return out, nil
 }
 
+func (c *nodeServiceClient) RestoreBackupStream(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RestoreEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[3], NodeService_RestoreBackupStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RestoreBackupRequest, RestoreEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeService_RestoreBackupStreamClient = grpc.ServerStreamingClient[RestoreEvent]
+
 func (c *nodeServiceClient) DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*DeleteBackupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteBackupResponse)
@@ -368,7 +396,7 @@ func (c *nodeServiceClient) DeleteBackup(ctx context.Context, in *DeleteBackupRe
 
 func (c *nodeServiceClient) InstallServer(ctx context.Context, in *InstallServerRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[InstallEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[3], NodeService_InstallServer_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[4], NodeService_InstallServer_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +435,7 @@ func (c *nodeServiceClient) GetServerStatus(ctx context.Context, in *GetServerSt
 
 func (c *nodeServiceClient) StreamConsole(ctx context.Context, in *StreamConsoleRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConsoleLine], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[4], NodeService_StreamConsole_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[5], NodeService_StreamConsole_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +464,7 @@ func (c *nodeServiceClient) SendCommand(ctx context.Context, in *SendCommandRequ
 
 func (c *nodeServiceClient) StreamStats(ctx context.Context, in *StreamStatsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResourceStats], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[5], NodeService_StreamStats_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NodeService_ServiceDesc.Streams[6], NodeService_StreamStats_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +577,15 @@ type NodeServiceServer interface {
 	// ListBackups lists a server's backups.
 	ListBackups(context.Context, *ListBackupsRequest) (*ListBackupsResponse, error)
 	// RestoreBackup extracts a backup back into the server's data volume.
+	// Kept for Panels older than RestoreBackupStream; a current Panel calls the
+	// stream and falls back to this only when an old Agent answers Unimplemented.
 	RestoreBackup(context.Context, *RestoreBackupRequest) (*RestoreBackupResponse, error)
+	// RestoreBackupStream is RestoreBackup narrated: the same stage-then-swap
+	// restore, streaming its phase and the compressed bytes read so the Panel can
+	// show a real meter. The stream ends with a `done` event on success or a
+	// `failed` one (reason in RestoreEvent.failed) — the tree is rolled back on
+	// failure unless the reason says otherwise.
+	RestoreBackupStream(*RestoreBackupRequest, grpc.ServerStreamingServer[RestoreEvent]) error
 	// DeleteBackup removes a backup archive.
 	DeleteBackup(context.Context, *DeleteBackupRequest) (*DeleteBackupResponse, error)
 	// InstallServer runs the install/update phase for a server (e.g. SteamCMD) in
@@ -646,6 +682,9 @@ func (UnimplementedNodeServiceServer) ListBackups(context.Context, *ListBackupsR
 }
 func (UnimplementedNodeServiceServer) RestoreBackup(context.Context, *RestoreBackupRequest) (*RestoreBackupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestoreBackup not implemented")
+}
+func (UnimplementedNodeServiceServer) RestoreBackupStream(*RestoreBackupRequest, grpc.ServerStreamingServer[RestoreEvent]) error {
+	return status.Error(codes.Unimplemented, "method RestoreBackupStream not implemented")
 }
 func (UnimplementedNodeServiceServer) DeleteBackup(context.Context, *DeleteBackupRequest) (*DeleteBackupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteBackup not implemented")
@@ -1000,6 +1039,17 @@ func _NodeService_RestoreBackup_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_RestoreBackupStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RestoreBackupRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NodeServiceServer).RestoreBackupStream(m, &grpc.GenericServerStream[RestoreBackupRequest, RestoreEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeService_RestoreBackupStreamServer = grpc.ServerStreamingServer[RestoreEvent]
+
 func _NodeService_DeleteBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteBackupRequest)
 	if err := dec(in); err != nil {
@@ -1291,6 +1341,11 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "DownloadFile",
 			Handler:       _NodeService_DownloadFile_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RestoreBackupStream",
+			Handler:       _NodeService_RestoreBackupStream_Handler,
 			ServerStreams: true,
 		},
 		{

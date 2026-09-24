@@ -732,7 +732,7 @@
                         class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
                         >· required</em
                       >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
-                          class="cfg-req cfg-help">· from spec</em
+                          class="cfg-req">· from spec</em
                         >{/if}{/if}</span><select
                         class="cfg-in"
                         disabled={field.read_only}
@@ -749,7 +749,7 @@
                         class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
                         >· required</em
                       >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
-                          class="cfg-req cfg-help">· from spec</em
+                          class="cfg-req">· from spec</em
                         >{/if}{/if}</span><input
                         class="cfg-in"
                         type={field.type === "password" ? "password" : "text"}

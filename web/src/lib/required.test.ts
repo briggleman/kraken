@@ -81,9 +81,16 @@ describe("isFromSpec", () => {
     expect(isFromSpec(owner, ["OwnerId"], undefined)).toBe(true);
   });
 
-  it("drops the moment the operator types, even back to empty", () => {
+  it("drops the moment the operator types a value of their own", () => {
     expect(isFromSpec(owner, ["OwnerId"], "0")).toBe(false);
-    expect(isFromSpec(owner, ["OwnerId"], "")).toBe(false);
+    expect(isFromSpec(owner, ["OwnerId"], "")).toBe(false); // no default to go back to
+  });
+
+  it("returns when the operator clears a field with a spec default", () => {
+    const region = field({ key: "Region", required: true, default: "us" });
+    expect(isFromSpec(region, [], "")).toBe(true);
+    expect(isFromSpec(region, [], "  ")).toBe(true);
+    expect(isFromSpec(region, [], "eu")).toBe(false);
   });
 
   it("is false for the server's own value", () => {
@@ -93,5 +100,17 @@ describe("isFromSpec", () => {
 
   it("never marks a field that is not required", () => {
     expect(isFromSpec(field({ key: "ServerName" }), ["ServerName"], undefined)).toBe(false);
+  });
+});
+
+describe("isMissing mirrors the panel's fallback to a spec default", () => {
+  it("is not missing when a blank required field has a default to fall back to", () => {
+    const region = field({ required: true, default: "us" });
+    expect(isMissing(region, "")).toBe(false);
+    expect(isMissing(region, "   ")).toBe(false);
+  });
+
+  it("is still missing when the default is blank too", () => {
+    expect(isMissing(field({ required: true, default: "  " }), "")).toBe(true);
   });
 });

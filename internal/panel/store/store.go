@@ -175,6 +175,12 @@ const (
 	// writes it back to offline (install_failed, if that is where it came
 	// from) when it ends.
 	StateRestoring ServerState = "restoring"
+	// StateRetiring holds a server while a retire runs (#360): the job stops
+	// it, takes the final backup and has the node remove it. Start, restore
+	// and every writer are refused, and the reconciler leaves it alone. The
+	// job writes it retired when it lands, or back to Retire.PrevState when it
+	// is abandoned.
+	StateRetiring ServerState = "retiring"
 	// StateRetired is a server that is on no node (#360): its container and
 	// world were removed and its memory and ports released, but the row — its
 	// id, config, settings and schedules (disabled) — stays, and so do its
@@ -188,7 +194,7 @@ const (
 func ServerStates() []ServerState {
 	return []ServerState{
 		StateInstalling, StateInstallFailed, StateOffline, StateStarting,
-		StateRunning, StateStopping, StateCrashed, StateRestoring, StateRetired,
+		StateRunning, StateStopping, StateCrashed, StateRestoring, StateRetiring, StateRetired,
 	}
 }
 
@@ -263,9 +269,10 @@ type Server struct {
 	// codes are unsigned 32-bit and would go negative in an int32.
 	LastExitCode      int64 `json:"last_exit_code,omitempty"`
 	LastExitCodeKnown bool  `json:"last_exit_code_known,omitempty"`
-	// Retire is a retire in progress (#360): set when the job starts, its phase
-	// written as it moves, and cleared when the row becomes retired (or the
-	// retire is abandoned). The state stays what it was until then.
+	// Retire is a retire in progress (#360): set, with state retiring, when the
+	// job starts; its phase and the final backup's outcome are written as it
+	// moves, and it is cleared when the row becomes retired (or the retire is
+	// abandoned and the row goes back to PrevState).
 	Retire *ServerRetire `json:"retire,omitempty"`
 	// RetiredAt is when the server was retired; nil unless it is.
 	RetiredAt *time.Time `json:"retired_at,omitempty"`
@@ -288,10 +295,28 @@ type Server struct {
 // ServerRetire is a retire in progress as the server row records it.
 type ServerRetire struct {
 	// Phase is stopping, backing_up or removing.
-	Phase       string    `json:"phase"`
-	FinalBackup bool      `json:"final_backup"`
-	StartedAt   time.Time `json:"started_at"`
+	Phase string `json:"phase"`
+	// PrevState is the state the server was in when the retire began, which
+	// an abandoned retire returns it to.
+	PrevState ServerState `json:"prev_state"`
+	// FinalBackup is the final backup's outcome so far: off (not asked for),
+	// requested, ready, failed or skipped. FinalBackupNote says why it failed
+	// or was skipped; FinalBackupID is the archive once there is one. Kept on
+	// the row so a retire a Panel restart interrupted can still say it.
+	FinalBackup     string    `json:"final_backup"`
+	FinalBackupNote string    `json:"final_backup_note,omitempty"`
+	FinalBackupID   string    `json:"final_backup_id,omitempty"`
+	StartedAt       time.Time `json:"started_at"`
 }
+
+// The outcomes of a retire's final backup (ServerRetire.FinalBackup).
+const (
+	FinalBackupOff       = "off"
+	FinalBackupRequested = "requested"
+	FinalBackupReady     = "ready"
+	FinalBackupFailed    = "failed"
+	FinalBackupSkipped   = "skipped"
+)
 
 // The phases of a retire, in order.
 const (

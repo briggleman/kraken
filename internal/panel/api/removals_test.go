@@ -275,7 +275,7 @@ func TestRetireServer_UnreachableNodeIsRememberedAndFinishedLater(t *testing.T) 
 	seedSchedule(t, st, "sched-away", sv.ID)
 
 	stop() // the node goes away; the Panel still believes it is up
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	if row, err := st.GetServer(ctx, sv.ID); err != nil || row.State != store.StateRetired || row.RetiredFromNodeID != nodeID {
 		t.Fatalf("server row after retire: %+v %v, want it retired from %s", row, err, nodeID)
@@ -368,7 +368,7 @@ func TestRetireServer_AgentFailureIsRetriedUntilItLands(t *testing.T) {
 	sv := placedServer(t, st, "sv-flaky", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	owed := pendingRemovals(t, st, nodeID)
 	if len(owed) != 1 || owed[0].LastError != "docker daemon is restarting" {
 		t.Fatalf("pending removals = %+v, want one carrying the Agent's reason verbatim", owed)
@@ -415,7 +415,7 @@ func TestRetireServer_LiveNodeOwesNothing(t *testing.T) {
 	sv := placedServer(t, st, "sv-live", nodeID, specID)
 	seedSchedule(t, st, "sched-live", sv.ID)
 
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	if got := rt.Removals(); len(got) != 1 || got[0].ServerID != sv.ID || !got[0].DeleteData {
 		t.Fatalf("removals = %+v, want %s with delete_data", got, sv.ID)
@@ -444,7 +444,7 @@ func TestDeleteServer_RefusedWhenTheRemovalCannotBeRecorded(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-unrecorded", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-unrecorded", nodeID, specID)
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	stop()
 
 	for name, flag := range map[string]*atomic.Bool{"node unreadable": &st.failGetNode, "node unwritable": &st.failUpdateNode} {
@@ -476,7 +476,7 @@ func TestPendingRemoval_SkippedWhenTheServerLookupFails(t *testing.T) {
 	sv := placedServer(t, st, "sv-lookup", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 	dueNow(t, st, nodeID)
 
@@ -515,7 +515,7 @@ func TestDeleteServer_RetryAfterAFailedRowDeleteReleasesOnce(t *testing.T) {
 	// The retire's removal fails (queued, holding the allocation); then the
 	// first delete's removal fails too (folded into it) and the row delete fails.
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	st.failDeleteServer.Store(true)
 	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("first delete: %d %s, want 500", rec.Code, rec.Body.String())
@@ -563,7 +563,7 @@ func TestDeleteServer_UnrecordedSuccessSaysTheDataIsGone(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-unwritten", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-unwritten", nodeID, specID)
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	st.failUpdateNode.Store(true)
 	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
@@ -596,7 +596,7 @@ func TestPendingRemoval_LookupFailureWarnsOncePerReason(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "delete-noisy", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-noisy", nodeID, specID)
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 
 	warns := func() int {
@@ -641,7 +641,7 @@ func TestPendingRemoval_ReplayNeverBlocksThePass(t *testing.T) {
 	sv := placedServer(t, st, "sv-hang", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 	dueNow(t, st, nodeID)
 
@@ -747,7 +747,7 @@ func TestRetireNodeContainer_RefusesAnIDWithARemovalPending(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "retire-owed", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-owed", nodeID, specID)
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/nodes/"+nodeID+"/containers/"+sv.ID, token, nil)
@@ -843,7 +843,7 @@ func TestDismissPendingRemoval(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "dismiss", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-dismiss", nodeID, specID)
 	stop()
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/nodes/"+nodeID+"/removals/sv-other", token, nil)
 	if rec.Code != http.StatusNotFound || codedBody(t, rec.Body.Bytes()).Code != "removal_not_found" {

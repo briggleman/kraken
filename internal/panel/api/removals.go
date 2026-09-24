@@ -190,6 +190,8 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 	if err != nil {
 		return
 	}
+	// done maps a delivered removal to whether it carried delete_backups, so a
+	// purge folded into the record while the RPC was out is not lost with it.
 	done := map[string]bool{}
 	failed := map[string]string{}
 	for _, p := range due {
@@ -229,7 +231,7 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 				s.logger.Warn("pending permanent delete landed, but not every archive went", "node", nodeID, "server", p.ServerID, "note", note)
 			}
 		}
-		done[p.ServerID] = true
+		done[p.ServerID] = p.DeleteBackups
 	}
 	if len(done) == 0 && len(failed) == 0 {
 		return
@@ -240,8 +242,17 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 	if err != nil {
 		return
 	}
-	for id := range done {
+	for id, sentBackups := range done {
 		if p, ok := latest.PendingRemovalFor(id); ok {
+			if p.DeleteBackups && !sentBackups {
+				// A permanent delete was folded into this record after the
+				// removal went out without delete_backups: what landed is not
+				// what is owed now. Kept, and due again at once.
+				latest.RetryPendingRemovalNow(id)
+				s.logger.Info("pending server removal landed, but a permanent delete was queued onto it meanwhile; sending again",
+					"node", nodeID, "server", id)
+				continue
+			}
 			latest.FinishPendingRemoval(id)
 			s.logger.Info("pending server removal finished on its node",
 				"node", nodeID, "server", id, "delete_data", p.DeleteData, "requested_at", p.RequestedAt,
@@ -270,18 +281,21 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 // error other than not-found is returned as-is: the caller cannot tell "no
 // row" from "could not look", and must not guess.
 //
-// A retired row claims nothing (#360). It is on no node — its node_id is
-// empty and retired_from_node_id is only where it was — and the removal owed
-// for it is its own retire's (or its permanent delete's): the operator's
-// command, which a replay must be allowed to finish. Every other state claims
-// the node it is placed on, so a removal owed there waits rather than destroy
-// what may be a live server. A revive, which would place the id again, is
-// refused while any removal for it is still owed.
+// A retired row does not claim the node it was retired from (#360): the
+// removal owed there is its own retire's (or its permanent delete's) — the
+// operator's command, which a replay must be allowed to finish. A removal for
+// the id owed on any other node is none of the retire's doing and waits, as it
+// does for a row in any other state on the node it is placed on, rather than
+// destroy what may be a live server. A revive, which would place the id
+// again, is refused while any removal for it is still owed.
 func (s *Server) serverClaimsID(ctx context.Context, nodeID, serverID string) (bool, error) {
 	sv, err := s.store.GetServer(ctx, serverID)
 	switch {
 	case err == nil:
-		return sv.State != store.StateRetired && sv.NodeID == nodeID, nil
+		if sv.State == store.StateRetired {
+			return nodeID != sv.RetiredFromNodeID, nil
+		}
+		return sv.NodeID == nodeID, nil
 	case errors.Is(err, store.ErrNotFound):
 		return false, nil
 	default:

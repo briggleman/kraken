@@ -498,7 +498,7 @@ func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action ag
 	}
 	// A retire or revive is moving the server (#360): the retire is stopping
 	// it to remove it, and a revive has not placed it yet.
-	if op := s.restores.opHolding(sv.ID); op != "" || sv.Retire != nil {
+	if op := s.restores.opHolding(sv.ID); op != "" || s.retiring(sv) {
 		if op == "" {
 			op = opRetire
 		}
@@ -817,6 +817,12 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	// start gate with the swap still underway. The job settles the row.
 	if _, restoring := s.restores.active(sv.ID); restoring {
 		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRestoring})
+		return
+	}
+	// A retire owns its row the same way (#360): the job writes `retired`, or
+	// puts the row back if it is abandoned.
+	if fresh, ferr := s.store.GetServer(ctx, sv.ID); ferr == nil && s.retiring(fresh) {
+		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRetiring})
 		return
 	}
 	// Written onto a fresh read, so nothing another writer stored while the

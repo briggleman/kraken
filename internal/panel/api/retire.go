@@ -60,15 +60,17 @@ const (
 	// retireDeadline bounds a whole retire: a stop, a final backup and a
 	// removal, the backup being by far the longest.
 	retireDeadline = 45 * time.Minute
-	// finalBackupTimeout bounds the final backup, as an install pass is bounded.
-	finalBackupTimeout = 30 * time.Minute
 	// finalBackupName is what the final backup is called in the backup list.
 	finalBackupName = "final-before-retire"
 )
 
 // finalBackupPollInterval is how often the retire asks the node whether the
-// final backup has finished. A variable so a test can shorten it.
-var finalBackupPollInterval = 2 * time.Second
+// final backup has finished, and finalBackupTimeout bounds it, as an install
+// pass is bounded. Variables so a test can shorten them.
+var (
+	finalBackupPollInterval = 2 * time.Second
+	finalBackupTimeout      = 30 * time.Minute
+)
 
 type retireRequest struct {
 	// FinalBackup takes a backup after the stop and before the removal. Absent
@@ -78,7 +80,7 @@ type retireRequest struct {
 }
 
 // handleRetireServer starts a retire and answers at once with the server view:
-// 202, the state unchanged, and a `retire` block whose phase the job moves.
+// 202, state `retiring`, and a `retire` block whose phase the job moves.
 //
 // POST /servers/{id}/retire. server.delete.
 func (s *Server) handleRetireServer(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +90,10 @@ func (s *Server) handleRetireServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	finalBackup := req.FinalBackup == nil || *req.FinalBackup
+	backupState := store.FinalBackupOff
+	if finalBackup {
+		backupState = store.FinalBackupRequested
+	}
 	ctx := r.Context()
 	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -132,7 +138,11 @@ func (s *Server) handleRetireServer(w http.ResponseWriter, r *http.Request) {
 		refusal.write(w)
 		return
 	}
-	fresh.Retire = &store.ServerRetire{Phase: store.RetirePhaseStopping, FinalBackup: finalBackup, StartedAt: time.Now().UTC()}
+	fresh.Retire = &store.ServerRetire{
+		Phase: store.RetirePhaseStopping, PrevState: fresh.State,
+		FinalBackup: backupState, StartedAt: time.Now().UTC(),
+	}
+	fresh.State = store.StateRetiring
 	fresh.RetireNote = ""
 	if err := s.store.UpdateServer(ctx, fresh); err != nil {
 		s.restores.releaseOp(sv.ID)
@@ -140,7 +150,7 @@ func (s *Server) handleRetireServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Info("server retire started", "server", fresh.ID, "name", fresh.Name, "final_backup", finalBackup)
-	go s.runRetire(fresh.ID, finalBackup)
+	go s.runRetire(fresh.ID)
 	writeJSON(w, http.StatusAccepted, s.serverResponse(fresh))
 }
 
@@ -151,7 +161,7 @@ func retireRefusalFor(s *Server, sv *store.Server) *opRefusal {
 	switch {
 	case sv.State == store.StateRetired:
 		return &opRefusal{http.StatusConflict, codeServerRetired, "this server is already retired"}
-	case sv.Retire != nil:
+	case sv.Retire != nil || sv.State == store.StateRetiring:
 		// The row's record of a retire; the registry's hold is holdOp's to
 		// report, and is this handler's own on the re-check.
 		return &opRefusal{http.StatusConflict, codeServerBusy, "this server is already being retired"}
@@ -168,18 +178,50 @@ func retireRefusalFor(s *Server, sv *store.Server) *opRefusal {
 	return nil
 }
 
+// finalOutcome is where a final-backup attempt got to: ready, failed or
+// skipped (store.FinalBackup*), why, and the archive once there is one.
+type finalOutcome struct {
+	status, note, id string
+}
+
+// retireStop stops the server for the final backup. reachable is false when
+// the node did not answer at all (Unavailable, or the Panel's own deadline).
+func retireStop(ctx context.Context, client agentpb.NodeServiceClient, serverID string) (stopped, reachable bool, why string) {
+	pctx, cancel := context.WithTimeout(ctx, powerTimeout(agentpb.PowerAction_POWER_ACTION_STOP))
+	defer cancel()
+	_, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: serverID, Action: agentpb.PowerAction_POWER_ACTION_STOP})
+	switch code := status.Code(err); {
+	case err == nil:
+		return true, true, ""
+	case code == codes.Unavailable || code == codes.DeadlineExceeded:
+		return false, false, status.Convert(err).Message()
+	default:
+		return false, true, status.Convert(err).Message()
+	}
+}
+
 // runRetire is the retire job. It owns the row until it writes `retired` (or
-// gives up and says why on the row), and releases the hold only after that.
-func (s *Server) runRetire(serverID string, finalBackup bool) {
+// abandons the retire and puts the row back), and releases the hold after.
+//
+// The rule it keeps, above all: **while the node answers, nothing is removed
+// unless the final backup that was asked for is READY.** A backup that fails,
+// or does not finish in time (its archiver may still be writing), abandons the
+// retire. A backup that could not even be tried — the node did not answer the
+// stop or the backup — is tried again once the removal is due, if the node
+// answers then; only a node that is unreachable at that moment gets its
+// removal queued without a final backup, and the note says so.
+func (s *Server) runRetire(serverID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), retireDeadline)
 	defer cancel()
 	defer s.restores.releaseOp(serverID)
 
 	sv, err := s.store.GetServer(ctx, serverID)
-	if err != nil {
+	if err != nil || sv.Retire == nil {
 		s.logger.Error("retire: could not load the server", "server", serverID, "err", err)
-		return
+		return // the reconciler settles the row it left
 	}
+	prev := sv.Retire.PrevState
+	wantBackup := sv.Retire.FinalBackup == store.FinalBackupRequested
 	var notes []string
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	switch {
@@ -187,58 +229,77 @@ func (s *Server) runRetire(serverID string, finalBackup bool) {
 		node = nil
 		notes = append(notes, "its node no longer exists, so nothing was removed on a node")
 	case err != nil:
-		s.abandonRetire(ctx, serverID, "could not load the server's node ("+err.Error()+"); nothing was changed")
+		s.abandonRetire(ctx, serverID, "could not load the server's node ("+err.Error()+"); nothing was changed", false)
 		return
 	}
-	var client agentpb.NodeServiceClient
-	if node != nil {
-		if lerr := s.ensureNodeLive(ctx, node); lerr == nil {
-			if c, cerr := s.nodes.Client(node.DialTarget()); cerr == nil {
-				client = c
-			}
-		}
-	}
+	client := s.retireClient(ctx, node)
 	live := client != nil
 
 	// Stop. Only a server that may be running needs it; the removal would stop
 	// it anyway, but the final backup must not archive a world mid-save.
-	stopped := !mayBeRunning(sv.State)
-	stopErr := ""
-	if !stopped && live {
-		pctx, pcancel := context.WithTimeout(ctx, powerTimeout(agentpb.PowerAction_POWER_ACTION_STOP))
-		_, perr := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_STOP})
-		pcancel()
-		switch {
-		case perr == nil:
-			stopped = true
-		case status.Code(perr) == codes.Unavailable:
-			// Believed live, but gone: the Panel has not noticed yet.
-			live = false
-		default:
-			stopErr = status.Convert(perr).Message()
-		}
+	stopped := !mayBeRunning(prev)
+	stopWhy := ""
+	if live && !stopped {
+		stopped, live, stopWhy = retireStop(ctx, client, sv.ID)
 	}
 
-	if finalBackup {
-		s.setRetirePhase(ctx, serverID, store.RetirePhaseBackingUp)
-		switch {
-		case !live:
-			notes = append(notes, "final backup skipped: node unreachable")
-		case !stopped:
-			notes = append(notes, "final backup skipped: the server could not be stopped ("+stopErr+")")
-		default:
-			switch berr := s.takeFinalBackup(ctx, client, sv); {
-			case errors.Is(berr, errNodeNotLive):
-				notes = append(notes, "final backup skipped: node unreachable")
-			case berr != nil:
-				notes = append(notes, "final backup failed: "+berr.Error())
+	outcome := finalOutcome{status: store.FinalBackupOff}
+	if wantBackup {
+		if err := s.setRetirePhase(ctx, serverID, store.RetirePhaseBackingUp); err != nil {
+			s.abandonRetire(ctx, serverID, "could not record its progress ("+err.Error()+"); nothing was removed", stopped)
+			return
+		}
+		outcome = s.attemptFinalBackup(ctx, client, live, stopped, stopWhy, sv, node)
+		if outcome.status == store.FinalBackupSkipped && node != nil && s.nodeAnswers(ctx, node) {
+			// It could not be tried, but the node answers now: it is tried
+			// again, and nothing is removed from a node that answers without
+			// it. Anything short of READY this time abandons the retire.
+			retry := s.retireClient(ctx, node)
+			if retry == nil {
+				s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
+				return
+			}
+			if !stopped {
+				var reachable bool
+				stopped, reachable, stopWhy = retireStop(ctx, retry, sv.ID)
+				if !stopped {
+					why := stopWhy
+					if !reachable {
+						why = "the node stopped answering (" + stopWhy + ")"
+					}
+					s.abandonRetire(ctx, serverID, "the server could not be stopped for its final backup: "+why+"; nothing was removed", false)
+					return
+				}
+			}
+			outcome = s.attemptFinalBackup(ctx, retry, true, true, "", sv, node)
+			if outcome.status != store.FinalBackupReady {
+				s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
+				return
 			}
 		}
+		if err := s.recordFinalBackup(ctx, serverID, outcome); err != nil {
+			s.abandonRetire(ctx, serverID, "could not record the final backup ("+err.Error()+"); nothing was removed", stopped)
+			return
+		}
+		if outcome.status == store.FinalBackupFailed {
+			s.abandonRetire(ctx, serverID, "the final backup failed: "+outcome.note+"; nothing was removed", stopped)
+			return
+		}
 	}
 
-	s.setRetirePhase(ctx, serverID, store.RetirePhaseRemoving)
+	if err := s.setRetirePhase(ctx, serverID, store.RetirePhaseRemoving); err != nil {
+		s.abandonRetire(ctx, serverID, "could not record its progress ("+err.Error()+"); nothing was removed", stopped)
+		return
+	}
 	if node != nil {
-		_, removeErr := s.removeOnNode(ctx, node, sv.ID, true, false)
+		var removeErr error
+		if outcome.status == store.FinalBackupSkipped {
+			// The node did not answer the probe above: it is not told to delete
+			// anything now. The removal is queued, and lands when it answers.
+			removeErr = fmt.Errorf("%w: %s", errNodeNotLive, outcome.note)
+		} else {
+			_, removeErr = s.removeOnNode(ctx, node, sv.ID, true, false)
+		}
 		if err := s.settleNodeAfterRemoval(ctx, removalOf(sv), node.ID, removeErr); err != nil {
 			s.logger.Error("retire: could not record the removal on the node", "server", sv.ID, "node", node.ID,
 				"removal_err", removeErr, "err", err)
@@ -247,7 +308,7 @@ func (s *Server) runRetire(serverID string, finalBackup bool) {
 				// The node did its part: the containers and the world are gone.
 				msg = "the server's containers and world were removed on its node, but the retire could not be recorded; retire it again"
 			}
-			s.abandonRetire(ctx, serverID, msg)
+			s.abandonRetire(ctx, serverID, msg, true)
 			return
 		}
 		if removeErr != nil {
@@ -255,7 +316,58 @@ func (s *Server) runRetire(serverID string, finalBackup bool) {
 				" answers ("+removalErrorText(removeErr)+")")
 		}
 	}
-	s.completeRetire(ctx, sv, notes)
+	s.completeRetire(ctx, sv, append(finalBackupNotes(outcome), notes...))
+}
+
+// finalBackupNotes is what retire_note says about the final backup: nothing
+// when it was taken or not asked for.
+func finalBackupNotes(o finalOutcome) []string {
+	if o.status == store.FinalBackupSkipped {
+		return []string{"final backup skipped: " + o.note}
+	}
+	return nil
+}
+
+// retireClient is the node's client when the Panel believes the node is up,
+// or nil.
+func (s *Server) retireClient(ctx context.Context, node *cluster.Node) agentpb.NodeServiceClient {
+	if node == nil || s.ensureNodeLive(ctx, node) != nil {
+		return nil
+	}
+	c, err := s.nodes.Client(node.DialTarget())
+	if err != nil {
+		return nil
+	}
+	return c
+}
+
+// nodeAnswers probes the node for real — not the stored status, which a node
+// that just went away still reads as online — and records what it finds.
+func (s *Server) nodeAnswers(ctx context.Context, node *cluster.Node) bool {
+	_, err := s.reconcileNode(ctx, node)
+	return err == nil
+}
+
+// attemptFinalBackup tries the final backup, or says why it could not be
+// tried. A skip is only ever for reachability or a stop that did not land;
+// everything else the node says is a failure.
+func (s *Server) attemptFinalBackup(ctx context.Context, client agentpb.NodeServiceClient, live, stopped bool, stopWhy string, sv *store.Server, node *cluster.Node) finalOutcome {
+	switch {
+	case node == nil:
+		return finalOutcome{status: store.FinalBackupSkipped, note: "its node no longer exists"}
+	case !live:
+		return finalOutcome{status: store.FinalBackupSkipped, note: "node unreachable"}
+	case !stopped:
+		return finalOutcome{status: store.FinalBackupSkipped, note: "the server could not be stopped (" + stopWhy + ")"}
+	}
+	id, err := s.takeFinalBackup(ctx, client, sv)
+	switch {
+	case errors.Is(err, errNodeNotLive):
+		return finalOutcome{status: store.FinalBackupSkipped, note: "node unreachable", id: id}
+	case err != nil:
+		return finalOutcome{status: store.FinalBackupFailed, note: err.Error(), id: id}
+	}
+	return finalOutcome{status: store.FinalBackupReady, id: id}
 }
 
 // mayBeRunning reports whether a server in st may have a container running.
@@ -267,35 +379,40 @@ func mayBeRunning(st store.ServerState) bool {
 	return true
 }
 
+// errFinalBackupTimeout is a final backup still PENDING at finalBackupTimeout.
+// Its archiver may still be writing, so the world under it must not go.
+var errFinalBackupTimeout = errors.New("the backup did not finish in time")
+
 // takeFinalBackup takes the retire's final backup and waits for it to be
-// READY, bounded by finalBackupTimeout. The error says why it is not.
-func (s *Server) takeFinalBackup(ctx context.Context, client agentpb.NodeServiceClient, sv *store.Server) error {
+// READY, bounded by finalBackupTimeout. The error says why it is not; the id
+// is the archive's, once the node has one.
+func (s *Server) takeFinalBackup(ctx context.Context, client agentpb.NodeServiceClient, sv *store.Server) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, finalBackupTimeout)
 	defer cancel()
 	cctx, ccancel := context.WithTimeout(ctx, 30*time.Second)
 	b, err := client.CreateBackup(cctx, s.backupRequestFor(cctx, sv, finalBackupName))
 	ccancel()
 	if err != nil {
-		if status.Code(err) == codes.Unavailable {
-			return errNodeNotLive // believed live, but it did not answer
+		if code := status.Code(err); code == codes.Unavailable || code == codes.DeadlineExceeded {
+			return "", errNodeNotLive // believed live, but it did not answer
 		}
-		return errors.New(status.Convert(err).Message())
+		return "", errors.New(status.Convert(err).Message())
 	}
 	slug := s.serverSlug(ctx, sv)
 	for {
 		switch b.GetState() {
 		case agentpb.BackupState_BACKUP_STATE_FAILED:
 			if b.GetError() != "" {
-				return errors.New(b.GetError())
+				return b.GetId(), errors.New(b.GetError())
 			}
-			return errors.New("the node reported the backup failed without a reason")
+			return b.GetId(), errors.New("the node reported the backup failed without a reason")
 		case agentpb.BackupState_BACKUP_STATE_PENDING:
 		default:
-			return nil // ready (an archive with no tracked job reads as ready too)
+			return b.GetId(), nil // ready (an archive with no tracked job reads as ready too)
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("the backup did not finish within %s", finalBackupTimeout)
+			return b.GetId(), fmt.Errorf("%w: it was still being written after %s", errFinalBackupTimeout, finalBackupTimeout)
 		case <-time.After(finalBackupPollInterval):
 		}
 		lctx, lcancel := context.WithTimeout(ctx, 20*time.Second)
@@ -313,29 +430,58 @@ func (s *Server) takeFinalBackup(ctx context.Context, client agentpb.NodeService
 }
 
 // setRetirePhase writes the retire's phase to the row (a fresh read, so
-// nothing else on the row is lost).
-func (s *Server) setRetirePhase(ctx context.Context, serverID, phase string) {
-	sv, err := s.store.GetServer(ctx, serverID)
-	if err != nil || sv.Retire == nil {
-		return
-	}
-	sv.Retire.Phase = phase
-	if err := s.store.UpdateServer(ctx, sv); err != nil {
-		s.logger.Warn("retire: could not record its phase", "server", serverID, "phase", phase, "err", err)
-	}
+// nothing else on the row is lost). A write that fails is returned: the job
+// stops there rather than remove anything the row does not record.
+func (s *Server) setRetirePhase(ctx context.Context, serverID, phase string) error {
+	return s.updateRetireBlock(ctx, serverID, func(r *store.ServerRetire) { r.Phase = phase })
 }
 
-// abandonRetire ends a retire that could not go on: the row keeps its state,
-// loses the retire block, and says why in retire_note.
-func (s *Server) abandonRetire(ctx context.Context, serverID, reason string) {
+// recordFinalBackup writes the final backup's outcome to the row's retire
+// block, so a retire a Panel restart interrupts can still say it.
+func (s *Server) recordFinalBackup(ctx context.Context, serverID string, o finalOutcome) error {
+	return s.updateRetireBlock(ctx, serverID, func(r *store.ServerRetire) {
+		r.FinalBackup, r.FinalBackupNote, r.FinalBackupID = o.status, o.note, o.id
+	})
+}
+
+func (s *Server) updateRetireBlock(ctx context.Context, serverID string, edit func(*store.ServerRetire)) error {
+	sv, err := s.store.GetServer(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	if sv.Retire == nil {
+		return errors.New("the retire record is gone from the server")
+	}
+	r := *sv.Retire
+	edit(&r)
+	sv.Retire = &r
+	return s.store.UpdateServer(ctx, sv)
+}
+
+// abandonRetire ends a retire that could not go on without removing anything:
+// the row loses its retire block and goes back to the state it came from —
+// offline when the retire had already stopped it — with the reason in
+// last_error, where the drill-in shows it, and in retire_note.
+func (s *Server) abandonRetire(ctx context.Context, serverID, reason string, stopped bool) {
 	s.logger.Warn("server retire abandoned", "server", serverID, "reason", reason)
 	sv, err := s.store.GetServer(ctx, serverID)
 	if err != nil {
 		s.logger.Error("retire: could not load the server to abandon it", "server", serverID, "err", err)
 		return
 	}
+	back := store.StateOffline
+	if sv.Retire != nil && sv.Retire.PrevState != "" {
+		back = sv.Retire.PrevState
+	}
+	if stopped && mayBeRunning(back) {
+		back = store.StateOffline
+	}
+	if sv.State == store.StateRetiring {
+		sv.State = back
+	}
 	sv.Retire = nil
 	sv.RetireNote = "retire abandoned: " + reason
+	sv.LastError = sv.RetireNote
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		s.logger.Error("retire: could not record the abandoned retire", "server", serverID, "err", err)
 	}
@@ -422,25 +568,38 @@ var errOrphanedRetireRemoval = errors.New("the panel restarted while the retire 
 // settleOrphanedRetire finishes, or abandons, a retire this process has no job
 // for — the only way to get one is a Panel that stopped mid-retire.
 //
-// Before the removal nothing is lost: the retire is abandoned, the server
-// keeps its state, and the note says to retire it again. During the removal
-// the Agent may or may not have been told, so it is told again — a pending
-// removal, which is idempotent — and the retire completes. The allocation
-// travels with that removal only when the node provably still holds it for
-// this server: queued already, or its ports still allocated with no other row
-// on the node claiming them. Otherwise it was released before the restart,
-// and holding it again would free it a second time when the removal lands.
+// Before the removal nothing is lost: the retire is abandoned, the server goes
+// back to the state it came from, and the note says to retire it again. During
+// the removal the Agent may or may not have been told, so it is told again — a
+// pending removal, which is idempotent — and the retire completes, with the
+// final backup's recorded outcome in its note. A removal phase with a final
+// backup that is not settled cannot happen (the outcome is written first, and
+// a failed write stops the job), and is abandoned rather than guessed at. The
+// allocation travels with the queued removal only when the node provably still
+// holds it for this server: queued already, or its ports still allocated with
+// no other row on the node claiming them. Otherwise it was released before the
+// restart, and holding it again would free it a second time when the removal
+// lands.
 func (s *Server) settleOrphanedRetire(ctx context.Context, id string) {
 	sv, err := s.store.GetServer(ctx, id)
-	if err != nil || sv.Retire == nil || s.restores.opHolding(id) != "" {
+	if err != nil || s.restores.opHolding(id) != "" {
 		return
 	}
-	if sv.Retire.Phase != store.RetirePhaseRemoving {
+	if sv.Retire == nil {
+		if sv.State == store.StateRetiring {
+			s.abandonRetire(ctx, id, "the retire lost its record; nothing was removed — retire the server again", false)
+		}
+		return
+	}
+	backup := sv.Retire.FinalBackup
+	settled := backup == store.FinalBackupOff || backup == store.FinalBackupReady || backup == store.FinalBackupSkipped
+	if sv.Retire.Phase != store.RetirePhaseRemoving || !settled {
 		s.abandonRetire(ctx, id, "the panel restarted while this retire was "+strings.ReplaceAll(sv.Retire.Phase, "_", " ")+
-			"; nothing was removed — retire the server again")
+			"; nothing was removed — retire the server again", false)
 		return
 	}
-	notes := []string{"the panel restarted while this retire was removing the server"}
+	notes := append(finalBackupNotes(finalOutcome{status: backup, note: sv.Retire.FinalBackupNote}),
+		"the panel restarted while this retire was removing the server")
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -495,6 +654,25 @@ func (s *Server) nodeStillHolds(ctx context.Context, node *cluster.Node, sv *sto
 	return true
 }
 
+// holdRetiredRow takes the operation hold on a retired server for a revive or
+// a permanent delete, or says why not. A retire still holding a row that
+// already reads retired is only a moment from letting go — its last write is
+// done — and the answer says to retry rather than call the server busy with
+// something it is not.
+func holdRetiredRow(s *Server, sv *store.Server, op string) *opRefusal {
+	switch held := s.restores.holdOp(sv.ID, op); held {
+	case "":
+		return nil
+	case opRetire:
+		if sv.State == store.StateRetired {
+			return &opRefusal{http.StatusConflict, codeServerBusy, "the retire is finishing — retry in a moment"}
+		}
+		return &opRefusal{http.StatusConflict, codeServerBusy, "this server is being retired"}
+	default:
+		return &opRefusal{http.StatusConflict, codeServerBusy, "this server is already being " + held + "d"}
+	}
+}
+
 // ---- revive ----
 
 type reviveRequest struct {
@@ -544,9 +722,10 @@ func (s *Server) handleReviveServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Held until the row is placed and `installing`: two revives racing would
-	// otherwise each reserve the server a place.
-	if held := s.restores.holdOp(sv.ID, opRevive); held != "" {
-		writeCoded(w, http.StatusConflict, codeServerBusy, "this server is already being "+held+"d")
+	// otherwise each reserve the server a place, and a permanent delete must
+	// not take the row out from under one.
+	if refusal := holdRetiredRow(s, sv, opRevive); refusal != nil {
+		refusal.write(w)
 		return
 	}
 	defer s.restores.releaseOp(sv.ID)
@@ -634,6 +813,20 @@ func (s *Server) handleReviveServer(w http.ResponseWriter, r *http.Request) {
 			refusal.write(w)
 			return
 		}
+		// That check can take twenty seconds, and the node record is shared:
+		// the reservation is made again on a copy read now, so nothing written
+		// to the node meanwhile is lost with a stale one.
+		fresh, err := s.store.GetNode(ctx, chosen.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not reload the node")
+			return
+		}
+		placement, err = scheduler.PlaceWithMemory(&kindSpec, []*cluster.Node{fresh}, mem, sv.RetiredPorts)
+		if err != nil {
+			writeError(w, http.StatusConflict, "node "+nodeLabel(fresh)+" can't host this server: "+err.Error())
+			return
+		}
+		chosen = fresh
 	}
 	if err := s.store.UpdateNode(ctx, chosen); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not persist node allocation")
@@ -667,7 +860,6 @@ func (s *Server) handleReviveServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update server state")
 		return
 	}
-	s.enableSchedulesAfterRevive(ctx, sv.ID)
 	s.logger.Info("server revive started", "server", sv.ID, "name", sv.Name, "node", chosen.Name,
 		"ports", placement.Ports, "restore", req.RestoreBackupID, "start", req.Start)
 	go s.runRevive(sv, sp, chosen, req.SteamGuardCode, req.RestoreBackupID, req.Start)
@@ -728,7 +920,9 @@ func (s *Server) checkRevivalBackup(ctx context.Context, node *cluster.Node, sv 
 // the one before it landed:
 //
 //   - the install pass (provision): a failure lands install_failed, as a
-//     failed create does;
+//     failed create does, and the schedules stay off;
+//   - the schedules the retire switched off, switched back on once the
+//     install has landed;
 //   - the restore, when one was asked for: through the same job an operator's
 //     restore runs (restoring → offline, the outcome in restore_result);
 //   - the start, when asked: the checks and the update decision an operator's
@@ -741,6 +935,7 @@ func (s *Server) runRevive(sv *store.Server, sp *spec.Spec, node *cluster.Node, 
 	if err != nil || after.State != store.StateOffline {
 		return // the install did not land; provision said why on the row
 	}
+	s.enableSchedulesAfterRevive(ctx, sv.ID)
 	if backupID != "" {
 		if !s.reviveRestore(ctx, sv.ID, backupID, node) {
 			return
@@ -896,7 +1091,29 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	if sv.State != store.StateRetired && s.refuseWhileHeld(w, sv) {
 		return
 	}
-	if sv.State != store.StateRetired || s.restores.opHolding(sv.ID) != "" {
+	if sv.State != store.StateRetired {
+		writeCoded(w, http.StatusConflict, codeServerNotRetired,
+			"retire the server first — only a retired server can be deleted permanently (current state: "+string(sv.State)+")")
+		return
+	}
+	// Held for the whole delete, so a revive cannot place the row while it is
+	// being deleted, and re-read under the hold: a revive that landed between
+	// the read above and the hold has made it a live server again.
+	if refusal := holdRetiredRow(s, sv, opDelete); refusal != nil {
+		refusal.write(w)
+		return
+	}
+	defer s.restores.releaseOp(sv.ID)
+	sv, err = s.store.GetServer(ctx, sv.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get server")
+		return
+	}
+	if sv.State != store.StateRetired {
 		writeCoded(w, http.StatusConflict, codeServerNotRetired,
 			"retire the server first — only a retired server can be deleted permanently (current state: "+string(sv.State)+")")
 		return

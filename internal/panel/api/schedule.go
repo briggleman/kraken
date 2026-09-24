@@ -151,8 +151,8 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		if ferr != nil {
 			return nil
 		}
-		if s.restoreInProgress(fresh) {
-			s.logger.Warn("scheduler: a restore began during the restart; leaving the row to it", "server", sv.ID)
+		if s.restoreInProgress(fresh) || s.retiring(fresh) || fresh.State == store.StateRetired {
+			s.logger.Warn("scheduler: a restore or retire began during the restart; leaving the row to it", "server", sv.ID)
 			return nil
 		}
 		fresh.State = storeStateFromAgent(resp.State)

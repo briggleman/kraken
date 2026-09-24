@@ -283,6 +283,16 @@ func (n *Node) RecordRemovalFailure(serverID, reason string, now time.Time) (cha
 	return false
 }
 
+// RetryPendingRemovalNow makes the removal owed for serverID due at once,
+// without counting a failure: what was delivered is not what is now owed.
+func (n *Node) RetryPendingRemovalNow(serverID string) {
+	for i := range n.PendingRemovals {
+		if n.PendingRemovals[i].ServerID == serverID {
+			n.PendingRemovals[i].NextAttempt = time.Time{}
+		}
+	}
+}
+
 // FinishPendingRemoval forgets the removal owed for serverID and releases the
 // allocation it was holding, reporting whether there was one. It is the only
 // place that allocation is released, so it cannot be released twice.

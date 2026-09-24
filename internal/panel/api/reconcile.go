@@ -131,7 +131,7 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if s.restores.opHolding(sv.ID) != "" || sv.State == store.StateRetired {
 			continue
 		}
-		if sv.Retire != nil {
+		if sv.Retire != nil || sv.State == store.StateRetiring {
 			s.settleOrphanedRetire(ctx, sv.ID)
 			continue
 		}
@@ -169,6 +169,18 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if _, restoring := s.restores.active(sv.ID); restoring || s.restores.opHolding(sv.ID) != "" {
 			continue
 		}
+		// ...or begun and ended: the row listed above is a snapshot, and
+		// writing it back would undo whatever landed since — a retire that
+		// finished and wrote `retired` would be put back on its node. The write
+		// goes onto a fresh read, and only when that still reads as listed.
+		if reconcileWriteHook != nil {
+			reconcileWriteHook(sv.ID)
+		}
+		listed := sv
+		sv, err = s.store.GetServer(ctx, listed.ID)
+		if err != nil || sv.State != listed.State || sv.Retire != nil || sv.Restore != nil {
+			continue
+		}
 		if adopt {
 			s.adoptRunning(ctx, sv, status)
 			continue
@@ -202,6 +214,11 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		}
 	}
 }
+
+// reconcileWriteHook, when set, runs in a pass after the Agent's answer and
+// before the row is re-read to be written — the window a stale write used to
+// land in. Tests use it; it is nil in the Panel.
+var reconcileWriteHook func(serverID string)
 
 // orphanedRestoreError is what a `restoring` row with no job behind it is left
 // saying. The only way to get one is a Panel that stopped mid-restore: the job

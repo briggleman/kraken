@@ -123,10 +123,15 @@ func (s *Server) handleDeleteSpec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not check whether the spec is in use")
 		return
 	}
-	inUse := 0
+	// A retired server counts (#360): it is revived from this spec, and its
+	// row is what a revive reads the platform, install and settings from.
+	inUse, retired := 0, 0
 	for _, sv := range servers {
 		if sv.SpecID == id {
 			inUse++
+			if sv.State == store.StateRetired {
+				retired++
+			}
 		}
 	}
 	if inUse > 0 {
@@ -134,10 +139,15 @@ func (s *Server) handleDeleteSpec(w http.ResponseWriter, r *http.Request) {
 		if inUse == 1 {
 			noun = "server uses"
 		}
+		msg := fmt.Sprintf("%d %s this spec; retire them and delete them for good before deleting the spec", inUse, noun)
+		if retired > 0 {
+			msg = fmt.Sprintf("%d %s this spec (%d retired) — revive or delete them for good first", inUse, noun, retired)
+		}
 		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":   fmt.Sprintf("%d %s this spec; delete them before deleting the spec", inUse, noun),
+			"error":   msg,
 			"code":    "spec_in_use",
 			"servers": inUse,
+			"retired": retired,
 		})
 		return
 	}

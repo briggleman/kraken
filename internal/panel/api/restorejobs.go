@@ -84,10 +84,12 @@ func newRestoreJobs() *restoreJobs {
 	return &restoreJobs{byServer: map[string]*restoreJob{}, starts: map[string]int{}, ops: map[string]string{}}
 }
 
-// The operations that hold a server in restoreJobs.ops.
+// The operations that hold a server in restoreJobs.ops. Each is named so
+// that name+"d" reads as a sentence ("this server is being retired").
 const (
 	opRetire = "retire"
 	opRevive = "revive"
+	opDelete = "delete"
 )
 
 // The machine-readable codes a restore's refusals answer with, in the same
@@ -237,7 +239,7 @@ func (s *Server) restoreInProgress(sv *store.Server) bool {
 // registry or by the row (whose retire block outlives a Panel restart until
 // the reconciler settles it).
 func (s *Server) retiring(sv *store.Server) bool {
-	return s.restores.opHolding(sv.ID) == opRetire || sv.Retire != nil
+	return s.restores.opHolding(sv.ID) == opRetire || sv.Retire != nil || sv.State == store.StateRetiring
 }
 
 // refuseWhileHeld is the gate every writer of a server's tree or config asks.
@@ -262,9 +264,9 @@ func (s *Server) refuseWhileHeld(w http.ResponseWriter, sv *store.Server) bool {
 	case s.retiring(sv):
 		writeCoded(w, http.StatusConflict, codeServerBusy,
 			"this server is being retired; nothing can change it until the retire finishes")
-	case s.restores.opHolding(sv.ID) == opRevive:
+	case s.restores.opHolding(sv.ID) != "":
 		writeCoded(w, http.StatusConflict, codeServerBusy,
-			"this server is being revived; wait for its install to start")
+			"this server is being "+s.restores.opHolding(sv.ID)+"d; wait for that to finish")
 	case s.restoreInProgress(sv):
 		writeCoded(w, http.StatusConflict, codeServerRestoring,
 			"a backup restore is in progress for this server; wait for the restore to finish")

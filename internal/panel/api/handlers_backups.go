@@ -171,6 +171,13 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 			"a restore is already in progress for this server; wait for it to finish")
 		return
 	}
+	// The same for a retire (#360): the server reads `retiring`, and "stop the
+	// server" is not what is in the way.
+	if s.retiring(sv) {
+		writeCoded(w, http.StatusConflict, codeServerBusy,
+			"this server is being retired; nothing can be restored into it until the retire ends")
+		return
+	}
 	if !restorableStates[sv.State] {
 		writeError(w, http.StatusConflict, "stop the server before restoring a backup (current state: "+string(sv.State)+")")
 		return

@@ -132,6 +132,12 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		s.serveInstallStream(w, r, server.ID)
 		return
 	}
+	// A retired server has no node and no container: there is no console to
+	// open, and saying so beats the 500 an empty node id used to earn (#360).
+	if server.State == store.StateRetired {
+		writeCoded(w, http.StatusConflict, codeServerRetired, retiredRefusal)
+		return
+	}
 
 	node, err := s.store.GetNode(r.Context(), server.NodeID)
 	if err != nil {

@@ -107,7 +107,8 @@ func TestInstallLog_ReadableAfterASuccessfulInstall(t *testing.T) {
 // path, and the answer must still be a 200 with an empty array (never null),
 // because the console surface renders it directly.
 func TestInstallLog_UnretainedReadsAsEmptyNotMissing(t *testing.T) {
-	h, _ := newTestServerStore(t)
+	srv, _ := newTestAPI(t)
+	h := srv.Handler()
 	token := login(t, h)
 	nodeID := registerNode(t, h, token, startFakeAgent(t, "node-no-log"))
 	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
@@ -134,7 +135,7 @@ func TestInstallLog_UnretainedReadsAsEmptyNotMissing(t *testing.T) {
 	}
 	// Retiring and deleting the server drops its buffer — the same end state
 	// as a Panel restart, reached without one.
-	retireServer(t, h, token, created.ID)
+	retireServer(t, srv, token, created.ID)
 	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+created.ID, token, nil); rec.Code != http.StatusOK &&
 		rec.Code != http.StatusNoContent && rec.Code != http.StatusAccepted {
 		t.Fatalf("delete server: status %d, body %s", rec.Code, rec.Body.String())

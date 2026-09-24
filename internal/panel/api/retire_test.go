@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/briggleman/kraken/internal/panel/api"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -34,8 +36,10 @@ type retireView struct {
 	RetiredFromNodeID string            `json:"retired_from_node_id"`
 	RetiredPorts      map[string]int    `json:"retired_ports"`
 	Retire            *struct {
-		Phase       string `json:"phase"`
-		FinalBackup bool   `json:"final_backup"`
+		Phase           string `json:"phase"`
+		PrevState       string `json:"prev_state"`
+		FinalBackup     string `json:"final_backup"`
+		FinalBackupNote string `json:"final_backup_note"`
 	} `json:"retire"`
 	RestoreResult *struct {
 		BackupID string `json:"backup_id"`
@@ -58,9 +62,12 @@ func getRetireView(t *testing.T, h http.Handler, token, id string) retireView {
 }
 
 // retireAndWait retires id and waits until the retire has ended — the row
-// retired, or back without its retire block (abandoned).
-func retireAndWait(t *testing.T, h http.Handler, token, id string, finalBackup bool) retireView {
+// retired, or back without its retire block (abandoned) — and the job has let
+// go of the server, so the next request is not answered "the retire is
+// finishing".
+func retireAndWait(t *testing.T, srv *api.Server, token, id string, finalBackup bool) retireView {
 	t.Helper()
+	h := srv.Handler()
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+id+"/retire", token, map[string]bool{"final_backup": finalBackup})
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("retire: %d %s, want 202", rec.Code, rec.Body.String())
@@ -69,26 +76,35 @@ func retireAndWait(t *testing.T, h http.Handler, token, id string, finalBackup b
 	if err := json.Unmarshal(rec.Body.Bytes(), &started); err != nil {
 		t.Fatalf("decode retire: %v", err)
 	}
-	if started.Retire == nil || started.Retire.FinalBackup != finalBackup {
-		t.Fatalf("the 202 carries retire %+v, want the job with final_backup=%v", started.Retire, finalBackup)
+	want := "off"
+	if finalBackup {
+		want = "requested"
 	}
+	if started.State != "retiring" || started.Retire == nil || started.Retire.FinalBackup != want {
+		t.Fatalf("the 202 = state %q retire %+v, want retiring with final_backup %q", started.State, started.Retire, want)
+	}
+	waitOpClear(t, srv, id)
+	return getRetireView(t, h, token, id)
+}
+
+// waitOpClear waits for the retire, revive or delete holding id to let go.
+// Everything a job does is done before it releases the hold, so this is the
+// moment to look — no fixed sleep guessing at it.
+func waitOpClear(t *testing.T, srv *api.Server, id string) {
+	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for {
-		v := getRetireView(t, h, token, id)
-		if v.State == string(store.StateRetired) || v.Retire == nil {
-			return v
-		}
+	for srv.OperationHeldForTest(id) != "" {
 		if time.Now().After(deadline) {
-			t.Fatalf("the retire never ended: %+v", v)
+			t.Fatalf("%s is still held by %q", id, srv.OperationHeldForTest(id))
 		}
-		time.Sleep(20 * time.Millisecond)
+		runtime.Gosched()
 	}
 }
 
 // retireServer retires without a final backup and requires it to land.
-func retireServer(t *testing.T, h http.Handler, token, id string) retireView {
+func retireServer(t *testing.T, srv *api.Server, token, id string) retireView {
 	t.Helper()
-	v := retireAndWait(t, h, token, id, false)
+	v := retireAndWait(t, srv, token, id, false)
 	if v.State != string(store.StateRetired) {
 		t.Fatalf("retire did not land: %+v", v)
 	}
@@ -159,7 +175,7 @@ func TestRetire_LiveNodeWithFinalBackup(t *testing.T) {
 		actions = append(actions, a)
 	})
 
-	v := retireAndWait(t, h, token, sv.ID, true)
+	v := retireAndWait(t, srv, token, sv.ID, true)
 
 	if v.State != "retired" || v.RetiredAt == nil || v.NodeID != "" || v.RetiredFromNodeID != nodeID {
 		t.Fatalf("retired row = %+v, want retired, on no node, from %s", v, nodeID)
@@ -202,8 +218,10 @@ func TestRetire_LiveNodeWithFinalBackup(t *testing.T) {
 	}
 }
 
-// A final backup that fails does not stop the retire; the row says so.
-func TestRetire_FinalBackupFailureIsNoted(t *testing.T) {
+// A final backup that fails abandons the retire: nothing is removed from a
+// node that answers without the backup that was asked for, the server goes
+// back to where it was, and last_error says why.
+func TestRetire_FinalBackupFailureAbandonsTheRetire(t *testing.T) {
 	srv, st := newRemovalAPI(t)
 	h := srv.Handler()
 	token := login(t, h)
@@ -213,15 +231,18 @@ func TestRetire_FinalBackupFailureIsNoted(t *testing.T) {
 	sv := placedServer(t, st, "sv-bfail", nodeID, specID)
 	rt.SetBackupFailure("no space left on device")
 
-	v := retireAndWait(t, h, token, sv.ID, true)
-	if v.State != "retired" {
-		t.Fatalf("state = %q, want retired despite the failed backup", v.State)
+	v := retireAndWait(t, srv, token, sv.ID, true)
+	if v.State != "offline" || v.Retire != nil {
+		t.Fatalf("row = %+v, want it back offline with no retire block", v)
 	}
-	if !strings.Contains(v.RetireNote, "final backup failed: no space left on device") {
-		t.Fatalf("retire_note = %q, want the backup's failure", v.RetireNote)
+	if !strings.Contains(v.LastError, "the final backup failed: no space left on device") {
+		t.Fatalf("last_error = %q, want the backup's failure", v.LastError)
 	}
-	if got := rt.Removals(); len(got) != 1 {
-		t.Fatalf("removals = %+v, want the retire's", got)
+	if got := rt.Removals(); len(got) != 0 {
+		t.Fatalf("removals = %+v: the world went without the final backup", got)
+	}
+	if !held(t, st, nodeID) {
+		t.Fatal("an abandoned retire released the allocation")
 	}
 }
 
@@ -237,7 +258,7 @@ func TestRetire_UnreachableNodeSkipsTheBackupAndQueuesTheRemoval(t *testing.T) {
 	sv := placedServer(t, st, "sv-gone", nodeID, specID)
 	stop()
 
-	v := retireAndWait(t, h, token, sv.ID, true)
+	v := retireAndWait(t, srv, token, sv.ID, true)
 	if v.State != "retired" || v.RetiredFromNodeID != nodeID {
 		t.Fatalf("row = %+v, want retired from %s", v, nodeID)
 	}
@@ -265,10 +286,11 @@ func TestRetire_AbandonedWhenTheRemovalCannotBeRecorded(t *testing.T) {
 	sv := placedServer(t, st, "sv-unrec", nodeID, specID)
 	stop()
 	st.failUpdateNode.Store(true)
-	v := retireAndWait(t, h, token, sv.ID, false)
+	v := retireAndWait(t, srv, token, sv.ID, false)
 	st.failUpdateNode.Store(false)
-	if v.State != "offline" || v.Retire != nil || !strings.HasPrefix(v.RetireNote, "retire abandoned: ") {
-		t.Fatalf("row = %+v, want offline, no job, and the reason", v)
+	if v.State != "offline" || v.Retire != nil || !strings.HasPrefix(v.RetireNote, "retire abandoned: ") ||
+		v.LastError != v.RetireNote {
+		t.Fatalf("row = %+v, want offline, no job, and the reason in last_error", v)
 	}
 	if len(pendingRemovals(t, st, nodeID)) != 0 {
 		t.Fatal("an abandoned retire left a removal owed")
@@ -323,7 +345,7 @@ func TestRevive_DefaultNodeAndOldPorts(t *testing.T) {
 	if err := st.UpdateSchedule(ctx, off); err != nil {
 		t.Fatal(err)
 	}
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/revive", token, map[string]any{})
 	if rec.Code != http.StatusAccepted {
@@ -360,7 +382,7 @@ func TestRevive_FallsBackWhenTheOldPortIsTaken(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "revive-taken", map[string]any{"script": "install.sh"})
 	sv := placedServerOn(t, st, "sv-taken", nodeID, specID, 27050)
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	n, err := st.Store.GetNode(ctx, nodeID)
 	if err != nil {
 		t.Fatal(err)
@@ -394,7 +416,7 @@ func TestRevive_RestoresThenStarts(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "revive-restore", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-rs", nodeID, specID)
-	retireAndWait(t, h, token, sv.ID, true)
+	retireAndWait(t, srv, token, sv.ID, true)
 	backups := rt.Backups(sv.ID)
 	if len(backups) != 1 {
 		t.Fatalf("setup: archives %+v", backups)
@@ -428,7 +450,7 @@ func TestRevive_RefusesABackupTheNodeDoesNotHave(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "revive-nobackup", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-nb", nodeID, specID)
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/revive", token, map[string]any{"restore_backup_id": "nope"})
 	if rec.Code != http.StatusConflict || codedBody(t, rec.Body.Bytes()).Code != "backup_not_found" {
 		t.Fatalf("revive with a missing backup: %d %s, want 409 backup_not_found", rec.Code, rec.Body.String())
@@ -456,7 +478,7 @@ func TestRevive_Refusals(t *testing.T) {
 	}
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/revive", token, nil)
 	if rec.Code != http.StatusConflict || codedBody(t, rec.Body.Bytes()).Code != "removal_pending" {
 		t.Fatalf("revive with the removal owed: %d %s, want 409 removal_pending", rec.Code, rec.Body.String())
@@ -502,7 +524,7 @@ func TestPermanentDelete_DeletesTheArchivesOnTheNamespacedLayout(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "delete-purge", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-purge", nodeID, specID)
 	seedSchedule(t, st, "sched-purge", sv.ID)
-	retireAndWait(t, h, token, sv.ID, true)
+	retireAndWait(t, srv, token, sv.ID, true)
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
 	if rec.Code != http.StatusOK {
@@ -537,7 +559,7 @@ func TestPermanentDelete_KeepsArchivesOnASharedTarget(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-shared", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-shared", nodeID, specID)
-	retireAndWait(t, h, token, sv.ID, true)
+	retireAndWait(t, srv, token, sv.ID, true)
 	rt.SetSharedBackupTarget("the network share")
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
@@ -563,7 +585,7 @@ func TestPermanentDelete_UnreachableNodeIsOwedTheArchives(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-owe", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-owe", nodeID, specID)
-	retireServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	stop()
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
@@ -770,6 +792,31 @@ func TestPendingRemoval_ARetiredRowNeverClaimsTheID(t *testing.T) {
 	}
 }
 
+// A removal for a retired server's id owed on a node it was NOT retired from
+// is none of its retire's doing, and waits.
+func TestPendingRemoval_ARetiredRowStillHoldsBackAnotherNodesRemoval(t *testing.T) {
+	ctx := context.Background()
+	srv, st := newRemovalAPI(t)
+	h := srv.Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-other")
+	nodeID := liveNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "claims-other", map[string]any{"script": "install.sh"})
+	seedRetiredServer(t, st, "sv-elsewhere", "some-other-node", specID)
+	n, err := st.Store.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.AddPendingRemoval(cluster.PendingRemoval{ServerID: "sv-elsewhere", DeleteData: true, RequestedAt: time.Now()})
+	if err := st.Store.UpdateNode(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	srv.ReconcileNodesOnceForTest(ctx)
+	if got := rt.Removals(); len(got) != 0 {
+		t.Fatalf("removals = %+v: a removal on a node the server was never retired from went ahead", got)
+	}
+}
+
 // A Panel that restarts mid-retire leaves the row's retire block and no job.
 // Before the removal the retire is abandoned and says so; during it, the
 // removal is queued again (the Agent may never have heard) holding the
@@ -784,12 +831,16 @@ func TestReconciler_SettlesAnOrphanedRetire(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "orphan-retire", map[string]any{"script": "install.sh"})
 
 	early := placedServerOn(t, st, "sv-early", nodeID, specID, 27050)
-	early.Retire = &store.ServerRetire{Phase: store.RetirePhaseBackingUp, FinalBackup: true, StartedAt: time.Now()}
+	early.Retire = &store.ServerRetire{Phase: store.RetirePhaseBackingUp, PrevState: store.StateOffline,
+		FinalBackup: store.FinalBackupRequested, StartedAt: time.Now()}
+	early.State = store.StateRetiring
 	if err := st.UpdateServer(ctx, early); err != nil {
 		t.Fatal(err)
 	}
 	late := placedServer(t, st, "sv-late", nodeID, specID)
-	late.Retire = &store.ServerRetire{Phase: store.RetirePhaseRemoving, StartedAt: time.Now()}
+	late.Retire = &store.ServerRetire{Phase: store.RetirePhaseRemoving, PrevState: store.StateOffline,
+		FinalBackup: store.FinalBackupSkipped, FinalBackupNote: "node unreachable", StartedAt: time.Now()}
+	late.State = store.StateRetiring
 	if err := st.UpdateServer(ctx, late); err != nil {
 		t.Fatal(err)
 	}
@@ -801,8 +852,9 @@ func TestReconciler_SettlesAnOrphanedRetire(t *testing.T) {
 		t.Fatalf("early orphan = %+v, want it abandoned and saying why", e)
 	}
 	l := getRetireView(t, h, token, late.ID)
-	if l.State != "retired" || !strings.Contains(l.RetireNote, "queued") {
-		t.Fatalf("late orphan = %+v, want it retired with its removal queued", l)
+	if l.State != "retired" || !strings.Contains(l.RetireNote, "queued") ||
+		!strings.Contains(l.RetireNote, "final backup skipped: node unreachable") {
+		t.Fatalf("late orphan = %+v, want it retired with its removal queued and the backup's outcome kept", l)
 	}
 	owed := pendingRemovals(t, st, nodeID)
 	if len(owed) != 1 || owed[0].ServerID != late.ID || owed[0].MemoryMB != 1024 || len(owed[0].Ports) != 1 || owed[0].Ports[0] != 27015 {

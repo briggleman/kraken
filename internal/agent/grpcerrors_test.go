@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -308,6 +309,7 @@ func TestScrubbedKeepsTheChainButNotTheHostPath(t *testing.T) {
 type archiveStub struct {
 	path    string
 	openErr bool
+	header  bool // serve a valid gzip header first, so the failure comes from a tar read
 }
 
 func (a *archiveStub) Put(context.Context, string, string, io.Reader, int64) error { return nil }
@@ -320,7 +322,15 @@ func (a *archiveStub) Open(context.Context, string, string) (io.ReadCloser, erro
 	if a.openErr {
 		return nil, &fs.PathError{Op: "open", Path: a.path, Err: fs.ErrPermission}
 	}
-	return io.NopCloser(failingReader{&fs.PathError{Op: "read", Path: a.path, Err: syscall.EIO}}), nil
+	fail := failingReader{&fs.PathError{Op: "read", Path: a.path, Err: syscall.EIO}}
+	if a.header {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, _ = zw.Write(bytes.Repeat([]byte("x"), 1024))
+		_ = zw.Close()
+		return io.NopCloser(io.MultiReader(bytes.NewReader(buf.Bytes()[:10]), fail)), nil
+	}
+	return io.NopCloser(fail), nil
 }
 
 type failingReader struct{ err error }
@@ -346,6 +356,7 @@ func TestRestoreErrorsDoNotLeakTheArchivePath(t *testing.T) {
 		{"local read", true, false},
 		{"share open", false, true},
 		{"share read", false, false},
+		{"share read mid-archive", false, false},
 	} {
 		d := newFileOpsRuntime(t)
 		d.backupDir = t.TempDir()
@@ -353,7 +364,7 @@ func TestRestoreErrorsDoNotLeakTheArchivePath(t *testing.T) {
 		if tc.local {
 			archive = filepath.Join(d.backupDir, sid, id+".tar.gz")
 		}
-		d.backups = &archiveStub{path: archive, openErr: tc.openErr}
+		d.backups = &archiveStub{path: archive, openErr: tc.openErr, header: tc.name == "share read mid-archive"}
 		err := d.RestoreBackup(context.Background(), sid, "", id)
 		if err == nil {
 			t.Fatalf("%s: expected an error", tc.name)
@@ -366,10 +377,28 @@ func TestRestoreErrorsDoNotLeakTheArchivePath(t *testing.T) {
 		if !strings.Contains(err.Error(), id) {
 			t.Fatalf("%s: restore failure does not name the backup: %v", tc.name, err)
 		}
+		if n := strings.Count(err.Error(), "read backup"); n > 1 {
+			t.Fatalf("%s: the failure says \"read backup\" %d times: %v", tc.name, n, err)
+		}
 	}
 
 	// A backup dir the Panel configured is scrubbed too, up to its first
-	// per-server token.
+	// per-server token — and written with either separator.
+	if runtime.GOOS == "windows" {
+		d := newFileOpsRuntime(t)
+		d.nodeCfg = &agentpb.NodeConfig{BackupDir: "C:/kraken-backups/{{SLUG}}"}
+		if got := d.scrubHostPaths("s1", `open C:\kraken-backups\palworld\s1\x.tar.gz: denied`); strings.Contains(got, "kraken-backups") {
+			t.Fatalf("a slash-configured backup dir survived scrubbing a backslash path: %s", got)
+		}
+	}
+	// A relative root is a word, not a path: it is never scrubbed, so a message
+	// that merely contains it comes through intact.
+	rel := newFileOpsRuntime(t)
+	rel.backupDir = "backups"
+	msg := `docker: restore stopped at "Saves/backups/x": permission denied`
+	if got := rel.scrubHostPaths("s1", msg); got != msg {
+		t.Fatalf("a relative root rewrote a message: %q → %q", msg, got)
+	}
 	d := newFileOpsRuntime(t)
 	d.nodeCfg = &agentpb.NodeConfig{BackupDir: "/mnt/kraken-backups/{{SLUG}}"}
 	if got := d.scrubHostPaths("s1", "open /mnt/kraken-backups/palworld/s1/x.tar.gz: denied"); strings.Contains(got, "/mnt/kraken-backups") {

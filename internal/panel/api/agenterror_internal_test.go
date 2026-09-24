@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -31,5 +32,11 @@ func TestAgentFailureDistinguishesUnreachableFromTimedOut(t *testing.T) {
 	st, code, _ = agentFailure(&nodeclient.ClientError{Err: errors.New("no tunnel transport")})
 	if st != http.StatusServiceUnavailable || code != codeNodeUnreachable {
 		t.Fatalf("ClientError → %d %s, want 503 node_unreachable", st, code)
+	}
+	// Wrapped on its way up (applyConfig, reconcileNode may add context), it
+	// is still the node being unreachable.
+	st, code, msg = agentFailure(fmt.Errorf("apply config: %w", &nodeclient.ClientError{Err: errors.New("no tunnel transport")}))
+	if st != http.StatusServiceUnavailable || code != codeNodeUnreachable || !strings.Contains(msg, "no tunnel transport") {
+		t.Fatalf("wrapped ClientError → %d %s %q, want 503 node_unreachable with the cause", st, code, msg)
 	}
 }

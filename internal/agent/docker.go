@@ -154,6 +154,12 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if backupDir == "" {
 		backupDir = "backups"
 	}
+	// Absolute, like the data dir below: it is where archives land, and it is a
+	// root the error scrubber rewrites — a relative "backups" would match the
+	// word wherever a message happened to contain it.
+	if abs, aerr := filepath.Abs(backupDir); aerr == nil {
+		backupDir = abs
+	}
 	// Server data lives in a host directory bind-mounted into each container, so
 	// the Agent has direct (native) filesystem access for the file browser and
 	// backups — no Docker archive API or helper containers, and it works the same

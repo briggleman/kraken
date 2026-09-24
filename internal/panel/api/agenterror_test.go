@@ -283,3 +283,44 @@ func TestAgentBadPathIs400(t *testing.T) {
 		t.Fatalf("code = %q, want bad_path", b.Code)
 	}
 }
+
+// A settings save whose node has no client at all saved the settings but could
+// not apply them: that is the node being unreachable — a 503 that says the
+// save happened — not a Panel 500.
+func TestSettingsSaveWithoutANodeClientIs503(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr := startFakeAgent(t, "node-settings-noclient")
+	nodeID := registerNode(t, h, token, addr)
+	pollNode(t, h, token, nodeID)
+	specID := createSettingsSpec(t, h, token)
+	rec := do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{"spec_id": specID, "name": "noclient-01"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	waitInstalled(t, st, created.ID)
+
+	ctx := context.Background()
+	node, err := st.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	node.ConnectionMode = cluster.ConnTunnel // and this Panel has no tunnel transport
+	if err := st.UpdateNode(ctx, node); err != nil {
+		t.Fatalf("update node: %v", err)
+	}
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token, map[string]any{
+		"values": map[string]string{"world_name": "Asgard"},
+	})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("settings save without a node client: got %d, want 503 (body %s)", rec.Code, rec.Body.String())
+	}
+	b := decodeAgentError(t, rec)
+	if b.Code != "node_unreachable" || !strings.HasPrefix(b.Error, "settings saved but config apply failed:") {
+		t.Fatalf("answered %+v, want node_unreachable saying the save happened", b)
+	}
+}

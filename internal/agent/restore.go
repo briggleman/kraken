@@ -151,7 +151,9 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("docker: read backup: %w", err)
+			// Already rendered as "read backup <id>" by the archive reader
+			// (restoreBackup); wrapping it again would say so twice.
+			return nil, err
 		}
 		// Validate the name BEFORE joining it into a filesystem path — protects
 		// against Zip Slip even if the withinHostDir() check below ever

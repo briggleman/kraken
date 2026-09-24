@@ -539,8 +539,20 @@ paths:
                     ordinary settings save must not unpin a server.
       responses:
         '200': { description: Applied (with any validation errors) }
-        '400': { description: "The body is invalid, or a value is outside what the spec allows (a read-only setting, a variable that is not editable)" }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '400':
+          description: >
+            The body is invalid, or a value is outside what the spec allows (a
+            read-only setting, a variable that is not editable) — or the
+            settings were saved and the node refused a config file's path as
+            one that can never work (`code: bad_path`).
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '404':
+          description: >
+            No such server — or the settings were saved and the node reported a
+            config file's folder missing (`code: not_found`).
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '409':
           description: >
             The settings were saved, but the node refused the rendered config
@@ -552,15 +564,17 @@ paths:
           description: >
             The settings could not be saved — or they were saved and applying
             the config failed on the Panel (`code: config_apply_failed`, a
-            render error) or on the node (`code: node_error`). A saved-but-not-
-            applied failure's `error` begins "settings saved but config apply
+            render error) or on the node (`code: node_error`). When the save
+            itself succeeded, `error` begins "settings saved but config apply
             failed:".
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '503':
           description: >
-            The settings were saved, but the node's agent could not be reached
-            to apply them (`code: node_unreachable`).
+            The settings were saved, but applying them did not complete
+            (`code: node_unreachable`): the node's agent could not be reached,
+            or it did not answer within the time allowed — in which case the
+            config may still have been written on the node.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
 

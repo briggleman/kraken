@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -119,28 +120,51 @@ func (d *DockerRuntime) scrubbed(serverID string, err error) error {
 // data root. The server's own dir maps to the root the file browser shows; any
 // other path under the data dir (another server's, a staging dir) is named only
 // as "<data dir>".
+//
+// Only ABSOLUTE roots are scrubbed: a relative one ("backups") is a word, and
+// would be rewritten wherever a message happened to contain it. Matching is
+// separator-insensitive — a root configured as C:/kraken/backups must still
+// catch the C:\kraken\backups\… that filepath.Join produced on the node — so
+// the message's slashes are folded while a root is matched, and put back as
+// they were everywhere else.
 func (d *DockerRuntime) scrubHostPaths(serverID, s string) string {
 	for _, root := range []string{d.dataDir, d.hostDataDir} {
-		// A root this short ("/", "C:\") would rewrite every separator in the
-		// message; no real data dir is one, so it is skipped rather than trusted.
-		if len(root) <= 3 {
-			continue
-		}
 		if serverID != "" {
-			s = strings.ReplaceAll(s, filepath.Join(root, serverID), d.dataRoot())
+			s = replaceRoot(s, filepath.Join(root, serverID), d.dataRoot())
 		}
-		s = strings.ReplaceAll(s, root, "<data dir>")
+		s = replaceRoot(s, root, "<data dir>")
 	}
 	// A restore reads its archive from the backup store, which lives outside
 	// the data dir: the node's default backup dir, or whatever dir the Panel
 	// last configured (up to its first {{TOKEN}}, which is expanded per server).
 	for _, root := range d.backupRoots() {
-		if len(root) <= 3 {
-			continue
-		}
-		s = strings.ReplaceAll(s, root, "<backup dir>")
+		s = replaceRoot(s, root, "<backup dir>")
 	}
 	return s
+}
+
+// replaceRoot replaces every occurrence of the absolute path root in s with
+// repl, matching `/` and `\` as the same separator. A root that is not
+// absolute, or is as short as a bare volume ("/", "C:\"), is never matched —
+// either would rewrite far more than a path.
+func replaceRoot(s, root, repl string) string {
+	root = strings.TrimRight(root, `/\`)
+	if len(root) <= 3 || !(filepath.IsAbs(root) || path.IsAbs(filepath.ToSlash(root))) {
+		return s
+	}
+	fold := func(x string) string { return strings.ReplaceAll(x, `\`, "/") }
+	froot := fold(root)
+	var b strings.Builder
+	for {
+		i := strings.Index(fold(s), froot)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		b.WriteString(s[:i])
+		b.WriteString(repl)
+		s = s[i+len(root):]
+	}
 }
 
 // backupRoots lists the local backup directories a message could name.
@@ -152,7 +176,7 @@ func (d *DockerRuntime) backupRoots() []string {
 		if i := strings.Index(dir, "{{"); i >= 0 {
 			dir = dir[:i]
 		}
-		roots = append(roots, strings.TrimRight(dir, `/\`))
+		roots = append(roots, dir)
 	}
 	d.bmu.RUnlock()
 	return roots

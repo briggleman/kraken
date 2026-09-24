@@ -36,6 +36,7 @@
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isMissing } from "@/lib/required";
+  import { lastRun } from "@/lib/schedules";
   import type { FileEntry, ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
@@ -1043,8 +1044,9 @@
         <div class="side-body">
           <div class="side-body" id="schBody" use:istyle={"padding: 0; gap: 12px"}>
             {#each depth.schedules as t (t.id)}
+              {@const last = lastRun(t)}
               <div class="sch-row{t.enabled ? '' : ' paused'}" data-cron={t.cron}>
-                <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small></span>
+                <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small><small>{last.when}</small>{#if last.error}<small class="sch-err" role="status">{last.error}</small>{/if}</span>
                 <span class="sch-acts"><span class="sch-next">{schNext(t)}</span><button class="mini-act res sch-pause" onclick={() => void scheduleToggle(t)}>{t.enabled ? "pause" : "resume"}</button><button class="mini-act del" onclick={() => void scheduleDelete(t)}>delete</button></span>
               </div>
             {/each}
@@ -1139,5 +1141,14 @@
   }
   .cfg-req.is-missing {
     color: var(--caution);
+  }
+  /* A schedule whose last run did nothing — a restart skipped on a stopped
+     server, or refused for an empty required setting. Caution Violet, because
+     something was prevented (the One Light Rule); size and tracking stay the
+     row's own small type from house.css. It wraps, since the reason is a
+     sentence and the row is narrow. */
+  .sch-err {
+    color: var(--caution);
+    overflow-wrap: anywhere;
   }
 </style>

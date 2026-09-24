@@ -22,11 +22,14 @@ export function nodeFits(node: Node, kind: PlatformKind): boolean {
  *  take new placements (online — the scheduler skips partial, offline and
  *  locked ones), its old node first. The old node is offered whatever its
  *  status, so the sheet can say why it will not do rather than silently
- *  picking another; the pre-flight check then names the status. */
-export function reviveCandidates(server: Server, nodes: readonly Node[]): Node[] {
+ *  picking another; the pre-flight check then names the status. So is the
+ *  node already chosen (`keepId`): one that goes offline while the sheet is
+ *  open stays in the picker, named with its status, rather than vanishing
+ *  into "no node can run its platform". */
+export function reviveCandidates(server: Server, nodes: readonly Node[], keepId = ""): Node[] {
   const fit = nodes.filter((n) => nodeFits(n, server.kind));
   const old = fit.find((n) => n.id === server.retired_from_node_id);
-  const rest = fit.filter((n) => n.id !== old?.id && n.status === "online");
+  const rest = fit.filter((n) => n.id !== old?.id && (n.status === "online" || n.id === keepId));
   return old ? [old, ...rest] : rest;
 }
 
@@ -73,6 +76,12 @@ export function backupOptions(backups: readonly Backup[]): BackupOption[] {
     }));
 }
 
+/** A size split for the cost strip's `2.4<em>G</em>` shape. */
+export function sizeParts(bytes: number): { num: string; unit: string } {
+  const s = fmtSize(bytes);
+  return { num: s.slice(0, -1), unit: s.slice(-1) };
+}
+
 /** Why the sheet cannot revive this server at all, or "". Each is a refusal
  *  the Panel would answer with — said before the click instead of after it. */
 export function reviveBlock(
@@ -102,12 +111,39 @@ export interface ReviveChoice {
   steamGuard: string;
 }
 
+/** The memory the sheet starts from: what the Panel would give it with no
+ *  memory_mb in the body — its old figure, or, when the spec's minimum has
+ *  been raised past that since it was retired, the spec's allocation
+ *  (recommended, else minimum; Resources.AllocMemoryMB). Seeding the old
+ *  figure would open the sheet on a refusal the operator did not cause. */
+export function reviveSeedMemory(server: Server, spec: Spec | undefined): number {
+  const min = spec?.resources.min_memory_mb ?? 0;
+  if (server.memory_mb > 0 && server.memory_mb >= min) return server.memory_mb;
+  return spec?.resources.recommended_memory_mb || min || server.memory_mb;
+}
+
+/** The restore the sheet posts. Only an archive on the node it lands on can
+ *  be restored (the archives stay where they were taken), so away from its
+ *  old node it is always none. On it, the latest ready archive is the default
+ *  until the operator picks — and their pick, "none" included, stands: a list
+ *  arriving late, or a trip to another node and back, does not overwrite it. */
+export function effectiveRestore(
+  onOldNode: boolean,
+  touched: boolean,
+  pick: string,
+  options: readonly BackupOption[],
+): string {
+  if (!onOldNode) return "";
+  if (touched && (pick === "" || options.some((o) => o.id === pick))) return pick;
+  return options[0]?.id ?? "";
+}
+
 /** The body the sheet posts: only what differs from the Panel's own defaults
- *  (the old node, the old memory, no restore, no start). */
-export function reviveBody(server: Server, c: ReviveChoice): ReviveInput {
+ *  (the old node, the seeded memory, no restore, no start). */
+export function reviveBody(server: Server, c: ReviveChoice, seedMb: number = server.memory_mb): ReviveInput {
   const body: ReviveInput = {};
   if (c.nodeId && c.nodeId !== server.retired_from_node_id) body.node_id = c.nodeId;
-  if (c.memoryMb > 0 && c.memoryMb !== server.memory_mb) body.memory_mb = c.memoryMb;
+  if (c.memoryMb > 0 && c.memoryMb !== seedMb) body.memory_mb = c.memoryMb;
   if (c.restoreId) body.restore_backup_id = c.restoreId;
   if (c.start) body.start = true;
   if (c.steamGuard.trim()) body.steam_guard_code = c.steamGuard.trim();

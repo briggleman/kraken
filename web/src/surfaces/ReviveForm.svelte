@@ -4,20 +4,23 @@
   import { ui, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { hasPerm } from "@/lib/auth.svelte";
-  import { fleet, refreshFleet, specOf } from "@/lib/fleet.svelte";
-  import { retired } from "@/lib/retired.svelte";
+  import { fleet, specOf } from "@/lib/fleet.svelte";
+  import { retired, reviveRetired } from "@/lib/retired.svelte";
   import {
     backupOptions,
+    effectiveRestore,
     nodeOptionLabel,
     portsFree,
     retiredPortList,
     reviveBlock,
     reviveBody,
     reviveCandidates,
+    reviveSeedMemory,
+    sizeParts,
     type BackupOption,
   } from "@/lib/revive";
   import { api, errMsg } from "@/api/client";
-  import { fmtGb, fmtSize } from "@/lib/fmt";
+  import { fmtGb } from "@/lib/fmt";
   import type { ScheduledTask, Server } from "@/api/types";
 
   // The revive sheet (DESIGN.md, Revive Sheet): the deploy sheet with what the
@@ -27,24 +30,33 @@
   // chains install → restore → start itself (202, `installing`), so there is no
   // client-side start poll: the card reads installing → restoring → offline or
   // running, and a refused start or a failed restore reads on the card's note.
+  //
+  // Inherited (undesigned) states — the mock draws the resting sheet only: the
+  // pre-flight block and the refusal notes, the memory-minimum and
+  // over-capacity notes, the ports-not-free help line, "reviving…", and the
+  // conditional badges (`old ports free` and the two `previous` marks show only
+  // when true).
 
   const open = $derived(!!ui.open.reviveForm);
   const server = $derived<Server | undefined>(fleet.servers.find((s) => s.id === ui.reviveServerId));
   const spec = $derived(server ? specOf(server) : undefined);
-  const candidates = $derived(server ? reviveCandidates(server, fleet.nodes) : []);
 
   let nodeId = $state("");
   let memMb = $state("");
-  let restoreId = $state("");
+  let seedMb = $state(0);
+  let restorePick = $state("");
+  let restoreTouched = $state(false);
   let startAfter = $state(true);
   let steamGuard = $state("");
-  let busy = $state(false);
   let err = $state<string | null>(null);
   // Read once per open from the node the server left: its archives (the
   // restore choice) and its schedules (the ones the retire switched off).
   let backups = $state<BackupOption[]>([]);
   let backupsNote = $state("");
-  let schedules = $state<ScheduledTask[]>([]);
+  let schedules = $state<ScheduledTask[] | null>(null); // null = could not read
+  let schedulesLoaded = $state(false);
+
+  const candidates = $derived(server ? reviveCandidates(server, fleet.nodes, nodeId) : []);
 
   // Seed on open, and only then — the fleet refreshes every few seconds with
   // fresh objects, and a tracked seed would put back what the operator changed
@@ -64,32 +76,36 @@
   function seed(id: string) {
     const sv = fleet.servers.find((s) => s.id === id);
     if (!sv) return;
-    const cands = reviveCandidates(sv, fleet.nodes);
-    nodeId = cands[0]?.id ?? "";
-    const sp = specOf(sv);
-    memMb = String(sv.memory_mb || sp?.resources.recommended_memory_mb || sp?.resources.min_memory_mb || 0);
-    restoreId = "";
+    nodeId = reviveCandidates(sv, fleet.nodes)[0]?.id ?? "";
+    seedMb = reviveSeedMemory(sv, specOf(sv));
+    memMb = String(seedMb);
+    restorePick = "";
+    restoreTouched = false;
     startAfter = true;
     steamGuard = "";
     err = null;
     backups = [];
-    schedules = [];
     backupsNote = "";
+    schedules = null;
+    schedulesLoaded = false;
     void loadBackups(sv);
     void api
       .listSchedules(id)
       .then((r) => {
-        if (seededFor === id) schedules = (r.schedules ?? []).filter((t) => t.disabled_by_retire);
+        if (seededFor !== id) return;
+        schedules = (r.schedules ?? []).filter((t) => t.disabled_by_retire);
+        schedulesLoaded = true;
       })
-      .catch(() => {});
+      .catch(() => {
+        if (seededFor === id) schedulesLoaded = true; // loaded, as a failure: schedules stays null
+      });
   }
+
+  const oldNodeGone = $derived(!!server && !fleet.nodes.some((n) => n.id === server.retired_from_node_id));
 
   async function loadBackups(sv: Server) {
     const oldNode = fleet.nodes.find((n) => n.id === sv.retired_from_node_id);
-    if (!oldNode) {
-      backupsNote = "its node is gone, and its archives went with it — it comes back as a fresh world.";
-      return;
-    }
+    if (!oldNode) return; // the node-gone line below says it
     if (!hasPerm("backup.manage")) {
       backupsNote = `restoring needs the backup permission — its archives are on ${oldNode.name}.`;
       return;
@@ -104,8 +120,6 @@
       const r = await api.listBackups(sv.id);
       if (seededFor !== sv.id) return;
       backups = backupOptions(r.backups ?? []);
-      // the latest archive is the default: revive is for getting the world back
-      restoreId = backups[0]?.id ?? "";
       if (backups.length === 0) backupsNote = `no ready backups on ${oldNode.name} — it comes back as a fresh world.`;
     } catch (e) {
       if (seededFor !== sv.id) return;
@@ -113,27 +127,29 @@
     }
   }
 
-  const node = $derived(candidates.find((n) => n.id === nodeId));
+  // The node as the fleet has it now, so one that goes offline mid-sheet is
+  // named with its status rather than read as "no node".
+  const node = $derived(fleet.nodes.find((n) => n.id === nodeId));
   const onOldNode = $derived(!!server && nodeId === server.retired_from_node_id);
   // An archive lives on the node it was taken on: a revive elsewhere cannot
-  // restore it (the Panel answers backup_not_found), so the restore goes back
-  // to none and the sheet says why.
-  $effect(() => {
-    if (!onOldNode && restoreId) restoreId = "";
-  });
+  // restore it (the Panel answers backup_not_found), so the restore is none
+  // there. On the old node the latest is the default until the operator picks.
+  const restoreId = $derived(effectiveRestore(onOldNode, restoreTouched, restorePick, backups));
   const chosenBackup = $derived(backups.find((b) => b.id === restoreId));
 
   const oldPorts = $derived(server ? retiredPortList(server) : []);
   const portsAreFree = $derived(portsFree(oldPorts, node));
 
   const minMb = $derived(spec?.resources.min_memory_mb ?? 0);
-  const chosenMb = $derived(Number.isFinite(+memMb) && +memMb > 0 ? Math.round(+memMb) : server?.memory_mb ?? 0);
+  const chosenMb = $derived(Number.isFinite(+memMb) && +memMb > 0 ? Math.round(+memMb) : seedMb);
   const belowMin = $derived(chosenMb < minMb);
   const memAfter = $derived(node ? node.allocated_memory_mb + chosenMb : chosenMb);
   const overCapacity = $derived(!!node && memAfter > node.total_memory_mb);
+  const restoreSize = $derived(chosenBackup ? sizeParts(chosenBackup.bytes) : null);
 
   const blocked = $derived(server ? reviveBlock(server, spec, fleet.nodes, node) : "");
   const mayRevive = $derived(hasPerm("server.create"));
+  const busy = $derived(!!server && !!retired.reviving[server.id]);
 
   async function revive() {
     if (!server || busy || blocked) return;
@@ -141,28 +157,19 @@
       err = `memory must be at least the spec's minimum of ${fmtGb(minMb)}G`;
       return;
     }
-    busy = true;
     err = null;
+    const body = reviveBody(
+      server,
+      { nodeId, memoryMb: chosenMb, restoreId, start: startAfter, steamGuard },
+      seedMb,
+    );
     const id = server.id;
-    try {
-      await api.reviveServer(
-        id,
-        reviveBody(server, {
-          nodeId,
-          memoryMb: chosenMb,
-          restoreId: onOldNode ? restoreId : "",
-          start: startAfter,
-          steamGuard,
-        }),
-      );
-      delete retired.keep[id];
-      closeSheet("reviveForm");
-      await refreshFleet();
-    } catch (e) {
-      err = errMsg(e);
-    } finally {
-      busy = false;
+    const refusal = await reviveRetired(id, body);
+    if (refusal) {
+      if (ui.reviveServerId === id) err = refusal;
+      return;
     }
+    if (ui.reviveServerId === id) closeSheet("reviveForm");
   }
 </script>
 
@@ -195,7 +202,10 @@
         <div class="ns-legend"><h4>placement</h4><i></i><small>its old node first; any node that can host the spec is offered</small></div>
         <div class="cfg-row">
           <span>node</span>
-          <select class="cfg-in has-badge" aria-label="Node" bind:value={nodeId} disabled={candidates.length === 0}>
+          <!-- has-badge only while the badge is there: it trims the padding to
+               make room for the badge, and without one the select would sit
+               shorter than its neighbours. -->
+          <select class="cfg-in" class:has-badge={onOldNode} aria-label="Node" bind:value={nodeId} disabled={candidates.length === 0}>
             <button><selectedcontent></selectedcontent>{#if onOldNode}<span class="cfg-badge env">previous</span>{/if}</button>
             {#each candidates as n (n.id)}
               <option value={n.id}>{nodeOptionLabel(n)}</option>
@@ -207,7 +217,7 @@
         {#if oldPorts.length > 0}
           <div class="cfg-row">
             <span>ports</span>
-            <span class="cfg-ro has-badge" role="status" aria-label="Ports: {oldPorts.join(' and ')}{portsAreFree ? ', the ones it had before' : ''}"
+            <span class="cfg-ro" class:has-badge={portsAreFree} role="status" aria-label="Ports: {oldPorts.join(' and ')}{portsAreFree ? ', the ones it had before' : ''}"
               ><span>{oldPorts.join(" · ")}</span>{#if portsAreFree}<span class="cfg-badge env">previous</span>{/if}</span
             >
             {#if !portsAreFree}
@@ -216,19 +226,36 @@
           </div>
         {/if}
         <div class="cfg-row">
-          <span>memory (mb)</span>
-          <input type="text" class="cfg-in" bind:value={memMb} aria-label="Memory in MB" />
+          <span>memory cap</span>
+          <input type="text" class="cfg-in" bind:value={memMb} aria-label="Memory cap" />
           <p class="cfg-help">
-            what it had before{spec ? ` · spec minimum ${spec.resources.min_memory_mb}MB` : ""}{spec?.resources.recommended_memory_mb
-              ? `, recommended ${spec.resources.recommended_memory_mb}MB`
-              : ""}.
+            in MB · {seedMb === server?.memory_mb ? "what it had before" : "the spec's allocation — its minimum was raised since it was retired"}{spec
+              ? ` · spec minimum ${spec.resources.min_memory_mb}MB`
+              : ""}{spec?.resources.recommended_memory_mb ? `, recommended ${spec.resources.recommended_memory_mb}MB` : ""}.
           </p>
         </div>
+        {#if spec?.install?.requires_steam_login}
+          <!-- An install input, so it sits with placement, before the restore.
+               Inherited from NsForm; not in the mock. -->
+          <div class="cfg-row">
+            <span>steam guard code — this game needs a steam login to install</span>
+            <input type="text" class="cfg-in" bind:value={steamGuard} autocomplete="off" spellcheck="false" aria-label="Steam guard code" />
+          </div>
+        {/if}
 
         <div class="ns-legend"><h4>restore</h4><i></i><small>after the install lands, before anything starts</small></div>
         <div class="cfg-row ns-wide">
           <span>from backup</span>
-          <select class="cfg-in" aria-label="Backup to restore" bind:value={restoreId} disabled={!onOldNode || backups.length === 0}>
+          <select
+            class="cfg-in"
+            aria-label="Backup to restore"
+            value={restoreId}
+            disabled={!onOldNode || backups.length === 0}
+            onchange={(e) => {
+              restoreTouched = true;
+              restorePick = e.currentTarget.value;
+            }}
+          >
             {#if onOldNode}
               {#each backups as b (b.id)}
                 <option value={b.id}>{b.label}</option>
@@ -236,39 +263,47 @@
             {/if}
             <option value="">none — a fresh world</option>
           </select>
-          {#if !onOldNode && server}
+          {#if oldNodeGone}
+            <p class="cfg-help">its node is gone, and its archives went with it — it comes back as a fresh world.</p>
+          {:else if !onOldNode && server}
             <p class="cfg-help">its archives are on {fleet.nodes.find((n) => n.id === server.retired_from_node_id)?.name ?? "the node it left"} — revived elsewhere, it starts from a fresh world.</p>
           {:else if backupsNote}
             <p class="cfg-help">{backupsNote}</p>
           {/if}
         </div>
 
-        <div class="ns-legend"><h4>operations</h4><i></i><small>its schedules come back with it</small></div>
-        <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install and restore finish</label>
         <!-- The mock draws a "re-enable its schedules" toggle; the Panel has no
              such choice — a revive switches back on every schedule the retire
-             switched off, once the install lands. So it is said, not asked. -->
-        <p class="cfg-help">
-          {#if schedules.length > 0}
-            its schedules come back on once the install lands: {schedules.map((t) => `${t.name} (${t.cron})`).join(", ")}.
-          {:else}
-            it had no schedules for the retire to switch off.
-          {/if}
-        </p>
-        {#if spec?.install?.requires_steam_login}
-          <div class="cfg-row">
-            <span>steam guard code — this game needs a steam login to install</span>
-            <input type="text" class="cfg-in" bind:value={steamGuard} autocomplete="off" spellcheck="false" aria-label="Steam guard code" />
-          </div>
+             switched off, once the install lands. So it is said, not asked, and
+             only once the list has been read. -->
+        <div class="ns-legend"><h4>operations</h4><i></i><small
+            >{#if schedules && schedules.length > 0}its schedules come back with it{:else}once the install and restore finish{/if}</small
+          ></div>
+        <label class="tgl"><input type="checkbox" bind:checked={startAfter} /><i></i>start once the install and restore finish</label>
+        {#if schedulesLoaded}
+          <p class="cfg-help">
+            {#if schedules === null}
+              could not read its schedules — any the retire switched off still come back once the install lands.
+            {:else if schedules.length > 0}
+              its schedules come back on once the install lands: {schedules.map((t) => `${t.name} (${t.cron})`).join(", ")}.
+            {:else}
+              it had no schedules for the retire to switch off.
+            {/if}
+          </p>
         {/if}
       </div>
+      <!-- The mock's cost strip: memory after and restore. Its "download" cell
+           is omitted — no field carries an install's size. -->
       <div class="ns-alloc">
-        <div class="ns-cost" class:over={overCapacity}><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
-        <div class="ns-cost" class:over={belowMin}><span>memory</span><b>{fmtGb(chosenMb)}<em>G</em></b></div>
-        <div class="ns-cost"><span>restore</span><b>{#if chosenBackup}{fmtSize(chosenBackup.bytes)}{:else}none{/if}<em></em></b></div>
+        <div class="ns-cost" class:over={overCapacity || belowMin}><span>memory after</span><b>{fmtGb(memAfter)}<em>/{node ? Math.round(node.total_memory_mb / 1024) : "—"}G</em></b></div>
+        <div class="ns-cost"><span>restore</span><b>{#if restoreSize}{restoreSize.num}<em>{restoreSize.unit}</em>{:else}none<em></em>{/if}</b></div>
         <div class="ns-acts">
+          <!-- .cfg-note has no caution or crisis modifier in the house; the
+               colour is set here as NsForm sets it (a design follow-up). A
+               pre-flight block is something prevented, so it is Caution; a
+               refusal from the Panel after the click is Crisis. -->
           {#if err}<span class="cfg-note" role="alert" use:istyle={"color: var(--crisis)"}>{err}</span>
-          {:else if blocked}<span class="cfg-note" role="status" use:istyle={"color: var(--crisis)"}>{blocked}</span>
+          {:else if blocked}<span class="cfg-note" role="status" use:istyle={"color: var(--caution)"}>{blocked}</span>
           {:else if !mayRevive}<span class="cfg-note">reviving needs the server create permission</span>
           {:else if belowMin}<span class="cfg-note" use:istyle={"color: var(--crisis)"}
             >below the spec's {fmtGb(minMb)}G minimum — the game will not boot</span

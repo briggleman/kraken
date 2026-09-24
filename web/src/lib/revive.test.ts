@@ -6,6 +6,8 @@
 import { describe, expect, it } from "vitest";
 import {
   backupOptions,
+  effectiveRestore,
+  reviveSeedMemory,
   nodeFits,
   nodeOptionLabel,
   portsFree,
@@ -131,6 +133,58 @@ describe("reviveBlock", () => {
   it("refuses with no node to place it on, and allows the rest", () => {
     expect(reviveBlock(server(), SPEC, nodes, undefined)).toMatch(/no node can run/);
     expect(reviveBlock(server(), SPEC, nodes, nodes[0])).toBe("");
+  });
+});
+
+describe("the restore choice", () => {
+  const opts = [
+    { id: "latest", label: "", bytes: 1 },
+    { id: "older", label: "", bytes: 1 },
+  ];
+
+  it("defaults to the latest on the old node, and is none anywhere else", () => {
+    expect(effectiveRestore(true, false, "", opts)).toBe("latest");
+    expect(effectiveRestore(false, false, "", opts)).toBe("");
+    expect(effectiveRestore(false, true, "older", opts)).toBe("");
+  });
+
+  it("keeps an explicit none chosen before the list arrived", () => {
+    // the operator picked none while the archives were still being read…
+    expect(effectiveRestore(true, true, "", [])).toBe("");
+    // …and the list landing does not put the latest back
+    expect(effectiveRestore(true, true, "", opts)).toBe("");
+  });
+
+  it("comes back to the latest after a trip to another node, when untouched", () => {
+    expect(effectiveRestore(false, false, "", opts)).toBe("");
+    expect(effectiveRestore(true, false, "", opts)).toBe("latest");
+    // and to the operator's pick when they made one
+    expect(effectiveRestore(true, true, "older", opts)).toBe("older");
+  });
+});
+
+describe("reviveSeedMemory", () => {
+  it("is its old figure, or the spec's allocation when the minimum was raised past it", () => {
+    expect(reviveSeedMemory(server({ memory_mb: 8192 }), SPEC)).toBe(8192);
+    const raised = { ...SPEC, resources: { min_memory_mb: 12288, recommended_memory_mb: 16384 } } as Spec;
+    expect(reviveSeedMemory(server({ memory_mb: 8192 }), raised)).toBe(16384);
+    const minOnly = { ...SPEC, resources: { min_memory_mb: 12288 } } as Spec;
+    expect(reviveSeedMemory(server({ memory_mb: 8192 }), minOnly)).toBe(12288);
+  });
+
+  it("does not post the seed back as a change", () => {
+    const raised = { ...SPEC, resources: { min_memory_mb: 12288 } } as Spec;
+    const seed = reviveSeedMemory(server(), raised);
+    expect(reviveBody(server(), { nodeId: "behemoth", memoryMb: seed, restoreId: "", start: false, steamGuard: "" }, seed)).toEqual({});
+  });
+});
+
+describe("a chosen node that goes away mid-sheet", () => {
+  it("stays in the picker, named with its status, and the block says so", () => {
+    const nodes = [node("behemoth"), node("titan", { status: "offline" })];
+    const cands = reviveCandidates(server(), nodes, "titan");
+    expect(cands.map((n) => n.id)).toEqual(["behemoth", "titan"]);
+    expect(reviveBlock(server(), SPEC, nodes, nodes[1])).toBe("titan is offline and takes no new servers — pick another node");
   });
 });
 

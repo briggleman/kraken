@@ -121,8 +121,25 @@ func (p *Pool) streamFailureLogger() grpc.StreamClientInterceptor {
 	}
 }
 
+// ClientError is why Client could not hand out a client at all: a tunnel-mode
+// node with no tunnel transport, or a dial target gRPC will not accept. It
+// carries codes.Unavailable (GRPCStatus), so it reads exactly like an RPC that
+// could not reach the Agent — every caller that maps an Agent failure to a
+// status (the API's writeAgentError) answers it as the node being unreachable
+// without having to know this type, including callers that only return the
+// error up (reconcileNode, applyConfig).
+type ClientError struct{ Err error }
+
+func (e *ClientError) Error() string { return e.Err.Error() }
+func (e *ClientError) Unwrap() error { return e.Err }
+
+// GRPCStatus makes the error a codes.Unavailable to status.FromError.
+func (e *ClientError) GRPCStatus() *status.Status {
+	return status.New(codes.Unavailable, e.Err.Error())
+}
+
 // Client returns a NodeService client for the Agent at addr, creating and
-// caching the connection on first use.
+// caching the connection on first use. Its error is always a *ClientError.
 //
 // A target of the form "tunnel:<node-id>" (see shared/tunnel.Target) is routed
 // through the reverse-tunnel dialer instead of TCP. Those connections carry
@@ -138,7 +155,7 @@ func (p *Pool) Client(addr string) (agentpb.NodeServiceClient, error) {
 	var err error
 	if nodeID, ok := strings.CutPrefix(addr, tunnel.Scheme); ok {
 		if p.tunnelDial == nil {
-			return nil, fmt.Errorf("nodeclient: node %s is tunnel-mode but no tunnel transport is configured", nodeID)
+			return nil, &ClientError{fmt.Errorf("nodeclient: node %s is tunnel-mode but no tunnel transport is configured", nodeID)}
 		}
 		opts := []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -153,7 +170,7 @@ func (p *Pool) Client(addr string) (agentpb.NodeServiceClient, error) {
 		conn, err = grpc.NewClient(addr, p.dialOpts...)
 	}
 	if err != nil {
-		return nil, err
+		return nil, &ClientError{err}
 	}
 	p.conns[addr] = conn
 	return agentpb.NewNodeServiceClient(conn), nil

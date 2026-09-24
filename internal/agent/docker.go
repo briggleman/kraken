@@ -154,6 +154,12 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if backupDir == "" {
 		backupDir = "backups"
 	}
+	// Absolute, like the data dir below: it is where archives land, and it is a
+	// root the error scrubber rewrites — a relative "backups" would match the
+	// word wherever a message happened to contain it.
+	if abs, aerr := filepath.Abs(backupDir); aerr == nil {
+		backupDir = abs
+	}
 	// Server data lives in a host directory bind-mounted into each container, so
 	// the Agent has direct (native) filesystem access for the file browser and
 	// backups — no Docker archive API or helper containers, and it works the same
@@ -1403,7 +1409,7 @@ func (d *DockerRuntime) safePath(p string) (string, error) {
 	}
 	clean := path.Clean(p)
 	if clean != root && !strings.HasPrefix(clean, root+"/") {
-		return "", fmt.Errorf("docker: path %q escapes %s", p, root)
+		return "", badPath("docker: path %q escapes %s", p, root)
 	}
 	return clean, nil
 }
@@ -1418,7 +1424,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("docker: list %s: %w", p, err)
+		return nil, d.fileErr(serverID, "list", p, "", err)
 	}
 	entries := make([]*agentpb.FileEntry, 0, len(ents))
 	for _, e := range ents {
@@ -1445,7 +1451,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 // identical.
 //
 // The message names the LOGICAL path only. Whatever this returns reaches an API
-// client verbatim ("agent error: …"), and an *os.PathError from os.Stat carries
+// client verbatim (see fileerrors.go), and an *os.PathError from os.Stat carries
 // the resolved HOST path — so returning it as-is would teach anyone with
 // server.files.read where the node keeps its storage. What is worth keeping is
 // the distinction between the failures, not the filename that came with it:
@@ -1462,27 +1468,9 @@ func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, erro
 		return "", nil, statError(p, err)
 	}
 	if st.IsDir() {
-		return "", nil, fmt.Errorf("docker: %s is a directory", p)
+		return "", nil, badPath("docker: %s is a directory", p)
 	}
 	return host, st, nil
-}
-
-// statError renders a filesystem failure (stat, open, read) against the
-// logical path, never the host one. Anything unrecognized is reported by its underlying cause (the syscall
-// errno, which an *os.PathError wraps) rather than the PathError itself, whose
-// Error() would print the host path we are keeping out of the response.
-func statError(p string, err error) error {
-	switch {
-	case os.IsNotExist(err):
-		return fmt.Errorf("docker: %s not found", p)
-	case os.IsPermission(err):
-		return fmt.Errorf("docker: %s: permission denied", p)
-	}
-	cause := err
-	if pe, ok := err.(*os.PathError); ok && pe.Err != nil {
-		cause = pe.Err
-	}
-	return fmt.Errorf("docker: %s: %v", p, cause)
 }
 
 // ReadFile returns the contents of a single file in the volume, capped at
@@ -1533,7 +1521,10 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 		return statError(p, err)
 	}
 	defer f.Close()
-	_, err = io.Copy(w, f)
+	// A read that fails mid-file (a byte-range lock a running game holds on its
+	// save, on Windows) is an *os.PathError naming the host path, so it is
+	// rendered like every other read failure; a write failure is the stream's.
+	_, err = io.Copy(w, readErrs{r: f, wrap: func(rerr error) error { return statError(p, rerr) }})
 	return err
 }
 
@@ -1575,7 +1566,7 @@ func (d *DockerRuntime) ZipFiles(_ context.Context, serverID string, paths []str
 			return cerr
 		})
 		if err != nil {
-			return fmt.Errorf("docker: zip %s: %w", p, err)
+			return d.fileErr(serverID, "zip", p, "", err)
 		}
 	}
 	return nil
@@ -1591,7 +1582,7 @@ func (d *DockerRuntime) MakeDir(_ context.Context, serverID, p string) error {
 		return nil
 	}
 	if err := os.MkdirAll(d.localOf(serverID, dir), 0o755); err != nil {
-		return fmt.Errorf("docker: mkdir %s: %w", p, err)
+		return d.fileErr(serverID, "mkdir", p, "", err)
 	}
 	return nil
 }
@@ -1604,10 +1595,10 @@ func (d *DockerRuntime) WriteFile(_ context.Context, serverID, p string, content
 	}
 	host := d.localOf(serverID, fp)
 	if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
-		return fmt.Errorf("docker: dir for %s: %w", p, err)
+		return d.fileErr(serverID, "create the folder for", p, "", err)
 	}
 	if err := os.WriteFile(host, content, 0o644); err != nil {
-		return fmt.Errorf("docker: write %s: %w", p, err)
+		return d.fileErr(serverID, "write", p, "", err)
 	}
 	return nil
 }
@@ -1623,7 +1614,7 @@ func (d *DockerRuntime) DeletePaths(_ context.Context, serverID string, paths []
 			continue // never delete the data root
 		}
 		if err := os.RemoveAll(d.localOf(serverID, sp)); err != nil {
-			return fmt.Errorf("docker: delete %s: %w", p, err)
+			return d.fileErr(serverID, "delete", p, "", err)
 		}
 	}
 	return nil
@@ -1640,14 +1631,14 @@ func (d *DockerRuntime) MovePath(_ context.Context, serverID, src, dst string) e
 		return err
 	}
 	if s == d.dataRoot() || dp == d.dataRoot() {
-		return fmt.Errorf("docker: cannot move the data root")
+		return badPath("docker: cannot move the data root")
 	}
 	hostDst := d.localOf(serverID, dp)
 	if err := os.MkdirAll(filepath.Dir(hostDst), 0o755); err != nil {
-		return err
+		return d.fileErr(serverID, "create the folder for", dst, "", err)
 	}
 	if err := os.Rename(d.localOf(serverID, s), hostDst); err != nil {
-		return fmt.Errorf("docker: move %s → %s: %w", src, dst, err)
+		return d.fileErr(serverID, "move", src, " → "+dst, err)
 	}
 	return nil
 }
@@ -1663,13 +1654,13 @@ func (d *DockerRuntime) CopyPath(_ context.Context, serverID, src, dst string) e
 		return err
 	}
 	if s == d.dataRoot() {
-		return fmt.Errorf("docker: cannot copy the data root")
+		return badPath("docker: cannot copy the data root")
 	}
 	if dp == d.dataRoot() {
-		return fmt.Errorf("docker: cannot copy onto the data root")
+		return badPath("docker: cannot copy onto the data root")
 	}
 	if err := copyTreeFS(d.localOf(serverID, s), d.localOf(serverID, dp)); err != nil {
-		return fmt.Errorf("docker: copy %s → %s: %w", src, dst, err)
+		return d.fileErr(serverID, "copy", src, " → "+dst, err)
 	}
 	return nil
 }
@@ -1968,17 +1959,35 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 // The caller is expected to have stopped the server: the Panel refuses a
 // restore otherwise (a running game holds the very files a save-set restore
 // replaces), and the Agent cannot see the Panel's view of that state.
+//
+// Its failure reaches the operator verbatim, so it is scrubbed of the node's
+// host paths on the way out (the staging dir and every unit it names live under
+// the data dir) — the error chain is kept, so a locked file still classifies as
+// one at the gRPC boundary.
 func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id string) error {
+	return d.scrubbed(serverID, d.restoreBackup(ctx, serverID, slug, id))
+}
+
+func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string) error {
 	root := d.localDir(serverID)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
 	r, err := d.backupTargetFor(slug).Open(ctx, serverID, id)
 	if err != nil {
-		return fmt.Errorf("docker: open backup: %w", err)
+		// The local store's *fs.PathError names the node's backup dir; the
+		// backup's id is what the operator knows it by.
+		return d.fileErr(serverID, "open backup", id, "", err)
 	}
 	defer r.Close()
-	gz, err := gzip.NewReader(r)
+	// Every read of the archive — gzip's header, then each tar entry — goes
+	// through the store, and a store's read failure names the archive where it
+	// lives (KRAKEN_BACKUP_DIR, a share). The backup's id is what the operator
+	// knows it by.
+	archive := readErrs{r: r, wrap: func(rerr error) error {
+		return d.fileErr(serverID, "read backup", id, "", rerr)
+	}}
+	gz, err := gzip.NewReader(archive)
 	if err != nil {
 		return fmt.Errorf("docker: gunzip backup: %w", err)
 	}
@@ -2016,7 +2025,10 @@ func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id str
 		_ = rep.Delete(ctx, serverID, id)
 	}
 	d.forgetBackupJob(serverID, id)
-	return err
+	if err != nil {
+		return d.fileErr(serverID, "delete backup", id, "", err)
+	}
+	return nil
 }
 
 // ---- helpers ----

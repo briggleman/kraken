@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/panel/cluster"
@@ -81,19 +80,6 @@ func removalErrorText(err error) string {
 		return err.Error()
 	}
 	return status.Convert(err).Message()
-}
-
-// agentUnreachable reports whether a failed RPC means the Agent was not there
-// to answer, as opposed to an Agent that answered with a failure.
-func agentUnreachable(err error) bool {
-	if errors.Is(err, errNodeNotLive) {
-		return true
-	}
-	switch status.Code(err) {
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return true
-	}
-	return false
 }
 
 // removalReplays is the node reconciler's bookkeeping for pending-removal
@@ -329,21 +315,21 @@ var retireServerIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}
 // plain id, and the node. It writes the refusal and returns ok=false.
 func (s *Server) nodeScopedServer(w http.ResponseWriter, r *http.Request) (*cluster.Node, string, bool) {
 	if role := roleFrom(r.Context()); role == nil || !role.Has(rbac.PermNodeManage) {
-		writeCodedError(w, http.StatusForbidden, "missing permission: "+string(rbac.PermNodeManage), "forbidden")
+		writeCoded(w, http.StatusForbidden, "forbidden", "missing permission: "+string(rbac.PermNodeManage))
 		return nil, "", false
 	}
 	serverID := chi.URLParam(r, "serverID")
 	if !retireServerIDPattern.MatchString(serverID) {
-		writeCodedError(w, http.StatusBadRequest, "invalid server id", "invalid_server_id")
+		writeCoded(w, http.StatusBadRequest, "invalid_server_id", "invalid server id")
 		return nil, "", false
 	}
 	n, err := s.store.GetNode(r.Context(), chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
-		writeCodedError(w, http.StatusNotFound, "node not found", "node_not_found")
+		writeCoded(w, http.StatusNotFound, "node_not_found", "node not found")
 		return nil, "", false
 	}
 	if err != nil {
-		writeCodedError(w, http.StatusInternalServerError, "could not get node", "internal")
+		writeCoded(w, http.StatusInternalServerError, "internal", "could not get node")
 		return nil, "", false
 	}
 	return n, serverID, true
@@ -367,28 +353,35 @@ func (s *Server) handleRetireNodeContainer(w http.ResponseWriter, r *http.Reques
 	// container now would promise the data stays, and the next replay would
 	// delete it. The pending removal is the operator's standing order; it wins.
 	if _, owed := n.PendingRemovalFor(serverID); owed {
-		writeCodedError(w, http.StatusConflict,
-			"a removal is already pending for this server on this node — it finishes when the node accepts it, or dismiss it first",
-			"removal_pending")
+		writeCoded(w, http.StatusConflict, "removal_pending",
+			"a removal is already pending for this server on this node — it finishes when the node accepts it, or dismiss it first")
 		return
 	}
 	switch claimed, err := s.serverClaimsID(ctx, n.ID, serverID); {
 	case err != nil:
-		writeCodedError(w, http.StatusInternalServerError, "could not check for a server with that id", "internal")
+		writeCoded(w, http.StatusInternalServerError, "internal", "could not check for a server with that id")
 		return
 	case claimed:
-		writeCodedError(w, http.StatusConflict,
-			"a server with this id is managed by the Panel on this node — delete the server instead", "server_tracked")
+		writeCoded(w, http.StatusConflict, "server_tracked",
+			"a server with this id is managed by the Panel on this node — delete the server instead")
 		return
 	}
 	if err := s.removeOnNode(ctx, n, serverID, false); err != nil {
-		if agentUnreachable(err) {
-			writeCodedError(w, http.StatusServiceUnavailable,
-				fmt.Sprintf("node %s is unreachable: %s", nodeLabel(n), removalErrorText(err)), "node_unreachable")
+		// Never dialled: the liveness probe (or the client) already failed.
+		if errors.Is(err, errNodeNotLive) {
+			writeCoded(w, http.StatusServiceUnavailable, codeNodeUnreachable,
+				fmt.Sprintf("node %s is unreachable: %s", nodeLabel(n), removalErrorText(err)))
 			return
 		}
-		writeCodedError(w, http.StatusInternalServerError,
-			"the node could not retire the container: "+removalErrorText(err), "node_error")
+		// The RPC itself failed: the one Agent-failure mapping (writeAgentError's)
+		// decides the status — 503 for an Agent that did not answer, 500
+		// node_error for one that answered with a failure — and a failure the
+		// node reported says what it was refusing.
+		st, code, msg := agentFailure(err)
+		if st != http.StatusServiceUnavailable {
+			msg = "the node could not retire the container: " + msg
+		}
+		writeCoded(w, st, code, msg)
 		return
 	}
 	s.logger.Info("retired an untracked container; its data is untouched", "node", n.ID, "server", serverID)
@@ -427,22 +420,16 @@ func (s *Server) handleDismissPendingRemoval(w http.ResponseWriter, r *http.Requ
 	}
 	p, owed := n.PendingRemovalFor(serverID)
 	if !owed {
-		writeCodedError(w, http.StatusNotFound, "no removal is pending for this server on this node", "removal_not_found")
+		writeCoded(w, http.StatusNotFound, "removal_not_found", "no removal is pending for this server on this node")
 		return
 	}
 	n.FinishPendingRemoval(serverID)
 	if err := s.store.UpdateNode(r.Context(), n); err != nil {
-		writeCodedError(w, http.StatusInternalServerError, "could not update node", "internal")
+		writeCoded(w, http.StatusInternalServerError, "internal", "could not update node")
 		return
 	}
 	s.logger.Warn("pending server removal dismissed without reaching the node",
 		"node", n.ID, "server", serverID, "delete_data", p.DeleteData, "attempts", p.Attempts,
 		"released_memory_mb", p.MemoryMB, "released_ports", p.Ports)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// writeCodedError writes the {"error","code"} envelope: the message for a
-// person, the code for a client that has to branch on what went wrong.
-func writeCodedError(w http.ResponseWriter, status int, msg, code string) {
-	writeJSON(w, status, map[string]string{"error": msg, "code": code})
 }

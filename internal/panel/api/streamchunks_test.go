@@ -106,8 +106,10 @@ func TestStreamChunksFirstChunkFailure(t *testing.T) {
 	s := testAPI(memory.New())
 	rec := httptest.NewRecorder()
 	s.streamChunks(rec, chunker(nil, errors.New("agent exploded")), "application/zip", "saves.zip")
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want 502", rec.Code)
+	// An error with no gRPC status says nothing about its cause, so it is the
+	// generic 500 — never a 502, whose body an edge proxy would discard.
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
 	if cd := rec.Header().Get("Content-Disposition"); cd != "" {
 		t.Fatalf("a failed stream set Content-Disposition %q", cd)

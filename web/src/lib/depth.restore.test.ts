@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const restoreBackup = vi.fn();
 const getServer = vi.fn();
 const listBackups = vi.fn();
+const createBackup = vi.fn();
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>();
@@ -19,6 +20,7 @@ vi.mock("@/api/client", async (importOriginal) => {
       restoreBackup: (...a: unknown[]) => restoreBackup(...a),
       getServer: (...a: unknown[]) => getServer(...a),
       listBackups: (...a: unknown[]) => listBackups(...a),
+      createBackup: (...a: unknown[]) => createBackup(...a),
     },
   };
 });
@@ -29,14 +31,17 @@ vi.mock("./fleet.svelte", async (importOriginal) => {
 });
 
 import {
+  backupCreate,
   backupRestore,
   depth,
   restoreActive,
   restoreMeter,
+  restoreNoteText,
   restoreOutcome,
   surface,
   syncDepthFromFleet,
 } from "./depth.svelte";
+import { fmtWhen } from "./fmt";
 import { fleet, fleetPollMs } from "./fleet.svelte";
 import { chipKind, deadNote } from "./views.svelte";
 import type { Backup, RestoreProgress, RestoreResult, Server } from "@/api/types";
@@ -93,31 +98,51 @@ const ARCHIVE: Backup = {
 
 describe("restoreMeter", () => {
   it("reads a sized restore that has not read a byte as 0 %, not as unknown", () => {
-    expect(restoreMeter(job({ bytes_done: 0, bytes_total: 2000 }))).toEqual({ pct: 0, sized: true, label: "0%" });
+    expect(restoreMeter(job({ bytes_done: 0, bytes_total: 2000 }))).toEqual({
+      pct: 0,
+      sized: true,
+      numeric: true,
+      phase: "extracting",
+      label: "0%",
+    });
   });
 
   it("reads half the archive as 50 %", () => {
-    expect(restoreMeter(job({ bytes_done: 1000, bytes_total: 2000 }))).toEqual({ pct: 50, sized: true, label: "50%" });
+    expect(restoreMeter(job({ bytes_done: 1000, bytes_total: 2000 }))).toEqual({
+      pct: 50,
+      sized: true,
+      numeric: true,
+      phase: "extracting",
+      label: "50%",
+    });
   });
 
   it("never prints a number for an unsized restore, and never fills the bar", () => {
     // An old agent restoring through the unary call: the Panel knows a restore
     // is running and nothing else.
     const m = restoreMeter(job({ phase: "restoring", bytes_done: 0, bytes_total: 0 }));
-    expect(m).toEqual({ pct: 0, sized: false, label: "restoring" });
-    // Bytes without a total are not a percentage either.
-    expect(restoreMeter(job({ bytes_done: 4096, bytes_total: 0 })).pct).toBe(0);
-    expect(restoreMeter(job({ bytes_done: 4096, bytes_total: 0 })).label).toBe("extracting");
+    expect(m).toEqual({ pct: 0, sized: false, numeric: false, phase: "restoring", label: "restoring" });
+    // Bytes without a total are not a percentage either: the row narrates.
+    const bytesOnly = restoreMeter(job({ bytes_done: 4096, bytes_total: 0 }));
+    expect(bytesOnly.pct).toBe(0);
+    expect(bytesOnly.numeric).toBe(false);
+    expect(bytesOnly.phase).toBe("extracting");
+    expect(bytesOnly.label).toBe("extracting");
   });
 
   it("names the phase outside extraction and keeps the fill it earned", () => {
+    // A sized "applying" shows the phase word, never the number beside it —
+    // but the fill keeps the 100 % the extraction earned.
     expect(restoreMeter(job({ phase: "applying", bytes_done: 2000, bytes_total: 2000 }))).toEqual({
       pct: 100,
       sized: true,
+      numeric: false,
+      phase: "applying",
       label: "applying",
     });
+    expect(restoreMeter(job({ phase: "opening", bytes_total: 2000 })).numeric).toBe(false);
     expect(restoreMeter(job({ phase: "opening" })).label).toBe("opening");
-    expect(restoreMeter(undefined)).toEqual({ pct: 0, sized: false, label: "opening" });
+    expect(restoreMeter(undefined)).toEqual({ pct: 0, sized: false, numeric: false, phase: "opening", label: "opening" });
   });
 
   it("never draws past a full bar", () => {
@@ -153,6 +178,7 @@ describe("restoreOutcome", () => {
     expect(restoreOutcome(watch, srv({ state: "offline", restore_result: result({}) }), [ARCHIVE])).toEqual({
       kind: "done",
       name: "manual-2026-09-24",
+      when: ARCHIVE.created_ms,
       reason: "",
     });
   });
@@ -165,8 +191,14 @@ describe("restoreOutcome", () => {
     expect(restoreOutcome(watch, failed, [ARCHIVE])).toEqual({
       kind: "failed",
       name: "manual-2026-09-24",
+      when: ARCHIVE.created_ms,
       reason: 'docker: restore stopped at "savegame"; the live tree was rolled back',
     });
+  });
+
+  it("falls back to the id, with no date, for an archive no longer listed", () => {
+    const note = restoreOutcome(watch, srv({ state: "offline", restore_result: result({}) }), []);
+    expect(note).toEqual({ kind: "done", name: ARCHIVE.id, when: 0, reason: "" });
   });
 
   it("never reads last_error: an install_failed server's own reason is not the restore's", () => {
@@ -196,6 +228,32 @@ describe("restoreOutcome", () => {
     expect(restoreOutcome(watch, earlier, [ARCHIVE])).toBeNull();
     // Or with no result at all.
     expect(restoreOutcome(watch, srv({ state: "offline" }), [ARCHIVE])).toBeNull();
+  });
+});
+
+describe("restoreNoteText", () => {
+  const when = ARCHIVE.created_ms;
+  const stamp = fmtWhen(when);
+
+  it("names the archive the way its row did, and the next step on a stopped server", () => {
+    expect(restoreNoteText({ kind: "done", name: "nightly", when, reason: "" }, true)).toBe(
+      `restored ${stamp} · nightly — start the server when ready`,
+    );
+  });
+
+  it("offers no start when the server is not stopped", () => {
+    // a restore that put the row back to crashed or install_failed
+    expect(restoreNoteText({ kind: "done", name: "nightly", when, reason: "" }, false)).toBe(`restored ${stamp} · nightly`);
+  });
+
+  it("follows a failure's dash with the agent's reason", () => {
+    expect(restoreNoteText({ kind: "failed", name: "nightly", when, reason: "gzip: invalid header" }, true)).toBe(
+      `restore of ${stamp} · nightly failed — gzip: invalid header`,
+    );
+  });
+
+  it("drops the date it does not have", () => {
+    expect(restoreNoteText({ kind: "done", name: "1700__nightly", when: 0, reason: "" }, false)).toBe("restored 1700__nightly");
   });
 });
 
@@ -242,7 +300,7 @@ describe("backupRestore", () => {
     // ...and the fleet poll can be the one that sees it land.
     fleet.servers = [landed()];
     syncDepthFromFleet();
-    expect(depth.restoreNote).toEqual({ kind: "done", name: "manual-2026-09-24", reason: "" });
+    expect(depth.restoreNote).toEqual({ kind: "done", name: "manual-2026-09-24", when: ARCHIVE.created_ms, reason: "" });
     expect(depth.restoreWatch).toBeNull();
   });
 
@@ -260,6 +318,22 @@ describe("backupRestore", () => {
     fleet.servers = [landed()];
     syncDepthFromFleet();
     expect(depth.restoreNote?.kind).toBe("done");
+  });
+
+  it("has no dismiss: the next backup or restore action replaces the note", async () => {
+    // The mock draws the outcome note with no control; it is spoken once and
+    // the ledger's next act is what clears it.
+    depth.restoreNote = { kind: "done", name: "manual-2026-09-24", when: ARCHIVE.created_ms, reason: "" };
+    createBackup.mockResolvedValueOnce(undefined);
+    listBackups.mockResolvedValue([ARCHIVE]);
+    await backupCreate();
+    expect(createBackup).toHaveBeenCalledTimes(1);
+    expect(depth.restoreNote).toBeNull();
+
+    depth.restoreNote = { kind: "failed", name: "manual-2026-09-24", when: ARCHIVE.created_ms, reason: "x" };
+    restoreBackup.mockResolvedValueOnce(srv({ state: "restoring", restore: job({ started_at: STARTED }) }));
+    await backupRestore(ARCHIVE);
+    expect(depth.restoreNote).toBeNull();
   });
 
   it("puts a refusal on screen and leaves nothing watched", async () => {
@@ -282,6 +356,7 @@ describe("backupRestore", () => {
     expect(depth.restoreNote).toEqual({
       kind: "failed",
       name: "manual-2026-09-24",
+      when: ARCHIVE.created_ms,
       reason: "gzip: invalid header; the live tree was not touched",
     });
   });

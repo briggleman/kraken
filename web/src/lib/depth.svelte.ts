@@ -19,6 +19,7 @@ import type { ScheduleInput } from "@/api/client";
 import { untrack } from "svelte";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
+import { fmtWhen } from "./fmt";
 
 export interface Origin {
   ox: string;
@@ -40,6 +41,9 @@ export interface RestoreNote {
   kind: "done" | "failed";
   /** The archive, by the name the ledger shows it under. */
   name: string;
+  /** The archive's created_ms, so the note names it the way its row did
+   *  (`aug 21 03:00 · nightly`); 0 when the archive is no longer listed. */
+  when: number;
   /** The agent's reason, for a failed restore. */
   reason: string;
 }
@@ -783,6 +787,9 @@ async function refreshBackups() {
 export async function backupCreate() {
   if (!depth.serverId || depth.creatingBackup) return;
   depth.creatingBackup = true;
+  // The restore's outcome note is spoken once and carries no dismiss (the mock
+  // has none): the next backup or restore action is what replaces it.
+  depth.restoreNote = null;
   try {
     const name = "manual-" + new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
     await api.createBackup(depth.serverId, name);
@@ -807,8 +814,16 @@ export async function backupCreate() {
 export interface RestoreMeterView {
   pct: number;
   sized: boolean;
-  /** The words in the `.pct` slot: the percentage while extracting against a
-   *  known size, the phase otherwise. */
+  /** Whether the row prints a number: a sized restore while it is extracting.
+   *  Only then does the reading sit in its own `.pct` box; every other moment
+   *  of the restore — opening, applying, an unsized one throughout — shows the
+   *  `.phase` word instead, never both (the row is a two-column grid, and a
+   *  third reading beside them would wrap). */
+  numeric: boolean;
+  /** The phase word the `.phase` slot narrates when the row is not numeric. */
+  phase: string;
+  /** What the row says for assistive tech and its status line: the percentage
+   *  when numeric, the phase word otherwise. */
   label: string;
 }
 
@@ -826,7 +841,8 @@ export function restoreMeter(r: RestoreProgress | null | undefined): RestoreMete
   const pct = sized ? Math.max(0, Math.min(100, Math.floor(((r?.bytes_done ?? 0) * 100) / total))) : 0;
   const phase = r?.phase ?? "opening";
   const word = PHASE_WORDS[phase] ?? phase;
-  return { pct, sized, label: sized && phase === "extracting" ? `${pct}%` : word };
+  const numeric = sized && phase === "extracting";
+  return { pct, sized, numeric, phase: word, label: numeric ? `${pct}%` : word };
 }
 
 /** Whether a restore is running or being asked for. Every restore button in
@@ -855,9 +871,22 @@ export function restoreOutcome(
   // restore has its own start, and a new one clears the old result.
   if (!res || !(Date.parse(res.finished_at) >= Date.parse(watch.since))) return null;
   const id = res.backup_id || watch.backupId;
-  const name = backups.find((b) => b.id === id)?.name ?? id;
-  if (!res.ok) return { kind: "failed", name, reason: res.error ?? "" };
-  return { kind: "done", name, reason: "" };
+  const archive = backups.find((b) => b.id === id);
+  const name = archive?.name ?? id;
+  const when = archive?.created_ms ?? 0;
+  if (!res.ok) return { kind: "failed", name, when, reason: res.error ?? "" };
+  return { kind: "done", name, when, reason: "" };
+}
+
+/** The outcome note's sentence, as the ledger speaks it: the archive named the
+ *  way its row was (`aug 21 03:00 · nightly`), and — for a landed restore on a
+ *  stopped server — the one next step. `stopped` is whether the server is
+ *  offline now: a restore that put the row back to crashed or install_failed
+ *  is not one to start "when ready". */
+export function restoreNoteText(note: RestoreNote, stopped: boolean): string {
+  const which = note.when ? `${fmtWhen(note.when)} · ${note.name}` : note.name;
+  if (note.kind === "failed") return `restore of ${which} failed — ${note.reason}`;
+  return `restored ${which}${stopped ? " — start the server when ready" : ""}`;
 }
 
 /** Fold a fresh server read into the restore watch: adopt a restore found in

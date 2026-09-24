@@ -39,6 +39,22 @@ export function fmtWhen(ms: number): string {
   return MONTHS[d.getMonth()] + " " + String(d.getDate()).padStart(2, "0") + " " + hm;
 }
 
+/** "sep 21" — a day, in fmtWhen's voice without the time. */
+export function fmtDay(ms: number): string {
+  if (!ms) return "—";
+  const d = new Date(ms);
+  return MONTHS[d.getMonth()] + " " + String(d.getDate()).padStart(2, "0");
+}
+
+/** "3d ago" / "5h ago" / "just now" — how long since, in whole days once it is
+ *  a day or more (the retired group's reading: a retire is a days-old fact). */
+export function fmtAgo(ms: number, now: number = Date.now()): string {
+  const d = now - ms;
+  if (!ms || d < 60_000) return "just now";
+  if (d < 86_400_000) return fmtAge(d) + " ago";
+  return Math.floor(d / 86_400_000) + "d ago";
+}
+
 /** "3d 14h" / "11h 02m" / "6m" — uptime the way the cards write it. */
 export function fmtUptime(seconds: number): string {
   if (!seconds || seconds < 0) return "—";

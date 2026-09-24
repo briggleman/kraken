@@ -397,8 +397,14 @@ func (s *Service) ListBackups(ctx context.Context, req *agentpb.ListBackupsReque
 	return &agentpb.ListBackupsResponse{Backups: backups}, nil
 }
 
+// RestoreBackup is the unary restore, kept for Panels older than the stream.
+// It runs detached from the caller's cancellation: those Panels held this call
+// open under a 10-minute timeout, and before the restore honoured its context a
+// timeout or a dropped client simply left it running to completion. Cancelling
+// now would roll back a restore an old Agent would have finished. The stream
+// (RestoreBackupStream) is the cancellable path.
 func (s *Service) RestoreBackup(ctx context.Context, req *agentpb.RestoreBackupRequest) (*agentpb.RestoreBackupResponse, error) {
-	if err := s.rt.RestoreBackup(ctx, req.ServerId, req.Slug, req.Id); err != nil {
+	if err := s.rt.RestoreBackup(context.WithoutCancel(ctx), req.ServerId, req.Slug, req.Id); err != nil {
 		return nil, err
 	}
 	return &agentpb.RestoreBackupResponse{}, nil

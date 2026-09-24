@@ -23,7 +23,10 @@ const (
 // restoreEmitEvery is the floor between two progress events inside a phase. A
 // read is 32KB, so an unthrottled meter would send a message per read — some
 // 300,000 for a 10GB world — to a Panel that polls every two seconds.
-const restoreEmitEvery = 250 * time.Millisecond
+//
+// A var only so a test can set it to 0 and see an event per read — which is
+// what lets it cancel with bytes of one entry already read.
+var restoreEmitEvery = 250 * time.Millisecond
 
 // restoreMeter counts the compressed bytes a restore has read and narrates them
 // to emit. A nil emit makes it a no-op, which is what the unary RestoreBackup

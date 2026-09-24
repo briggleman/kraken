@@ -67,6 +67,10 @@ func isRestoreScratch(name string) bool {
 // partway through the swap and assert the rollback puts the originals back.
 var restoreRename = os.Rename
 
+// restoreRemoveAll is the rollback's os.RemoveAll behind the same kind of seam,
+// so a test can make a restored path refuse to go and read what the error says.
+var restoreRemoveAll = os.RemoveAll
+
 // restoreEntryPath validates one tar entry name and returns it as a relative
 // slash path — "" for the archive root itself ("." or "./", which some tar
 // writers emit and which carries nothing to write).
@@ -313,16 +317,17 @@ func (d *DockerRuntime) applyRestore(ctx context.Context, serverID, root, staged
 	// archive holds no files in. Additive only: nothing here is removed or
 	// replaced, so it needs no rollback, and a leftover empty directory after a
 	// failed restore is harmless.
+	const merged = "; nothing in the live tree was replaced (at most some missing directories were created)"
 	for _, dir := range st.dirs {
 		if insideAny(dir, units) {
 			continue
 		}
 		live := filepath.Join(root, filepath.FromSlash(dir))
 		if !d.withinHostDir(serverID, live) {
-			return fmt.Errorf("docker: restore entry %q escapes data dir", dir)
+			return fmt.Errorf("docker: restore entry %q escapes data dir%s", dir, merged)
 		}
 		if err := os.MkdirAll(live, st.dirModes[dir]); err != nil {
-			return err
+			return fmt.Errorf("docker: restore could not create %q: %w%s", dir, err, merged)
 		}
 	}
 
@@ -331,18 +336,27 @@ func (d *DockerRuntime) applyRestore(ctx context.Context, serverID, root, staged
 	// between the swap and the cleanup.
 	token := strings.TrimPrefix(filepath.Base(staged), restoreScratchPrefix)
 	var done []swapped
-	// unwind reverses the swaps so far and returns how many paths it could not
-	// put back — the one number that decides whether "rolled back" is true.
-	unwind := func() int {
-		stuck := 0
+	// A rollback can go wrong two ways, and they leave different things behind:
+	// an original that could not be moved back is still whole beside its path
+	// (preserved), while a restored copy that could not be removed from a path
+	// that held nothing before is simply left where it is (leftover).
+	type unwound struct{ preserved, leftover int }
+	// unwind reverses the swaps so far and counts what it could not undo — the
+	// numbers that decide whether "rolled back" is true.
+	unwind := func() unwound {
+		var u unwound
 		// Reverse order, so the tree comes back the way it was.
 		for i := len(done) - 1; i >= 0; i-- {
 			m := done[i]
 			// The restored copy occupies the live path: clear it first, because
 			// a rename never overwrites an existing destination on Windows.
-			if err := os.RemoveAll(m.live); err != nil {
+			if err := restoreRemoveAll(m.live); err != nil {
 				slog.Error("restore rollback could not clear the restored path", "path", m.live, "err", err)
-				stuck++
+				if m.aside != "" {
+					u.preserved++ // the original stays whole beside it
+				} else {
+					u.leftover++ // nothing was there before; the restored copy stays
+				}
 				continue
 			}
 			if m.aside == "" {
@@ -351,20 +365,28 @@ func (d *DockerRuntime) applyRestore(ctx context.Context, serverID, root, staged
 			if err := restoreRename(m.aside, m.live); err != nil {
 				slog.Error("restore rollback could not put the original back; it is preserved beside it",
 					"path", m.live, "aside", m.aside, "err", err)
-				stuck++
+				u.preserved++
 			}
 		}
-		return stuck
+		return u
 	}
 	// fail unwinds and says what state the tree was left in, because that is
 	// the operator's next question and the Panel shows this message verbatim.
-	fail := func(stuck int, err error) error {
-		stuck += unwind()
-		if stuck > 0 {
-			return fmt.Errorf("%w; rollback incomplete: %d path(s) could not be put back, the originals are preserved beside them as *%s*",
-				err, stuck, asideMarker)
+	// preserved counts originals the caller already failed to put back.
+	fail := func(preserved int, err error) error {
+		u := unwind()
+		u.preserved += preserved
+		if u.preserved == 0 && u.leftover == 0 {
+			return fmt.Errorf("%w; the live tree was rolled back to how it was before the restore", err)
 		}
-		return fmt.Errorf("%w; the live tree was rolled back to how it was before the restore", err)
+		msg := "rollback incomplete:"
+		if u.preserved > 0 {
+			msg += fmt.Sprintf(" %d original(s) could not be put back and are preserved beside their paths as *%s*;", u.preserved, asideMarker)
+		}
+		if u.leftover > 0 {
+			msg += fmt.Sprintf(" %d restored path(s) where nothing was before could not be removed and were left in place;", u.leftover)
+		}
+		return fmt.Errorf("%w; %s", err, strings.TrimSuffix(msg, ";"))
 	}
 
 	for _, unit := range units {

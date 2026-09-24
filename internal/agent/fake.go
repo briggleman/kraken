@@ -91,6 +91,18 @@ type FakeRuntime struct {
 	// restores records every restore request, per server, as "stream:<id>" or
 	// "unary:<id>" — which path the Panel took is the thing worth asserting.
 	restores map[string][]string
+	// powerHook, when set, runs inside every power action before it returns —
+	// the moment a test needs to write the Panel's row "while" the Agent is
+	// restarting the server.
+	powerHook func(serverID string, action agentpb.PowerAction)
+}
+
+// SetPowerHook installs fn to run inside every subsequent power action, before
+// the action's result is returned (nil clears it).
+func (f *FakeRuntime) SetPowerHook(fn func(serverID string, action agentpb.PowerAction)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.powerHook = fn
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -858,6 +870,12 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 		st = agentpb.ServerState_SERVER_STATE_OFFLINE
 	default:
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("agent: unknown power action %v", action)
+	}
+	f.mu.Lock()
+	hook := f.powerHook
+	f.mu.Unlock()
+	if hook != nil {
+		hook(serverID, action)
 	}
 	f.setState(serverID, st)
 	f.mu.Lock()

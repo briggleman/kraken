@@ -213,15 +213,35 @@ func TestRestoreStreamCancelMidExtractStops(t *testing.T) {
 		dirEntry("savegame"),
 		archiveEntry{name: "savegame/a.db", body: incompressible(1 << 20)},
 	)
+	// An event per read, so the cancel can land with the one entry's bytes
+	// already flowing — past the between-entries check, inside its io.Copy.
+	orig := restoreEmitEvery
+	restoreEmitEvery = 0
+	t.Cleanup(func() { restoreEmitEvery = orig })
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	const cancelAfter = 128 << 10
+	var cancelledAt int64
 	evs, err := restoreEvents(t, ctx, d, sid, id, func(ev *agentpb.RestoreEvent) {
-		if ev.Phase == restorePhaseExtracting {
+		if cancelledAt == 0 && ev.Phase == restorePhaseExtracting && ev.Entry == "savegame/a.db" && ev.BytesDone > cancelAfter {
+			cancelledAt = ev.BytesDone
 			cancel()
 		}
 	})
+	if cancelledAt == 0 {
+		t.Fatal("the restore never reported the entry mid-read; the test did not cancel mid-file")
+	}
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	last := evs[len(evs)-1]
+	if last.BytesDone >= last.BytesTotal {
+		t.Errorf("the archive was read to the end (%d of %d) after a cancel mid-file", last.BytesDone, last.BytesTotal)
+	}
+	// One read may already be in flight when the cancel lands; nothing more.
+	if last.BytesDone-cancelledAt > 64<<10 {
+		t.Errorf("reads went on %d bytes past the cancel", last.BytesDone-cancelledAt)
 	}
 	for _, ev := range evs {
 		if ev.Phase == restorePhaseApplying || ev.Phase == restorePhaseDone {

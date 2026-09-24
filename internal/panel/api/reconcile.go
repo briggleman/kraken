@@ -71,8 +71,9 @@ func (s *Server) reconcileNodesOnce(ctx context.Context) {
 	}
 	// Every node that answered can be handed the removals it is owed. Which
 	// ones those are is read from the stored record, not this pass's snapshot,
-	// so a removal queued a moment ago is not left for the next pass.
-	s.finishPendingRemovals(ctx, reached)
+	// so a removal queued a moment ago is not left for the next pass. The
+	// replays run beside this pass and are never waited on here.
+	s.startPendingRemovals(ctx, reached)
 }
 
 // reconcileLive are the states worth polling the Agent about for a running

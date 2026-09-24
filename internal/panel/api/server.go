@@ -46,6 +46,11 @@ type Server struct {
 	// is running is the node record (see agentupdatejobs.go).
 	agentJobs *agentUpdateJobs
 
+	// replays tracks the per-node pending-removal replays the node reconciler
+	// has in flight, so one node's slow removals never block the health pass
+	// and two passes never replay the same node at once (see removals.go).
+	replays removalReplays
+
 	// In-memory Panel client TLS bundle from WithClientTLSBytes. When set,
 	// the Agent pool uses these bytes rather than reading cfg.TLS{Cert,Key,CA}
 	// off disk — sidesteps volume-permission gymnastics for the auto-issued
@@ -552,6 +557,9 @@ func (s *Server) routes() chi.Router {
 			// in the handler as well — there is no server owner to authorize.
 			r.With(s.requirePermission(rbac.PermServerDelete)).
 				Delete("/nodes/{id}/containers/{serverID}", s.handleRetireNodeContainer)
+			// Dismiss a pending removal that will never land (same permissions).
+			r.With(s.requirePermission(rbac.PermServerDelete)).
+				Delete("/nodes/{id}/removals/{serverID}", s.handleDismissPendingRemoval)
 
 			// Server lifecycle (schedule → install → run via the hosting Agent).
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers", s.handleListServers)

@@ -984,9 +984,27 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	if node, err := s.store.GetNode(ctx, sv.NodeID); err == nil {
+	// A node that no longer exists has nothing to be told and nothing to hold
+	// the allocation; any other failure to read it means the removal could be
+	// neither delivered nor remembered, and a delete the Panel cannot remember
+	// does not happen.
+	node, err := s.store.GetNode(ctx, sv.NodeID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		node = nil
+	case err != nil:
+		s.logger.Error("server delete refused: could not load its node", "server", sv.ID, "node", sv.NodeID, "err", err)
+		writeError(w, http.StatusInternalServerError, "could not load the server's node; nothing was deleted")
+		return
+	}
+	if node != nil {
 		removeErr := s.removeOnNode(ctx, node, sv.ID, true)
-		s.settleNodeAfterDelete(ctx, sv, node, removeErr)
+		if err := s.settleNodeAfterDelete(ctx, sv, node.ID, removeErr); err != nil {
+			s.logger.Error("server delete refused: could not record its removal on the node",
+				"server", sv.ID, "node", node.ID, "removal_err", removeErr, "err", err)
+			writeError(w, http.StatusInternalServerError, "could not record the removal on the server's node; the server was not deleted")
+			return
+		}
 	}
 	// Best-effort cleanup of external resources this server published (Cloudflare
 	// DNS records + UniFi port-forwards).

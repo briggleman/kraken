@@ -34,6 +34,10 @@ import (
 // finished by the node reconciler with backoff; a live node leaves nothing
 // owed; a delete that cannot be remembered does not happen; and an orphan the
 // node already has can be retired without touching its data.
+//
+// Since #360 the removal of a live server's containers and world is the
+// retire's (the row stays, retired), and the delete is the permanent delete of
+// a retired server; the removal mechanics these pin are the same for both.
 
 // flakyStore is the memory store with switches for the reads and writes a
 // delete and a replay depend on, so "the store could not answer" is testable.
@@ -214,9 +218,10 @@ func seedSchedule(t *testing.T, st *flakyStore, id, serverID string) {
 	}
 }
 
+// deleteServer deletes a retired server permanently.
 func deleteServer(t *testing.T, h http.Handler, token, id string) {
 	t.Helper()
-	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+id, token, nil); rec.Code != http.StatusNoContent {
+	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+id, token, nil); rec.Code != http.StatusOK {
 		t.Fatalf("delete server: status %d, body %s", rec.Code, rec.Body.String())
 	}
 }
@@ -252,12 +257,13 @@ func asUser(t *testing.T, st *flakyStore, id string, role *rbac.Role) string {
 	return id + "-token"
 }
 
-// The incident itself: the node is gone when the operator deletes. The delete
-// still goes through — row, schedules — and the removal is owed to the node
-// with the operator's delete_data intent, holding the server's memory and
-// ports. It is not retried before its backoff; once due and the node answers,
-// the next pass delivers it, forgets the debt and releases the allocation.
-func TestDeleteServer_UnreachableNodeIsRememberedAndFinishedLater(t *testing.T) {
+// The incident itself: the node is gone when the operator retires. The retire
+// still goes through — the row goes retired, its schedules switched off — and
+// the removal is owed to the node with delete_data, holding the server's
+// memory and ports. It is not retried before its backoff; once due and the
+// node answers, the next pass delivers it — the retired row does not claim the
+// id — forgets the debt and releases the allocation.
+func TestRetireServer_UnreachableNodeIsRememberedAndFinishedLater(t *testing.T) {
 	ctx := context.Background()
 	srv, st := newRemovalAPI(t)
 	h := srv.Handler()
@@ -269,13 +275,13 @@ func TestDeleteServer_UnreachableNodeIsRememberedAndFinishedLater(t *testing.T) 
 	seedSchedule(t, st, "sched-away", sv.ID)
 
 	stop() // the node goes away; the Panel still believes it is up
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
-	if _, err := st.GetServer(ctx, sv.ID); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("server row after delete: err %v, want ErrNotFound", err)
+	if row, err := st.GetServer(ctx, sv.ID); err != nil || row.State != store.StateRetired || row.RetiredFromNodeID != nodeID {
+		t.Fatalf("server row after retire: %+v %v, want it retired from %s", row, err, nodeID)
 	}
-	if left, _ := st.ListSchedulesByServer(ctx, sv.ID); len(left) != 0 {
-		t.Fatalf("%d schedules outlived their server; they fire forever with \"load server\"", len(left))
+	if left, _ := st.ListSchedulesByServer(ctx, sv.ID); len(left) != 1 || left[0].Enabled || !left[0].DisabledByRetire {
+		t.Fatalf("schedules after retire = %+v, want the one kept, switched off and flagged", left)
 	}
 	owed := pendingRemovals(t, st, nodeID)
 	if len(owed) != 1 {
@@ -351,7 +357,7 @@ func TestDeleteServer_UnreachableNodeIsRememberedAndFinishedLater(t *testing.T) 
 // An Agent that answers with a failure is owed the removal too. Each failed
 // retry counts, carries the Agent's own words (no gRPC framing) and pushes the
 // next try back; the pass after the node recovers clears it and releases.
-func TestDeleteServer_AgentFailureIsRetriedUntilItLands(t *testing.T) {
+func TestRetireServer_AgentFailureIsRetriedUntilItLands(t *testing.T) {
 	ctx := context.Background()
 	srv, st := newRemovalAPI(t)
 	h := srv.Handler()
@@ -362,7 +368,7 @@ func TestDeleteServer_AgentFailureIsRetriedUntilItLands(t *testing.T) {
 	sv := placedServer(t, st, "sv-flaky", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	owed := pendingRemovals(t, st, nodeID)
 	if len(owed) != 1 || owed[0].LastError != "docker daemon is restarting" {
 		t.Fatalf("pending removals = %+v, want one carrying the Agent's reason verbatim", owed)
@@ -392,12 +398,13 @@ func TestDeleteServer_AgentFailureIsRetriedUntilItLands(t *testing.T) {
 		t.Fatal("allocation not released once the removal landed")
 	}
 	if got := rt.Removals(); len(got) != 3 {
-		t.Fatalf("removals = %+v, want the delete and two retries", got)
+		t.Fatalf("removals = %+v, want the retire's and two retries", got)
 	}
 }
 
-// A delete the node confirms leaves nothing owed and releases at once.
-func TestDeleteServer_LiveNodeOwesNothing(t *testing.T) {
+// A retire the node confirms leaves nothing owed and releases at once; the
+// permanent delete that follows takes the row and its schedules.
+func TestRetireServer_LiveNodeOwesNothing(t *testing.T) {
 	ctx := context.Background()
 	srv, st := newRemovalAPI(t)
 	h := srv.Handler()
@@ -408,7 +415,7 @@ func TestDeleteServer_LiveNodeOwesNothing(t *testing.T) {
 	sv := placedServer(t, st, "sv-live", nodeID, specID)
 	seedSchedule(t, st, "sched-live", sv.ID)
 
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	if got := rt.Removals(); len(got) != 1 || got[0].ServerID != sv.ID || !got[0].DeleteData {
 		t.Fatalf("removals = %+v, want %s with delete_data", got, sv.ID)
@@ -419,14 +426,15 @@ func TestDeleteServer_LiveNodeOwesNothing(t *testing.T) {
 	if held(t, st, nodeID) {
 		t.Fatal("allocation not released after a confirmed removal")
 	}
+	deleteServer(t, h, token, sv.ID)
 	if left, _ := st.ListSchedulesByServer(ctx, sv.ID); len(left) != 0 {
 		t.Fatalf("%d schedules outlived their server", len(left))
 	}
 }
 
-// A delete the Panel cannot remember does not happen: when the node record
-// cannot be read, or the outcome cannot be written to it, the answer is 500
-// and the server row is still there.
+// A permanent delete the Panel cannot remember does not happen: when the node
+// record cannot be read, or the outcome cannot be written to it, the answer is
+// 500 and the server row is still there.
 func TestDeleteServer_RefusedWhenTheRemovalCannotBeRecorded(t *testing.T) {
 	ctx := context.Background()
 	srv, st := newRemovalAPI(t)
@@ -436,6 +444,7 @@ func TestDeleteServer_RefusedWhenTheRemovalCannotBeRecorded(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-unrecorded", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-unrecorded", nodeID, specID)
+	retireServer(t, srv, token, sv.ID)
 	stop()
 
 	for name, flag := range map[string]*atomic.Bool{"node unreadable": &st.failGetNode, "node unwritable": &st.failUpdateNode} {
@@ -467,7 +476,7 @@ func TestPendingRemoval_SkippedWhenTheServerLookupFails(t *testing.T) {
 	sv := placedServer(t, st, "sv-lookup", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 	dueNow(t, st, nodeID)
 
@@ -475,7 +484,7 @@ func TestPendingRemoval_SkippedWhenTheServerLookupFails(t *testing.T) {
 	srv.ReconcileNodesOnceForTest(ctx)
 	st.failGetServer.Store(false)
 	if got := rt.Removals(); len(got) != 1 {
-		t.Fatalf("removals = %+v, want only the delete's — the replay must wait when it cannot look", got)
+		t.Fatalf("removals = %+v, want only the retire's — the replay must wait when it cannot look", got)
 	}
 	if owed := pendingRemovals(t, st, nodeID); len(owed) != 1 || owed[0].Attempts != 1 {
 		t.Fatalf("pending = %+v, want it untouched", owed)
@@ -487,11 +496,12 @@ func TestPendingRemoval_SkippedWhenTheServerLookupFails(t *testing.T) {
 	}
 }
 
-// A delete retried after an earlier attempt queued a removal and then failed
-// to delete the row: the retry's removal lands, and its success finishes the
-// queued record — one release — rather than releasing beside it and leaving
-// the record to release the same ports again later, out from under whatever
-// was placed on them in between.
+// A permanent delete retried after an earlier attempt failed to delete the
+// row, with a removal already queued (the retire's, holding the allocation):
+// the retry's removal lands, and its success finishes the queued record — one
+// release — rather than releasing beside it and leaving the record to release
+// the same ports again later, out from under whatever was placed on them in
+// between.
 func TestDeleteServer_RetryAfterAFailedRowDeleteReleasesOnce(t *testing.T) {
 	ctx := context.Background()
 	srv, st := newRemovalAPI(t)
@@ -502,16 +512,18 @@ func TestDeleteServer_RetryAfterAFailedRowDeleteReleasesOnce(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "delete-retry", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-retry", nodeID, specID)
 
-	// First attempt: the removal fails (queued) and the row delete fails too.
+	// The retire's removal fails (queued, holding the allocation); then the
+	// first delete's removal fails too (folded into it) and the row delete fails.
 	rt.SetRemoveFailure("docker daemon is restarting")
+	retireServer(t, srv, token, sv.ID)
 	st.failDeleteServer.Store(true)
 	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("first delete: %d %s, want 500", rec.Code, rec.Body.String())
 	}
 	st.failDeleteServer.Store(false)
 	rt.SetRemoveFailure("")
-	if owed := pendingRemovals(t, st, nodeID); len(owed) != 1 || !held(t, st, nodeID) {
-		t.Fatalf("setup: pending %+v, want one holding the allocation", owed)
+	if owed := pendingRemovals(t, st, nodeID); len(owed) != 1 || !owed[0].DeleteBackups || !held(t, st, nodeID) {
+		t.Fatalf("setup: pending %+v, want one holding the allocation, now with delete_backups", owed)
 	}
 
 	// The retry succeeds end to end.
@@ -551,6 +563,7 @@ func TestDeleteServer_UnrecordedSuccessSaysTheDataIsGone(t *testing.T) {
 	nodeID := liveNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "delete-unwritten", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-unwritten", nodeID, specID)
+	retireServer(t, srv, token, sv.ID)
 
 	st.failUpdateNode.Store(true)
 	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
@@ -558,11 +571,11 @@ func TestDeleteServer_UnrecordedSuccessSaysTheDataIsGone(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("delete: %d %s, want 500", rec.Code, rec.Body.String())
 	}
-	if msg := codedBody(t, rec.Body.Bytes()).Error; !strings.Contains(msg, "data was removed on the node") || !strings.Contains(msg, "retry the delete") {
+	if msg := codedBody(t, rec.Body.Bytes()).Error; !strings.Contains(msg, "were removed on the node") || !strings.Contains(msg, "retry the delete") {
 		t.Fatalf("500 says %q; it must not claim nothing happened when the node removed the data", msg)
 	}
-	if got := rt.Removals(); len(got) != 1 {
-		t.Fatalf("removals = %+v, want the one that landed", got)
+	if got := rt.Removals(); len(got) != 2 {
+		t.Fatalf("removals = %+v, want the retire's and the delete's, which landed", got)
 	}
 	if _, err := st.GetServer(ctx, sv.ID); err != nil {
 		t.Fatalf("the row went although the delete was not recorded: %v", err)
@@ -583,7 +596,7 @@ func TestPendingRemoval_LookupFailureWarnsOncePerReason(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "delete-noisy", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-noisy", nodeID, specID)
 	rt.SetRemoveFailure("docker daemon is restarting")
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 
 	warns := func() int {
@@ -628,7 +641,7 @@ func TestPendingRemoval_ReplayNeverBlocksThePass(t *testing.T) {
 	sv := placedServer(t, st, "sv-hang", nodeID, specID)
 
 	rt.SetRemoveFailure("docker daemon is restarting")
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 	dueNow(t, st, nodeID)
 
@@ -650,7 +663,7 @@ func TestPendingRemoval_ReplayNeverBlocksThePass(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if got := rt.Removals(); len(got) != 2 {
-		t.Fatalf("removals = %+v, want the delete's and ONE replay — passes must not overlap on a node", got)
+		t.Fatalf("removals = %+v, want the retire's and ONE replay — passes must not overlap on a node", got)
 	}
 	release()
 	srv.WaitRemovalReplaysForTest()
@@ -734,7 +747,7 @@ func TestRetireNodeContainer_RefusesAnIDWithARemovalPending(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "retire-owed", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-owed", nodeID, specID)
 	rt.SetRemoveFailure("docker daemon is restarting")
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 	rt.SetRemoveFailure("")
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/nodes/"+nodeID+"/containers/"+sv.ID, token, nil)
@@ -745,7 +758,7 @@ func TestRetireNodeContainer_RefusesAnIDWithARemovalPending(t *testing.T) {
 		t.Fatalf("body = %+v, want code removal_pending", b)
 	}
 	if got := rt.Removals(); len(got) != 1 || !got[0].DeleteData {
-		t.Fatalf("removals = %+v, want only the delete's own", got)
+		t.Fatalf("removals = %+v, want only the retire's own", got)
 	}
 }
 
@@ -830,7 +843,7 @@ func TestDismissPendingRemoval(t *testing.T) {
 	specID := createSpecWithInstall(t, h, token, "dismiss", map[string]any{"script": "install.sh"})
 	sv := placedServer(t, st, "sv-dismiss", nodeID, specID)
 	stop()
-	deleteServer(t, h, token, sv.ID)
+	retireServer(t, srv, token, sv.ID)
 
 	rec := do(t, h, http.MethodDelete, "/api/v1/nodes/"+nodeID+"/removals/sv-other", token, nil)
 	if rec.Code != http.StatusNotFound || codedBody(t, rec.Body.Bytes()).Code != "removal_not_found" {

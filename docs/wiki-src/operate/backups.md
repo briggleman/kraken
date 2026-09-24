@@ -1,6 +1,6 @@
 ---
 title: Backups
-description: What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on.
+description: What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, what a restore does to the tree it lands on, and what happens to the archives when a server is retired or deleted.
 section: operate
 order: 33
 ---
@@ -201,3 +201,26 @@ swap did not, and the displaced originals are then left beside the tree as
 `*.kraken-aside-*` directories. Check the server's files before starting it. An archive only ever contains what
 was included, so a restore cannot bring back a file the globs never captured,
 which is the other reason to check that `captured` line early.
+
+## Retired servers keep their archives
+
+Retiring a server ([Servers](/wiki/operate/servers/#retiring-a-server)) takes a
+final backup, named `final-before-retire`, and then removes the world — but it
+never touches an archive. They stay where the node's target keeps them, keyed by
+the server's id, and the retired server's backup list still answers from the
+node it left. Retention does not run for a retired server, because nothing
+captures for it, so its last five archives stay.
+
+A revive can restore any of them after its install: the archive has to be on
+the node the server is revived onto, which by default is the node it left.
+
+**Deleting a retired server permanently** deletes its archives only where they
+are provably its own: the zero-config node-local layout, where each server's
+archives live in `<backup_dir>/<server id>/`. A configured backup directory, a
+share, SFTP and SMB — and the mirror, which is always one of those — keep every
+server's archives side by side, and a file called
+`1726000000000__nightly.tar.gz` does not say whose it is. On those targets the
+archives are **kept**, and the delete's answer says which location kept them.
+If you use a shared target and want a deleted server's archives gone, delete
+them there by hand; `{{SLUG}}` in the path at least keeps each game's archives
+in a folder of its own.

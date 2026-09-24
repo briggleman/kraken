@@ -26,6 +26,13 @@ type Runtime interface {
 	// Remove stops and removes a server's container, optionally deleting its data.
 	Remove(ctx context.Context, serverID string, deleteData bool) error
 
+	// PurgeBackups deletes a server's backup archives wherever they are its own
+	// — the primary target and the mirror, each only when that target keeps one
+	// directory per server — and reports, as a comma-separated list, the
+	// locations it kept because their archives sit beside other servers'. It is
+	// the permanent delete of a retired server (#360), and runs after Remove.
+	PurgeBackups(ctx context.Context, serverID string) (kept string, err error)
+
 	// ApplyConfig writes rendered config files (path → content) into the server's
 	// data volume.
 	ApplyConfig(ctx context.Context, serverID string, files map[string]string) error

@@ -132,7 +132,7 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 

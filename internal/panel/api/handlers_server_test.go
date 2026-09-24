@@ -70,7 +70,8 @@ func waitForState(t *testing.T, h http.Handler, token, id, want string) {
 }
 
 func TestServerLifecycle_CreateInstallStart(t *testing.T) {
-	h := newTestServer(t)
+	srv, _ := newTestAPI(t)
+	h := srv.Handler()
 	token := login(t, h)
 	addr := startFakeAgent(t, "node-x")
 	nodeID := registerNode(t, h, token, addr) // linux, wine-enabled, 16GB, ports 27000-27100
@@ -139,9 +140,10 @@ func TestServerLifecycle_CreateInstallStart(t *testing.T) {
 		t.Fatalf("expected offline after stop, got %q", st)
 	}
 
-	// Delete it.
+	// Retire it, then delete it permanently.
+	retireServer(t, srv, token, created.ID)
 	rec = do(t, h, http.MethodDelete, "/api/v1/servers/"+created.ID, token, nil)
-	if rec.Code != http.StatusNoContent {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("delete server: status %d", rec.Code)
 	}
 }

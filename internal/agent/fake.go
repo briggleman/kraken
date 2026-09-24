@@ -83,6 +83,28 @@ type FakeRuntime struct {
 	// removeGate, when set, holds every Remove until it is closed (see
 	// HoldRemovals) — a removal that hangs on the node.
 	removeGate chan struct{}
+	// purges records every PurgeBackups, and sharedBackups makes the fake a
+	// node whose archives sit on a shared target, which a purge keeps (see
+	// SetSharedBackupTarget).
+	purges        []string
+	sharedBackups string
+	// backupErr, when set, makes every backup land FAILED with this reason
+	// (see SetBackupFailure).
+	backupErr string
+	// backupPending, when non-zero, makes new backups start PENDING and land
+	// after that many ListBackups calls (never, when negative); pendingLeft
+	// counts down per archive (see SetBackupPending).
+	backupPending int
+	pendingLeft   map[string]int
+	// powerFailN fails the next N power actions of a kind with Unavailable,
+	// the way a node that went away does (see FailNextPower).
+	powerFailN map[agentpb.PowerAction]int
+	// removeHook, when set, runs at the start of every Remove (see
+	// SetRemoveHook) — the moment a test checks what was true before it.
+	removeHook func(serverID string, deleteData bool)
+	// listBackupsHook, when set, runs at the start of every ListBackups (see
+	// SetListBackupsHook).
+	listBackupsHook func(serverID string)
 	// fileErr, when set, is what every file operation that reads or changes the
 	// tree fails with (see WithFakeFileError).
 	fileErr error
@@ -358,8 +380,11 @@ func (f *FakeRuntime) Removals() []FakeRemoval {
 func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bool) error {
 	f.mu.Lock()
 	f.removals = append(f.removals, FakeRemoval{ServerID: serverID, DeleteData: deleteData})
-	gate := f.removeGate
+	gate, hook := f.removeGate, f.removeHook
 	f.mu.Unlock()
+	if hook != nil {
+		hook(serverID, deleteData)
+	}
 	if gate != nil {
 		select {
 		case <-gate:
@@ -377,6 +402,89 @@ func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bo
 		delete(f.files, serverID)
 	}
 	return nil
+}
+
+// SetSharedBackupTarget makes later purges keep the archives and report kept as
+// the location they were kept on, the way a node whose backups go to a share
+// or a configured directory does; "" makes the fake a zero-config node again.
+func (f *FakeRuntime) SetSharedBackupTarget(kept string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sharedBackups = kept
+}
+
+// Purges returns the server ids every PurgeBackups was asked for, in order.
+func (f *FakeRuntime) Purges() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.purges...)
+}
+
+// PurgeBackups deletes the server's archives, or keeps them on a shared target.
+func (f *FakeRuntime) PurgeBackups(_ context.Context, serverID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.purges = append(f.purges, serverID)
+	if f.sharedBackups != "" {
+		return f.sharedBackups, nil
+	}
+	delete(f.backups, serverID)
+	return "", nil
+}
+
+// SetBackupFailure makes every later backup land FAILED with reason, the way
+// an archive the node could not write does; "" makes them succeed again.
+func (f *FakeRuntime) SetBackupFailure(reason string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.backupErr = reason
+}
+
+// Backups returns copies of the archives the fake holds for serverID.
+func (f *FakeRuntime) Backups(serverID string) []*agentpb.BackupInfo {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*agentpb.BackupInfo, 0, len(f.backups[serverID]))
+	for _, b := range f.backups[serverID] {
+		out = append(out, cloneBackup(b))
+	}
+	return out
+}
+
+// SetBackupPending makes later backups start PENDING and land — READY, or
+// FAILED under SetBackupFailure — after lists ListBackups calls, or never when
+// lists is negative: an archiver that takes its time, or one that hangs. 0
+// makes them land at once again.
+func (f *FakeRuntime) SetBackupPending(lists int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.backupPending = lists
+}
+
+// FailNextPower makes the next n power actions of kind fail with Unavailable,
+// then lets them through.
+func (f *FakeRuntime) FailNextPower(action agentpb.PowerAction, n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.powerFailN == nil {
+		f.powerFailN = map[agentpb.PowerAction]int{}
+	}
+	f.powerFailN[action] = n
+}
+
+// SetListBackupsHook runs fn at the start of every later ListBackups (nil
+// clears it) — inside the window a caller spends waiting on the node.
+func (f *FakeRuntime) SetListBackupsHook(fn func(serverID string)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listBackupsHook = fn
+}
+
+// SetRemoveHook runs fn at the start of every later Remove (nil clears it).
+func (f *FakeRuntime) SetRemoveHook(fn func(serverID string, deleteData bool)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removeHook = fn
 }
 
 // ApplyConfig records the rendered files in memory (no real volume in the fake)
@@ -603,14 +711,45 @@ func (f *FakeRuntime) CreateBackup(_ context.Context, serverID, _, name string, 
 		name = "backup"
 	}
 	b := &agentpb.BackupInfo{Id: fmt.Sprintf("%d__%s", nowMs(), name), Name: name, Size: 1024, CreatedUnixMs: nowMs()}
+	switch {
+	case f.backupPending != 0:
+		b.State = agentpb.BackupState_BACKUP_STATE_PENDING
+		if f.pendingLeft == nil {
+			f.pendingLeft = map[string]int{}
+		}
+		f.pendingLeft[b.Id] = f.backupPending
+	case f.backupErr != "":
+		b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupErr
+	}
 	f.backups[serverID] = append(f.backups[serverID], b)
-	return b, nil
+	return cloneBackup(b), nil
 }
 
 func (f *FakeRuntime) ListBackups(_ context.Context, serverID, _ string) ([]*agentpb.BackupInfo, error) {
 	f.mu.Lock()
+	hook := f.listBackupsHook
+	f.mu.Unlock()
+	if hook != nil {
+		hook(serverID)
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.backups[serverID], nil
+	out := make([]*agentpb.BackupInfo, 0, len(f.backups[serverID]))
+	for _, b := range f.backups[serverID] {
+		if left, pending := f.pendingLeft[b.Id]; pending && left > 0 {
+			if left--; left == 0 {
+				delete(f.pendingLeft, b.Id)
+				b.State = agentpb.BackupState_BACKUP_STATE_UNSPECIFIED
+				if f.backupErr != "" {
+					b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupErr
+				}
+			} else {
+				f.pendingLeft[b.Id] = left
+			}
+		}
+		out = append(out, cloneBackup(b))
+	}
+	return out, nil
 }
 
 func (f *FakeRuntime) recordRestore(serverID, how, id string) (failure string, events []*agentpb.RestoreEvent, gate <-chan struct{}, delay time.Duration, size int64) {
@@ -944,6 +1083,10 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 	f.mu.Lock()
 	reason, failing := f.powerErrs[action]
 	perr := f.powerFailures[action]
+	if n := f.powerFailN[action]; n > 0 {
+		f.powerFailN[action] = n - 1
+		reason, failing = "the node did not answer", true
+	}
 	f.mu.Unlock()
 	if perr != nil {
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, perr

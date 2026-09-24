@@ -92,8 +92,16 @@
           <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required · the server uuid</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>the server and its live state</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
         </details>
         <details class="ep m-delete w">
-          <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>&#123;id&#125;</em></span><span class="ep-r"><span class="ep-s">delete a server and its data</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; its backups are kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
+          <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>&#123;id&#125;</em></span><span class="ep-r"><span class="ep-s">delete a retired server permanently</span></span></summary>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>gone — the row, its schedules, and its archives where they are its own; the note names any kept</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>server_not_retired — retire it first</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
+        </details>
+        <details class="ep m-post w">
+          <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>&#123;id&#125;</em>/retire</span><span class="ep-r"><span class="ep-s">retire a server — final backup, then its world goes; the row and backups stay</span></span></summary>
+          <div class="ep-d"><div class="ep-grp"><h5>body</h5><p class="ep-line"><b>final_backup</b> <em>boolean · default true</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>retiring — poll the server until it reads retired</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>server_retired · server_busy · server_restoring</em></p></div></div>
+        </details>
+        <details class="ep m-post w">
+          <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>&#123;id&#125;</em>/revive</span><span class="ep-r"><span class="ep-s">place a retired server again, restore a backup, start it</span></span></summary>
+          <div class="ep-d"><div class="ep-grp"><h5>body</h5><p class="ep-line"><b>node_id · memory_mb · restore_backup_id · start</b> <em>all optional</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>installing</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>server_not_retired · removal_pending · backup_not_found</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>&#123;id&#125;</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>

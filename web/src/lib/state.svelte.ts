@@ -6,9 +6,9 @@
 
 import { stepWalk, pushSample } from "./walk";
 import { allSyntheticTracks } from "./views.svelte";
-import { deleteCurrentServer, surface } from "./depth.svelte";
+import { retireCurrentServer, surface } from "./depth.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
-import { api } from "@/api/client";
+import { api, errMsg } from "@/api/client";
 
 export const reducedMotion =
   typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -74,6 +74,10 @@ export const ui = $state({
     typed: boolean;
   },
 
+  // Why the last spec delete was refused (a server still uses the spec, say),
+  // for the spec editor to show; it stays open when the delete does not happen.
+  specError: null as string | null,
+
   // first-run overlays (the login itself is auth-driven; these are the
   // wizard's restart choreography)
   loginOpen: false,
@@ -119,10 +123,12 @@ export function closeSheet(id: SheetId) {
 // Backups are named because they are NOT taken: they are kept (on the node, a
 // share or a mirror — wherever the target puts them), and a
 // warning that claimed otherwise (it did, until #354) is how a surviving archive
-// came to look like another server's.
+// came to look like another server's. The button retires the server now
+// (#360), and the retire takes a final backup before the world goes — which
+// the warning says first, because it is what makes the rest recoverable.
 export const CD_SERVER_BODY =
-  "this removes the world and config for this server. its backups are kept. " +
-  "it cannot be undone.";
+  "retiring stops this server, takes a final backup, then removes its world and config from the node. " +
+  "its backups are kept, and it can be revived later from any of them.";
 
 // Retiring an untracked container: the one confirmation that destroys nothing,
 // which is why it is not typed. The container goes; everything it was using
@@ -174,6 +180,11 @@ export function openConfirm(
   };
 }
 
+/** The word a typed confirmation asks for: its verb. */
+export function confirmWord(c: { verb?: string } | null | undefined): string {
+  return (c?.verb || "delete").toLowerCase();
+}
+
 export function closeConfirm() {
   ui.confirm = null;
   if (confirmReturn && document.contains(confirmReturn)) confirmReturn.focus();
@@ -197,14 +208,20 @@ export async function confirmGo() {
     // editor closes; servers built from it keep running
     const spec = fleet.specs.find((sp) => sp.name.toLowerCase() === c.name.toLowerCase());
     ui.confirm = null;
-    closeSheet("specEdit");
-    if (spec) {
-      try {
-        await api.deleteSpec(spec.id);
-        await refreshFleet();
-      } catch {
-        /* the audit log records the refusal; the list simply keeps the row */
-      }
+    ui.specError = null;
+    if (!spec) {
+      closeSheet("specEdit");
+      return;
+    }
+    try {
+      await api.deleteSpec(spec.id);
+      closeSheet("specEdit");
+      await refreshFleet();
+    } catch (e) {
+      // The refusal is the operator's next step ("2 servers use this spec (1
+      // retired) — revive or delete them for good first"): the editor stays
+      // open and says it.
+      ui.specError = errMsg(e);
     }
     return;
   }
@@ -225,7 +242,7 @@ export async function confirmGo() {
     }
     return;
   }
-  const ok = await deleteCurrentServer();
+  const ok = await retireCurrentServer();
   ui.confirm = null;
   if (ok) surface();
 }

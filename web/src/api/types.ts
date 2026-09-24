@@ -11,7 +11,14 @@ export type ServerState =
   | "stopping"
   | "crashed"
   /** A backup restore is swapping save files; start waits for it (#361). */
-  | "restoring";
+  | "restoring"
+  /** A retire is running (#360): stop, final backup, removal. Everything that
+   *  would change the server waits for it; it lands `retired`, or goes back
+   *  to the state it came from if abandoned. */
+  | "retiring"
+  /** On no node (#360): its containers and world are gone, its row, config,
+   *  schedules (switched off) and backups are kept. Revive or delete it. */
+  | "retired";
 
 export type PlatformKind = "linux-native" | "linux-wine" | "windows-native";
 
@@ -241,6 +248,9 @@ export interface ScheduledTask {
   last_run_at?: string;
   next_run_at?: string;
   last_error?: string;
+  /** Switched off by its server's retire; a revive switches it back on
+   *  (#360). An operator's own enable or disable clears it. */
+  disabled_by_retire?: boolean;
   created_at: string;
 }
 
@@ -278,7 +288,55 @@ export interface Server {
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;
+  /** Present only while a retire runs (#360), with state `retiring`. */
+  retire?: RetireProgress;
+  /** When the server was retired — only on a retired server. */
+  retired_at?: string;
+  /** What the retire could not do (a final backup skipped or failed, a
+   *  removal queued for a node that did not answer), or why a retire was
+   *  abandoned. */
+  retire_note?: string;
+  /** The node a retired server left — where its archives are, and where a
+   *  revive places it by default. `node_id` is empty while it is retired. */
+  retired_from_node_id?: string;
+  /** The host ports a retired server held, which a revive asks for again. */
+  retired_ports?: Record<string, number>;
   created_at: string;
+}
+
+/** A retire in progress, as the server row records it (#360). */
+export interface RetireProgress {
+  phase: "stopping" | "backing_up" | "removing";
+  /** Where the server goes back to if the retire is abandoned. */
+  prev_state?: ServerState;
+  /** The final backup so far: off (not asked for), requested, ready, failed or
+   *  skipped; final_backup_note says why it failed or was skipped. */
+  final_backup: "off" | "requested" | "ready" | "failed" | "skipped";
+  final_backup_note?: string;
+  final_backup_id?: string;
+  /** Server clock. */
+  started_at: string;
+}
+
+/** What POST /servers/{id}/revive accepts. Everything is optional: the old
+ *  node, the old memory, no restore, no start. */
+export interface ReviveInput {
+  node_id?: string;
+  memory_mb?: number;
+  /** A backup on the node the server lands on, restored after the install. */
+  restore_backup_id?: string;
+  /** Start once the install (and the restore) succeeded. */
+  start?: boolean;
+  steam_guard_code?: string;
+}
+
+/** What a permanent delete answers (#360). */
+export interface PermanentDeleteResult {
+  /** Anything the operator should know — archives a shared backup target
+   *  kept, or a node that is owed the delete. Empty when there is nothing. */
+  note: string;
+  /** The node could not be reached; it deletes the archives when it answers. */
+  removal_pending: boolean;
 }
 
 /** A running backup restore, as the Panel's restore job reports it. Progress
@@ -457,6 +515,9 @@ export interface PendingRemoval {
   server_id: string;
   /** Whether the operator's delete also removes the world and config. */
   delete_data: boolean;
+  /** A permanent delete (#360): the archives go too, where they are the
+   *  server's own. */
+  delete_backups?: boolean;
   requested_at: string;
   /** Failed tries so far, the one made at delete time included. */
   attempts: number;

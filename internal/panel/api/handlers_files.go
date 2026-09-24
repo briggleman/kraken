@@ -187,8 +187,29 @@ type fileEntryView struct {
 }
 
 // agentForServer resolves the hosting Agent client for a server, writing the
-// appropriate error response on failure.
+// appropriate error response on failure. A retired server is refused with 409
+// server_retired (#360): it is on no node, and its files are gone.
 func (s *Server) agentForServer(w http.ResponseWriter, r *http.Request, id string) (agentpb.NodeServiceClient, *store.Server, bool) {
+	return s.resolveAgent(w, r, id, false)
+}
+
+// agentForServerOrRetired is agentForServer for the one read a retired server
+// still answers — its backup list — dialling the node it was retired from,
+// where its archives are.
+func (s *Server) agentForServerOrRetired(w http.ResponseWriter, r *http.Request, id string) (agentpb.NodeServiceClient, *store.Server, bool) {
+	return s.resolveAgent(w, r, id, true)
+}
+
+// hostNodeID is the node a server's Agent calls go to: the one it is placed
+// on, or for a retired server the one it left (#360).
+func hostNodeID(sv *store.Server) string {
+	if sv.State == store.StateRetired {
+		return sv.RetiredFromNodeID
+	}
+	return sv.NodeID
+}
+
+func (s *Server) resolveAgent(w http.ResponseWriter, r *http.Request, id string, allowRetired bool) (agentpb.NodeServiceClient, *store.Server, bool) {
 	sv, err := s.store.GetServer(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "server not found")
@@ -201,7 +222,16 @@ func (s *Server) agentForServer(w http.ResponseWriter, r *http.Request, id strin
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return nil, nil, false
 	}
-	node, err := s.store.GetNode(r.Context(), sv.NodeID)
+	if sv.State == store.StateRetired && !allowRetired {
+		writeCoded(w, http.StatusConflict, codeServerRetired, retiredRefusal)
+		return nil, nil, false
+	}
+	node, err := s.store.GetNode(r.Context(), hostNodeID(sv))
+	if errors.Is(err, store.ErrNotFound) && sv.State == store.StateRetired {
+		writeCoded(w, http.StatusNotFound, codeNotFound,
+			"the node this server was retired from no longer exists, and its archives went with it")
+		return nil, nil, false
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load node")
 		return nil, nil, false
@@ -307,7 +337,7 @@ func (s *Server) handleMakeDir(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
@@ -334,7 +364,7 @@ func (s *Server) handleMovePath(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
@@ -356,7 +386,7 @@ func (s *Server) handleCopyPath(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
@@ -383,7 +413,7 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -425,7 +455,7 @@ func (s *Server) handleUploadFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	files := r.MultipartForm.File["files"]
@@ -470,7 +500,7 @@ func (s *Server) handleDeleteFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)

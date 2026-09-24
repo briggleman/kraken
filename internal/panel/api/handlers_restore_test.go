@@ -443,6 +443,7 @@ func TestWritersAreRefusedWhileRestoring(t *testing.T) {
 		{"backup create", http.MethodPost, base + "/backups", map[string]string{"name": "snap"}},
 		{"backup delete", http.MethodDelete, base + "/backups/" + restoreBackupID, nil},
 		{"server delete", http.MethodDelete, base, nil},
+		{"retire", http.MethodPost, base + "/retire", map[string]bool{"final_backup": true}},
 		{"reinstall", http.MethodPost, base + "/reinstall", nil},
 		{"settings save", http.MethodPut, base + "/settings", map[string]any{"values": map[string]string{}}},
 		{"file write", http.MethodPost, base + "/files/write", map[string]string{"path": "a.txt", "content": "x"}},

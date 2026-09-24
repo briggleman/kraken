@@ -59,6 +59,27 @@ func (s *Server) ExpireDownloadTokensForTest() {
 // task whose next run is due — without the ticker cmd/panel starts it on.
 func (s *Server) RunDueSchedulesForTest(ctx context.Context) { s.runDueSchedules(ctx) }
 
+// SetReconcileWriteHookForTest runs fn inside a reconcile pass, after the
+// Agent answered and before the row is re-read to be written. The returned
+// func clears it.
+func SetReconcileWriteHookForTest(fn func(serverID string)) func() {
+	reconcileWriteHook = fn
+	return func() { reconcileWriteHook = nil }
+}
+
+// OperationHeldForTest reports the retire, revive or delete holding a server,
+// or "" — what a test waits on instead of sleeping after a retire lands.
+func (s *Server) OperationHeldForTest(serverID string) string { return s.restores.opHolding(serverID) }
+
+// SetFinalBackupTimingForTest shortens the final backup's poll interval and
+// deadline, so the wait loop and its timeout run in milliseconds. The returned
+// func restores them.
+func SetFinalBackupTimingForTest(poll, timeout time.Duration) func() {
+	oldPoll, oldTimeout := finalBackupPollInterval, finalBackupTimeout
+	finalBackupPollInterval, finalBackupTimeout = poll, timeout
+	return func() { finalBackupPollInterval, finalBackupTimeout = oldPoll, oldTimeout }
+}
+
 // SetRestoreClaimHookForTest runs fn just after a start, restart or reinstall
 // claims the server (see claimStart), so a test can attempt a restore exactly
 // there. The returned func clears it.

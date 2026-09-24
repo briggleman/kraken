@@ -79,10 +79,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// Servers by state.
 	if servers, err := s.store.ListServers(ctx); err == nil {
-		byState := map[store.ServerState]int{
-			store.StateInstalling: 0, store.StateInstallFailed: 0, store.StateOffline: 0,
-			store.StateStarting: 0, store.StateRunning: 0, store.StateStopping: 0,
-			store.StateCrashed: 0, store.StateRestoring: 0,
+		// Every state is a series from the first scrape, at zero if need be: a
+		// series that appears only once a server enters it (retired, say) reads
+		// as a gap in a dashboard rather than as none.
+		byState := map[store.ServerState]int{}
+		for _, st := range store.ServerStates() {
+			byState[st] = 0
 		}
 		for _, sv := range servers {
 			byState[sv.State]++

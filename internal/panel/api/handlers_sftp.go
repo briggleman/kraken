@@ -105,6 +105,9 @@ func (s *Server) sftpTarget(w http.ResponseWriter, r *http.Request) (*store.Serv
 	if !ok {
 		return nil, nil, nil, false
 	}
+	if s.refuseWhileHeld(w, sv) {
+		return nil, nil, nil, false
+	}
 	node, err := s.store.GetNode(r.Context(), sv.NodeID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load hosting node")

@@ -789,6 +789,45 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 	return dataErr
 }
 
+// PurgeBackups deletes a removed server's backup archives on the primary target
+// and the mirror, where they are its own (see localBackupTarget.purgeServer),
+// and names the locations it kept. The permanent delete of a retired server
+// (#360) is the only caller; a plain Remove never touches an archive.
+//
+// Targets are resolved without a slug. That is exact for the only layout that
+// is ever purged — the zero-config default has no path tokens — and a
+// templated path is flat, so it is kept whatever it expands to.
+func (d *DockerRuntime) PurgeBackups(_ context.Context, serverID string) (string, error) {
+	if err := validRemoveID(serverID); err != nil {
+		return "", err
+	}
+	var kept []string
+	purge := func(t backupTarget, mirror bool) error {
+		if t == nil {
+			return nil
+		}
+		if p, ok := t.(serverPurger); ok {
+			done, err := p.purgeServer(serverID)
+			if err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
+		}
+		kept = append(kept, keptLabel(t, mirror))
+		return nil
+	}
+	if err := purge(d.backupTargetFor(""), false); err != nil {
+		return "", fmt.Errorf("docker: purge backups of %s: %w", serverID, err)
+	}
+	if err := purge(d.replicateTargetFor(""), true); err != nil {
+		return "", fmt.Errorf("docker: purge mirrored backups of %s: %w", serverID, err)
+	}
+	d.forgetServerBackupJobs(serverID)
+	return strings.Join(kept, ", "), nil
+}
+
 // validRemoveID refuses a server id that could not name a single directory
 // under the data root: empty, containing a path separator of either OS, or a
 // dot-dot. InvalidArgument, because it is the request that is wrong.

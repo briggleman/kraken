@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { ui, closeConfirm, confirmGo } from "@/lib/state.svelte";
+  import { ui, closeConfirm, confirmGo, confirmWord } from "@/lib/state.svelte";
 
   // Anything irreversible is gated by the typed confirmation: the dialog
   // names the thing, states what is lost, and keeps its confirm disabled
-  // until the word is typed (case-insensitively).
-  const CD_WORD = "delete";
+  // until the word is typed (case-insensitively). The word is the verb on the
+  // button — "retire" for a server (#360), "delete" for everything else.
 
   let typed = $state("");
   let confirmEl: HTMLDivElement;
@@ -16,8 +16,9 @@
   // cancel so a stray Enter is the safe answer.
   const mustType = $derived(ui.confirm?.typed ?? true);
   const verb = $derived(ui.confirm?.verb ?? "delete");
-  const ok = $derived(!mustType || typed.trim().toLowerCase() === CD_WORD);
-  const hint = $derived(mustType && typed.length && !ok ? "type " + CD_WORD + " to enable" : "");
+  const word = $derived(confirmWord(ui.confirm));
+  const ok = $derived(!mustType || typed.trim().toLowerCase() === word);
+  const hint = $derived(mustType && typed.length && !ok ? "type " + word + " to enable" : "");
 
   $effect(() => {
     if (ui.confirm) {
@@ -74,7 +75,7 @@
     </h2>
     <p class="confirm-body" id="cdBody">{ui.confirm?.body ?? ""}</p>
     {#if mustType}
-      <label class="confirm-label" for="cdInput">type <b>delete</b> to confirm</label>
+      <label class="confirm-label" for="cdInput">type <b>{word}</b> to confirm</label>
       <input
         class="confirm-input"
         id="cdInput"

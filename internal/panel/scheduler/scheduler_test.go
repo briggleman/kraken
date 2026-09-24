@@ -271,7 +271,7 @@ func TestPlaceWithMemory_ReservesTheGivenFigure(t *testing.T) {
 	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
 	n := linuxNode("lin-a", 16384, true)
 
-	p, err := PlaceWithMemory(sp, []*cluster.Node{n}, 8192)
+	p, err := PlaceWithMemory(sp, []*cluster.Node{n}, 8192, nil)
 	if err != nil {
 		t.Fatalf("PlaceWithMemory: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestPlaceWithMemory_StillBoundedByNodeCapacity(t *testing.T) {
 	sp.Resources = spec.Resources{MinMemoryMB: 2048, RecommendedMemoryMB: 4096}
 	n := linuxNode("lin-a", 8192, true)
 
-	if _, err := PlaceWithMemory(sp, []*cluster.Node{n}, 16384); err == nil {
+	if _, err := PlaceWithMemory(sp, []*cluster.Node{n}, 16384, nil); err == nil {
 		t.Fatal("expected a placement failure when the request exceeds the node")
 	}
 	if n.AllocatedMemoryMB != 0 {
@@ -311,5 +311,48 @@ func TestPlaceDelegatesToTheSpecFigure(t *testing.T) {
 	}
 	if p.MemoryMB != sp.Resources.AllocMemoryMB() {
 		t.Fatalf("Place reserved %dMB, want the spec's %dMB", p.MemoryMB, sp.Resources.AllocMemoryMB())
+	}
+}
+
+// A revived server asks for the ports it held before it was retired (#360):
+// they are what players saved. Free, it gets them back; taken, it falls back
+// to the allocation a new server gets — the spec's default first — rather
+// than failing, because a different port is better than no server.
+func TestPlaceWithMemory_PreferredPorts(t *testing.T) {
+	sp := crossPlatformSpec() // one port, "game", default 27015
+
+	n := linuxNode("lin-a", 16384, false)
+	p, err := PlaceWithMemory(sp, []*cluster.Node{n}, 2048, map[string]int{"game": 27042})
+	if err != nil {
+		t.Fatalf("place: %v", err)
+	}
+	if p.Ports["game"] != 27042 {
+		t.Fatalf("free preferred port: got %d, want 27042", p.Ports["game"])
+	}
+
+	taken := linuxNode("lin-b", 16384, false)
+	if _, ok := taken.Ports.Allocate(27042); !ok {
+		t.Fatal("setup: could not take 27042")
+	}
+	p, err = PlaceWithMemory(sp, []*cluster.Node{taken}, 2048, map[string]int{"game": 27042})
+	if err != nil {
+		t.Fatalf("place: %v", err)
+	}
+	if p.Ports["game"] != 27015 {
+		t.Fatalf("taken preferred port: got %d, want the spec default 27015", p.Ports["game"])
+	}
+
+	both := linuxNode("lin-c", 16384, false)
+	for _, port := range []int{27042, 27015} {
+		if _, ok := both.Ports.Allocate(port); !ok {
+			t.Fatalf("setup: could not take %d", port)
+		}
+	}
+	p, err = PlaceWithMemory(sp, []*cluster.Node{both}, 2048, map[string]int{"game": 27042})
+	if err != nil {
+		t.Fatalf("place: %v", err)
+	}
+	if got := p.Ports["game"]; got == 27042 || got == 27015 || got < 27000 || got > 27100 {
+		t.Fatalf("both taken: got %d, want another free port in range", got)
 	}
 }

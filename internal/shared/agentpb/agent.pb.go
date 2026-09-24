@@ -1028,9 +1028,17 @@ func (*CreateServerResponse) Descriptor() ([]byte, []int) {
 }
 
 type RemoveServerRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	DeleteData    bool                   `protobuf:"varint,2,opt,name=delete_data,json=deleteData,proto3" json:"delete_data,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ServerId   string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	DeleteData bool                   `protobuf:"varint,2,opt,name=delete_data,json=deleteData,proto3" json:"delete_data,omitempty"`
+	// delete_backups also deletes the server's backup archives — the permanent
+	// delete of a retired server (#360). Only archives that can be attributed to
+	// this server alone are deleted: the zero-config node-local layout keeps them
+	// in <backup_dir>/<server_id>/. A configured directory, a share, SFTP and SMB
+	// store every server's archives side by side, so those are kept and
+	// RemoveServerResponse.backups_kept says so. An Agent older than the field
+	// ignores it and deletes nothing, which the Panel reads off backups_handled.
+	DeleteBackups bool `protobuf:"varint,3,opt,name=delete_backups,json=deleteBackups,proto3" json:"delete_backups,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1079,8 +1087,23 @@ func (x *RemoveServerRequest) GetDeleteData() bool {
 	return false
 }
 
+func (x *RemoveServerRequest) GetDeleteBackups() bool {
+	if x != nil {
+		return x.DeleteBackups
+	}
+	return false
+}
+
 type RemoveServerResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// backups_handled is set by an Agent that acted on delete_backups. False on
+	// a response to a request that did not ask, and on every response from an
+	// Agent too old to know the field — which kept the archives.
+	BackupsHandled bool `protobuf:"varint,1,opt,name=backups_handled,json=backupsHandled,proto3" json:"backups_handled,omitempty"`
+	// backups_kept names the backup locations whose archives were kept because
+	// they cannot be told apart from other servers' ("the network share", "the
+	// SFTP mirror"), comma-separated; empty when everything was deleted.
+	BackupsKept   string `protobuf:"bytes,2,opt,name=backups_kept,json=backupsKept,proto3" json:"backups_kept,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1113,6 +1136,20 @@ func (x *RemoveServerResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RemoveServerResponse.ProtoReflect.Descriptor instead.
 func (*RemoveServerResponse) Descriptor() ([]byte, []int) {
 	return file_kraken_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RemoveServerResponse) GetBackupsHandled() bool {
+	if x != nil {
+		return x.BackupsHandled
+	}
+	return false
+}
+
+func (x *RemoveServerResponse) GetBackupsKept() string {
+	if x != nil {
+		return x.BackupsKept
+	}
+	return ""
 }
 
 // RenderedFile is a config file's destination path and contents.
@@ -4772,12 +4809,15 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x0ejoined_unix_ms\x18\x02 \x01(\x03R\fjoinedUnixMs\"F\n" +
 	"\x13CreateServerRequest\x12/\n" +
 	"\x04spec\x18\x01 \x01(\v2\x1b.kraken.agent.v1.ServerSpecR\x04spec\"\x16\n" +
-	"\x14CreateServerResponse\"S\n" +
+	"\x14CreateServerResponse\"z\n" +
 	"\x13RemoveServerRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1f\n" +
 	"\vdelete_data\x18\x02 \x01(\bR\n" +
-	"deleteData\"\x16\n" +
-	"\x14RemoveServerResponse\"<\n" +
+	"deleteData\x12%\n" +
+	"\x0edelete_backups\x18\x03 \x01(\bR\rdeleteBackups\"b\n" +
+	"\x14RemoveServerResponse\x12'\n" +
+	"\x0fbackups_handled\x18\x01 \x01(\bR\x0ebackupsHandled\x12!\n" +
+	"\fbackups_kept\x18\x02 \x01(\tR\vbackupsKept\"<\n" +
 	"\fRenderedFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\"f\n" +

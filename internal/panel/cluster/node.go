@@ -193,9 +193,12 @@ type ManagedContainer struct {
 // DeleteData is the operator's intent at the time of the delete and is replayed
 // verbatim — a retry never widens what the operator asked to destroy.
 type PendingRemoval struct {
-	ServerID    string    `json:"server_id"`
-	DeleteData  bool      `json:"delete_data"`
-	RequestedAt time.Time `json:"requested_at"`
+	ServerID   string `json:"server_id"`
+	DeleteData bool   `json:"delete_data"`
+	// DeleteBackups is the permanent delete of a retired server (#360): the
+	// node also deletes the server's archives, where they are its own.
+	DeleteBackups bool      `json:"delete_backups,omitempty"`
+	RequestedAt   time.Time `json:"requested_at"`
 	// Attempts counts the tries that failed, including the first one made at
 	// delete time; LastError is the most recent failure, verbatim.
 	Attempts  int    `json:"attempts"`
@@ -240,6 +243,7 @@ func (n *Node) AddPendingRemoval(p PendingRemoval) {
 	for i := range n.PendingRemovals {
 		if n.PendingRemovals[i].ServerID == p.ServerID {
 			n.PendingRemovals[i].DeleteData = p.DeleteData
+			n.PendingRemovals[i].DeleteBackups = p.DeleteBackups
 			n.PendingRemovals[i].Attempts += p.Attempts
 			n.PendingRemovals[i].NextAttempt = p.NextAttempt
 			if p.LastError != "" {
@@ -277,6 +281,16 @@ func (n *Node) RecordRemovalFailure(serverID, reason string, now time.Time) (cha
 		return changed
 	}
 	return false
+}
+
+// RetryPendingRemovalNow makes the removal owed for serverID due at once,
+// without counting a failure: what was delivered is not what is now owed.
+func (n *Node) RetryPendingRemovalNow(serverID string) {
+	for i := range n.PendingRemovals {
+		if n.PendingRemovals[i].ServerID == serverID {
+			n.PendingRemovals[i].NextAttempt = time.Time{}
+		}
+	}
 }
 
 // FinishPendingRemoval forgets the removal owed for serverID and releases the
@@ -360,10 +374,14 @@ func (n *Node) AvailableMemoryMB() int { return n.TotalMemoryMB - n.AllocatedMem
 func (n *Node) Schedulable() bool { return n.Status == NodeOnline }
 
 // PortRequest names a port a server needs and the preferred number to try first
-// (typically the spec's declared default).
+// (typically the spec's declared default). Fallback, when set, is the number to
+// try when Preferred is taken, before the lowest free port: a revived server
+// prefers the port it held before it was retired, and falls back to the spec's
+// default like any new server (#360).
 type PortRequest struct {
 	Name      string
 	Preferred int
+	Fallback  int
 }
 
 // Reserve atomically reserves memMB of memory and one port per request. On
@@ -380,7 +398,11 @@ func (n *Node) Reserve(memMB int, reqs []PortRequest) (map[string]int, error) {
 	allocated := make(map[string]int, len(reqs))
 	taken := make([]int, 0, len(reqs))
 	for _, req := range reqs {
-		port, ok := n.Ports.Allocate(req.Preferred)
+		want := req.Preferred
+		if want != 0 && req.Fallback != 0 && !n.Ports.IsFree(want) {
+			want = req.Fallback
+		}
+		port, ok := n.Ports.Allocate(want)
 		if !ok {
 			for _, p := range taken {
 				n.Ports.Release(p)

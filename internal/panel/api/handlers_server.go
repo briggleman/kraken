@@ -116,7 +116,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Scheduler reserves memory + ports on the chosen node (in the loaded copy).
-	placement, err := scheduler.PlaceWithMemory(sp, nodes, memReq)
+	placement, err := scheduler.PlaceWithMemory(sp, nodes, memReq, nil)
 	if err != nil {
 		if pinnedName != "" {
 			writeError(w, http.StatusConflict, "node "+pinnedName+" can't host this spec: "+err.Error())
@@ -492,6 +492,18 @@ func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action ag
 	case store.StateInstallFailed:
 		return &startRefusal{status: http.StatusConflict,
 			message: "server install failed; POST /api/v1/servers/{id}/reinstall to retry"}
+	case store.StateRetired:
+		return &startRefusal{status: http.StatusConflict, code: codeServerRetired,
+			message: "this server is retired — it is on no node; revive it before starting it"}
+	}
+	// A retire or revive is moving the server (#360): the retire is stopping
+	// it to remove it, and a revive has not placed it yet.
+	if op := s.restores.opHolding(sv.ID); op != "" || s.retiring(sv) {
+		if op == "" {
+			op = opRetire
+		}
+		return &startRefusal{status: http.StatusConflict, code: codeServerBusy,
+			message: "this server is being " + op + "d, so it was not " + verb}
 	}
 	// A restore is swapping the save files the game would open (#361). The job
 	// as well as the state, so the gate holds even against a row write that
@@ -689,6 +701,12 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
+	// A retired server has no container and no node to send anything to —
+	// stop and kill included (#360).
+	if sv.State == store.StateRetired {
+		writeCoded(w, http.StatusConflict, codeServerRetired, retiredRefusal)
+		return
+	}
 	// Start and restart are refused on a server that has not finished its
 	// install, whose spec cannot be loaded, or whose required settings are
 	// empty (see checkStartable). Stop
@@ -799,6 +817,12 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	// start gate with the swap still underway. The job settles the row.
 	if _, restoring := s.restores.active(sv.ID); restoring {
 		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRestoring})
+		return
+	}
+	// A retire owns its row the same way (#360): the job writes `retired`, or
+	// puts the row back if it is abandoned.
+	if fresh, ferr := s.store.GetServer(ctx, sv.ID); ferr == nil && s.retiring(fresh) {
+		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRetiring})
 		return
 	}
 	// Written onto a fresh read, so nothing another writer stored while the
@@ -1037,7 +1061,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	switch sv.State {
@@ -1082,7 +1106,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not get server")
 		return
 	}
-	if s.refuseWhileRestoring(w, fresh) {
+	if s.refuseWhileHeld(w, fresh) {
 		return
 	}
 	switch fresh.State {
@@ -1103,73 +1127,6 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("server reinstall requested", "id", sv.ID, "name", sv.Name)
 	go s.provision(sv, sp, node, req.SteamGuardCode, prev)
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
-}
-
-// handleDeleteServer removes the server's container and data on the Agent,
-// releases its node allocation, and deletes the record and its schedules.
-//
-// A removal that does not land — the node is down, or the Agent reports a
-// failure — does not stop the delete: it is recorded on the node as a pending
-// removal and finished by the node reconciler once the node answers (#354).
-// Backups are not removed; they stay on the node.
-func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
-	// Detached from the request: once the removal has been attempted, the
-	// record of how it went must be written even if the client has gone.
-	ctx := context.WithoutCancel(r.Context())
-	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "server not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not get server")
-		return
-	}
-	if !s.authorizeServer(w, ctx, sv) {
-		return
-	}
-	// Before anything is recorded: a delete refused for a running restore
-	// must leave no pending removal behind for the reconciler to replay.
-	if s.refuseWhileRestoring(w, sv) {
-		return
-	}
-	// A node that no longer exists has nothing to be told and nothing to hold
-	// the allocation; any other failure to read it means the removal could be
-	// neither delivered nor remembered, and a delete the Panel cannot remember
-	// does not happen.
-	node, err := s.store.GetNode(ctx, sv.NodeID)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		node = nil
-	case err != nil:
-		s.logger.Error("server delete refused: could not load its node", "server", sv.ID, "node", sv.NodeID, "err", err)
-		writeError(w, http.StatusInternalServerError, "could not load the server's node; nothing was deleted")
-		return
-	}
-	if node != nil {
-		removeErr := s.removeOnNode(ctx, node, sv.ID, true)
-		if err := s.settleNodeAfterDelete(ctx, sv, node.ID, removeErr); err != nil {
-			s.logger.Error("server delete refused: could not record its removal on the node",
-				"server", sv.ID, "node", node.ID, "removal_err", removeErr, "err", err)
-			msg := "could not record the removal on the server's node; the server was not deleted"
-			if removeErr == nil {
-				// The node did its part: the containers and the data are gone.
-				// Only the Panel's books are behind, and a retry settles them.
-				msg = "the server's data was removed on the node but the delete could not be recorded; retry the delete"
-			}
-			writeError(w, http.StatusInternalServerError, msg)
-			return
-		}
-	}
-	// Best-effort cleanup of external resources this server published (Cloudflare
-	// DNS records + UniFi port-forwards).
-	s.cleanupServerExternal(ctx, sv)
-	if err := s.store.DeleteServer(ctx, sv.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete server")
-		return
-	}
-	s.installs.Drop(sv.ID)
-	writeJSON(w, http.StatusNoContent, nil)
 }
 
 // ---- helpers ----

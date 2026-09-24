@@ -573,6 +573,8 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/power", s.handleServerLifecyclePower)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/reinstall", s.handleReinstallServer)
 			r.With(s.requirePermission(rbac.PermServerDelete)).Delete("/servers/{id}", s.handleDeleteServer)
+			r.With(s.requirePermission(rbac.PermServerDelete)).Post("/servers/{id}/retire", s.handleRetireServer)
+			r.With(s.requirePermission(rbac.PermServerCreate)).Post("/servers/{id}/revive", s.handleReviveServer)
 			// The retained install log is console output, so it carries the
 			// console-read permission the stream does, not server.view.
 			r.With(s.requirePermission(rbac.PermServerConsoleRead)).Get("/servers/{id}/install-log", s.handleServerInstallLog)

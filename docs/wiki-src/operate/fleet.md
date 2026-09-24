@@ -127,8 +127,8 @@ rather than the typed one, because it destroys nothing:
 - the server's data directory stays exactly where it is, and its backups are
   kept.
 
-It is refused with `409 server_tracked` if the Panel does have a server with
-that id on that node — use the server's own delete for that — and with
+It is refused with `409 server_tracked` if the Panel does have a live server
+with that id on that node — retire the server instead — and with
 `409 removal_pending` if a removal is already owed for that id (see below: that
 removal may delete the data, so a retire promising otherwise would be undone by
 the next retry). A node that is not answering is `503 node_unreachable`; one
@@ -140,12 +140,17 @@ The API is `DELETE /api/v1/nodes/{id}/containers/{serverID}`.
 
 ### Pending removals
 
-A delete no longer needs the node to be there. When the Panel cannot reach the
-node, or its Agent reports that the removal failed, the delete goes through
-anyway — row and schedules — and the removal is remembered on the node together
-with what you asked for (container and data). The server's **memory and ports
-stay allocated** on the node until the removal lands, because the container may
-still be running and bound; they are released when the node confirms.
+A retire no longer needs the node to be there, and neither does a permanent
+delete. When the Panel cannot reach the node, or its Agent reports that the
+removal failed, the retire goes through anyway — the server becomes `retired` —
+and the removal is remembered on the node together with what you asked for
+(container and data, and for a permanent delete the server's own archives). The
+server's **memory and ports stay allocated** on the node until the removal
+lands, because the container may still be running and bound; they are released
+when the node confirms. A retired server does not hold its own removal back,
+while a live server row with the same id on that node does — the removal waits
+rather than destroy what may be a running game — and a revive is refused until
+the removal has landed.
 
 While it is owed, the band reads `removals · 1 pending`, and the container, if
 it is still running, is counted there rather than as untracked. Hover it for the
@@ -156,9 +161,10 @@ line goes away when the Agent confirms. It never holds up the node health pass:
 a node whose removals hang does not delay any other node's status.
 
 If the Panel cannot record the removal at all (its database is failing), the
-delete is refused with a `500` and nothing is deleted.
+retire is abandoned (the server says so in `retire_note`) and a permanent delete
+is refused with a `500`; nothing is removed either way.
 
-This is your delete, carried out late. The Agent never decides on its own that
+This is your retire or delete, carried out late. The Agent never decides on its own that
 a container it finds should go: it adopts what it finds running, as it always
 has, and removes only what the Panel tells it to. The same list is on the node
 record as `pending_removals` in `GET /api/v1/nodes`.

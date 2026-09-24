@@ -380,9 +380,12 @@ plaintext HTTP on a LAN by design, so it is the wrong layer to assert HSTS.
     against the server, then sent the action to the URL's node without checking
     that the server lived there (`sv.NodeID == n.ID`). A caller allowed to power
     server A could name any node and have its Agent sent a power action for A's
-    id. The response then reported that node's view as if it were A's. It was
-    not exploitable beyond that: the other Agent held no such container, and
-    ownership was still enforced. Still, the endpoint trusted a pairing it never
+    id. The response then reported that node's view as if it were A's. The
+    other Agent ordinarily held no such container, so the action failed or did
+    nothing. But a node can hold a leftover container for an id the Panel
+    places elsewhere (the leftovers #354 and #370 deal with), and that
+    container would have been powered. Ownership was still
+    enforced throughout. Still, the endpoint trusted a pairing it never
     verified. It now refuses a mismatch with **404** (`code: not_found`, "server
     not found on this node"). A server that does not exist, one on another
     node, and one the caller may not reach all answer with the same body, so

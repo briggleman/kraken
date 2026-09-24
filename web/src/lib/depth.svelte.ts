@@ -16,6 +16,7 @@ import type {
   SftpStatus,
 } from "@/api/types";
 import type { ScheduleInput } from "@/api/client";
+import { untrack } from "svelte";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 
@@ -107,6 +108,49 @@ export const stream = new ServerStream();
 
 let lastFocus: HTMLElement | null = null;
 let backupPoll: ReturnType<typeof setInterval> | undefined;
+
+// --- the server-state generation (#368) ---------------------------------------
+// `depth.server` has several writers, and they do not answer in the order they
+// were asked. The detail refresh is the slow one: its getServer read is taken
+// when the refresh begins, but it is only applied once all eight reads settle —
+// and one of them, the file listing, reaches the node. A power action taken in
+// between refreshes the fleet and puts the newer state on screen first; the
+// refresh then landed and put the older one back (the chip read `running`, then
+// dropped to `offline` until the next poll, and the stream was re-targeted to
+// the stale mode with it).
+//
+// So every write of `depth.server` goes through setDepthServer, which bumps this
+// count, and a refresh applies its server read only if the count has not moved
+// since the reads went out. Anything that wrote in between is newer by
+// construction. Module state rather than `depth` state: nothing renders it.
+//
+// A write that shows nothing new does not bump it. The fleet poll re-delivers
+// the row on every tick whether or not it changed, and a count moved by a row
+// identical to the one on screen would throw away the refresh's read in favour
+// of no newer fact at all.
+let serverGen = 0;
+
+/** Whether two reads of a server agree on everything the drill-in derives from
+ *  the row: its state (chip, controls, stream mode, `updating`) and its restore
+ *  (the ledger's meter and outcome note). */
+function sameServerView(a: Server | null, b: Server | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.state === b.state &&
+    JSON.stringify(a.restore ?? null) === JSON.stringify(b.restore ?? null) &&
+    JSON.stringify(a.restore_result ?? null) === JSON.stringify(b.restore_result ?? null)
+  );
+}
+
+/** Put a server read on screen. The one writer of `depth.server`, so no write
+ *  can skip the generation; each caller still re-derives the stream mode and
+ *  the `updating` latch from the state it wrote. */
+function setDepthServer(s: Server | null) {
+  if (!sameServerView(depth.server, s)) serverGen++;
+  depth.server = s;
+}
 
 export function streamModeFor(state: Server["state"] | undefined): StreamMode {
   if (!state) return "off";
@@ -312,7 +356,9 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
     oy: (y / innerHeight) * 100 + "%",
   };
   depth.serverId = id;
-  depth.server = fleet.servers.find((s) => s.id === id) ?? null;
+  // Through the generation too: a refresh still in flight from an earlier open
+  // of this same server must not land over this one's.
+  setDepthServer(fleet.servers.find((s) => s.id === id) ?? null);
   depth.backups = [];
   depth.backupMirror = "";
   depth.schedules = [];
@@ -409,6 +455,10 @@ async function refreshDetail() {
   // contact), so an action taken while they are in flight can put up its own
   // notice first — and that one must survive this refresh finishing.
   const noticeAtStart = depth.error;
+  // Likewise the server state: the getServer read below is only as new as this
+  // moment, and any write of depth.server made while the other reads are still
+  // out is newer than it (#368).
+  const genAtStart = serverGen;
   const results = await Promise.allSettled([
     api.getServer(id),
     api.listBackups(id),
@@ -425,9 +475,13 @@ async function refreshDetail() {
     depth.backups = bk.value.backups ?? [];
     depth.backupMirror = bk.value.mirror ?? "";
   }
-  // After the backups, so a restore found in flight can name its archive.
-  if (srv.status === "fulfilled") {
-    depth.server = srv.value;
+  // After the backups, so a restore found in flight can name its archive. And
+  // only over the state it started from: a power action, a reinstall, a restore
+  // or a fleet push that landed meanwhile holds a newer read than this one, and
+  // its stream mode and label with it. The other seven reads are about things
+  // no such action writes, so they apply regardless.
+  if (srv.status === "fulfilled" && serverGen === genAtStart) {
+    setDepthServer(srv.value);
     stream.set(id, streamModeFor(srv.value.state));
     syncUpdatePass(srv.value.state, stream.lines);
     syncRestore(srv.value);
@@ -455,6 +509,23 @@ async function refreshDetail() {
   }
 }
 
+/** The body of App's fleet-sync effect: re-sync the drill-in when the fleet
+ *  poll delivers, and only then.
+ *
+ *  The untrack matters. syncDepthFromFleet reads depth.open, depth.serverId,
+ *  depth.server and stream.lines, and an effect that called it bare re-ran on
+ *  a change to any of them (#368). Every open (depth.open flips) pushed the
+ *  fleet row back over the drill-in straight away, which also moved the
+ *  generation before the refresh's reads returned, so the refresh's own server
+ *  read was never applied. Every other write of depth.server was reverted to
+ *  the fleet row on the next flush: the restore poll's and the restore POST's
+ *  reads were undone, and the meter moved at fleet-poll speed. Named here so a
+ *  test can mount the exact effect App does. */
+export function followFleet() {
+  void fleet.servers;
+  untrack(syncDepthFromFleet);
+}
+
 /** The fleet poll keeps the drilled server's state in sync (chip, controls,
  *  stream mode) between detail refreshes. */
 export function syncDepthFromFleet() {
@@ -462,7 +533,7 @@ export function syncDepthFromFleet() {
   const s = fleet.servers.find((x) => x.id === depth.serverId);
   if (s) {
     const was = depth.server?.state;
-    depth.server = s;
+    setDepthServer(s);
     stream.set(s.id, streamModeFor(s.state));
     // Folded in here, synchronously with the push that carries the new state,
     // rather than left to a component effect to notice afterwards: the state is
@@ -684,7 +755,7 @@ async function ledgerTick() {
   if (depth.restoreWatch !== null || depth.server?.state === "restoring") {
     const s = await api.getServer(id);
     if (!stillOn(id)) return stopBackupPoll();
-    depth.server = s;
+    setDepthServer(s);
     stream.set(id, streamModeFor(s.state));
     syncRestore(s);
   }
@@ -824,7 +895,7 @@ export async function backupRestore(b: Backup) {
       backupId: b.id,
       since: s.restore?.started_at ?? new Date().toISOString(),
     };
-    depth.server = s;
+    setDepthServer(s);
     stream.set(id, streamModeFor(s.state));
     syncRestore(s);
     startLedgerPoll();

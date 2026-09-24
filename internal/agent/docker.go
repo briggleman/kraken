@@ -48,9 +48,10 @@ func containerName(serverID string) string { return "kraken_" + serverID }
 type DockerRuntime struct {
 	cli *client.Client
 	// gameState, when set, stands in for inspecting the server's game
-	// container before a restore (see refuseRestoreOverRunningContainer). A
+	// container before a restore (see refuseRestoreOverRunningContainer): its
+	// status, whether it exists at all, or why it could not be inspected. A
 	// test seam; nil in the Agent.
-	gameState func(ctx context.Context, name string) (status string, err error)
+	gameState func(ctx context.Context, name string) (status string, found bool, err error)
 	// images is the same client, narrowed to the image calls, so the pull policy
 	// can be exercised against a fake in tests (#288). Never nil.
 	images imageAPI
@@ -2063,38 +2064,48 @@ var errRestoreOverRunning = grpcstatus.Error(codes.FailedPrecondition,
 
 // refuseRestoreOverRunningContainer refuses a restore while kraken_<id> is
 // running, restarting or paused: each of those holds the very save files the
-// swap replaces. No container, or a stopped one, is what a restore wants. An
-// inspect that fails for any other reason is not a reason to refuse — the
-// Panel has already checked the server is stopped — so it only logs.
+// swap replaces. No container (a server that never started), or a stopped
+// one, is what a restore wants. An inspect that fails for any other reason
+// fails CLOSED with Unavailable: this check exists because the Panel's
+// "stopped" can be stale, so it must not wave a restore through on the very
+// occasion it could not look.
 func (d *DockerRuntime) refuseRestoreOverRunningContainer(ctx context.Context, serverID string) error {
-	name := containerName(serverID)
-	var status string
-	switch {
-	case d.gameState != nil:
-		s, err := d.gameState(ctx, name)
-		if err != nil {
-			return nil
-		}
-		status = s
-	case d.cli != nil:
-		info, err := d.cli.ContainerInspect(ctx, name)
-		if err != nil {
-			if !isNotFound(err) {
-				slog.Warn("restore: could not inspect the game container; relying on the panel's stopped check", "server", serverID, "err", err)
-			}
-			return nil
-		}
-		if info.State != nil {
-			status = info.State.Status
-		}
-	default:
-		return nil // file-ops-only runtime (tests): there is no container to hold anything
+	status, found, err := d.inspectGameContainer(ctx, containerName(serverID))
+	if err != nil {
+		return grpcstatus.Errorf(codes.Unavailable,
+			"could not check whether the server's container is running: %v; the live tree was not touched", err)
+	}
+	if !found {
+		return nil
 	}
 	switch status {
 	case "running", "restarting", "paused":
 		return errRestoreOverRunning
 	}
 	return nil
+}
+
+// inspectGameContainer reports the game container's status, or found=false
+// when there is none.
+func (d *DockerRuntime) inspectGameContainer(ctx context.Context, name string) (status string, found bool, err error) {
+	switch {
+	case d.gameState != nil:
+		return d.gameState(ctx, name)
+	case d.cli != nil:
+		info, err := d.cli.ContainerInspect(ctx, name)
+		if err != nil {
+			if isNotFound(err) {
+				return "", false, nil
+			}
+			return "", false, err
+		}
+		if info.State != nil {
+			status = info.State.Status
+		}
+		return status, true, nil
+	default:
+		return "", false, nil // file-ops-only runtime (tests): there is no container to hold anything
+	}
 }
 
 // RestoreBackupStream is RestoreBackup narrated through emit (#361): the phase,

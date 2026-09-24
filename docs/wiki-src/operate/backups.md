@@ -157,10 +157,12 @@ restarts, backups, commands and replication are skipped, with the reason in the
 schedule's last error. The reconciler leaves the row alone, and stop and kill
 still reach the node.
 
-The other direction holds too. A start, restart or reinstall holds the server
-until the Agent has answered, and a restore asked for meanwhile is refused with
-`server_busy` — the row can still read `offline` while a start is booting the
-game. Below the Panel, the Agent refuses to restore while the server's container
+The other direction holds too. A start or restart holds the server until the
+Agent has answered its power call and the row is written; a reinstall, and a
+start that runs the update pass first, hold it only until `installing` is
+written, after which that state keeps a restore out by itself. A restore asked
+for while one of them holds the server is refused with `server_busy` — the row
+can still read `offline` while a start is booting the game. Below the Panel, the Agent refuses to restore while the server's container
 is running, restarting or paused.
 
 The backups ledger draws the restore's progress as the compressed bytes read

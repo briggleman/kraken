@@ -706,6 +706,20 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		defer release()
+		// The row read above predates the claim: a restore could have begun
+		// and finished in between, and writing that stale copy back would
+		// erase its restore_result. Work from a fresh read, asked the same
+		// questions again.
+		fresh, ferr := s.store.GetServer(ctx, sv.ID)
+		if ferr != nil {
+			writeError(w, http.StatusInternalServerError, "could not get server")
+			return
+		}
+		if refusal := s.checkStartable(ctx, fresh, action); refusal != nil {
+			refusal.write(w)
+			return
+		}
+		sv = fresh
 	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
@@ -781,6 +795,11 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	if _, restoring := s.restores.active(sv.ID); restoring {
 		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRestoring})
 		return
+	}
+	// Written onto a fresh read, so nothing another writer stored while the
+	// Agent was busy (a restore's result, a settings save) is lost with it.
+	if fresh, ferr := s.store.GetServer(ctx, sv.ID); ferr == nil {
+		sv = fresh
 	}
 	sv.State = storeStateFromAgent(resp.State)
 	// The crash exit code describes the run that ended; a power action begins a
@@ -1050,6 +1069,25 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	// Re-read under the claim, for the same reason as the power path: a
+	// restore that began and finished since the read above left its result on
+	// the row, and the stale copy must not be what gets written back.
+	fresh, err := s.store.GetServer(ctx, sv.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get server")
+		return
+	}
+	if s.refuseWhileRestoring(w, fresh) {
+		return
+	}
+	switch fresh.State {
+	case store.StateInstallFailed, store.StateOffline, store.StateCrashed:
+	default:
+		writeError(w, http.StatusConflict,
+			"reinstall needs a stopped server (install_failed, offline or crashed); current state: "+string(fresh.State))
+		return
+	}
+	sv = fresh
 	prev := sv.State // where a refused pass puts it back (see provision)
 	sv.State = store.StateInstalling
 	sv.LastError = "" // a fresh attempt starts with a clean slate

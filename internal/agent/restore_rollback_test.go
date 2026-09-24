@@ -87,7 +87,7 @@ func TestRestoreRefusesARunningContainer(t *testing.T) {
 				dirEntry("savegame"),
 				archiveEntry{name: "savegame/a.db", body: "archived-a"},
 			)
-			d.gameState = func(context.Context, string) (string, error) { return status, nil }
+			d.gameState = func(context.Context, string) (string, bool, error) { return status, true, nil }
 
 			err := d.RestoreBackup(context.Background(), sid, "", id)
 			if grpcstatus.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "stop it before restoring") {
@@ -104,14 +104,64 @@ func TestRestoreRefusesARunningContainer(t *testing.T) {
 			noRestoreLeftovers(t, d, sid)
 		})
 	}
-	t.Run("exited", func(t *testing.T) {
-		const sid = "s-exited"
-		d, id := restoreFixture(t, sid, nil, dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
-		d.gameState = func(context.Context, string) (string, error) { return "exited", nil }
-		if err := d.RestoreBackup(context.Background(), sid, "", id); err != nil {
-			t.Fatalf("restore over an exited container: %v", err)
-		}
-	})
+	// A stopped container and no container at all (a server that never
+	// started) both restore — on the unary and the streamed RPC alike.
+	for _, tc := range []struct {
+		name   string
+		status string
+		found  bool
+	}{{"exited", "exited", true}, {"no container", "", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, rpc := range []string{"unary", "stream"} {
+				sid := "s-" + strings.ReplaceAll(tc.name, " ", "-") + "-" + rpc
+				d, id := restoreFixture(t, sid,
+					map[string]string{"savegame/a.db": "live-a"},
+					dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
+				d.gameState = func(context.Context, string) (string, bool, error) { return tc.status, tc.found, nil }
+				if rpc == "unary" {
+					if err := d.RestoreBackup(context.Background(), sid, "", id); err != nil {
+						t.Fatalf("unary restore (%s): %v", tc.name, err)
+					}
+				} else {
+					stream := &fakeRestoreStream{ctx: context.Background()}
+					if err := NewService(d).RestoreBackupStream(&agentpb.RestoreBackupRequest{ServerId: sid, Id: id}, stream); err != nil {
+						t.Fatalf("streamed restore (%s): %v", tc.name, err)
+					}
+					if last := stream.last(t); last.Phase != restorePhaseDone {
+						t.Fatalf("streamed restore (%s) ended with %+v, want done", tc.name, last)
+					}
+				}
+				if v := liveRead(t, d, sid, "savegame/a.db"); v != "archived-a" {
+					t.Errorf("%s restore (%s): savegame/a.db = %q, want archived-a", rpc, tc.name, v)
+				}
+			}
+		})
+	}
+}
+
+// When the container cannot be inspected at all, the restore fails closed:
+// the check exists because the Panel's view can be stale, so "could not look"
+// is not "stopped".
+func TestRestoreFailsClosedWhenTheContainerCannotBeInspected(t *testing.T) {
+	const sid = "s-inspect-err"
+	d, id := restoreFixture(t, sid,
+		map[string]string{"savegame/a.db": "live-a"},
+		dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
+	d.gameState = func(context.Context, string) (string, bool, error) {
+		return "", false, errors.New("docker daemon is not answering")
+	}
+	err := d.RestoreBackup(context.Background(), sid, "", id)
+	if grpcstatus.Code(err) != codes.Unavailable || !strings.Contains(err.Error(), "could not check whether the server's container is running") {
+		t.Fatalf("unary restore with a failed inspect: %v; want Unavailable", err)
+	}
+	stream := &fakeRestoreStream{ctx: context.Background()}
+	if serr := NewService(d).RestoreBackupStream(&agentpb.RestoreBackupRequest{ServerId: sid, Id: id}, stream); grpcstatus.Code(serr) != codes.Unavailable {
+		t.Fatalf("streamed restore with a failed inspect: %v; want the Unavailable status", serr)
+	}
+	if v := liveRead(t, d, sid, "savegame/a.db"); v != "live-a" {
+		t.Errorf("savegame/a.db = %q; a restore that could not check the container must not touch the tree", v)
+	}
+	noRestoreLeftovers(t, d, sid)
 }
 
 // A failure in the merge phase — before any swap — says nothing was replaced.

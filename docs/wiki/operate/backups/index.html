@@ -295,10 +295,12 @@ still work. A second restore is refused with <code>restore_in_progress</code>. S
 restarts, backups, commands and replication are skipped, with the reason in the
 schedule&#39;s last error. The reconciler leaves the row alone, and stop and kill
 still reach the node.</p>
-<p>The other direction holds too. A start, restart or reinstall holds the server
-until the Agent has answered, and a restore asked for meanwhile is refused with
-<code>server_busy</code> — the row can still read <code>offline</code> while a start is booting the
-game. Below the Panel, the Agent refuses to restore while the server&#39;s container
+<p>The other direction holds too. A start or restart holds the server until the
+Agent has answered its power call and the row is written; a reinstall, and a
+start that runs the update pass first, hold it only until <code>installing</code> is
+written, after which that state keeps a restore out by itself. A restore asked
+for while one of them holds the server is refused with <code>server_busy</code> — the row
+can still read <code>offline</code> while a start is booting the game. Below the Panel, the Agent refuses to restore while the server&#39;s container
 is running, restarting or paused.</p>
 <p>The backups ledger draws the restore&#39;s progress as the compressed bytes read
 from the archive against its size. An Agent older than 0.56 cannot report

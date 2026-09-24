@@ -1187,12 +1187,13 @@ paths:
         '409':
           description: >
             Start or restart refused: the server is installing, its install
-            failed, its spec no longer exists (`code: spec_missing`), or a
-            required setting is empty (`code: required_settings_missing`, with
-            the keys in `missing_settings`). Nothing was sent to the agent. Or
-            the agent refused a start or restart because an install pass for the
-            server is running on the node (`code: install_running`); retry once
-            it ends.
+            failed, a backup restore is running (`code: server_restoring`), its
+            spec no longer exists (`code: spec_missing`), or a required setting
+            is empty (`code: required_settings_missing`, with the keys in
+            `missing_settings`). Nothing was sent to the agent. Or the agent
+            refused a start or restart because an install pass for the server
+            is running on the node (`code: install_running`); retry once it
+            ends.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StartRefusal' }

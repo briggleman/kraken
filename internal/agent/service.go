@@ -425,10 +425,10 @@ func (s *Service) RestoreBackupStream(req *agentpb.RestoreBackupRequest, stream 
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	// A refusal before anything ran (the game is running) keeps its gRPC code,
-	// so the Panel reads it as "the restore did not start" rather than as an
-	// attempt that failed partway.
-	if status.Code(err) == codes.FailedPrecondition {
+	// A refusal before anything ran (the game is running, or it could not be
+	// checked) keeps its gRPC code, so the Panel reads it as "the restore did
+	// not start" rather than as an attempt that failed partway.
+	if c := status.Code(err); c == codes.FailedPrecondition || c == codes.Unavailable {
 		return err
 	}
 	return stream.Send(&agentpb.RestoreEvent{Phase: restorePhaseFailed, Failed: err.Error()})

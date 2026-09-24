@@ -173,11 +173,13 @@ func (s *Spec) ResolveSettings(stored map[string]string) map[string]string {
 }
 
 // SettingsFromSpec returns, in declared order, the keys whose effective value
-// (ResolveSettings) is the spec's default because the server stores no usable
-// value of its own for them: the key is absent (a field the spec added after
-// the server was created), or it is a required field stored blank that yields
-// to the spec's default. Every other key's value is the one stored on the
-// server. It is never nil, so it serializes as a JSON array.
+// (ResolveSettings) is the spec's non-blank default because the server stores
+// no usable value of its own for them: the key is absent (a field the spec
+// added after the server was created), or it is a required field stored blank
+// that yields to the spec's default. A field whose default is itself blank is
+// never listed — there is nothing from the spec to show, and a required one is
+// simply missing. Every other key's value is the one stored on the server. It
+// is never nil, so it serializes as a JSON array.
 func (s *Spec) SettingsFromSpec(stored map[string]string) []string {
 	out := []string{}
 	for _, f := range s.Settings.fields() {
@@ -189,17 +191,23 @@ func (s *Spec) SettingsFromSpec(stored map[string]string) []string {
 }
 
 // SettingsToStore is what a settings save writes back before applying the
-// operator's edits: every field the spec declares, stored value first and the
-// default for a key the server lacks. Unlike ResolveSettings it keeps a
-// required field's stored blank as a blank, so saving some other field does
-// not freeze today's default into the row — the field keeps following the
-// spec, and keeps reading as from the spec.
+// operator's edits: every field the spec declares, the stored value where
+// there is one. Unlike ResolveSettings it never writes a required field's
+// default into the row: a stored blank stays blank, and a required key the
+// server lacks (a field the spec added later) is stored blank too, so saving
+// some other field does not freeze today's default — the field keeps
+// following the spec, and keeps reading as from the spec. A non-required key
+// the server lacks takes the default, as it always has: a blank there would
+// be a value, not an absence.
 func (s *Spec) SettingsToStore(stored map[string]string) map[string]string {
 	out := make(map[string]string)
 	for _, f := range s.Settings.fields() {
-		if v, ok := stored[f.Key]; ok {
+		switch v, ok := stored[f.Key]; {
+		case ok:
 			out[f.Key] = v
-		} else {
+		case f.Required:
+			out[f.Key] = ""
+		default:
 			out[f.Key] = f.Default
 		}
 	}
@@ -207,13 +215,16 @@ func (s *Spec) SettingsToStore(stored map[string]string) map[string]string {
 }
 
 // resolveField is one field's effective value and whether it came from the
-// spec rather than the server's stored settings (see ResolveSettings).
+// spec rather than the server's stored settings (see ResolveSettings). It
+// reports the spec only for a non-blank default: a blank one shows nothing
+// from the spec, and leaves a required field missing.
 func resolveField(f SettingField, stored map[string]string) (string, bool) {
+	hasDefault := strings.TrimSpace(f.Default) != ""
 	v, ok := stored[f.Key]
 	if !ok {
-		return f.Default, true
+		return f.Default, hasDefault
 	}
-	if f.Required && strings.TrimSpace(v) == "" && strings.TrimSpace(f.Default) != "" {
+	if f.Required && strings.TrimSpace(v) == "" && hasDefault {
 		return f.Default, true
 	}
 	return v, false

@@ -272,6 +272,20 @@ func TestSettingsFromSpec_AbsentKey(t *testing.T) {
 	if got := s.SettingsFromSpec(map[string]string{"a": "mine"}); strings.Join(got, ",") != "b" {
 		t.Fatalf("from spec: got %v, want [b]", got)
 	}
+	// A required field the spec added later with NO default is absent from
+	// the row and blank in effect: missing, and nothing from the spec to show.
+	added := &Spec{Settings: Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "a", Type: FieldString, Default: "x"},
+		{Key: "OwnerId", Type: FieldString, Required: true},
+		{Key: "Motd", Type: FieldString},
+	}}}}}
+	stored := map[string]string{"a": "mine"}
+	if got := added.SettingsFromSpec(stored); len(got) != 0 {
+		t.Fatalf("from spec with blank defaults: got %v, want none", got)
+	}
+	if n := len(added.MissingRequiredSettings(added.ResolveSettings(stored))); n != 1 {
+		t.Fatalf("an added required field with no default should be missing, got %d missing", n)
+	}
 	if got := s.SettingsFromSpec(map[string]string{"a": "1", "b": "2"}); got == nil || len(got) != 0 {
 		t.Fatalf("from spec with every key stored: got %#v, want an empty non-nil slice", got)
 	}
@@ -289,6 +303,20 @@ func TestSettingsToStore_KeepsRequiredBlank(t *testing.T) {
 	}}}}}
 	got := s.SettingsToStore(map[string]string{"OwnerId": "", "ServerName": "Midgard", "Gone": "x"})
 	want := map[string]string{"OwnerId": "", "ServerName": "Midgard", "Added": "later"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s: got %q, want %q (all: %v)", k, got[k], v, got)
+		}
+	}
+
+	// A REQUIRED field the spec added after the server was created is absent
+	// from the row. Its default must not be frozen in either: it is stored
+	// blank, and so keeps following the spec.
+	got = s.SettingsToStore(map[string]string{"ServerName": "Midgard"})
+	want = map[string]string{"OwnerId": "", "ServerName": "Midgard", "Added": "later"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

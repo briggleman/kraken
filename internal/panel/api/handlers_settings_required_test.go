@@ -148,6 +148,46 @@ func TestSpecGainingDefault_LiftsStartGate(t *testing.T) {
 	}
 }
 
+// TestSpecAddingRequiredField_KeepsFollowingSpec — a required field the spec
+// ADDS after a server was created is absent from the row. A save of some other
+// field must not freeze the field's current default into the row: when the
+// spec changes that default again, the server follows it.
+func TestSpecAddingRequiredField_KeepsFollowingSpec(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startFakeAgentRuntime(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	rec := do(t, h, http.MethodPost, "/api/v1/specs", token, ownedSpecBody("owned-added", "A"))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create spec: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	// Built before the spec had OwnerId at all: the row lacks the key.
+	sv := seedOfflineServer(t, st, "sv-added", nodeID, created.ID, func(s *store.Server) {
+		s.Settings = map[string]string{"ServerName": "Kraken"}
+	})
+
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+sv.ID+"/settings", token,
+		map[string]any{"values": map[string]string{"ServerName": "Midgard"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save ServerName: got %d; body %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, h, http.MethodPut, "/api/v1/specs/"+created.ID, token, ownedSpecBody("owned-added", "B"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update spec: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	got := getSettings(t, h, token, sv.ID)
+	if got.Values["OwnerId"] != "B" || strings.Join(got.FromSpec, ",") != "OwnerId" {
+		t.Fatalf("values %v, from_spec %v; want OwnerId B from the spec", got.Values, got.FromSpec)
+	}
+	if got.Values["ServerName"] != "Midgard" {
+		t.Fatalf("ServerName: got %q, want Midgard", got.Values["ServerName"])
+	}
+}
+
 // TestSettingsGet_OperatorValueIsNotFromSpec — a value the operator saved is
 // the server's own, whatever default the spec carries.
 func TestSettingsGet_OperatorValueIsNotFromSpec(t *testing.T) {

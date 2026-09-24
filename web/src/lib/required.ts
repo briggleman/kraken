@@ -13,6 +13,20 @@ export function isMissing(field: SettingField, value: string | undefined): boole
   return !!field.required && !(value ?? "").trim();
 }
 
+/** Whether a required field's shown value is the spec's default rather than
+ *  one of the server's own: the panel lists it in `from_spec` when the server
+ *  stores a blank for it and the spec has a default, which the blank yields to
+ *  (#367). Only asked of required fields — a blank optional one is a value the
+ *  operator chose — and only while the operator has not typed into it: an edit
+ *  is theirs the moment it exists, even an empty one. */
+export function isFromSpec(
+  field: SettingField,
+  fromSpec: readonly string[] | undefined,
+  edited: string | undefined,
+): boolean {
+  return !!field.required && edited === undefined && (fromSpec ?? []).includes(field.key);
+}
+
 /** The required fields a freshly deployed server of `spec` starts without. A
  *  new server boots on the spec's own defaults, so these are the required
  *  fields with no default — the ones an operator must fill before a first

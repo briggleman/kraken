@@ -1283,14 +1283,24 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 	//                  REST port; q.Password names the admin-password setting. The
 	//                  Agent curls it inside the container, so nothing is published.
 	if q := sp.Query; q != nil && q.Method != "" {
+		// The effective settings, as the config renders them, over the stored
+		// map: the spec does not have to declare the keys a query names, and a
+		// stored value for an undeclared one still counts.
+		settings := make(map[string]string, len(server.Settings))
+		for k, v := range server.Settings {
+			settings[k] = v
+		}
+		for k, v := range sp.ResolveSettings(server.Settings) {
+			settings[k] = v
+		}
 		switch q.Method {
 		case "a2s":
 			if hostPort, ok := server.Ports[q.Port]; ok {
 				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(hostPort)}
 			}
 		case "palworld-rest":
-			if pv, err := strconv.Atoi(server.Settings[q.Port]); err == nil && pv > 0 && pv <= 65535 {
-				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: server.Settings[q.Password]}
+			if pv, err := strconv.Atoi(settings[q.Port]); err == nil && pv > 0 && pv <= 65535 {
+				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: settings[q.Password]}
 			}
 		case "log":
 			// The Agent follows the container's own console and keeps the
@@ -1299,7 +1309,7 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 			// (Enshrouded's slotCount), else the spec's constant.
 			cap := q.MaxPlayers
 			if q.MaxPlayersSetting != "" {
-				if v, err := strconv.Atoi(strings.TrimSpace(server.Settings[q.MaxPlayersSetting])); err == nil && v > 0 {
+				if v, err := strconv.Atoi(strings.TrimSpace(settings[q.MaxPlayersSetting])); err == nil && v > 0 {
 					cap = v
 				}
 			}

@@ -971,6 +971,7 @@ export async function settingsApply(
     const r = await api.updateServerSettings(depth.serverId, values, variables, pinBuild);
     if (depth.settings) {
       depth.settings.values = r.values;
+      depth.settings.from_spec = r.from_spec ?? [];
       if (r.variables) depth.settings.variables = r.variables;
       if (r.pin_build !== undefined) depth.settings.pin_build = r.pin_build;
     }

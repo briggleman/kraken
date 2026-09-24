@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fieldList, isMissing, missingOnDeploy } from "./required";
+import { fieldList, isFromSpec, isMissing, missingOnDeploy } from "./required";
 import type { SettingField, Spec } from "@/api/types";
 
 const field = (over: Partial<SettingField>): SettingField => ({ key: "k", type: "string", ...over });
@@ -71,5 +71,27 @@ describe("fieldList", () => {
     expect(fieldList([field({ key: "a", label: "A" }), field({ key: "b" })])).toBe("A and b");
     expect(fieldList([field({ label: "A" }), field({ label: "B" }), field({ label: "C" })])).toBe("A, B and C");
     expect(fieldList([])).toBe("");
+  });
+});
+
+describe("isFromSpec", () => {
+  const owner = field({ key: "OwnerId", required: true });
+
+  it("marks a required field the panel says came from the spec", () => {
+    expect(isFromSpec(owner, ["OwnerId"], undefined)).toBe(true);
+  });
+
+  it("drops the moment the operator types, even back to empty", () => {
+    expect(isFromSpec(owner, ["OwnerId"], "0")).toBe(false);
+    expect(isFromSpec(owner, ["OwnerId"], "")).toBe(false);
+  });
+
+  it("is false for the server's own value", () => {
+    expect(isFromSpec(owner, [], undefined)).toBe(false);
+    expect(isFromSpec(owner, undefined, undefined)).toBe(false);
+  });
+
+  it("never marks a field that is not required", () => {
+    expect(isFromSpec(field({ key: "ServerName" }), ["ServerName"], undefined)).toBe(false);
   });
 });

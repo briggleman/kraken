@@ -37,7 +37,7 @@
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
-  import { isMissing } from "@/lib/required";
+  import { isFromSpec, isMissing } from "@/lib/required";
   import { lastRun } from "@/lib/schedules";
   import type { FileEntry, ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
@@ -731,7 +731,9 @@
                         class="cfg-req"
                         class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
                         >· required</em
-                      >{/if}</span><select
+                      >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
+                          class="cfg-req cfg-help">· from spec</em
+                        >{/if}{/if}</span><select
                         class="cfg-in"
                         disabled={field.read_only}
                         aria-required={field.required || undefined}
@@ -746,7 +748,9 @@
                         class="cfg-req"
                         class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
                         >· required</em
-                      >{/if}</span><input
+                      >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
+                          class="cfg-req cfg-help">· from spec</em
+                        >{/if}{/if}</span><input
                         class="cfg-in"
                         type={field.type === "password" ? "password" : "text"}
                         disabled={field.read_only}

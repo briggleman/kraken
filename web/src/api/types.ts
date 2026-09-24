@@ -573,7 +573,12 @@ export interface ServerVariable {
 
 export interface ServerSettings {
   groups: SettingGroup[];
+  /** Effective values: what the start gate judges and the config renders. */
   values: Record<string, string>;
+  /** Keys whose value is the spec's current default, not one stored on the
+   *  server: a field the spec added later, or a required field stored blank
+   *  that yields to the spec's default (#367). */
+  from_spec?: string[];
   variables?: ServerVariable[];
   /** The game re-reads config files live — saved settings apply without a restart. */
   hot_reload?: boolean;
@@ -595,6 +600,7 @@ export interface ServerSettings {
 
 export interface UpdateSettingsResult {
   values: Record<string, string>;
+  from_spec?: string[];
   variables?: ServerVariable[];
   applied: boolean;
   restart_needed: boolean;

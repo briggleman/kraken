@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
@@ -198,5 +199,66 @@ func TestDataRemoveErrorNamesTheLogicalPath(t *testing.T) {
 	plain := errors.New("plain")
 	if got := dataRemoveError(root, plain); got != plain {
 		t.Errorf("a non-path error should pass through, got %v", got)
+	}
+}
+
+// Against a real daemon: a server with its game container running and an
+// install container left behind is removed completely, and an Agent restarted
+// over the same state dir finds nothing to adopt — the incident in #354 was
+// exactly that adoption, on every restart, of a server the Panel had deleted.
+func TestRemoveAgainstDockerLeavesNothingToAdopt(t *testing.T) {
+	dataDir, backupDir, stateDir := t.TempDir(), t.TempDir(), t.TempDir()
+	d := newAdoptRuntime(t, dataDir, backupDir, stateDir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	const serverID = "remove-1"
+	spec := &agentpb.ServerSpec{ServerId: serverID, Image: "busybox:latest", StartupCommand: "sleep 600", RestartOnCrash: true, MaxRestarts: 2}
+	if err := d.pullImage(ctx, spec.Image, installPullTimeout, func(string) {}); err != nil {
+		t.Skipf("could not pull %s: %v", spec.Image, err)
+	}
+	if err := d.Create(ctx, spec); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = d.clearContainerName(context.Background(), containerName(serverID))
+		_ = d.clearContainerName(context.Background(), installContainerName(serverID))
+	})
+	if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// The install container an interrupted pass leaves behind: same labels,
+	// bind-mounting nothing here, still running.
+	created, err := d.cli.ContainerCreate(ctx, &container.Config{
+		Image:  spec.Image,
+		Cmd:    []string{"sleep", "600"},
+		Labels: map[string]string{labelManaged: "true", labelServerID: serverID},
+	}, nil, nil, nil, installContainerName(serverID))
+	if err != nil {
+		t.Fatalf("create install container: %v", err)
+	}
+	if err := d.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		t.Fatalf("start install container: %v", err)
+	}
+
+	if err := d.Remove(ctx, serverID, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	for _, name := range []string{containerName(serverID), installContainerName(serverID)} {
+		if _, err := d.cli.ContainerInspect(ctx, name); !isNotFound(err) {
+			t.Errorf("%s after Remove: inspect err %v, want not found", name, err)
+		}
+	}
+	if _, err := os.Stat(d.localDir(serverID)); !os.IsNotExist(err) {
+		t.Errorf("data dir after Remove: stat err %v, want gone", err)
+	}
+
+	restarted := newAdoptRuntime(t, dataDir, backupDir, stateDir)
+	if _, ok := restarted.getSpec(serverID); ok {
+		t.Error("a restarted Agent reloaded the removed server's spec")
+	}
+	if _, watched := restarted.monitorState(serverID); watched {
+		t.Error("a restarted Agent adopted the removed server")
 	}
 }

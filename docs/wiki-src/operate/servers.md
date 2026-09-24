@@ -65,11 +65,13 @@ install script before launching.** For a SteamCMD title that is an
 all. Before this, a healthy server stayed on the build SteamCMD pulled the day
 it was created, and the only way forward was delete and recreate.
 
-The sequence, once you press start:
+The sequence, once you press start and the pass runs:
 
 1. The Panel stops the container if anything is holding the data directory.
 2. It runs the install script. The server reads `installing`, the response is a
    `202` carrying `updating: true`, and the install log streams to the console.
+   A start that skips the pass (the opt-outs and the paths below) is the plain
+   synchronous `200` instead.
 3. It re-renders the config files over the fresh tree. **After** the update, not
    before, because the pass can restore a file the depot owns and your settings
    have to win.
@@ -110,11 +112,24 @@ stale error.
 
 ### What deliberately does not update
 
-Three paths start a server without re-running anything, and each is a decision
+Four paths start a server without re-running anything, and each is a decision
 rather than an omission.
 
+- **The first start within 30 minutes of an install.** A create or reinstall
+  that succeeds stamps the server's `provisioned_at`, and a start inside that
+  window skips the pass, which would only repeat an install that just ran. It
+  covers the deploy form's "start once the install finishes" and an operator who
+  stops to fill in settings first. It is a window rather than a "never started"
+  flag so that a server created and left for days still updates on its first
+  start. Editing a launch variable clears the stamp, because the install script
+  may render it, and so does a failed install. The settings response's
+  `next_start_updates` says which way the next start will go.
 - **Scheduled restarts.** A cron restart drives the Agent directly. A nightly
-  restart is not an invitation to validate a 30 GB tree nightly.
+  restart is not an invitation to validate a 30 GB tree nightly. It runs only on
+  a server that is `running`, since the Agent's restart is a stop then a start
+  and would otherwise start a server someone had stopped, and it is refused while
+  a required setting is empty. Either refusal is recorded as the schedule's last
+  error.
 - **The crash watchdog's restarts.** The Agent restarts the container itself and
   never involves the Panel, so a crash loop cannot become a download loop.
 - **A spec that needs a Steam login on a node with no stored credentials.** The

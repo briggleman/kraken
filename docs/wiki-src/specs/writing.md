@@ -96,9 +96,10 @@ everything as settings and almost nothing as an editable variable.
 
 A setting marked `required: true` is one the game will not start without, such
 as Dragonwilds' `OwnerId`. The Panel refuses to start or restart a server while
-any required setting is empty (a scheduled restart included), with a `409` that names the fields and points at
-the Settings tab, instead of launching it into a crash its own spec predicts. The
-deploy form stops offering to start that game as soon as its install lands, and
+any required setting is empty, with a `409` that names the fields and points at
+the Settings tab, instead of launching it into a crash its own spec predicts. A
+scheduled restart is refused the same way and records that sentence as the
+schedule's last error. The deploy form stops offering to start that game as soon as its install lands, and
 the Settings tab marks the field. Saving is never blocked, so settings can be
 filled in any order. It states an unconditional requirement only: a value needed
 just when another setting is on, like Factorio's token for a publicly listed

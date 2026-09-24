@@ -873,13 +873,30 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not get node")
 		return
 	}
-	// Object-level authz: only the owner (or a server.any role) may power a server.
+	// One answer for every way the server is not reachable through this node's
+	// path: no such server, a server that lives on another node, or one this
+	// caller may not act on. The bodies are identical, so a caller probing other
+	// nodes' paths learns neither which servers exist nor where they live (#369).
+	notOnNode := func() {
+		writeCoded(w, http.StatusNotFound, codeNotFound, "server not found on this node")
+	}
 	sv, err := s.store.GetServer(r.Context(), chi.URLParam(r, "serverID"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, "server not found")
+		notOnNode()
 		return
 	}
-	if !s.authorizeServer(w, r.Context(), sv) {
+	// The action goes to the URL's node, so the pairing the URL claims has to
+	// be the one the store holds. Otherwise another node's agent is sent an
+	// action for a server it does not host, and its answer comes back as if it
+	// were this server's.
+	if sv.NodeID != n.ID {
+		notOnNode()
+		return
+	}
+	// Object-level authz: only the owner (or a server.any role) may power a
+	// server. Denial answers the same not-found as the two checks above.
+	if !s.mayAccessServer(r.Context(), sv) {
+		notOnNode()
 		return
 	}
 	// The same gate as POST /servers/{id}/power: this path reaches the same
@@ -906,7 +923,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), powerTimeout(action))
 	defer cancel()
 	resp, err := client.PowerAction(ctx, &agentpb.PowerActionRequest{
-		ServerId: chi.URLParam(r, "serverID"),
+		ServerId: sv.ID,
 		Action:   action,
 	})
 	if err != nil {

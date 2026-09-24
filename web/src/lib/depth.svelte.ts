@@ -16,6 +16,7 @@ import type {
   SftpStatus,
 } from "@/api/types";
 import type { ScheduleInput } from "@/api/client";
+import { untrack } from "svelte";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 
@@ -122,13 +123,32 @@ let backupPoll: ReturnType<typeof setInterval> | undefined;
 // count, and a refresh applies its server read only if the count has not moved
 // since the reads went out. Anything that wrote in between is newer by
 // construction. Module state rather than `depth` state: nothing renders it.
+//
+// A write that shows nothing new does not bump it. The fleet poll re-delivers
+// the row on every tick whether or not it changed, and a count moved by a row
+// identical to the one on screen would throw away the refresh's read in favour
+// of no newer fact at all.
 let serverGen = 0;
+
+/** Whether two reads of a server agree on everything the drill-in derives from
+ *  the row: its state (chip, controls, stream mode, `updating`) and its restore
+ *  (the ledger's meter and outcome note). */
+function sameServerView(a: Server | null, b: Server | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.state === b.state &&
+    JSON.stringify(a.restore ?? null) === JSON.stringify(b.restore ?? null) &&
+    JSON.stringify(a.restore_result ?? null) === JSON.stringify(b.restore_result ?? null)
+  );
+}
 
 /** Put a server read on screen. The one writer of `depth.server`, so no write
  *  can skip the generation; each caller still re-derives the stream mode and
  *  the `updating` latch from the state it wrote. */
 function setDepthServer(s: Server | null) {
-  serverGen++;
+  if (!sameServerView(depth.server, s)) serverGen++;
   depth.server = s;
 }
 
@@ -487,6 +507,23 @@ async function refreshDetail() {
   if (depth.error === noticeAtStart) {
     depth.error = firstErr ? String(firstErr.reason?.message ?? firstErr.reason) : null;
   }
+}
+
+/** The body of App's fleet-sync effect: re-sync the drill-in when the fleet
+ *  poll delivers, and only then.
+ *
+ *  The untrack matters. syncDepthFromFleet reads depth.open, depth.serverId,
+ *  depth.server and stream.lines, and an effect that called it bare re-ran on
+ *  a change to any of them (#368). Every open (depth.open flips) pushed the
+ *  fleet row back over the drill-in straight away, which also moved the
+ *  generation before the refresh's reads returned, so the refresh's own server
+ *  read was never applied. Every other write of depth.server was reverted to
+ *  the fleet row on the next flush: the restore poll's and the restore POST's
+ *  reads were undone, and the meter moved at fleet-poll speed. Named here so a
+ *  test can mount the exact effect App does. */
+export function followFleet() {
+  void fleet.servers;
+  untrack(syncDepthFromFleet);
 }
 
 /** The fleet poll keeps the drilled server's state in sync (chip, controls,

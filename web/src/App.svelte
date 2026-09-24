@@ -21,7 +21,7 @@
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
-  import { depth, surface, syncDepthFromFleet, sftpHide, bootDeepLinks } from "@/lib/depth.svelte";
+  import { depth, surface, followFleet, sftpHide, bootDeepLinks } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
   startSim();
@@ -52,10 +52,9 @@
   // The fleet poll keeps the drilled server's chip/controls/stream in sync. Its
   // cadence follows what the fleet is doing — 2.5s while anything is installing,
   // starting or stopping, 10s once everything has settled (fleetPollMs).
-  $effect(() => {
-    fleet.servers;
-    syncDepthFromFleet();
-  });
+  // followFleet depends on fleet.servers alone (it untracks the sync itself);
+  // see its comment for what re-running on the drill-in's own writes cost.
+  $effect(followFleet);
 
   // Escape routing, top layer first (The Topmost Closes Last Rule):
   // sftp → confirm → open sheet → prefs → drill-in. Login/rotate/interstitial

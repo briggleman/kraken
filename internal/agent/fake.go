@@ -2,8 +2,8 @@ package agent
 
 import (
 	"archive/zip"
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"

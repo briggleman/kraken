@@ -23,7 +23,7 @@ func (s *Server) ReconcileNodesOnceForTest(ctx context.Context) {
 // waiting for the replays it starts — and WaitRemovalReplaysForTest waits for
 // them afterwards.
 func (s *Server) ReconcileNodesPassForTest(ctx context.Context) { s.reconcileNodesOnce(ctx) }
-func (s *Server) WaitRemovalReplaysForTest()                     { s.replays.wg.Wait() }
+func (s *Server) WaitRemovalReplaysForTest()                    { s.replays.wg.Wait() }
 
 // DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
 // a test in the black-box package can walk up to the edge of one without

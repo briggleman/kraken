@@ -47,6 +47,10 @@ func containerName(serverID string) string { return "kraken_" + serverID }
 // container for the install/update phase.
 type DockerRuntime struct {
 	cli *client.Client
+	// gameState, when set, stands in for inspecting the server's game
+	// container before a restore (see refuseRestoreOverRunningContainer). A
+	// test seam; nil in the Agent.
+	gameState func(ctx context.Context, name string) (status string, err error)
 	// images is the same client, narrowed to the image calls, so the pull policy
 	// can be exercised against a fake in tests (#288). Never nil.
 	images imageAPI
@@ -2053,6 +2057,46 @@ func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id st
 	return d.RestoreBackupStream(ctx, serverID, slug, id, nil)
 }
 
+// errRestoreOverRunning is the refusal for a restore aimed at a live game.
+var errRestoreOverRunning = grpcstatus.Error(codes.FailedPrecondition,
+	"the server's container is running — stop it before restoring; the live tree was not touched")
+
+// refuseRestoreOverRunningContainer refuses a restore while kraken_<id> is
+// running, restarting or paused: each of those holds the very save files the
+// swap replaces. No container, or a stopped one, is what a restore wants. An
+// inspect that fails for any other reason is not a reason to refuse — the
+// Panel has already checked the server is stopped — so it only logs.
+func (d *DockerRuntime) refuseRestoreOverRunningContainer(ctx context.Context, serverID string) error {
+	name := containerName(serverID)
+	var status string
+	switch {
+	case d.gameState != nil:
+		s, err := d.gameState(ctx, name)
+		if err != nil {
+			return nil
+		}
+		status = s
+	case d.cli != nil:
+		info, err := d.cli.ContainerInspect(ctx, name)
+		if err != nil {
+			if !isNotFound(err) {
+				slog.Warn("restore: could not inspect the game container; relying on the panel's stopped check", "server", serverID, "err", err)
+			}
+			return nil
+		}
+		if info.State != nil {
+			status = info.State.Status
+		}
+	default:
+		return nil // file-ops-only runtime (tests): there is no container to hold anything
+	}
+	switch status {
+	case "running", "restarting", "paused":
+		return errRestoreOverRunning
+	}
+	return nil
+}
+
 // RestoreBackupStream is RestoreBackup narrated through emit (#361): the phase,
 // and the compressed bytes read against the archive's size. It is the one
 // restore path; the unary RestoreBackup passes a nil emit.
@@ -2067,6 +2111,13 @@ func (d *DockerRuntime) RestoreBackupStream(ctx context.Context, serverID, slug,
 
 func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error {
 	const untouched = "; the live tree was not touched"
+	// The Agent's own check, behind the Panel's: the Panel refuses a restore on
+	// a server it believes is stopped, but its belief can be seconds stale — a
+	// start whose Power call is still in flight has not written the row yet.
+	// The container is the ground truth, so a running game is refused here.
+	if err := d.refuseRestoreOverRunningContainer(ctx, serverID); err != nil {
+		return err
+	}
 	m := newRestoreMeter(ctx, emit)
 	if err := m.enter(restorePhaseOpening); err != nil {
 		return err

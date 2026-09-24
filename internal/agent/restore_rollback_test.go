@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
@@ -70,6 +73,45 @@ func TestRestoreRollbackNamesALeftoverHonestly(t *testing.T) {
 	if strings.Contains(msg, "original(s) could not be put back") || strings.Contains(msg, "rolled back to how it was") {
 		t.Errorf("the error claims something about originals that is not true: %q", msg)
 	}
+}
+
+// The Agent refuses a restore while the game's container is running, whatever
+// the Panel believed — the Panel's view of "stopped" can be a start that has
+// not written its row yet. A stopped or absent container is restored as usual.
+func TestRestoreRefusesARunningContainer(t *testing.T) {
+	for _, status := range []string{"running", "restarting", "paused"} {
+		t.Run(status, func(t *testing.T) {
+			sid := "s-live-" + status
+			d, id := restoreFixture(t, sid,
+				map[string]string{"savegame/a.db": "live-a"},
+				dirEntry("savegame"),
+				archiveEntry{name: "savegame/a.db", body: "archived-a"},
+			)
+			d.gameState = func(context.Context, string) (string, error) { return status, nil }
+
+			err := d.RestoreBackup(context.Background(), sid, "", id)
+			if grpcstatus.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "stop it before restoring") {
+				t.Fatalf("unary restore over a %s container: %v; want FailedPrecondition", status, err)
+			}
+			stream := &fakeRestoreStream{ctx: context.Background()}
+			serr := NewService(d).RestoreBackupStream(&agentpb.RestoreBackupRequest{ServerId: sid, Id: id}, stream)
+			if grpcstatus.Code(serr) != codes.FailedPrecondition {
+				t.Fatalf("streamed restore over a %s container: %v; want the FailedPrecondition status, not a failed event", status, serr)
+			}
+			if v := liveRead(t, d, sid, "savegame/a.db"); v != "live-a" {
+				t.Errorf("savegame/a.db = %q; a refused restore must not touch the tree", v)
+			}
+			noRestoreLeftovers(t, d, sid)
+		})
+	}
+	t.Run("exited", func(t *testing.T) {
+		const sid = "s-exited"
+		d, id := restoreFixture(t, sid, nil, dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
+		d.gameState = func(context.Context, string) (string, error) { return "exited", nil }
+		if err := d.RestoreBackup(context.Background(), sid, "", id); err != nil {
+			t.Fatalf("restore over an exited container: %v", err)
+		}
+	})
 }
 
 // A failure in the merge phase — before any swap — says nothing was replaced.

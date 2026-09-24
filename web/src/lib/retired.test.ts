@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listBackups = vi.fn();
 const deleteServer = vi.fn();
+const reviveServer = vi.fn();
+const logoutApi = vi.fn(async () => {});
 const refreshFleet = vi.fn(async () => {});
 
 vi.mock("@/api/client", async (importOriginal) => {
@@ -16,6 +18,8 @@ vi.mock("@/api/client", async (importOriginal) => {
     api: {
       listBackups: (...a: unknown[]) => listBackups(...a),
       deleteServer: (...a: unknown[]) => deleteServer(...a),
+      reviveServer: (...a: unknown[]) => reviveServer(...a),
+      logout: () => logoutApi(),
     },
   };
 });
@@ -26,21 +30,25 @@ vi.mock("./fleet.svelte", async (importOriginal) => {
 });
 
 import { ApiError } from "@/api/client";
-import { auth } from "./auth.svelte";
+import { auth, logout } from "./auth.svelte";
 import { fleet } from "./fleet.svelte";
 import {
+  KEEP_RETRY_MS,
   keepLabel,
   keepOf,
   keepStale,
   loadKeep,
   openPurge,
   purge,
+  resetRetired,
   retired,
   retiredNote,
   retiredServers,
   retiredSlug,
   retiredWhen,
+  reviveRetired,
   rosterEmptyNote,
+  syncRetired,
 } from "./retired.svelte";
 import { CD_PURGE_BODY, confirmGo, confirmWord, ui } from "./state.svelte";
 import type { Backup, Node, Role, Server } from "@/api/types";
@@ -71,15 +79,15 @@ function backup(id: string, state: Backup["state"], size: number): Backup {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetRetired();
   fleet.servers = [];
   fleet.nodes = [NODE];
-  retired.keep = {};
-  retired.busy = {};
-  retired.note = "";
-  retired.noteFailed = false;
   ui.confirm = null;
   auth.role = { permissions: ["*"] } as Role;
 });
+
+/** Settle the microtasks a queued read hangs off. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("retiredServers", () => {
   it("is the retired rows only, the most recently retired first", () => {
@@ -105,11 +113,13 @@ describe("a retired row's readings", () => {
     expect(retiredWhen(server("a", { retired_at: undefined }))).toBe("retired");
   });
 
-  it("says only a final backup the retire could not take, the whole note in its title", () => {
+  it("says only a skipped final backup, the whole note in its title", () => {
     const skipped = "final backup skipped: node titan did not answer; removing its containers and world is queued for node titan";
     expect(retiredNote(server("a", { retire_note: skipped }))).toEqual({ word: "final backup skipped", title: skipped });
     // a queued removal alone is the node band's to say
     expect(retiredNote(server("a", { retire_note: "removing its containers and world is queued for node titan" }))).toBeNull();
+    // a failed final backup abandons the retire, so it never reaches a row
+    expect(retiredNote(server("a", { retire_note: "final backup failed: disk full" }))).toBeNull();
     expect(retiredNote(server("a"))).toBeNull();
   });
 
@@ -131,6 +141,7 @@ describe("a retired row's readings", () => {
 
 describe("reading what a row kept", () => {
   it("reads the archives from the node it left", async () => {
+    fleet.servers = [server("a")];
     listBackups.mockResolvedValueOnce({ backups: [backup("a", "ready", 2048)], mirror: "" });
     await loadKeep(server("a"));
     expect(listBackups).toHaveBeenCalledWith("a");
@@ -139,33 +150,159 @@ describe("reading what a row kept", () => {
     expect(keepStale(server("a"))).toBe(false);
   });
 
-  it("does not ask without backup.manage, and names where they are", async () => {
+  it("says why it did not ask, in the text and the title", async () => {
+    fleet.servers = [server("a"), server("b"), server("c")];
     auth.role = { permissions: ["server.view"] } as Role;
     await loadKeep(server("a"));
     expect(listBackups).not.toHaveBeenCalled();
-    expect(keepLabel(retired.keep.a.reading)).toBe("backups on behemoth");
+    expect(retired.keep.a.reading).toMatchObject({
+      label: "backups on behemoth · no permission to read them",
+      title: "backups on behemoth · no permission to read them",
+    });
+    auth.role = { permissions: ["*"] } as Role;
+    fleet.nodes = [{ ...NODE, status: "offline" }];
+    await loadKeep(server("b"));
+    expect(keepLabel(retired.keep.b.reading)).toBe("backups on behemoth · unreadable while behemoth is offline");
+    fleet.nodes = [];
+    await loadKeep(server("c"));
+    expect(keepLabel(retired.keep.c.reading)).toBe("its node is gone, and its archives went with it");
   });
 
   it("does not ask an offline node, and reads again once it is back", async () => {
+    fleet.servers = [server("a")];
     fleet.nodes = [{ ...NODE, status: "offline" }];
     await loadKeep(server("a"));
     expect(listBackups).not.toHaveBeenCalled();
-    expect(keepLabel(retired.keep.a.reading)).toBe("backups unreadable while behemoth is offline");
     expect(keepStale(server("a"))).toBe(false);
     fleet.nodes = [NODE];
     expect(keepStale(server("a"))).toBe(true);
   });
 
-  it("says the archives went with a node that is gone", async () => {
-    fleet.nodes = [];
-    await loadKeep(server("a"));
-    expect(keepLabel(retired.keep.a.reading)).toBe("its archives went with its node");
+  it("names a node the Panel says is gone, and does not ask again", async () => {
+    fleet.servers = [server("b")];
     listBackups.mockRejectedValueOnce(
       new ApiError(404, "the node this server was retired from no longer exists, and its archives went with it", "not_found"),
     );
-    fleet.nodes = [NODE];
     await loadKeep(server("b"));
-    expect(keepLabel(retired.keep.b.reading)).toBe("its archives went with its node");
+    expect(keepLabel(retired.keep.b.reading)).toBe("backups on behemoth · its node is gone, and its archives went with it");
+    expect(keepStale(server("b"), Date.now() + KEEP_RETRY_MS * 10)).toBe(false);
+  });
+
+  it("reads a failed row again once the wait is over, while its node stays online", async () => {
+    fleet.servers = [server("a")];
+    listBackups.mockRejectedValueOnce(new ApiError(504, "node behemoth did not answer within the time allowed", "node_timeout"));
+    const t0 = 1_000_000;
+    await loadKeep(server("a"), () => t0);
+    expect(retired.keep.a.reading).toMatchObject({
+      label: "backups on behemoth · could not be read",
+      title: expect.stringMatching(/did not answer/),
+    });
+    expect(keepStale(server("a"), t0 + KEEP_RETRY_MS - 1)).toBe(false);
+    expect(keepStale(server("a"), t0 + KEEP_RETRY_MS)).toBe(true);
+  });
+
+  it("never lands a reading on a row that was revived while it was out", async () => {
+    fleet.servers = [server("a")];
+    let answer: (v: unknown) => void = () => {};
+    listBackups.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    const pending = loadKeep(server("a"));
+    fleet.servers = [server("a", { state: "installing", node_id: "node-1" })];
+    syncRetired(fleet.servers);
+    answer({ backups: [backup("x", "ready", 2048)] });
+    await pending;
+    expect(retired.keep.a).toBeUndefined();
+  });
+
+  it("drops the reading of a row another operator revived", async () => {
+    fleet.servers = [server("a")];
+    listBackups.mockResolvedValueOnce({ backups: [backup("x", "ready", 2048)] });
+    await loadKeep(server("a"));
+    expect(retired.keep.a).toBeDefined();
+    syncRetired([server("a", { state: "installing" })]);
+    expect(retired.keep.a).toBeUndefined();
+  });
+
+  it("reads two rows at a time, not every row at once", async () => {
+    const rows = ["a", "b", "c", "d", "e"].map((id) => server(id));
+    fleet.servers = rows;
+    const answers: ((v: unknown) => void)[] = [];
+    listBackups.mockImplementation(() => new Promise((r) => answers.push(r)));
+    syncRetired(rows);
+    expect(listBackups).toHaveBeenCalledTimes(2);
+    // a second poll while they are out queues nothing twice
+    syncRetired(rows);
+    expect(listBackups).toHaveBeenCalledTimes(2);
+    answers[0]({ backups: [] });
+    await flush();
+    expect(listBackups).toHaveBeenCalledTimes(3);
+    for (let i = 1; i < 5; i++) {
+      answers[i]?.({ backups: [] });
+      await flush();
+    }
+    expect(listBackups).toHaveBeenCalledTimes(5);
+    expect(Object.values(retired.keep).every((k) => k.reading.kind === "ok")).toBe(true);
+  });
+
+  it("forgets every reading when the session changes", async () => {
+    fleet.servers = [server("a")];
+    listBackups.mockResolvedValueOnce({ backups: [] });
+    await loadKeep(server("a"));
+    retired.note = "2 archives on the shared target were kept";
+    await logout();
+    expect(retired.keep).toEqual({});
+    expect(retired.note).toBe("");
+  });
+});
+
+describe("the group's head note", () => {
+  it("outlives the delete that spoke it, and goes when the retired set changes under it", async () => {
+    fleet.servers = [server("a"), server("b")];
+    deleteServer.mockResolvedValueOnce({ note: "2 archives on the shared target were kept", removal_pending: false });
+    await purge("a");
+    // the fleet read that takes the row away keeps the answer
+    syncRetired([server("b")]);
+    expect(retired.note).toBe("2 archives on the shared target were kept");
+    // another operator retires a server: the answer is about a picture no longer on screen
+    syncRetired([server("b"), server("c")]);
+    expect(retired.note).toBe("");
+  });
+
+  it("does not keep a refusal once someone else changes the set", async () => {
+    fleet.servers = [server("a")];
+    deleteServer.mockRejectedValueOnce(new ApiError(409, "a removal is still owed for this server on node titan", "removal_pending"));
+    await purge("a");
+    syncRetired(fleet.servers);
+    expect(retired.noteFailed).toBe(true);
+    syncRetired([]);
+    expect(retired.note).toBe("");
+    expect(retired.noteFailed).toBe(false);
+  });
+});
+
+describe("revive from the group", () => {
+  it("holds the row from the click until the fleet read after it has landed", async () => {
+    fleet.servers = [server("a")];
+    let answer: (v: unknown) => void = () => {};
+    reviveServer.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    let refreshed: () => void = () => {};
+    refreshFleet.mockReturnValueOnce(new Promise<void>((r) => (refreshed = r)));
+    const going = reviveRetired("a", {});
+    expect(retired.reviving.a).toBe(true);
+    // a second click is refused before it reaches the Panel
+    expect(await reviveRetired("a", {})).toBe("");
+    expect(reviveServer).toHaveBeenCalledTimes(1);
+    answer(server("a", { state: "installing" }));
+    await flush();
+    expect(retired.reviving.a).toBe(true); // the fleet read is still out
+    refreshed();
+    expect(await going).toBe("");
+    expect(retired.reviving.a).toBeUndefined();
+  });
+
+  it("returns the Panel's refusal and lets go of the row", async () => {
+    reviveServer.mockRejectedValueOnce(new ApiError(409, "only a retired server can be revived", "server_not_retired"));
+    expect(await reviveRetired("a", {})).toMatch(/only a retired server/);
+    expect(retired.reviving.a).toBeUndefined();
   });
 });
 
@@ -196,3 +333,4 @@ describe("delete for good", () => {
     expect(retired.busy.a).toBeUndefined();
   });
 });
+

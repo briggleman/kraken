@@ -47,8 +47,21 @@ export async function bootAuth(): Promise<void> {
   }
 }
 
+// Per-session module state elsewhere (what one operator's permissions let
+// them read, say) registers a reset here, so it goes when the session does
+// rather than surviving into the next one. Registered by the owning module,
+// so this file imports none of them.
+const sessionResets: (() => void)[] = [];
+export function onSessionChange(reset: () => void): void {
+  sessionResets.push(reset);
+}
+function resetSession() {
+  for (const r of sessionResets) r();
+}
+
 export async function login(username: string, password: string): Promise<void> {
   await api.login(username, password);
+  resetSession();
   await refreshMe(); // pull the role + permissions
 }
 
@@ -58,5 +71,6 @@ export async function logout(): Promise<void> {
   } finally {
     auth.user = null;
     auth.role = null;
+    resetSession();
   }
 }

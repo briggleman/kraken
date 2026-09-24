@@ -6,8 +6,6 @@
   import { serverArt } from "@/lib/views.svelte";
   import {
     keepLabel,
-    keepStale,
-    loadKeep,
     openPurge,
     openRevive,
     retired,
@@ -16,6 +14,7 @@
     retiredServers,
     retiredSlug,
     retiredWhen,
+    syncRetired,
   } from "@/lib/retired.svelte";
 
   // The fleet's last section (DESIGN.md, Retired Row): a ledger row per
@@ -25,13 +24,16 @@
   // stopped, it is off its node. With nothing retired, the section is absent.
   const rows = $derived(retiredServers(fleet.servers));
 
-  // What each row kept is read from the node it left, once per row (and again
-  // when that node comes back) — never per fleet poll. The staleness check is
-  // untracked so a reading landing does not re-run this effect.
+  // Every fleet read is folded in (syncRetired): the head's note goes when the
+  // retired set changes under it, readings of rows no longer retired go, and
+  // rows whose reading is missing or stale are queued, two reads at a time.
+  // Tracks the servers and the nodes (a node coming back makes its rows
+  // stale); the sync itself is untracked, so a reading landing does not re-run
+  // this effect.
   $effect(() => {
-    for (const s of rows) {
-      if (untrack(() => keepStale(s))) void loadKeep(s);
-    }
+    const servers = fleet.servers;
+    void fleet.nodes;
+    untrack(() => syncRetired(servers));
   });
 
   const mayRevive = $derived(hasPerm("server.create"));
@@ -39,14 +41,17 @@
 </script>
 
 <!-- Kept on screen, head only, while the answer to deleting the last retired
-     row is still being spoken — otherwise that answer would vanish with it. -->
+     row is still being spoken — otherwise that answer would vanish with it.
+     "retired · 0" is never shown without that answer beside it. -->
 {#if rows.length > 0 || retired.note}
   <section class="retired" aria-labelledby="retiredTitle">
     <div class="retired-head">
       <h2 class="pane-label" id="retiredTitle">retired · {rows.length}</h2>
-      <!-- The group's note, or — until the next action — what the last delete
-           for good answered: the Panel's note (archives a shared target kept,
-           a node owed the delete) or its refusal, in Caution. -->
+      <!-- The group's note, or — until the next action, or until the retired
+           set changes — what the last delete for good answered: the Panel's
+           note (archives a shared target kept, a node owed the delete) or its
+           refusal, in Caution. Inherited (undesigned): the mock draws only the
+           resting note. -->
       {#if retired.note && retired.noteFailed}
         <span class="retired-note" role="alert" use:istyle={"color: var(--caution)"}>{retired.note}</span>
       {:else if retired.note}
@@ -61,22 +66,35 @@
         {@const note = retiredNote(s)}
         {@const keep = retired.keep[s.id]?.reading}
         {@const busy = !!retired.busy[s.id]}
+        {@const reviving = !!retired.reviving[s.id]}
         <div class="spec-row retired-row">
           {#if art}<span class="spec-art" use:istyle={`background-image: url('${art}')`} aria-hidden="true"></span>{/if}<span class="spec-shade" aria-hidden="true"></span>
           <span class="spec-id"><span class="spec-name">{s.name}</span><span class="spec-slug">{retiredSlug(s, specOf(s)?.name, retiredNode(s))}</span></span>
           <span class="rt-when" title={s.retired_at}>{retiredWhen(s)}</span>
           <!-- A queued removal is said once, on the node band's removals line;
-               only a final backup the retire could not take is said here. -->
+               only a final backup the retire could not take is said here.
+               Inherited (undesigned): the "backups …" loading word and the
+               unread readings (no permission, node offline, node gone, a read
+               that failed) — the mock draws only a counted reading. -->
           <span class="rt-keep" title={keep?.kind === "unread" ? keep.title : undefined}
             >{#if note}<span class="rt-note" title={note.title}>{note.word}</span>{" · "}{/if}{keepLabel(keep)}</span
           >
           <span class="spec-act">
             {#if mayRevive}
-              <button class="cfg-btn ghost spec-go" disabled={busy} onclick={(e) => openRevive(s, e)}>revive</button>
+              <button
+                class="cfg-btn ghost spec-go"
+                aria-label="revive {s.name}"
+                disabled={busy || reviving}
+                onclick={(e) => openRevive(s, e)}>revive</button
+              >
             {/if}
             {#if mayPurge}
-              <button class="cfg-btn danger" disabled={busy} onclick={(e) => openPurge(s, e.currentTarget)}
-                >{busy ? "deleting…" : "delete for good"}</button
+              <!-- Inherited (undesigned): "deleting…" while the delete is out. -->
+              <button
+                class="cfg-btn danger"
+                aria-label="delete {s.name} for good"
+                disabled={busy || reviving}
+                onclick={(e) => openPurge(s, e.currentTarget)}>{busy ? "deleting…" : "delete for good"}</button
               >
             {/if}
           </span>

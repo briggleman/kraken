@@ -769,7 +769,11 @@ export function restoreOutcome(
   if (!watch || !server || server.id !== watch.serverId) return null;
   if (server.state === "restoring" || server.restore !== undefined) return null;
   const res = server.restore_result;
-  if (!res || !(Date.parse(res.finished_at) > Date.parse(watch.since))) return null;
+  // `>=`, not `>`: the Panel writes nanoseconds and Date.parse keeps
+  // milliseconds, so a restore that ends within the millisecond it began would
+  // otherwise never settle. Equal cannot be an earlier restore's result — each
+  // restore has its own start, and a new one clears the old result.
+  if (!res || !(Date.parse(res.finished_at) >= Date.parse(watch.since))) return null;
   const id = res.backup_id || watch.backupId;
   const name = backups.find((b) => b.id === id)?.name ?? id;
   if (!res.ok) return { kind: "failed", name, reason: res.error ?? "" };

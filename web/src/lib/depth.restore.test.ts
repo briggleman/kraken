@@ -181,6 +181,14 @@ describe("restoreOutcome", () => {
     expect(restoreOutcome(watch, stale, [ARCHIVE])?.kind).toBe("done");
   });
 
+  it("settles a restore that finished within the millisecond it began", () => {
+    // The Panel writes nanoseconds; Date.parse keeps milliseconds, so these two
+    // compare equal.
+    const w = { ...watch, since: "2026-09-24T12:00:00.123456789Z" };
+    const quick = srv({ state: "offline", restore_result: result({ finished_at: "2026-09-24T12:00:00.123999999Z" }) });
+    expect(restoreOutcome(w, quick, [ARCHIVE])?.kind).toBe("done");
+  });
+
   it("does not settle on a result from before the watch began", () => {
     // A fleet read issued before the POST, landing after the 202: the row is
     // offline with no job — and with the PREVIOUS restore's result on it.

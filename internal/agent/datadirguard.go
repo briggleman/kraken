@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io"
 	"path"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // An install pass runs SteamCMD in a one-shot container that bind-mounts the
@@ -34,6 +37,10 @@ type containerOps interface {
 	ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error
 	ContainerWait(ctx context.Context, containerID string, condition container.WaitCondition) (<-chan container.WaitResponse, <-chan error)
 	ContainerKill(ctx context.Context, containerID, signal string) error
+	// The one-shot install container (runInstallContainer, streamLogs).
+	ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error)
+	ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error
+	ContainerLogs(ctx context.Context, containerID string, options container.LogsOptions) (io.ReadCloser, error)
 }
 
 // dataDirHolder is a container that has a server's data dir bound, whatever its

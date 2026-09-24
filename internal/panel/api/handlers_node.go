@@ -815,7 +815,7 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 
 	info, err := s.reconcileNode(r.Context(), n)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent unreachable: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -892,7 +892,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	}
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
+		writeNodeUnreachable(w, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -902,7 +902,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 		Action:   action,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": resp.State.String()})

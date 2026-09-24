@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -204,7 +205,15 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	// Render config files and push them to the Agent.
 	applied, err := s.applyConfig(ctx, sv, sp)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "settings saved but config apply failed: "+err.Error())
+		// The save itself succeeded, and the message must say so whatever the
+		// status: an Agent failure takes its status from agentFailure (never a
+		// 502, whose body the edge discards); a render or lookup failure on the
+		// Panel's side is a plain 500.
+		st, code, msg := http.StatusInternalServerError, "config_apply_failed", err.Error()
+		if _, isRPC := status.FromError(err); isRPC {
+			st, code, msg = agentFailure(err)
+		}
+		writeCoded(w, st, code, "settings saved but config apply failed: "+msg)
 		return
 	}
 

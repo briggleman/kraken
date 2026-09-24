@@ -64,7 +64,7 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	resp, err := client.ListBackups(ctx, &agentpb.ListBackupsRequest{ServerId: sv.ID, Slug: s.serverSlug(ctx, sv)})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	views := make([]backupView, 0, len(resp.Backups))
@@ -120,7 +120,7 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	b, err := client.CreateBackup(ctx, s.backupRequestFor(ctx, sv, req.Name))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	// 202 Accepted: archiving has started; the client polls the list for READY.
@@ -150,7 +150,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	if _, err := client.RestoreBackup(ctx, &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: chi.URLParam(r, "backupId"), Slug: s.serverSlug(ctx, sv)}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
@@ -164,7 +164,7 @@ func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if _, err := client.DeleteBackup(ctx, &agentpb.DeleteBackupRequest{ServerId: sv.ID, Id: chi.URLParam(r, "backupId"), Slug: s.serverSlug(ctx, sv)}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)

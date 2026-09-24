@@ -658,13 +658,13 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	// still running the game. Nothing here can succeed without the Agent, so the
 	// operator is told now, and the stored state is left exactly as it is.
 	if lerr := s.ensureNodeLive(ctx, node); lerr != nil {
-		writeError(w, http.StatusServiceUnavailable,
+		writeCoded(w, http.StatusServiceUnavailable, codeNodeUnreachable,
 			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
 		return
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())
+		writeNodeUnreachable(w, err)
 		return
 	}
 
@@ -721,7 +721,7 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	sv.State = storeStateFromAgent(resp.State)

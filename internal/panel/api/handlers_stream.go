@@ -127,7 +127,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 	// An installing or failed-install server has no container to tail and may sit
 	// on a node the Panel cannot reach — which is often why the install failed.
 	// Serve the buffered install output instead, before any agent lookup can
-	// turn the one readable record of the failure into a 502.
+	// turn the one readable record of the failure into an error.
 	if server.State == store.StateInstalling || server.State == store.StateInstallFailed {
 		s.serveInstallStream(w, r, server.ID)
 		return
@@ -140,7 +140,7 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not connect to agent")
+		writeNodeUnreachable(w, err)
 		return
 	}
 

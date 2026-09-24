@@ -1175,7 +1175,18 @@ paths:
                 properties:
                   state: { type: string, description: "the agent's enum name, e.g. SERVER_STATE_RUNNING" }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404':
+          description: >
+            No such node (`node not found`). Or the server is not reachable
+            through this node's path (`code: not_found`, "server not found on
+            this node"): no such server, a server that lives on a different
+            node, or one this user may not reach. Those three answer with the
+            same body, so a caller probing other nodes' paths learns neither
+            which servers exist nor where they live. Nothing was sent to any
+            agent. A 404 can also be the agent's own not-found, passed through
+            with `code: not_found`.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '409':
           description: >
             Start or restart refused: the server is installing, its install

@@ -375,6 +375,23 @@ plaintext HTTP on a LAN by design, so it is the wrong layer to assert HSTS.
   user's server isn't revealed to exist. Servers created before ownership existed
   (empty `OwnerID`) are reachable only by `server.any` holders. Regression test:
   `TestServerOwnershipIsolation` (`internal/panel/api/authz_test.go`).
+  - **Follow-up, 2026-09-24 (#369): the node-scoped power path now checks the
+    pairing.** `POST /nodes/{id}/servers/{serverID}/power` authorized the caller
+    against the server, then sent the action to the URL's node without checking
+    that the server lived there (`sv.NodeID == n.ID`). A caller allowed to power
+    server A could name any node and have its Agent sent a power action for A's
+    id. The response then reported that node's view as if it were A's. The
+    other Agent ordinarily held no such container, so the action failed or did
+    nothing. But a node can hold a leftover container for an id the Panel
+    places elsewhere (the leftovers #354 and #370 deal with), and that
+    container would have been powered. Ownership was still
+    enforced throughout. Still, the endpoint trusted a pairing it never
+    verified. It now refuses a mismatch with **404** (`code: not_found`, "server
+    not found on this node"). A server that does not exist, one on another
+    node, and one the caller may not reach all answer with the same body, so
+    probing other nodes' paths reveals nothing. None of them reaches any Agent.
+    Regression test: `TestNodePower_RefusesServerOnAnotherNode`
+    (`internal/panel/api/handlers_node_power_test.go`).
 
 ## Cross-node agent authentication + dependency sweep (2026-08-27)
 

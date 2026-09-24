@@ -342,9 +342,20 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Servers]
-      summary: Delete a server and its data
+      summary: Delete a server, its world and config, and its schedules
+      description: >-
+        Removes the server's containers and data directory on its node, releases
+        its memory and ports, and deletes the record together with its schedules.
+        Backup archives are not removed; they stay on the node.
+
+
+        A removal that cannot reach the node — the node is unreachable, or its
+        Agent reports a failure — does not block the delete. It is recorded on the
+        node as a pending removal (see Node.pending_removals) and finished by the
+        Panel's node reconciler the next time the node answers.
       responses:
-        '204': { description: Deleted }
+        '204': { description: Deleted (the node-side removal may still be pending) }
+        '404': { $ref: '#/components/responses/NotFound' }
   /servers/{id}/power:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:
@@ -1013,6 +1024,49 @@ paths:
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '502': { description: Agent unreachable or the power action failed }
+  /nodes/{id}/containers/{serverID}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - name: serverID
+        in: path
+        required: true
+        description: the server id from the container's `kraken.server_id` label, as listed in managed_containers
+        schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$' }
+    delete:
+      tags: [Nodes]
+      summary: Retire an untracked container (data untouched)
+      description: >-
+        Stops and removes the container a node runs for a server id the Panel
+        has no server on that node for — an entry of managed_containers that no
+        server row matches — and has the Agent forget its spec so its watchdog
+        never adopts it again. The server's data directory and backups are left
+        exactly where they are. Requires server.delete and node.manage.
+      responses:
+        '204': { description: Retired; the container is gone and the node's managed_containers no longer lists it }
+        '400':
+          description: "Malformed server id (code: invalid_server_id)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '403':
+          description: Missing server.delete or node.manage
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '404':
+          description: "Node not found (code: node_not_found)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '409':
+          description: "The Panel tracks a server with this id on this node — delete the server instead (code: server_tracked)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '502':
+          description: "The Agent answered but could not remove the container; reason verbatim (code: agent_error)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '503':
+          description: "The node's Agent cannot be reached (code: node_unreachable)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
   /nodes/{id}/config:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
     get:
@@ -1351,6 +1405,11 @@ components:
       type: object
       properties:
         error: { type: string }
+    CodedError:
+      type: object
+      properties:
+        error: { type: string, description: "the reason, for a person" }
+        code: { type: string, description: a stable identifier for a client to branch on }
     LoginRequest:
       type: object
       required: [username, password]
@@ -1546,6 +1605,22 @@ components:
             properties:
               server_id: { type: string, description: from the container's own `kraken.server_id` label; what the Panel matches against its rows }
               container_name: { type: string, description: the container's name on the host (e.g. `kraken_<server-id>`) }
+        pending_removals:
+          type: array
+          description: >-
+            Server removals owed to this node: servers deleted in the Panel whose
+            removal the node never confirmed, because it was unreachable or its
+            Agent reported a failure. The Panel's node reconciler replays each one
+            with the recorded delete_data intent every time the node answers, and
+            drops it once the Agent confirms. Absent when nothing is owed.
+          items:
+            type: object
+            properties:
+              server_id: { type: string }
+              delete_data: { type: boolean, description: whether the operator's delete also removes the world and config }
+              requested_at: { type: string, format: date-time }
+              attempts: { type: integer, description: "failed tries so far, the one made at delete time included" }
+              last_error: { type: string, description: "the most recent failure, verbatim" }
         address: { type: string }
         public_host: { type: string }
         external_ip: { type: string }

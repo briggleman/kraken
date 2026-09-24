@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.0](https://github.com/briggleman/kraken/compare/v0.57.0...v0.58.0) (2026-09-24)
+
+
+### Features
+
+* **web:** retire, revive and the restore meter — the mock round ported ([#378](https://github.com/briggleman/kraken/issues/378)) ([d09885e](https://github.com/briggleman/kraken/commit/d09885e650c126c7071c7a4b3b2646053d0b6dde))
+
 ## [0.57.0](https://github.com/briggleman/kraken/compare/v0.56.0...v0.57.0) (2026-09-24)
 
 

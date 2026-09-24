@@ -398,6 +398,11 @@ func TestDockerInstall_RetriesThroughTheGuard(t *testing.T) {
 				failed = e.Failed
 			case *agentpb.InstallEvent_Completed:
 				completed = true
+				// The Panel starts the server on Completed, while the deferred
+				// install-container removal may still be running.
+				if err := d.installs.check(guardServer); err != nil {
+					t.Errorf("the install gate was still shut when Completed went out: %v", err)
+				}
 			case *agentpb.InstallEvent_LogLine:
 				lines = append(lines, e.LogLine)
 			}

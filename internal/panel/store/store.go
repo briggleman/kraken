@@ -175,13 +175,20 @@ const (
 	// writes it back to offline (install_failed, if that is where it came
 	// from) when it ends.
 	StateRestoring ServerState = "restoring"
+	// StateRetired is a server that is on no node (#360): its container and
+	// world were removed and its memory and ports released, but the row — its
+	// id, config, settings and schedules (disabled) — stays, and so do its
+	// backup archives on the node it left (RetiredFromNodeID). It can be
+	// revived onto a node, or deleted permanently. Nothing boots it, writes its
+	// files or backs it up; the reconciler leaves it alone.
+	StateRetired ServerState = "retired"
 )
 
 // ServerStates is every lifecycle state, in the order the API documents them.
 func ServerStates() []ServerState {
 	return []ServerState{
 		StateInstalling, StateInstallFailed, StateOffline, StateStarting,
-		StateRunning, StateStopping, StateCrashed, StateRestoring,
+		StateRunning, StateStopping, StateCrashed, StateRestoring, StateRetired,
 	}
 }
 
@@ -254,10 +261,44 @@ type Server struct {
 	// (0xC0000135) and leaves nothing else behind. LastExitCodeKnown separates
 	// "exited 0" from "no exit was observed"; int64 because Windows NTSTATUS
 	// codes are unsigned 32-bit and would go negative in an int32.
-	LastExitCode      int64     `json:"last_exit_code,omitempty"`
-	LastExitCodeKnown bool      `json:"last_exit_code_known,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
+	LastExitCode      int64 `json:"last_exit_code,omitempty"`
+	LastExitCodeKnown bool  `json:"last_exit_code_known,omitempty"`
+	// Retire is a retire in progress (#360): set when the job starts, its phase
+	// written as it moves, and cleared when the row becomes retired (or the
+	// retire is abandoned). The state stays what it was until then.
+	Retire *ServerRetire `json:"retire,omitempty"`
+	// RetiredAt is when the server was retired; nil unless it is.
+	RetiredAt *time.Time `json:"retired_at,omitempty"`
+	// RetireNote is what the retire could not do, for the operator: a final
+	// backup that was skipped or failed, a removal queued for a node that did
+	// not answer. Also set on a row whose retire was abandoned. Cleared by the
+	// next retire and by a revive.
+	RetireNote string `json:"retire_note,omitempty"`
+	// RetiredFromNodeID is the node the server was on when it was retired —
+	// where its backup archives are, and where a revive places it by default.
+	// NodeID is empty while the server is retired: it is on no node.
+	RetiredFromNodeID string `json:"retired_from_node_id,omitempty"`
+	// RetiredPorts is the host ports the server held (spec port name → port),
+	// which a revive asks for again so players' saved addresses keep working
+	// when the ports are still free.
+	RetiredPorts map[string]int `json:"retired_ports,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
 }
+
+// ServerRetire is a retire in progress as the server row records it.
+type ServerRetire struct {
+	// Phase is stopping, backing_up or removing.
+	Phase       string    `json:"phase"`
+	FinalBackup bool      `json:"final_backup"`
+	StartedAt   time.Time `json:"started_at"`
+}
+
+// The phases of a retire, in order.
+const (
+	RetirePhaseStopping  = "stopping"
+	RetirePhaseBackingUp = "backing_up"
+	RetirePhaseRemoving  = "removing"
+)
 
 // ServerRestore is a running backup restore as the server row records it.
 type ServerRestore struct {
@@ -336,7 +377,11 @@ type ScheduledTask struct {
 	LastRunAt *time.Time     `json:"last_run_at,omitempty"`
 	NextRunAt *time.Time     `json:"next_run_at,omitempty"`
 	LastError string         `json:"last_error,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
+	// DisabledByRetire marks a schedule the retire of its server switched off
+	// (#360), so a revive switches back on exactly those — never one the
+	// operator had disabled themselves.
+	DisabledByRetire bool      `json:"disabled_by_retire,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // AuditEntry records a single security-relevant action (who did what, to what,

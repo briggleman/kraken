@@ -1758,7 +1758,7 @@ components:
         already_imported: { type: boolean }
     ServerState:
       type: string
-      enum: [installing, install_failed, offline, starting, running, stopping, crashed, restoring]
+      enum: [installing, install_failed, offline, starting, running, stopping, crashed, restoring, retired]
     RestoreProgress:
       type: object
       description: >

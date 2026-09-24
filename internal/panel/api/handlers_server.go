@@ -116,7 +116,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Scheduler reserves memory + ports on the chosen node (in the loaded copy).
-	placement, err := scheduler.PlaceWithMemory(sp, nodes, memReq)
+	placement, err := scheduler.PlaceWithMemory(sp, nodes, memReq, nil)
 	if err != nil {
 		if pinnedName != "" {
 			writeError(w, http.StatusConflict, "node "+pinnedName+" can't host this spec: "+err.Error())

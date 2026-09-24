@@ -41,17 +41,26 @@ type Placement struct {
 // The reservation is the spec's own figure (Resources.AllocMemoryMB); use
 // PlaceWithMemory to size a server explicitly.
 func Place(s *spec.Spec, nodes []*cluster.Node) (*Placement, error) {
-	return PlaceWithMemory(s, nodes, s.Resources.AllocMemoryMB())
+	return PlaceWithMemory(s, nodes, s.Resources.AllocMemoryMB(), nil)
 }
 
 // PlaceWithMemory is Place with an explicit memory reservation, for a caller
 // that is sizing a server itself rather than taking the spec's figure. memReq
 // is used verbatim: validating it against the spec's floor is the caller's
 // job, because only the caller knows whether an operator deliberately chose it.
-func PlaceWithMemory(s *spec.Spec, nodes []*cluster.Node, memReq int) (*Placement, error) {
+//
+// preferredPorts (spec port name → host port) are tried first on whichever
+// node is chosen, where they are free; a port that is taken falls back to the
+// normal allocation — the spec's default, then the lowest free port. It is how
+// a revived server gets its old ports back (#360); nil for a new server. It
+// never influences which node is chosen.
+func PlaceWithMemory(s *spec.Spec, nodes []*cluster.Node, memReq int, preferredPorts map[string]int) (*Placement, error) {
 	reqs := make([]cluster.PortRequest, len(s.Ports))
 	for i, p := range s.Ports {
 		reqs[i] = cluster.PortRequest{Name: p.Name, Preferred: p.Default}
+		if old := preferredPorts[p.Name]; old != 0 && old != p.Default {
+			reqs[i].Preferred, reqs[i].Fallback = old, p.Default
+		}
 	}
 
 	reserveErrs := make(map[string]error, len(nodes)) // node ID → last Reserve failure

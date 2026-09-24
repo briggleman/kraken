@@ -96,14 +96,16 @@ everything as settings and almost nothing as an editable variable.
 
 A setting marked `required: true` is one the game will not start without, such
 as Dragonwilds' `OwnerId`. The Panel refuses to start or restart a server while
-any required setting is empty, with a `409` that names the fields and points at
+any required setting is empty (a scheduled restart included), with a `409` that names the fields and points at
 the Settings tab, instead of launching it into a crash its own spec predicts. The
 deploy form stops offering to start that game as soon as its install lands, and
 the Settings tab marks the field. Saving is never blocked, so settings can be
 filled in any order. It states an unconditional requirement only: a value needed
 just when another setting is on, like Factorio's token for a publicly listed
 server, cannot be marked required and belongs in its `help`. A field cannot be
-both `required` and `read_only`, because an operator could never satisfy it.
+both `required` and `read_only`, because an operator could never satisfy it. A
+`bool` field cannot be required either: off is an answer, not a blank, so there
+is nothing for the gate to ask for.
 
 `settings.hot_reload` declares that the game re-reads its config while running.
 It changes only what the Panel tells the operator after a save. The files are

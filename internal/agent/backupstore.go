@@ -246,14 +246,20 @@ func (t *localBackupTarget) Delete(_ context.Context, serverID, id string) error
 // false and deletes nothing. The share target embeds this with flat set, so it
 // always keeps.
 func (t *localBackupTarget) purgeServer(serverID string) (bool, error) {
-	if t.flat || strings.TrimSpace(t.dir) == "" {
+	if strings.TrimSpace(t.dir) == "" {
 		return false, nil
 	}
-	dir := t.serverDir(serverID)
 	// The id arrives validated (validRemoveID); this is the second lock on the
-	// door, because the call below deletes a tree.
+	// door, because the call below deletes a tree. It is checked against the
+	// root on its own — never through serverDir, which for a flat target IS the
+	// root — so the layout rule below is the only thing that keeps a flat
+	// target whole.
+	dir := filepath.Join(t.dir, serverID)
 	if filepath.Dir(dir) != filepath.Clean(t.dir) || filepath.Base(dir) != serverID {
 		return false, fmt.Errorf("backup: invalid server id %q", serverID)
+	}
+	if t.flat {
+		return false, nil
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return false, fmt.Errorf("backup: delete archives: %w", err)

@@ -94,13 +94,34 @@ func TestPurgeBackups_FlatTargetsAreKeptAndNamed(t *testing.T) {
 			if kept != tc.want {
 				t.Fatalf("kept = %q, want %q", kept, tc.want)
 			}
-			if flat && (!exists(paths[0]) || !exists(paths[1])) {
+			if !exists(paths[1]) {
+				t.Fatal("a neighbouring server's archive was deleted")
+			}
+			if flat && !exists(paths[0]) {
 				t.Fatal("an archive on a flat target was deleted; it cannot be attributed to one server")
 			}
 			if !flat && exists(paths[0]) {
 				t.Fatal("the namespaced primary's archives were kept because of the mirror")
 			}
 		})
+	}
+}
+
+// A flat target is kept even when something under it is named after the
+// server — the flat rule, not the path arithmetic, is what keeps it.
+func TestPurgeBackups_FlatTargetKeepsAFolderNamedAfterTheServer(t *testing.T) {
+	root := t.TempDir()
+	d := &DockerRuntime{backupJobs: map[string]*agentpb.BackupInfo{}}
+	d.backups = &localBackupTarget{dir: root, flat: true}
+	// Another game's archives, filed by the operator under a folder that
+	// shares the retired server's id.
+	nested := seedArchives(t, root, false, "sv-gone")
+	kept, err := d.PurgeBackups(context.Background(), "sv-gone")
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if kept != "the configured backup directory" || !exists(nested[0]) {
+		t.Fatalf("kept = %q, archive left = %v; a flat target must be kept whole", kept, exists(nested[0]))
 	}
 }
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.57.0](https://github.com/briggleman/kraken/compare/v0.56.0...v0.57.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* `DELETE /servers/{id}` now deletes only a retired server permanently, answering 200 with `{note, removal_pending}`; on any other server it answers 409 `server_not_retired`. Retire a live server first with `POST /servers/{id}/retire`, which is what the UI's button now does.
+
+### Features
+
+* retire a server instead of deleting it, and revive it later with a backup restored ([#376](https://github.com/briggleman/kraken/issues/376)) ([695baed](https://github.com/briggleman/kraken/commit/695baeda77ceeeabd4e0e4731480dfdf277e8692))
+
+
+### Bug Fixes
+
+* a blank required setting yields to a default the spec gains later ([#374](https://github.com/briggleman/kraken/issues/374)) ([24424a8](https://github.com/briggleman/kraken/commit/24424a81f12e50c12a32a579425752fe70c218cf))
+* **panel:** the node-scoped power route refuses a server that is not on that node ([#373](https://github.com/briggleman/kraken/issues/373)) ([cc1daa7](https://github.com/briggleman/kraken/commit/cc1daa7b41b0dac40cef0a59282ccb9221e4fb15))
+* **web:** the drill-in's detail refresh no longer puts an older server state back ([#372](https://github.com/briggleman/kraken/issues/372)) ([1504475](https://github.com/briggleman/kraken/commit/1504475e910510858484bfd25ad8fe936e480e61))
+
 ## [0.56.0](https://github.com/briggleman/kraken/compare/v0.55.0...v0.56.0) (2026-09-24)
 
 

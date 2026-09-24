@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +196,14 @@ func TestAgentMkdirOntoAnExistingPathIs409AlreadyExists(t *testing.T) {
 // EACCES — and must not come back as "404 not found" or "check the agent can
 // write there" on a start.
 func TestAgentNonFileFailuresOnPowerAre500WithoutFileHints(t *testing.T) {
-	cli, err := client.NewClientWithOpts(client.WithHost("tcp://127.0.0.1:1"))
+	// A missing engine endpoint (a named pipe on Windows, a unix socket
+	// elsewhere) fails at once; a closed TCP port can hang under WSL's
+	// mirrored networking.
+	host := "unix:///nonexistent-kraken-test/docker.sock"
+	if runtime.GOOS == "windows" {
+		host = "npipe:////./pipe/kraken_test_no_such_engine"
+	}
+	cli, err := client.NewClientWithOpts(client.WithHost(host))
 	if err != nil {
 		t.Fatalf("docker client: %v", err)
 	}
@@ -204,7 +212,7 @@ func TestAgentNonFileFailuresOnPowerAre500WithoutFileHints(t *testing.T) {
 	defer cancel()
 	_, dockerDown := cli.Ping(ctx)
 	if !client.IsErrConnectionFailed(dockerDown) {
-		t.Fatalf("precondition: Ping against a closed port = %v, not a connection failure", dockerDown)
+		t.Fatalf("precondition: Ping against a missing engine endpoint = %v, not a connection failure", dockerDown)
 	}
 	cases := []struct {
 		name string

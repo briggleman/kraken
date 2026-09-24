@@ -124,7 +124,14 @@ func TestClassifyErrorDeadlineOnlyWhenTheRPCContextEnded(t *testing.T) {
 // A container engine the Agent cannot reach is the node's own failure, said
 // plainly — not a file one, and not "the node did not answer" (it did).
 func TestClassifyErrorDockerConnectionFailure(t *testing.T) {
-	cli, err := client.NewClientWithOpts(client.WithHost("tcp://127.0.0.1:1"))
+	// A missing engine endpoint (a named pipe on Windows, a unix socket
+	// elsewhere) fails at once; a closed TCP port can hang under WSL's
+	// mirrored networking.
+	host := "unix:///nonexistent-kraken-test/docker.sock"
+	if runtime.GOOS == "windows" {
+		host = "npipe:////./pipe/kraken_test_no_such_engine"
+	}
+	cli, err := client.NewClientWithOpts(client.WithHost(host))
 	if err != nil {
 		t.Fatalf("docker client: %v", err)
 	}
@@ -133,7 +140,7 @@ func TestClassifyErrorDockerConnectionFailure(t *testing.T) {
 	defer cancel()
 	_, perr := cli.Ping(ctx)
 	if !client.IsErrConnectionFailed(perr) {
-		t.Fatalf("precondition: Ping against a closed port = %v, not a connection failure", perr)
+		t.Fatalf("precondition: Ping against a missing engine endpoint = %v, not a connection failure", perr)
 	}
 	st := status.Convert(classifyError(context.Background(), fmt.Errorf("docker: start: %w", perr)))
 	if st.Code() != codes.Internal {

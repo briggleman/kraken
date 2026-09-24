@@ -47,11 +47,6 @@ func containerName(serverID string) string { return "kraken_" + serverID }
 // container for the install/update phase.
 type DockerRuntime struct {
 	cli *client.Client
-	// gameState, when set, stands in for inspecting the server's game
-	// container before a restore (see refuseRestoreOverRunningContainer): its
-	// status, whether it exists at all, or why it could not be inspected. A
-	// test seam; nil in the Agent.
-	gameState func(ctx context.Context, name string) (status string, found bool, err error)
 	// images is the same client, narrowed to the image calls, so the pull policy
 	// can be exercised against a fake in tests (#288). Never nil.
 	images imageAPI
@@ -2086,26 +2081,23 @@ func (d *DockerRuntime) refuseRestoreOverRunningContainer(ctx context.Context, s
 }
 
 // inspectGameContainer reports the game container's status, or found=false
-// when there is none.
+// when there is none. It goes through the containerOps seam, so a test can
+// stand a fake daemon in for it.
 func (d *DockerRuntime) inspectGameContainer(ctx context.Context, name string) (status string, found bool, err error) {
-	switch {
-	case d.gameState != nil:
-		return d.gameState(ctx, name)
-	case d.cli != nil:
-		info, err := d.cli.ContainerInspect(ctx, name)
-		if err != nil {
-			if isNotFound(err) {
-				return "", false, nil
-			}
-			return "", false, err
-		}
-		if info.State != nil {
-			status = info.State.Status
-		}
-		return status, true, nil
-	default:
+	if d.containers == nil {
 		return "", false, nil // file-ops-only runtime (tests): there is no container to hold anything
 	}
+	info, err := d.containers.ContainerInspect(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if info.ContainerJSONBase != nil && info.State != nil {
+		status = info.State.Status
+	}
+	return status, true, nil
 }
 
 // RestoreBackupStream is RestoreBackup narrated through emit (#361): the phase,
@@ -2124,6 +2116,12 @@ func (d *DockerRuntime) RestoreBackupStream(ctx context.Context, serverID, slug,
 	// Returned outside the scrub: the refusal is a gRPC status already (the
 	// interceptor passes it through), names no host path, and must keep its
 	// code for the Panel to read it as a restore that did not start.
+	//
+	// An install pass holds the same tree the restore would swap, so the
+	// install gate refuses first, with the same Aborted a start gets there.
+	if err := d.installs.check(serverID); err != nil {
+		return err
+	}
 	if err := d.refuseRestoreOverRunningContainer(ctx, serverID); err != nil {
 		return err
 	}

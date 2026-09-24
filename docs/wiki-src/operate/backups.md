@@ -163,7 +163,9 @@ start that runs the update pass first, hold it only until `installing` is
 written, after which that state keeps a restore out by itself. A restore asked
 for while one of them holds the server is refused with `server_busy` — the row
 can still read `offline` while a start is booting the game. Below the Panel, the Agent refuses to restore while the server's container
-is running, restarting or paused.
+is running, restarting or paused, while an install pass for the server is
+running on the node (the same refusal a start gets there), and when it cannot
+check the container at all — in each case nothing in the tree is touched.
 
 The backups ledger draws the restore's progress as the compressed bytes read
 from the archive against its size. An Agent older than 0.56 cannot report

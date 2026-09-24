@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	cerrdefs "github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types/container"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -75,6 +78,55 @@ func TestRestoreRollbackNamesALeftoverHonestly(t *testing.T) {
 	}
 }
 
+// gameDaemon is a daemon that knows one thing: the state of the server's game
+// container, or that there is none, or that it cannot be asked. Only
+// ContainerInspect is called on the restore path; anything else panicking is
+// the test telling you so.
+type gameDaemon struct {
+	containerOps
+	status string
+	found  bool
+	err    error
+}
+
+func (g *gameDaemon) ContainerInspect(_ context.Context, name string) (container.InspectResponse, error) {
+	if g.err != nil {
+		return container.InspectResponse{}, g.err
+	}
+	if !g.found {
+		return container.InspectResponse{}, fmt.Errorf("no such container: %s: %w", name, cerrdefs.ErrNotFound)
+	}
+	return container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{
+		ID: "c-" + name, Name: "/" + name, State: &container.State{Status: g.status, Running: g.status == "running"},
+	}}, nil
+}
+
+// An install pass holds the same tree a restore would swap: while the install
+// gate is held for the server, both restore RPCs refuse with the Aborted a
+// start gets there (install_running on the Panel), before touching anything.
+func TestRestoreRefusesWhileAnInstallRuns(t *testing.T) {
+	const sid = "s-installing"
+	d, id := restoreFixture(t, sid,
+		map[string]string{"savegame/a.db": "live-a"},
+		dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
+	leave := d.installs.enter(sid)
+	defer leave()
+	if err := d.RestoreBackup(context.Background(), sid, "", id); grpcstatus.Code(err) != codes.Aborted {
+		t.Fatalf("unary restore during an install: %v; want Aborted", err)
+	}
+	stream := &fakeRestoreStream{ctx: context.Background()}
+	if err := NewService(d).RestoreBackupStream(&agentpb.RestoreBackupRequest{ServerId: sid, Id: id}, stream); grpcstatus.Code(err) != codes.Aborted {
+		t.Fatalf("streamed restore during an install: %v; want the Aborted status", err)
+	}
+	if v := liveRead(t, d, sid, "savegame/a.db"); v != "live-a" {
+		t.Errorf("savegame/a.db = %q; a refused restore must not touch the tree", v)
+	}
+	leave()
+	if err := d.RestoreBackup(context.Background(), sid, "", id); err != nil {
+		t.Fatalf("restore after the install ended: %v", err)
+	}
+}
+
 // The Agent refuses a restore while the game's container is running, whatever
 // the Panel believed — the Panel's view of "stopped" can be a start that has
 // not written its row yet. A stopped or absent container is restored as usual.
@@ -87,7 +139,7 @@ func TestRestoreRefusesARunningContainer(t *testing.T) {
 				dirEntry("savegame"),
 				archiveEntry{name: "savegame/a.db", body: "archived-a"},
 			)
-			d.gameState = func(context.Context, string) (string, bool, error) { return status, true, nil }
+			d.containers = &gameDaemon{status: status, found: true}
 
 			err := d.RestoreBackup(context.Background(), sid, "", id)
 			if grpcstatus.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "stop it before restoring") {
@@ -117,7 +169,7 @@ func TestRestoreRefusesARunningContainer(t *testing.T) {
 				d, id := restoreFixture(t, sid,
 					map[string]string{"savegame/a.db": "live-a"},
 					dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
-				d.gameState = func(context.Context, string) (string, bool, error) { return tc.status, tc.found, nil }
+				d.containers = &gameDaemon{status: tc.status, found: tc.found}
 				if rpc == "unary" {
 					if err := d.RestoreBackup(context.Background(), sid, "", id); err != nil {
 						t.Fatalf("unary restore (%s): %v", tc.name, err)
@@ -147,9 +199,7 @@ func TestRestoreFailsClosedWhenTheContainerCannotBeInspected(t *testing.T) {
 	d, id := restoreFixture(t, sid,
 		map[string]string{"savegame/a.db": "live-a"},
 		dirEntry("savegame"), archiveEntry{name: "savegame/a.db", body: "archived-a"})
-	d.gameState = func(context.Context, string) (string, bool, error) {
-		return "", false, errors.New("docker daemon is not answering")
-	}
+	d.containers = &gameDaemon{err: errors.New("docker daemon is not answering")}
 	err := d.RestoreBackup(context.Background(), sid, "", id)
 	if grpcstatus.Code(err) != codes.Unavailable || !strings.Contains(err.Error(), "could not check whether the server's container is running") {
 		t.Fatalf("unary restore with a failed inspect: %v; want Unavailable", err)

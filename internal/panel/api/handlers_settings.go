@@ -19,7 +19,14 @@ import (
 // this server's resolved values.
 type settingsResponse struct {
 	Groups []spec.SettingGroup `json:"groups"`
-	Values map[string]string   `json:"values"`
+	// Values are the server's EFFECTIVE settings (spec.ResolveSettings): what
+	// the start gate judges and the config files render from.
+	Values map[string]string `json:"values"`
+	// FromSpec names the keys whose value is the spec's current default rather
+	// than one stored on the server: a field the spec added after the server
+	// was created, or a required field stored blank that yields to a default
+	// (#367). Every other value is the server's own. Always an array.
+	FromSpec []string `json:"from_spec"`
 	// Variables are the spec's launch variables (rendered into the startup
 	// command / container env at start). Editable any time; changes apply on
 	// the next start.
@@ -80,7 +87,8 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	// Ensure values include any settings added to the spec since creation.
+	// Effective values: settings added to the spec since creation take their
+	// default, and so does a required one stored blank.
 	values := sp.ResolveSettings(sv.Settings)
 	// Specs without a settings block have a nil Groups slice, which would
 	// serialize as JSON null; the UI expects an array.
@@ -91,6 +99,7 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	skip := s.updateSkipFor(ctx, sv, sp, sv.NodeID)
 	writeJSON(w, http.StatusOK, settingsResponse{
 		Groups: groups, Values: values,
+		FromSpec:         sp.SettingsFromSpec(sv.Settings),
 		Variables:        variableViews(sp, sv),
 		HotReload:        sp.Settings.HotReload,
 		PinBuild:         sv.PinBuild,
@@ -172,7 +181,10 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 			fieldByKey[f.Key] = f
 		}
 	}
-	merged := sp.ResolveSettings(sv.Settings)
+	// The stored map, not the effective one: a required field stored blank
+	// stays blank unless this request sets it, so it keeps following the
+	// spec's default rather than freezing today's into the row (#367).
+	merged := sp.SettingsToStore(sv.Settings)
 	for k, v := range req.Values {
 		f, known := fieldByKey[k]
 		if !known {
@@ -226,7 +238,8 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	running := sv.State == store.StateRunning
 	restartNeeded := running && (varsChanged || (applied && !sp.Settings.HotReload))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"values":            sv.Settings,
+		"values":            sp.ResolveSettings(sv.Settings),
+		"from_spec":         sp.SettingsFromSpec(sv.Settings),
 		"variables":         variableViews(sp, sv),
 		"applied":           applied,
 		"restart_needed":    restartNeeded,
@@ -250,7 +263,9 @@ func (s *Server) applyConfig(ctx context.Context, sv *store.Server, sp *spec.Spe
 	if err != nil {
 		return false, err
 	}
-	rctx := spec.RenderContext{Settings: sv.Settings, Vars: sv.Vars, Ports: sv.Ports}
+	// Effective settings, the same values the start gate judged: a field the
+	// spec added later, or a required one stored blank, renders its default.
+	rctx := spec.RenderContext{Settings: sp.ResolveSettings(sv.Settings), Vars: sv.Vars, Ports: sv.Ports}
 	files := make([]*agentpb.RenderedFile, 0, len(sp.ConfigFiles))
 	for _, cf := range sp.ConfigFiles {
 		content, rerr := spec.RenderConfig(cf, rctx)

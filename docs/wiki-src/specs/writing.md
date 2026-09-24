@@ -108,6 +108,16 @@ both `required` and `read_only`, because an operator could never satisfy it. A
 `bool` field cannot be required either: off is an answer, not a blank, so there
 is nothing for the gate to ask for.
 
+A blank required setting yields to the spec's default. A server stores every
+setting when it is created, so a required field with no default is stored empty.
+If you later give that field a `default`, servers built before the change pick
+it up at their next start instead of staying refused: an empty (or
+whitespace-only) stored value for a required field counts as no value, and the
+spec's current default applies. The Settings tab marks such a value "from spec"
+until the operator types one of their own, and clearing the field hands it back
+to the spec's default. Settings that are not required keep a
+blank as a blank, because an operator may have cleared one on purpose.
+
 `settings.hot_reload` declares that the game re-reads its config while running.
 It changes only what the Panel tells the operator after a save. The files are
 written either way.

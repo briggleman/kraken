@@ -7,10 +7,39 @@
 
 import type { SettingField, Spec } from "@/api/types";
 
+const blank = (v: string | undefined) => !(v ?? "").trim();
+
+/** Whether a required field's blank `value` falls back to the spec's default.
+ *  The panel's own rule (spec.ResolveSettings, #367): a required field stored
+ *  empty or whitespace-only takes the spec's default when that default is not
+ *  blank itself. So clearing such a field hands it back to the default. */
+function yieldsToDefault(field: SettingField, value: string | undefined): boolean {
+  return !!field.required && blank(value) && !blank(field.default);
+}
+
 /** Whether `value` fails a required field. Whitespace is not a value: an owner
- *  id of three spaces is still blank to the game. */
+ *  id of three spaces is still blank to the game. A blank that falls back to a
+ *  spec default is not missing, because the panel starts the server on that
+ *  default. */
 export function isMissing(field: SettingField, value: string | undefined): boolean {
-  return !!field.required && !(value ?? "").trim();
+  return !!field.required && blank(value) && !yieldsToDefault(field, value);
+}
+
+/** Whether a required field's value is (or will be, once saved) the spec's
+ *  default rather than one of the server's own. Untouched, it is what the
+ *  panel says: listed in `from_spec` (#367). Once the operator types, it
+ *  mirrors the panel's rule for what the save will store: a value of their own
+ *  is theirs, while clearing it hands it back to a non-blank spec default. Only
+ *  asked of required fields — a blank optional one is a value the operator
+ *  chose. */
+export function isFromSpec(
+  field: SettingField,
+  fromSpec: readonly string[] | undefined,
+  edited: string | undefined,
+): boolean {
+  if (!field.required) return false;
+  if (edited === undefined) return (fromSpec ?? []).includes(field.key);
+  return yieldsToDefault(field, edited);
 }
 
 /** The required fields a freshly deployed server of `spec` starts without. A

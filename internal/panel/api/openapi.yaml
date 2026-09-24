@@ -525,6 +525,16 @@ paths:
     put:
       tags: [Servers]
       summary: Update game settings values
+      description: >-
+        Send only the settings you are changing. Every key in `values` is
+        stored on the server verbatim — the panel never compares a value with
+        the spec's default — so a key sent back unchanged becomes the server's
+        own value. A client that GETs the settings and PUTs the whole `values`
+        map back therefore freezes every value listed in `from_spec`: it stops
+        following the spec's default and is no longer reported as from the
+        spec. The web UI sends only the fields the operator edited. Sending a
+        blank for a required field that has a spec default hands it back to
+        that default.
       requestBody:
         required: true
         content:
@@ -544,7 +554,13 @@ paths:
                     The server's build pin. Omit to leave it unchanged — an
                     ordinary settings save must not unpin a server.
       responses:
-        '200': { description: Applied (with any validation errors) }
+        '200':
+          description: >-
+            Applied. The body carries `values` and `from_spec` as the GET
+            returns them (a required field stored blank still yields to the
+            spec's default, and a save of another field keeps it blank on the
+            server), plus `variables`, `applied`, `restart_needed`,
+            `hot_reload`, `variables_changed` and `pin_build`.
         '400':
           description: >
             The body is invalid, or a value is outside what the spec allows (a
@@ -2060,7 +2076,25 @@ components:
       type: object
       properties:
         groups: { type: array, items: { type: object }, description: "the spec's grouped settings schema" }
-        values: { type: object, additionalProperties: { type: string }, description: "this server's effective values, spec defaults filled in" }
+        values:
+          type: object
+          additionalProperties: { type: string }
+          description: >-
+            This server's effective values: what the start gate judges and the
+            config files render from. A field the server has no stored value
+            for takes the spec's current default, and so does a required field
+            stored blank (empty or only whitespace) when the spec has a
+            non-blank default for it.
+        from_spec:
+          type: array
+          items: { type: string }
+          description: >-
+            The setting keys whose value in `values` is the spec's current
+            default rather than one stored on this server: a field the spec
+            added after the server was created, or a required field stored
+            blank that yields to the spec's default. Every other value is the
+            server's own. Always present, in declared order. The Settings tab
+            marks a required field listed here as coming from the spec.
         variables: { type: array, items: { type: object }, description: "the spec's launch variables with this server's values" }
         hot_reload: { type: boolean }
         pin_build: { type: boolean }

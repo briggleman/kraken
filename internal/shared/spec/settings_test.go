@@ -155,7 +155,8 @@ func TestMissingRequiredSettings(t *testing.T) {
 			{Key: "Seed", Type: FieldString, Required: true},
 		}},
 		{ID: "extra", Fields: []SettingField{
-			// Required with a default: satisfied until the operator blanks it.
+			// Required with a default: blanking it hands it back to the default
+			// (#367), so it is never missing.
 			{Key: "Region", Type: FieldString, Default: "us", Required: true},
 		}},
 	}}}
@@ -182,7 +183,7 @@ func TestMissingRequiredSettings(t *testing.T) {
 		{"whitespace only", s.ResolveSettings(map[string]string{"OwnerId": "   ", "Seed": "42"}), []string{"OwnerId"}},
 		{"required default blanked", s.ResolveSettings(map[string]string{
 			"OwnerId": "0002a", "Seed": "42", "Region": "",
-		}), []string{"Region"}},
+		}), nil},
 		// A key absent from the map entirely — a caller that forgot to resolve —
 		// reads as missing rather than as satisfied.
 		{"absent from values", map[string]string{}, []string{"OwnerId", "Seed", "Region"}},
@@ -198,6 +199,131 @@ func TestMissingRequiredSettings(t *testing.T) {
 				t.Fatalf("missing: got %v, want %v (declared order)", got, c.want)
 			}
 		})
+	}
+}
+
+// TestResolveSettings_RequiredBlankYieldsToDefault — #367. A server stores its
+// settings in full at create, so a required field the spec gave no default is
+// stored as "". When the spec later gains a default for it, that blank must not
+// outrank the default: the server would otherwise stay refused by the start
+// gate until someone typed the new default in by hand.
+func TestResolveSettings_RequiredBlankYieldsToDefault(t *testing.T) {
+	field := func(def string, required bool) *Spec {
+		return &Spec{Settings: Settings{Groups: []SettingGroup{{ID: "server", Fields: []SettingField{
+			{Key: "OwnerId", Label: "Owner Player ID", Type: FieldString, Default: def, Required: required},
+			{Key: "ServerName", Type: FieldString, Default: "Kraken"},
+		}}}}}
+	}
+	before := field("", true)
+	stored := before.ResolveSettings(nil) // what create saves on the row
+	if v, ok := stored["OwnerId"]; !ok || v != "" {
+		t.Fatalf("create should store the default-less required field as a blank, got %q (present %v)", v, ok)
+	}
+	if n := len(before.MissingRequiredSettings(before.ResolveSettings(stored))); n != 1 {
+		t.Fatalf("before the spec gains a default the field should be missing, got %d missing", n)
+	}
+
+	cases := []struct {
+		name        string
+		spec        *Spec
+		stored      string
+		wantValue   string
+		wantMissing bool
+		wantSpec    bool // the value is reported as coming from the spec
+	}{
+		{"gained default lifts the gate", field("0002a", true), "", "0002a", false, true},
+		{"whitespace-only yields too", field("0002a", true), "   \t", "0002a", false, true},
+		{"operator value wins", field("0002a", true), "00ffee", "00ffee", false, false},
+		{"empty default stays missing", field("", true), "", "", true, false},
+		{"whitespace default stays missing", field("  ", true), "", "", true, false},
+		// Not required: a blank is a value an operator may have chosen, so the
+		// spec's default must not overwrite it.
+		{"non-required blank does not yield", field("0002a", false), "", "", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st := map[string]string{"OwnerId": c.stored, "ServerName": "Midgard"}
+			eff := c.spec.ResolveSettings(st)
+			if eff["OwnerId"] != c.wantValue {
+				t.Fatalf("effective OwnerId: got %q, want %q", eff["OwnerId"], c.wantValue)
+			}
+			if eff["ServerName"] != "Midgard" {
+				t.Fatalf("an unrelated stored value changed: %q", eff["ServerName"])
+			}
+			if got := len(c.spec.MissingRequiredSettings(eff)) == 1; got != c.wantMissing {
+				t.Fatalf("missing: got %v, want %v", got, c.wantMissing)
+			}
+			fromSpec := strings.Join(c.spec.SettingsFromSpec(st), ",")
+			if want := map[bool]string{true: "OwnerId", false: ""}[c.wantSpec]; fromSpec != want {
+				t.Fatalf("from spec: got %q, want %q", fromSpec, want)
+			}
+		})
+	}
+}
+
+// TestSettingsFromSpec_AbsentKey — a field the spec added after the server was
+// created is absent from the stored map, so its value is the spec's default and
+// is reported as such. The list is never nil: it goes out as a JSON array.
+func TestSettingsFromSpec_AbsentKey(t *testing.T) {
+	s := &Spec{Settings: Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "a", Type: FieldString, Default: "x"},
+		{Key: "b", Type: FieldString, Default: "y"},
+	}}}}}
+	if got := s.SettingsFromSpec(map[string]string{"a": "mine"}); strings.Join(got, ",") != "b" {
+		t.Fatalf("from spec: got %v, want [b]", got)
+	}
+	// A required field the spec added later with NO default is absent from
+	// the row and blank in effect: missing, and nothing from the spec to show.
+	added := &Spec{Settings: Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "a", Type: FieldString, Default: "x"},
+		{Key: "OwnerId", Type: FieldString, Required: true},
+		{Key: "Motd", Type: FieldString},
+	}}}}}
+	stored := map[string]string{"a": "mine"}
+	if got := added.SettingsFromSpec(stored); len(got) != 0 {
+		t.Fatalf("from spec with blank defaults: got %v, want none", got)
+	}
+	if n := len(added.MissingRequiredSettings(added.ResolveSettings(stored))); n != 1 {
+		t.Fatalf("an added required field with no default should be missing, got %d missing", n)
+	}
+	if got := s.SettingsFromSpec(map[string]string{"a": "1", "b": "2"}); got == nil || len(got) != 0 {
+		t.Fatalf("from spec with every key stored: got %#v, want an empty non-nil slice", got)
+	}
+}
+
+// TestSettingsToStore_KeepsRequiredBlank — a settings save writes the row back
+// from this, and it must keep a required field's blank as a blank: freezing
+// today's default into the row would stop the field following the spec, and
+// would report it as the operator's own value.
+func TestSettingsToStore_KeepsRequiredBlank(t *testing.T) {
+	s := &Spec{Settings: Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "OwnerId", Type: FieldString, Default: "0002a", Required: true},
+		{Key: "ServerName", Type: FieldString, Default: "Kraken"},
+		{Key: "Added", Type: FieldString, Default: "later"},
+	}}}}}
+	got := s.SettingsToStore(map[string]string{"OwnerId": "", "ServerName": "Midgard", "Gone": "x"})
+	want := map[string]string{"OwnerId": "", "ServerName": "Midgard", "Added": "later"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s: got %q, want %q (all: %v)", k, got[k], v, got)
+		}
+	}
+
+	// A REQUIRED field the spec added after the server was created is absent
+	// from the row. Its default must not be frozen in either: it is stored
+	// blank, and so keeps following the spec.
+	got = s.SettingsToStore(map[string]string{"ServerName": "Midgard"})
+	want = map[string]string{"OwnerId": "", "ServerName": "Midgard", "Added": "later"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%s: got %q, want %q (all: %v)", k, got[k], v, got)
+		}
 	}
 }
 

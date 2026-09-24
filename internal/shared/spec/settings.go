@@ -53,7 +53,9 @@ type SettingField struct {
 	// loop. Saving settings is never blocked by it, so an operator can fill a
 	// form in any order. It is for values required unconditionally; a value
 	// needed only when some other setting is on cannot be expressed with it,
-	// and a bool field cannot be required (off is a value, not a blank).
+	// and a bool field cannot be required (off is a value, not a blank). A
+	// required field stored blank yields to the spec's default, so a default
+	// the spec gains later reaches servers created before it (ResolveSettings).
 	Required bool `json:"required,omitempty"`
 }
 
@@ -146,25 +148,94 @@ type RenderContext struct {
 	Ports    map[string]int
 }
 
-// ResolveSettings merges each field's default with user overrides and returns the
-// effective settings values (string-encoded).
-func (s *Spec) ResolveSettings(overrides map[string]string) map[string]string {
+// ResolveSettings returns a server's effective settings values (string-encoded)
+// from what it has stored. It is the one reading of stored settings every
+// consumer uses — the start gate, the Settings tab, the config renderer and the
+// spec pushed to the Agent — so they can never disagree about a value.
+//
+// Each field takes the stored value when there is one and the spec's CURRENT
+// default otherwise. One stored value counts as none: a blank (empty or only
+// whitespace) for a field marked required, when the spec has a non-blank
+// default for it. A server stores its settings in full at create, so a
+// required field that had no default is stored as ""; were that blank to win,
+// a spec that later gains a default would leave every existing server refused
+// by the start gate until someone typed the default in by hand (#367). A blank
+// can never satisfy a required field anyway, so reading it as absent only ever
+// turns a refusal into a start. Non-required fields are untouched: a blank one
+// is a value an operator may have chosen on purpose. SettingsFromSpec names
+// the fields whose value came from the spec rather than the server.
+func (s *Spec) ResolveSettings(stored map[string]string) map[string]string {
 	out := make(map[string]string)
 	for _, f := range s.Settings.fields() {
-		val := f.Default
-		if ov, ok := overrides[f.Key]; ok {
-			val = ov
-		}
-		out[f.Key] = val
+		out[f.Key], _ = resolveField(f, stored)
 	}
 	return out
+}
+
+// SettingsFromSpec returns, in declared order, the keys whose effective value
+// (ResolveSettings) is the spec's non-blank default because the server stores
+// no usable value of its own for them: the key is absent (a field the spec
+// added after the server was created), or it is a required field stored blank
+// that yields to the spec's default. A field whose default is itself blank is
+// never listed — there is nothing from the spec to show, and a required one is
+// simply missing. Every other key's value is the one stored on the server. It
+// is never nil, so it serializes as a JSON array.
+func (s *Spec) SettingsFromSpec(stored map[string]string) []string {
+	out := []string{}
+	for _, f := range s.Settings.fields() {
+		if _, fromSpec := resolveField(f, stored); fromSpec {
+			out = append(out, f.Key)
+		}
+	}
+	return out
+}
+
+// SettingsToStore is what a settings save writes back before applying the
+// operator's edits: every field the spec declares, the stored value where
+// there is one. Unlike ResolveSettings it never writes a required field's
+// default into the row: a stored blank stays blank, and a required key the
+// server lacks (a field the spec added later) is stored blank too, so saving
+// some other field does not freeze today's default — the field keeps
+// following the spec, and keeps reading as from the spec. A non-required key
+// the server lacks takes the default, as it always has: a blank there would
+// be a value, not an absence.
+func (s *Spec) SettingsToStore(stored map[string]string) map[string]string {
+	out := make(map[string]string)
+	for _, f := range s.Settings.fields() {
+		switch v, ok := stored[f.Key]; {
+		case ok:
+			out[f.Key] = v
+		case f.Required:
+			out[f.Key] = ""
+		default:
+			out[f.Key] = f.Default
+		}
+	}
+	return out
+}
+
+// resolveField is one field's effective value and whether it came from the
+// spec rather than the server's stored settings (see ResolveSettings). It
+// reports the spec only for a non-blank default: a blank one shows nothing
+// from the spec, and leaves a required field missing.
+func resolveField(f SettingField, stored map[string]string) (string, bool) {
+	hasDefault := strings.TrimSpace(f.Default) != ""
+	v, ok := stored[f.Key]
+	if !ok {
+		return f.Default, hasDefault
+	}
+	if f.Required && strings.TrimSpace(v) == "" && hasDefault {
+		return f.Default, true
+	}
+	return v, false
 }
 
 // MissingRequiredSettings returns the required fields whose value in values is
 // empty or only whitespace, in the order the spec declares them. Pass the
 // server's EFFECTIVE settings (ResolveSettings over what it has saved), so a
 // field added to the spec after the server was created is judged by its default
-// rather than read as absent.
+// rather than read as absent, and a required field stored blank is judged by a
+// default the spec has gained since.
 func (s *Spec) MissingRequiredSettings(values map[string]string) []SettingField {
 	var missing []SettingField
 	for _, f := range s.Settings.fields() {

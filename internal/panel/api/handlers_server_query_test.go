@@ -28,6 +28,10 @@ func TestToAgentSpec_LogQueryCap(t *testing.T) {
 		{"blank setting falls back", map[string]string{"slotCount": ""}, 16},
 		{"non-numeric falls back", map[string]string{"slotCount": "lots"}, 16},
 		{"no settings at all", nil, 16},
+		// Past int32: refused, not wrapped into a negative cap on the wire.
+		{"oversize setting falls back", map[string]string{"slotCount": "4294967304"}, 16},
+		{"int32 max is kept", map[string]string{"slotCount": "2147483647"}, 2147483647},
+		{"negative falls back", map[string]string{"slotCount": "-3"}, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sv := &store.Server{ID: "s1", Kind: spec.WindowsNative, Settings: tc.settings}

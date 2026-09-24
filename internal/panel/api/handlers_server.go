@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1283,28 +1284,44 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 	//                  REST port; q.Password names the admin-password setting. The
 	//                  Agent curls it inside the container, so nothing is published.
 	if q := sp.Query; q != nil && q.Method != "" {
+		// The effective settings, as the config renders them, over the stored
+		// map: the spec does not have to declare the keys a query names, and a
+		// stored value for an undeclared one still counts.
+		settings := make(map[string]string, len(server.Settings))
+		for k, v := range server.Settings {
+			settings[k] = v
+		}
+		for k, v := range sp.ResolveSettings(server.Settings) {
+			settings[k] = v
+		}
 		switch q.Method {
 		case "a2s":
 			if hostPort, ok := server.Ports[q.Port]; ok {
 				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(hostPort)}
 			}
 		case "palworld-rest":
-			if pv, err := strconv.Atoi(server.Settings[q.Port]); err == nil && pv > 0 && pv <= 65535 {
-				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: server.Settings[q.Password]}
+			if pv, err := strconv.Atoi(settings[q.Port]); err == nil && pv > 0 && pv <= 65535 {
+				agentSpec.PlayerQuery = &agentpb.PlayerQuery{Method: q.Method, Port: int32(pv), Password: settings[q.Password]}
 			}
 		case "log":
 			// The Agent follows the container's own console and keeps the
 			// roster from the join/leave lines. A log never states the cap, so
 			// it is the server's own setting where the operator picks it
 			// (Enshrouded's slotCount), else the spec's constant.
-			cap := q.MaxPlayers
+			// Parsed at 32 bits, so a setting too large for the wire's int32
+			// is refused (it falls back like any other unusable value) rather
+			// than wrapping into a negative cap; the spec's constant is clamped.
+			var cap int32
+			if q.MaxPlayers > 0 {
+				cap = int32(min(q.MaxPlayers, math.MaxInt32))
+			}
 			if q.MaxPlayersSetting != "" {
-				if v, err := strconv.Atoi(strings.TrimSpace(server.Settings[q.MaxPlayersSetting])); err == nil && v > 0 {
-					cap = v
+				if v, err := strconv.ParseInt(strings.TrimSpace(settings[q.MaxPlayersSetting]), 10, 32); err == nil && v > 0 {
+					cap = int32(v)
 				}
 			}
 			agentSpec.PlayerQuery = &agentpb.PlayerQuery{
-				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: int32(cap),
+				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: cap,
 			}
 		}
 	}

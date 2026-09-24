@@ -521,6 +521,9 @@ export interface PendingRemoval {
   requested_at: string;
   /** Failed tries so far, the one made at delete time included. */
   attempts: number;
+  /** When the reconciler may try again (failures back off); absent or past
+   *  when it is due now. */
+  next_attempt?: string;
   /** The most recent failure, verbatim. */
   last_error?: string;
 }

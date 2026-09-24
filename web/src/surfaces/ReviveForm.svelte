@@ -94,6 +94,12 @@
       backupsNote = `restoring needs the backup permission — its archives are on ${oldNode.name}.`;
       return;
     }
+    // Not asked of a node the fleet already reads offline: the answer would
+    // only be a dial error, and the node band already says the node is away.
+    if (oldNode.status === "offline") {
+      backupsNote = `its archives are on ${oldNode.name}, which is offline — they can be restored once it is back.`;
+      return;
+    }
     try {
       const r = await api.listBackups(sv.id);
       if (seededFor !== sv.id) return;

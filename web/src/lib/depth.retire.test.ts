@@ -180,7 +180,9 @@ describe("retiring", () => {
     const job = (phase: "stopping" | "backing_up" | "removing") =>
       server("a", "retiring", { retire: { phase, final_backup: "requested", started_at: "" } });
     expect(retirePhaseWord(job("backing_up"))).toBe("backing up");
-    expect(deadNote(job("backing_up"))).toBe("retiring · backing up");
+    expect(serverMeta(job("backing_up"))).toMatch(/· retiring · backing up$/);
+    expect(deadNote(job("backing_up"))).toBe("retiring — taking the final backup, then its world leaves the node");
+    expect(deadNote(job("removing"))).toBe("retiring — its world is leaving the node");
     expect(serverMeta(job("removing"))).toMatch(/· retiring · removing$/);
     // no job reported yet: the note still says what is coming
     expect(deadNote(server("a", "retiring"))).toBe("retiring — final backup, then its world leaves the node");

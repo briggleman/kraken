@@ -68,7 +68,7 @@
           <!-- A queued removal is said once, on the node band's removals line;
                only a final backup the retire could not take is said here. -->
           <span class="rt-keep" title={keep?.kind === "unread" ? keep.title : undefined}
-            >{#if note}<span class="rt-note" title={note.title}>{note.word}</span> · {/if}{keepLabel(keep)}</span
+            >{#if note}<span class="rt-note" title={note.title}>{note.word}</span>{" · "}{/if}{keepLabel(keep)}</span
           >
           <span class="spec-act">
             {#if mayRevive}

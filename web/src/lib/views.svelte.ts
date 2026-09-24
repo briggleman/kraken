@@ -9,7 +9,7 @@
 import type { Node, PendingRemoval, Server, Spec } from "@/api/types";
 import { fleet, specOf, nodeOf } from "./fleet.svelte";
 import { seedHistory, type WalkSpec } from "./walk";
-import { fmtGb } from "./fmt";
+import { fmtAge, fmtGb } from "./fmt";
 
 export interface Track {
   walk: WalkSpec;
@@ -323,10 +323,10 @@ export function retirable(drift: ReturnType<typeof containerDrift>): DriftItem[]
  * because the Panel is already retrying — and the title is the roll call, each
  * entry by the server's name (its id once the row is gone) with what goes and
  * how the last try went, because "2 pending" alone does not say whether the
- * node is simply away or refusing. There is no "retry in 40s": the Panel
- * retries whenever the node answers, and reports no schedule to print.
+ * node is simply away or refusing. `retry in 40s` is the removal's own
+ * next_attempt (failures back off), said only while it is in the future.
  */
-export function pendingRemovalsNote(node: Node): { count: number; title: string } | undefined {
+export function pendingRemovalsNote(node: Node, now: number = Date.now()): { count: number; title: string } | undefined {
   const owed = node.pending_removals ?? [];
   if (owed.length === 0) return undefined;
   // A container the node still reports for an owed id is the removal not yet
@@ -343,6 +343,8 @@ export function pendingRemovalsNote(node: Node): { count: number; title: string 
       p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`,
     ];
     if (running.has(p.server_id)) facts.push("container still running");
+    const next = Date.parse(p.next_attempt ?? "");
+    if (Number.isFinite(next) && next > now) facts.push(`retry in ${fmtAge(next - now)}`);
     if (p.last_error) facts.push(p.last_error);
     return `${name} (${facts.join(" · ")})`;
   });
@@ -381,8 +383,17 @@ export function deadNote(server: Server): string {
   if (server.state === "installing") return "installing — first start follows";
   if (server.state === "restoring") return "restoring a backup — start waits for it";
   if (server.state === "retiring") {
-    const phase = retirePhaseWord(server);
-    return phase ? `retiring · ${phase}` : "retiring — final backup, then its world leaves the node";
+    // The meta line carries the phase word; the note says it as a sentence.
+    switch (server.retire?.phase) {
+      case "stopping":
+        return "retiring — stopping it first";
+      case "backing_up":
+        return "retiring — taking the final backup, then its world leaves the node";
+      case "removing":
+        return "retiring — its world is leaving the node";
+      default:
+        return "retiring — final backup, then its world leaves the node";
+    }
   }
   if (server.state === "offline" && server.last_error) return "stopped · " + server.last_error;
   if (server.state === "offline" && server.restore_result && !server.restore_result.ok)

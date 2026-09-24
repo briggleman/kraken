@@ -269,8 +269,23 @@ describe("pendingRemovalsNote", () => {
     expect(note?.title.split("\n")[0]).toBe(
       "retired or deleted in the panel, not yet removed from this node — retried each time the node answers",
     );
-    // No invented schedule: the Panel retries when the node answers.
+    // No invented schedule: with no next_attempt, there is no "retry in".
     expect(note?.title).not.toMatch(/retry in/);
+  });
+
+  it("says when the next try is, from the removal's own next_attempt, only while it is ahead", () => {
+    const now = Date.parse("2026-09-24T10:00:00Z");
+    const owed = (next: string) =>
+      pendingRemovalsNote(
+        node({
+          pending_removals: [
+            { server_id: "f4030778", delete_data: true, requested_at: "", attempts: 2, next_attempt: next, last_error: "could not reach the node's agent" },
+          ],
+        }),
+        now,
+      );
+    expect(owed("2026-09-24T10:00:40Z")?.title).toContain("(deleted · container and data · 2 attempts · retry in 40s · could not reach the node's agent)");
+    expect(owed("2026-09-24T09:59:00Z")?.title).not.toMatch(/retry in/);
   });
 
   it("names a removal by its server while the row is still in the fleet, by its id once it is gone", () => {

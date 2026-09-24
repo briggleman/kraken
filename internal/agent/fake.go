@@ -3,6 +3,7 @@ package agent
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -57,6 +58,13 @@ type FakeRuntime struct {
 	// in microseconds. The install-progress UI is otherwise unreachable on the
 	// fake-live stack. Zero (the default) keeps tests fast.
 	installDelay time.Duration
+	// removals records every Remove, and removeErr, when set, makes them fail
+	// (see SetRemoveFailure).
+	removals  []FakeRemoval
+	removeErr string
+	// removeGate, when set, holds every Remove until it is closed (see
+	// HoldRemovals) — a removal that hangs on the node.
+	removeGate chan struct{}
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -193,11 +201,75 @@ func (f *FakeRuntime) fakeRoster(serverID string, since time.Time) (players, cap
 	}
 }
 
-func (f *FakeRuntime) Remove(_ context.Context, serverID string, _ bool) error {
+// FakeRemoval is one RemoveServer the fake received, with the intent it carried.
+type FakeRemoval struct {
+	ServerID   string
+	DeleteData bool
+}
+
+// SetRemoveFailure makes every later Remove fail with the given reason as a
+// plain error, the way the Docker runtime reports a removal the daemon refused
+// (it reaches the Panel as codes.Unknown, not Unavailable — the node answered);
+// "" makes removals succeed again. A runtime switch rather than a FakeOption,
+// because what it exists to test is a removal that fails and then, once the
+// node recovers, is finished by the Panel's retry (#354).
+func (f *FakeRuntime) SetRemoveFailure(reason string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.removeErr = reason
+}
+
+// HoldRemovals makes every later Remove hang — recorded, but not answered —
+// until the returned func is called, the way a removal stuck on a slow Docker
+// daemon does. It is what shows the Panel's health pass does not wait on one.
+func (f *FakeRuntime) HoldRemovals() (release func()) {
+	gate := make(chan struct{})
+	f.mu.Lock()
+	f.removeGate = gate
+	f.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			f.mu.Lock()
+			f.removeGate = nil
+			f.mu.Unlock()
+			close(gate)
+		})
+	}
+}
+
+// Removals returns every removal that reached the fake — failed ones included —
+// in order.
+func (f *FakeRuntime) Removals() []FakeRemoval {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]FakeRemoval(nil), f.removals...)
+}
+
+// Remove forgets the server, and its files only when deleteData is set — the
+// same promise the Docker runtime makes, so a Panel test can tell a removal
+// that kept the world from one that did not.
+func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bool) error {
+	f.mu.Lock()
+	f.removals = append(f.removals, FakeRemoval{ServerID: serverID, DeleteData: deleteData})
+	gate := f.removeGate
+	f.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.removeErr != "" {
+		return errors.New(f.removeErr)
+	}
 	delete(f.states, serverID)
-	delete(f.files, serverID)
+	if deleteData {
+		delete(f.files, serverID)
+	}
 	return nil
 }
 

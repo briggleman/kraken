@@ -961,10 +961,17 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
 }
 
-// handleDeleteServer removes the server's container on the Agent, releases its
-// node allocation, and deletes the record.
+// handleDeleteServer removes the server's container and data on the Agent,
+// releases its node allocation, and deletes the record and its schedules.
+//
+// A removal that does not land — the node is down, or the Agent reports a
+// failure — does not stop the delete: it is recorded on the node as a pending
+// removal and finished by the node reconciler once the node answers (#354).
+// Backups are not removed; they stay on the node.
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// Detached from the request: once the removal has been attempted, the
+	// record of how it went must be written even if the client has gone.
+	ctx := context.WithoutCancel(r.Context())
 	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "server not found")
@@ -977,19 +984,33 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	if node, err := s.store.GetNode(ctx, sv.NodeID); err == nil {
-		if client, cerr := s.nodes.Client(node.DialTarget()); cerr == nil {
-			dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			_, _ = client.RemoveServer(dctx, &agentpb.RemoveServerRequest{ServerId: sv.ID, DeleteData: true})
-			cancel()
+	// A node that no longer exists has nothing to be told and nothing to hold
+	// the allocation; any other failure to read it means the removal could be
+	// neither delivered nor remembered, and a delete the Panel cannot remember
+	// does not happen.
+	node, err := s.store.GetNode(ctx, sv.NodeID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		node = nil
+	case err != nil:
+		s.logger.Error("server delete refused: could not load its node", "server", sv.ID, "node", sv.NodeID, "err", err)
+		writeError(w, http.StatusInternalServerError, "could not load the server's node; nothing was deleted")
+		return
+	}
+	if node != nil {
+		removeErr := s.removeOnNode(ctx, node, sv.ID, true)
+		if err := s.settleNodeAfterDelete(ctx, sv, node.ID, removeErr); err != nil {
+			s.logger.Error("server delete refused: could not record its removal on the node",
+				"server", sv.ID, "node", node.ID, "removal_err", removeErr, "err", err)
+			msg := "could not record the removal on the server's node; the server was not deleted"
+			if removeErr == nil {
+				// The node did its part: the containers and the data are gone.
+				// Only the Panel's books are behind, and a retry settles them.
+				msg = "the server's data was removed on the node but the delete could not be recorded; retry the delete"
+			}
+			writeError(w, http.StatusInternalServerError, msg)
+			return
 		}
-		// Release the node's reserved memory + ports.
-		ports := make([]int, 0, len(sv.Ports))
-		for _, p := range sv.Ports {
-			ports = append(ports, p)
-		}
-		node.Release(sv.MemoryMB, ports)
-		_ = s.store.UpdateNode(ctx, node)
 	}
 	// Best-effort cleanup of external resources this server published (Cloudflare
 	// DNS records + UniFi port-forwards).

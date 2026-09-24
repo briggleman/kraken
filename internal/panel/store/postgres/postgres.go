@@ -470,18 +470,23 @@ func (s *Store) UpdateServer(ctx context.Context, sv *store.Server) error {
 	return nil
 }
 
+// DeleteServer deletes the server row and its schedules in one transaction, so
+// neither can outlive the other (see store.ServerStore).
 func (s *Store) DeleteServer(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM servers WHERE id=$1`, id)
-	if err != nil {
-		if notFoundErr(err) {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `DELETE FROM servers WHERE id=$1`, id)
+		if err != nil {
+			if notFoundErr(err) {
+				return store.ErrNotFound
+			}
+			return err
+		}
+		if tag.RowsAffected() == 0 {
 			return store.ErrNotFound
 		}
+		_, err = tx.Exec(ctx, `DELETE FROM schedules WHERE server_id=$1`, id)
 		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return store.ErrNotFound
-	}
-	return nil
+	})
 }
 
 // ---- Schedules ----

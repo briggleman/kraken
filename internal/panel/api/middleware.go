@@ -99,7 +99,11 @@ func (s *Server) requirePermission(p rbac.Permission) func(http.Handler) http.Ha
 				return
 			}
 			if !role.Has(p) {
-				writeError(w, http.StatusForbidden, "missing permission: "+string(p))
+				// Coded, so a refusal here reads the same as one a handler
+				// makes on a second permission it checks itself.
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": "missing permission: " + string(p), "code": "forbidden",
+				})
 				return
 			}
 			next.ServeHTTP(w, r)

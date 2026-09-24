@@ -105,11 +105,63 @@ Panel had `running` rows for. An Agent that names its containers reports that
 one against the server id it belongs to, the Panel finds the row, and the badge
 stays quiet for the length of the pass.
 
-A badge that does *not* clear is worth acting on. The usual cause is a
-restart that failed at the "stop before update" step while the Agent was
-unreachable: the Panel marked the row `install_failed` while the container kept
-running. [Troubleshooting](/wiki/reference/troubleshooting/) has that one written
-out.
+A badge that does *not* clear is worth acting on. There are two causes, and
+the badge tells you which. If a server row exists for the id — it shows
+`install_failed` or `offline` while players are connected — it is a restart
+that failed at the "stop before update" step while the Agent was unreachable.
+If no row matches, it is an **orphan**: a server deleted while its node could
+not be told, on a Panel from before that was remembered.
+[Troubleshooting](/wiki/reference/troubleshooting/) has both written out.
+
+### Retiring an untracked container
+
+Each named untracked container on the line carries a **retire** chip (past
+three, one **retire all** takes them together). It is offered to a role holding
+both `server.delete` and `node.manage`, and it asks for a plain confirmation
+rather than the typed one, because it destroys nothing:
+
+- the node stops and removes the container, and the install container if one
+  was left behind;
+- the Agent forgets the server's persisted spec, so its watchdog never adopts
+  the container again after an Agent restart;
+- the server's data directory stays exactly where it is, and its backups are
+  kept.
+
+It is refused with `409 server_tracked` if the Panel does have a server with
+that id on that node — use the server's own delete for that — and with
+`409 removal_pending` if a removal is already owed for that id (see below: that
+removal may delete the data, so a retire promising otherwise would be undone by
+the next retry). A node that is not answering is `503 node_unreachable`; one
+that answers but cannot remove the container is `500 node_error` with its
+reason. A refusal lands on the band as `retire · <reason>` and clears once the
+container is gone.
+
+The API is `DELETE /api/v1/nodes/{id}/containers/{serverID}`.
+
+### Pending removals
+
+A delete no longer needs the node to be there. When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete goes through
+anyway — row and schedules — and the removal is remembered on the node together
+with what you asked for (container and data). The server's **memory and ports
+stay allocated** on the node until the removal lands, because the container may
+still be running and bound; they are released when the node confirms.
+
+While it is owed, the band reads `removals · 1 pending`, and the container, if
+it is still running, is counted there rather than as untracked. Hover it for the
+server id, how many tries it has had and the last failure. The Panel's node
+reconciler retries each pending removal while the node answers, backing off
+after each failure — 20 seconds, then 40, doubling up to an hour apart — and the
+line goes away when the Agent confirms. It never holds up the node health pass:
+a node whose removals hang does not delay any other node's status.
+
+If the Panel cannot record the removal at all (its database is failing), the
+delete is refused with a `500` and nothing is deleted.
+
+This is your delete, carried out late. The Agent never decides on its own that
+a container it finds should go: it adopts what it finds running, as it always
+has, and removes only what the Panel tells it to. The same list is on the node
+record as `pending_removals` in `GET /api/v1/nodes`.
 
 ## Server cards
 

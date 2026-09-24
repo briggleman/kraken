@@ -11,6 +11,20 @@ import (
 // racing a background loop.
 func (s *Server) ReconcileOnceForTest(ctx context.Context) { s.reconcileOnce(ctx) }
 
+// ReconcileNodesOnceForTest runs a single pass of the node reconciler — node
+// health, then the pending removals owed to every node that answered — and,
+// unlike the real loop, waits for those replays to settle before returning.
+func (s *Server) ReconcileNodesOnceForTest(ctx context.Context) {
+	s.reconcileNodesOnce(ctx)
+	s.replays.wg.Wait()
+}
+
+// ReconcileNodesPassForTest is one pass exactly as the loop runs it — without
+// waiting for the replays it starts — and WaitRemovalReplaysForTest waits for
+// them afterwards.
+func (s *Server) ReconcileNodesPassForTest(ctx context.Context) { s.reconcileNodesOnce(ctx) }
+func (s *Server) WaitRemovalReplaysForTest()                    { s.replays.wg.Wait() }
+
 // DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
 // a test in the black-box package can walk up to the edge of one without
 // restating the number.

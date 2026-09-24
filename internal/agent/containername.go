@@ -6,7 +6,17 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
+	"github.com/docker/docker/api/types/container"
 )
+
+// containerRemovalAPI is the slice of the Docker client that removing a
+// container and waiting out its name needs. It is a seam so the removal paths —
+// the recreate in ensureContainer, and Remove — can be tested without a daemon;
+// in production the field holds *client.Client itself.
+type containerRemovalAPI interface {
+	ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error
+	ContainerInspect(ctx context.Context, containerID string) (container.InspectResponse, error)
+}
 
 // Recreating a server's container is the Agent's busiest path: every start of a
 // stopped server and every crash auto-restart goes through ensureContainer,

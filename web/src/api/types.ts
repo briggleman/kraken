@@ -420,6 +420,18 @@ export interface AgentUpdateJob {
   finished_at?: string;
 }
 
+/** One removal a node owes (see Node.pending_removals). */
+export interface PendingRemoval {
+  server_id: string;
+  /** Whether the operator's delete also removes the world and config. */
+  delete_data: boolean;
+  requested_at: string;
+  /** Failed tries so far, the one made at delete time included. */
+  attempts: number;
+  /** The most recent failure, verbatim. */
+  last_error?: string;
+}
+
 export interface Node {
   id: string;
   name: string;
@@ -448,6 +460,11 @@ export interface Node {
    *  older than 0.54.0, which reports only the count, so an empty list means
    *  "this agent did not say", never "nothing is running" — see containerDrift(). */
   managed_containers?: { server_id: string; container_name: string }[];
+  /** Server removals this node owes: servers deleted in the panel whose removal
+   *  the node never confirmed (it was unreachable, or its agent failed it). The
+   *  panel's node reconciler replays each one every time the node answers and
+   *  drops it once the agent confirms — see pendingRemovalsNote(). */
+  pending_removals?: PendingRemoval[];
   /** Operator hold: excluded from new placements while its servers keep running. */
   cordoned?: boolean;
   /** Registered before its agent answered; name is a placeholder until first contact. */

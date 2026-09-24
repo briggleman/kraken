@@ -367,6 +367,10 @@ type ServerStore interface {
 	GetServer(ctx context.Context, id string) (*Server, error)
 	ListServers(ctx context.Context) ([]*Server, error)
 	UpdateServer(ctx context.Context, s *Server) error
+	// DeleteServer deletes the server and, atomically with it, every schedule
+	// that targets it. A schedule has no life of its own: one left behind fires
+	// forever against a server that no longer exists and fails with "load
+	// server" on every slot (#354).
 	DeleteServer(ctx context.Context, id string) error
 }
 

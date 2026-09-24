@@ -93,7 +93,7 @@
         </details>
         <details class="ep m-delete w">
           <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>&#123;id&#125;</em></span><span class="ep-r"><span class="ep-s">delete a server and its data</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p><p class="ep-line"><b>keep_data</b> <em>query · optional · leave the data directory in place</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world, backups and config</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; its backups are kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>&#123;id&#125;</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>

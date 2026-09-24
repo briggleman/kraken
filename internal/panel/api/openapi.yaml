@@ -352,8 +352,13 @@ paths:
       summary: Power action (start/stop/restart/kill)
       description: >
         Start and restart re-run the server's install script before launching,
-        so the game picks up depot updates, unless the server pins its build or
-        the spec sets skip_update_on_start. That pass is asynchronous: the
+        so the game picks up depot updates, unless one of these skips it: the
+        server pins its build, the spec sets skip_update_on_start (per spec or
+        per platform), the server's create or reinstall completed within the
+        last 30 minutes (so the pass would only repeat it), or the spec needs an
+        authenticated Steam login and the node has no stored credentials.
+        GET /servers/{id}/settings reports which way the next start will go.
+        That pass is asynchronous: the
         response is then 202 with state `installing` (the console streams the
         install log), and the server continues to `running` on its own. Where a
         failed pass lands depends on the phase: a stop (or agent connection)
@@ -388,18 +393,22 @@ paths:
         '409':
           description: >
             Start or restart refused: the server is installing, its install
-            failed (reinstall first), or a setting its spec marks `required` is
-            empty. The last carries `code: required_settings_missing` and the
-            keys in `missing_settings`; nothing was attempted and the server's
-            state is unchanged. Stop and kill are never refused for it.
+            failed (reinstall first), the game spec it was built from no longer
+            exists (`code: spec_missing`; permanent, since a spec's id cannot be
+            recreated), or a setting its spec marks `required` is empty (`code:
+            required_settings_missing`, with the keys in `missing_settings`).
+            Nothing was attempted and the server's state is unchanged. Stop and
+            kill are never refused for any of these.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error: { type: string }
-                  code: { type: string, enum: [required_settings_missing] }
-                  missing_settings: { type: array, items: { type: string } }
+              schema: { $ref: '#/components/schemas/StartRefusal' }
+        '500':
+          description: >
+            The server's spec could not be read (a store error, not a missing
+            spec), so start and restart were refused rather than run unchecked.
+            Nothing was attempted.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '503':
           description: >
             The panel has no live connection to the hosting node's agent. Nothing
@@ -479,7 +488,11 @@ paths:
       tags: [Servers]
       summary: Get grouped game settings + current values
       responses:
-        '200': { description: Settings (groups + values) }
+        '200':
+          description: Settings (groups + values), and what the next start does about updates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerSettings' }
     put:
       tags: [Servers]
       summary: Update game settings values
@@ -820,7 +833,24 @@ paths:
           description: Updated
           content:
             application/json: { schema: { $ref: '#/components/schemas/Spec' } }
-    delete: { tags: [Specs], summary: Delete a spec, responses: { '204': { description: Deleted } } }
+    delete:
+      tags: [Specs]
+      summary: Delete a spec
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >
+            Refused while any server is built from the spec: a server keeps its
+            spec's id for life, and could never start again without it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, enum: [spec_in_use] }
+                  servers: { type: integer, description: how many servers use the spec }
 
   /nodes:
     get:
@@ -941,6 +971,48 @@ paths:
       responses:
         '200': { description: Live node info }
         '502': { description: Agent unreachable }
+  /nodes/{id}/servers/{serverID}/power:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: serverID, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Nodes]
+      summary: Power action sent straight to one node's agent
+      description: >
+        A lower-level power path than POST /servers/{id}/power: it forwards the
+        action to the named node's agent and does not run the update pass,
+        re-push the spec or render config. Start and restart are refused on the
+        same grounds as the server-scoped endpoint, with the same bodies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PowerRequest' }
+      responses:
+        '200':
+          description: The agent's reported state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { type: string, description: "the agent's enum name, e.g. SERVER_STATE_RUNNING" }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >
+            Start or restart refused: the server is installing, its install
+            failed, its spec no longer exists (`code: spec_missing`), or a
+            required setting is empty (`code: required_settings_missing`, with
+            the keys in `missing_settings`). Nothing was sent to the agent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartRefusal' }
+        '500':
+          description: The server's spec could not be read; start and restart were refused.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '502': { description: Agent unreachable or the power action failed }
   /nodes/{id}/config:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
     get:
@@ -1571,12 +1643,44 @@ components:
         state: { type: string, enum: [pending, ready, failed], description: archive lifecycle — backups run asynchronously }
         replication: { type: string, enum: ['', pending, done, failed], description: off-node (SFTP) mirror status; empty when replication isn't configured }
         error: { type: string, description: "why the backup failed (state=failed), or a degraded-capture note on a ready archive; omitted when clean" }
+    StartRefusal:
+      type: object
+      properties:
+        error: { type: string, description: the sentence to show the operator }
+        code: { type: string, enum: [required_settings_missing, spec_missing], description: absent for the install-state refusals }
+        missing_settings: { type: array, items: { type: string }, description: "required_settings_missing only: the empty fields' keys" }
+    ServerSettings:
+      type: object
+      properties:
+        groups: { type: array, items: { type: object }, description: "the spec's grouped settings schema" }
+        values: { type: object, additionalProperties: { type: string }, description: "this server's effective values, spec defaults filled in" }
+        variables: { type: array, items: { type: object }, description: "the spec's launch variables with this server's values" }
+        hot_reload: { type: boolean }
+        pin_build: { type: boolean }
+        updates_on_start:
+          type: boolean
+          description: >-
+            False when the spec opted out of update-on-start (per spec or per
+            platform), so the build pin is moot. About the spec, not the next
+            start — see next_start_updates.
+        next_start_updates:
+          type: boolean
+          description: >-
+            Whether the next operator start or restart through the panel would
+            run the update pass right now. Scheduled restarts and the
+            node-scoped power endpoint never run it, and it means nothing while
+            the server is installing or install_failed, where a start is refused.
+        update_skip_reason:
+          type: string
+          enum: [spec, pinned, fresh_install, steam_login]
+          description: >-
+            Why next_start_updates is false; absent when it is true.
     ScheduleInput:
       type: object
       required: [action, cron]
       properties:
         name: { type: string }
-        action: { type: string, enum: [restart, backup, command, replicate], description: "what the task does on each run; `replicate` mirrors the server's existing backups to the node's configured off-node target (SFTP or SMB)" }
+        action: { type: string, enum: [restart, backup, command, replicate], description: "what the task does on each run; `restart` runs only on a server that is running, starting or crashed (it is skipped on offline, stopping, installing and install_failed, and while a required setting is empty or the spec is gone), never runs the update pass, and records any skip in last_error; `replicate` mirrors the server's existing backups to the node's configured off-node target (SFTP or SMB)" }
         cron: { type: string, description: "5-field cron expression (min hour dom month dow)" }
         command: { type: string, description: "required when action=command" }
         enabled: { type: boolean }

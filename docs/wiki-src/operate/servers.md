@@ -115,21 +115,26 @@ stale error.
 Four paths start a server without re-running anything, and each is a decision
 rather than an omission.
 
-- **The first start within 30 minutes of an install.** A create or reinstall
-  that succeeds stamps the server's `provisioned_at`, and a start inside that
-  window skips the pass, which would only repeat an install that just ran. It
+- **Any start within 30 minutes of an install.** A create or reinstall that
+  succeeds stamps the server's `provisioned_at`, and every start or restart
+  inside that window skips the pass, which would only repeat an install that
+  just ran. Starting does not clear the stamp, so a second start in the window
+  skips it too. It
   covers the deploy form's "start once the install finishes" and an operator who
   stops to fill in settings first. It is a window rather than a "never started"
   flag so that a server created and left for days still updates on its first
   start. Editing a launch variable clears the stamp, because the install script
-  may render it, and so does a failed install. The settings response's
+  may render it, even when the edit lands while the install is still running.
+  A failed install clears it too. The settings response's
   `next_start_updates` says which way the next start will go.
 - **Scheduled restarts.** A cron restart drives the Agent directly. A nightly
-  restart is not an invitation to validate a 30 GB tree nightly. It runs only on
-  a server that is `running`, since the Agent's restart is a stop then a start
-  and would otherwise start a server someone had stopped, and it is refused while
-  a required setting is empty. Either refusal is recorded as the schedule's last
-  error.
+  restart is not an invitation to validate a 30 GB tree nightly. It runs on a
+  server that is `running`, `starting` or `crashed`, so it still revives a server
+  the watchdog gave up on. It is skipped on an `offline` one, because the Agent's
+  restart is a stop then a start and would start a server someone had stopped,
+  and on `stopping`, `installing` and `install_failed`. It is also refused while
+  a required setting is empty. Any skip is recorded as the schedule's last error,
+  shown on its row.
 - **The crash watchdog's restarts.** The Agent restarts the container itself and
   never involves the Panel, so a crash loop cannot become a download loop.
 - **A spec that needs a Steam login on a node with no stored credentials.** The

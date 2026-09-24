@@ -207,7 +207,7 @@ month, month, day of week. Four actions:</p>
 </thead>
 <tbody><tr>
 <td><code>restart</code></td>
-<td>restarts the server. Drives the Agent directly, so it does <strong>not</strong> re-run the install pass.</td>
+<td>restarts the server. Drives the Agent directly, so it does <strong>not</strong> re-run the install pass. It runs on a server that is <code>running</code>, <code>starting</code> or <code>crashed</code>, so it still revives a server the watchdog gave up on, and is skipped on <code>offline</code> (someone stopped it, and a restart would start it again), <code>stopping</code>, <code>installing</code> and <code>install_failed</code>. It is also refused while a required setting is empty. A skip is recorded as the schedule&#39;s last error, shown on its row.</td>
 </tr>
 <tr>
 <td><code>backup</code></td>

@@ -96,6 +96,10 @@ export const depth = $state({
   // How the watched restore ended — the one piece of feedback a restore that
   // landed ever gave, since the button used to just go back to "restore".
   restoreNote: null as RestoreNote | null,
+  // The retire block's one choice (#360): take a final backup before the world
+  // goes. On by default — revive needs something to restore — and back on
+  // every time the drill-in opens, so one server's "no" is never another's.
+  retireFinalBackup: true,
   powerBusy: false,
   error: null as string | null,
   sftp: null as SftpStatus | null,
@@ -143,6 +147,11 @@ function sameServerView(a: Server | null, b: Server | null): boolean {
   return (
     a.id === b.id &&
     a.state === b.state &&
+    // A retire's phase and outcome (#360): the retiring notice names the phase,
+    // and an abandoned retire speaks through retire_note.
+    JSON.stringify(a.retire ?? null) === JSON.stringify(b.retire ?? null) &&
+    (a.retire_note ?? "") === (b.retire_note ?? "") &&
+    (a.last_error ?? "") === (b.last_error ?? "") &&
     JSON.stringify(a.restore ?? null) === JSON.stringify(b.restore ?? null) &&
     JSON.stringify(a.restore_result ?? null) === JSON.stringify(b.restore_result ?? null)
   );
@@ -380,6 +389,7 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.updatePass = false;
   depth.restoreWatch = null;
   depth.restoreNote = null;
+  depth.retireFinalBackup = true;
   depth.error = null;
   depth.sftp = null;
   depth.sftpOpen = false;
@@ -540,6 +550,13 @@ export function followFleet() {
 export function syncDepthFromFleet() {
   if (!depth.open || !depth.serverId) return;
   const s = fleet.servers.find((x) => x.id === depth.serverId);
+  // Retired while open (#360; inherited — the mock draws no such moment): a
+  // retired server has no drill-in (no node, no console, no files), so the
+  // sheet surfaces to the fleet, where the row now sits in the retired group.
+  if (s?.state === "retired") {
+    surface();
+    return;
+  }
   if (s) {
     const was = depth.server?.state;
     setDepthServer(s);
@@ -622,11 +639,11 @@ export async function reinstall() {
 /** The delete button on a live server retires it (#360): a final backup, then
  *  the world goes and the row stays, retired and out of the grid, its backups
  *  kept. The Panel answers once the retire has started; the fleet poll picks
- *  up the rest. */
+ *  up the rest. The final backup follows the retire block's toggle. */
 export async function retireCurrentServer(): Promise<boolean> {
   if (!depth.serverId) return false;
   try {
-    await api.retireServer(depth.serverId, true);
+    await api.retireServer(depth.serverId, depth.retireFinalBackup);
     await refreshFleet();
     return true;
   } catch (e) {

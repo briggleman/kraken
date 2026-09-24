@@ -65,7 +65,11 @@ export function serverMeta(server: Server): string {
   const bits = [spec?.slug ?? server.spec_id, spec ? `v${spec.version}` : "", port ? `:${port}` : ""]
     .filter(Boolean)
     .join(" · ");
-  return server.state === "running" ? bits : `${bits} · ${server.state.replace("_", " ")}`;
+  if (server.state === "running") return bits;
+  // A retire names its phase on the card (#360, inherited): "retiring ·
+  // backing up" says what the minutes are being spent on.
+  const phase = server.state === "retiring" ? retirePhaseWord(server) : "";
+  return `${bits} · ${server.state.replace("_", " ")}${phase ? " · " + phase : ""}`;
 }
 
 export function serverArt(server: Server): string | undefined {
@@ -361,13 +365,54 @@ export function removalKind(p: PendingRemoval): "retired" | "deleted for good" |
   return "deleted";
 }
 
-/** The dead-note under a stopped card — real facts only. */
+/** The dead-note under a stopped card — real facts only.
+ *
+ *  An offline server can carry two facts the plain "stopped" line used to
+ *  hide (inherited states of a revive, #360 — the mock draws neither): a
+ *  `last_error` (a start after revive the Panel refused, an abandoned retire;
+ *  both cleared by the next start) and a failed `restore_result` (a revive's
+ *  restore that did not land). The error is the fresher of the two, so it
+ *  speaks first; the restore is said as the LAST restore, which stays true
+ *  through any number of starts since. */
 export function deadNote(server: Server): string {
   if (server.state === "install_failed")
     return "install failed · " + (server.last_error || "see reinstall");
   if (server.state === "crashed") return "crashed · logs held until next start";
   if (server.state === "installing") return "installing — first start follows";
   if (server.state === "restoring") return "restoring a backup — start waits for it";
-  if (server.state === "retiring") return "retiring — final backup, then its world leaves the node";
+  if (server.state === "retiring") {
+    const phase = retirePhaseWord(server);
+    return phase ? `retiring · ${phase}` : "retiring — final backup, then its world leaves the node";
+  }
+  if (server.state === "offline" && server.last_error) return "stopped · " + server.last_error;
+  if (server.state === "offline" && server.restore_result && !server.restore_result.ok)
+    return "stopped · last restore failed" + (server.restore_result.error ? " — " + server.restore_result.error : "");
   return "stopped · world saved on shutdown";
+}
+
+/** The retire job's phase in the house's words, or "" with no job reported:
+ *  `stopping`, `backing up` (skipped when the final backup is off), `removing`. */
+export function retirePhaseWord(server: Server): string {
+  switch (server.retire?.phase) {
+    case "stopping":
+      return "stopping";
+    case "backing_up":
+      return "backing up";
+    case "removing":
+      return "removing";
+    default:
+      return "";
+  }
+}
+
+/** The reason a retire was abandoned (the server went back to where it was),
+ *  or "". The Panel writes it to last_error AND retire_note, prefixed
+ *  "retire abandoned:"; the drill-in shows it as a Caution notice. Read from
+ *  last_error only: the next start clears that, while retire_note keeps the
+ *  sentence until the next retire — a notice that outlived the server running
+ *  again would be describing the past as the present. */
+export function retireAbandoned(server: Server | null | undefined): string {
+  if (!server || server.state === "retiring" || server.state === "retired") return "";
+  const note = server.last_error ?? "";
+  return note.startsWith("retire abandoned:") ? note : "";
 }

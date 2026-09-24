@@ -34,7 +34,8 @@
     restoreNoteText,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
-  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, CD_SERVER_BODY } from "@/lib/state.svelte";
+  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote } from "@/lib/state.svelte";
+  import { retireAbandoned, retirePhaseWord } from "@/lib/views.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
@@ -78,6 +79,12 @@
   // quiet, and so does create — an archive taken mid-swap would capture a
   // half-restored tree.
   const restoring = $derived(restoreActive(server, depth.restoringBackup !== null));
+  // A retire in flight (#360, inherited — the mock draws only the resting
+  // block): the retire job owns the server, so the power controls are gone,
+  // backups and restores wait, and the retire control says what it is doing.
+  const retiring = $derived(server?.state === "retiring");
+  const retirePhase = $derived(server ? retirePhaseWord(server) : "");
+  const abandoned = $derived(retireAbandoned(server));
   const restoreJob = $derived(server?.restore);
   const meter = $derived(restoreMeter(server?.restore));
   const restoreRowMissing = $derived(
@@ -887,6 +894,19 @@
             lands; the backups ledger shows how far it has got.</b>
         </p>
       {/if}
+      <!-- Inherited states of the retire (#360; the mock draws neither): a
+           reopened drill-in on a server mid-retire names the phase, and a
+           retire the Panel abandoned — the server went back where it was —
+           says why, in Caution: something was prevented, nothing was lost. -->
+      {#if retiring}
+        <p class="depth-notice" role="status">
+          <b>retiring{retirePhase ? " — " + retirePhase : ""}…</b>
+        </p>
+      {:else if abandoned}
+        <p class="depth-notice" role="alert">
+          <b>{abandoned}</b>
+        </p>
+      {/if}
       {#if server?.state === "install_failed"}
         <p class="depth-notice bad" role="alert">
           <b>install failed — the server never provisioned.{failReason
@@ -1096,7 +1116,7 @@
               {#if replicationOn}<span>mirror <b>{depth.backupMirror}</b></span>{/if}
             </div>
           {/if}
-          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring} onclick={() => void backupCreate()}>create backup now</button>
+          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring || retiring} onclick={() => void backupCreate()}>create backup now</button>
         </div>
       </section>
       <section class="side-block" aria-label="Schedules">
@@ -1144,21 +1164,37 @@
           </div>
         </div>
       </section>
-      <section class="side-block danger-block" aria-label="Delete server">
-        <h3 class="pane-label">danger</h3>
-        <div class="side-body">
-          <p class="danger-note">{CD_SERVER_BODY}</p>
-          <button
-            class="ctl ctl-delete"
-            id="deleteSrvBtn"
-            disabled={server?.state === "retiring"}
-            onclick={(e) => openConfirm(name, e.currentTarget, { noun: "server", verb: "retire" })}
-          >
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
-            retire server
-          </button>
-        </div>
-      </section>
+      <!-- The retire block (DESIGN.md, Retire Block): the danger block no longer
+           deletes a server, it retires it. The note says what the act does in
+           the order the Panel does it, then what it keeps; the one choice it
+           offers — a final backup, on by default because revive needs something
+           to restore — sits between the note and the control, and both the note
+           and the typed confirmation follow it. The control stays Crisis: the
+           live world is destroyed either way. POST /retire needs server.delete,
+           so a role without it is not offered the block at all. -->
+      {#if hasPerm("server.delete")}
+        <section class="side-block danger-block" aria-label="Retire server">
+          <h3 class="pane-label">danger</h3>
+          <div class="side-body">
+            <p class="danger-note">{retireNote(depth.retireFinalBackup)}</p>
+            <label class="tgl retire-final"><input type="checkbox" bind:checked={depth.retireFinalBackup} disabled={retiring} /><i></i>take a final backup first</label>
+            <button
+              class="ctl ctl-delete"
+              id="deleteSrvBtn"
+              disabled={retiring}
+              onclick={(e) =>
+                openConfirm(name, e.currentTarget, {
+                  noun: "server",
+                  verb: "retire",
+                  body: retireConfirmBody(depth.retireFinalBackup),
+                })}
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
+              {retiring ? "retiring…" : "retire server"}
+            </button>
+          </div>
+        </section>
+      {/if}
     </div>
   </div>
 </div>

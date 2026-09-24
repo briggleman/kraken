@@ -39,7 +39,7 @@ import {
 } from "./depth.svelte";
 import { fleet, fleetPollMs } from "./fleet.svelte";
 import { chipKind, deadNote } from "./views.svelte";
-import type { Backup, RestoreProgress, Server } from "@/api/types";
+import type { Backup, RestoreProgress, RestoreResult, Server } from "@/api/types";
 
 function job(p: Partial<RestoreProgress>): RestoreProgress {
   return {
@@ -136,14 +136,21 @@ describe("restoreActive", () => {
 });
 
 describe("restoreOutcome", () => {
-  const watch = { serverId: "srv-1", backupId: ARCHIVE.id };
+  const STARTED = "2026-09-24T12:00:00Z";
+  const watch = { serverId: "srv-1", backupId: ARCHIVE.id, since: STARTED };
+  const result = (p: Partial<RestoreResult>): RestoreResult => ({
+    backup_id: ARCHIVE.id,
+    ok: true,
+    finished_at: "2026-09-24T12:03:00Z",
+    ...p,
+  });
 
   it("waits while the server is still restoring", () => {
     expect(restoreOutcome(watch, srv({ state: "restoring", restore: job({}) }), [ARCHIVE])).toBeNull();
   });
 
   it("names the archive a restore that landed put back", () => {
-    expect(restoreOutcome(watch, srv({ state: "offline" }), [ARCHIVE])).toEqual({
+    expect(restoreOutcome(watch, srv({ state: "offline", restore_result: result({}) }), [ARCHIVE])).toEqual({
       kind: "done",
       name: "manual-2026-09-24",
       reason: "",
@@ -153,7 +160,7 @@ describe("restoreOutcome", () => {
   it("carries the agent's reason for a restore that failed", () => {
     const failed = srv({
       state: "offline",
-      last_error: 'restore failed: docker: restore stopped at "savegame"; the live tree was rolled back',
+      restore_result: result({ ok: false, error: 'docker: restore stopped at "savegame"; the live tree was rolled back' }),
     });
     expect(restoreOutcome(watch, failed, [ARCHIVE])).toEqual({
       kind: "failed",
@@ -162,9 +169,25 @@ describe("restoreOutcome", () => {
     });
   });
 
-  it("does not read an install's old failure as the restore's", () => {
-    const sv = srv({ state: "install_failed", last_error: "install failed: steamcmd exited 8" });
-    expect(restoreOutcome(watch, sv, [ARCHIVE])?.kind).toBe("done");
+  it("never reads last_error: an install_failed server's own reason is not the restore's", () => {
+    const landed = srv({
+      state: "install_failed",
+      last_error: "install failed: steamcmd exited 8",
+      restore_result: result({}),
+    });
+    expect(restoreOutcome(watch, landed, [ARCHIVE])?.kind).toBe("done");
+    // ...and a last_error that merely looks like a restore failure is not one.
+    const stale = srv({ state: "offline", last_error: "restore failed: an older restore", restore_result: result({}) });
+    expect(restoreOutcome(watch, stale, [ARCHIVE])?.kind).toBe("done");
+  });
+
+  it("does not settle on a result from before the watch began", () => {
+    // A fleet read issued before the POST, landing after the 202: the row is
+    // offline with no job — and with the PREVIOUS restore's result on it.
+    const earlier = srv({ state: "offline", restore_result: result({ finished_at: "2026-09-24T11:00:00Z" }) });
+    expect(restoreOutcome(watch, earlier, [ARCHIVE])).toBeNull();
+    // Or with no result at all.
+    expect(restoreOutcome(watch, srv({ state: "offline" }), [ARCHIVE])).toBeNull();
   });
 });
 
@@ -187,12 +210,16 @@ describe("backupRestore", () => {
     vi.useRealTimers();
   });
 
+  const STARTED = "2026-09-24T12:00:00Z";
+  const landed = (p: Partial<Server> = {}) =>
+    srv({ state: "offline", restore_result: { backup_id: ARCHIVE.id, ok: true, finished_at: "2026-09-24T12:03:00Z" }, ...p });
+
   it("takes the 202's restoring server at once, refuses a second restore, and says how it ended", async () => {
-    restoreBackup.mockResolvedValueOnce(srv({ state: "restoring", restore: job({ phase: "opening" }) }));
+    restoreBackup.mockResolvedValueOnce(srv({ state: "restoring", restore: job({ phase: "opening", started_at: STARTED }) }));
     await backupRestore(ARCHIVE);
     expect(restoreBackup).toHaveBeenCalledTimes(1);
     expect(depth.server?.state).toBe("restoring");
-    expect(depth.restoreWatch).toEqual({ serverId: "srv-1", backupId: ARCHIVE.id });
+    expect(depth.restoreWatch).toEqual({ serverId: "srv-1", backupId: ARCHIVE.id, since: STARTED });
 
     // The button is disabled while this holds; the action refuses on its own too.
     await backupRestore(ARCHIVE);
@@ -205,10 +232,26 @@ describe("backupRestore", () => {
     expect(depth.restoreNote).toBeNull();
 
     // ...and the fleet poll can be the one that sees it land.
-    fleet.servers = [srv({ state: "offline" })];
+    fleet.servers = [landed()];
     syncDepthFromFleet();
     expect(depth.restoreNote).toEqual({ kind: "done", name: "manual-2026-09-24", reason: "" });
     expect(depth.restoreWatch).toBeNull();
+  });
+
+  it("does not claim the restore landed off a fleet read that predates it", async () => {
+    restoreBackup.mockResolvedValueOnce(srv({ state: "restoring", restore: job({ started_at: STARTED }) }));
+    await backupRestore(ARCHIVE);
+    // The fleet tick that was already in flight when the POST went out.
+    fleet.servers = [
+      srv({ state: "offline", restore_result: { backup_id: "older", ok: true, finished_at: "2026-09-23T08:00:00Z" } }),
+    ];
+    syncDepthFromFleet();
+    expect(depth.restoreNote).toBeNull();
+    expect(depth.restoreWatch).not.toBeNull();
+    // The real end still settles it.
+    fleet.servers = [landed()];
+    syncDepthFromFleet();
+    expect(depth.restoreNote?.kind).toBe("done");
   });
 
   it("puts a refusal on screen and leaves nothing watched", async () => {
@@ -221,16 +264,46 @@ describe("backupRestore", () => {
   });
 
   it("adopts a restore it finds in flight when the drill-in opens mid-restore", async () => {
-    fleet.servers = [srv({ state: "restoring", restore: job({}) })];
+    fleet.servers = [srv({ state: "restoring", restore: job({ started_at: STARTED }) })];
     syncDepthFromFleet();
-    expect(depth.restoreWatch).toEqual({ serverId: "srv-1", backupId: ARCHIVE.id });
-    getServer.mockResolvedValueOnce(srv({ state: "offline", last_error: "restore failed: gzip: invalid header; the live tree was not touched" }));
+    expect(depth.restoreWatch).toEqual({ serverId: "srv-1", backupId: ARCHIVE.id, since: STARTED });
+    getServer.mockResolvedValueOnce(
+      landed({ restore_result: { backup_id: ARCHIVE.id, ok: false, error: "gzip: invalid header; the live tree was not touched", finished_at: "2026-09-24T12:01:00Z" } }),
+    );
     await vi.advanceTimersByTimeAsync(2000);
     expect(depth.restoreNote).toEqual({
       kind: "failed",
       name: "manual-2026-09-24",
       reason: "gzip: invalid header; the live tree was not touched",
     });
+  });
+
+  it("does nothing once the drill-in has closed under a late answer", async () => {
+    let answer: (s: Server) => void = () => {};
+    restoreBackup.mockReturnValueOnce(new Promise<Server>((res) => (answer = res)));
+    const pending = backupRestore(ARCHIVE);
+    surface(); // the operator surfaces while the POST is out
+    answer(srv({ state: "restoring", restore: job({ started_at: STARTED }) }));
+    await pending;
+    expect(depth.restoreWatch).toBeNull();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(getServer).not.toHaveBeenCalled();
+  });
+
+  it("stops polling when a tick returns after the drill-in closed", async () => {
+    restoreBackup.mockResolvedValueOnce(srv({ state: "restoring", restore: job({ started_at: STARTED }) }));
+    await backupRestore(ARCHIVE);
+    let answer: (s: Server) => void = () => {};
+    getServer.mockReturnValueOnce(new Promise<Server>((res) => (answer = res)));
+    await vi.advanceTimersByTimeAsync(2000); // the tick is now waiting on getServer
+    expect(getServer).toHaveBeenCalledTimes(1);
+    surface();
+    depth.server = null;
+    answer(srv({ state: "restoring", restore: job({ bytes_done: 1, bytes_total: 2 }) }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(depth.server).toBeNull(); // the late answer was not applied
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(getServer).toHaveBeenCalledTimes(1);
   });
 });
 

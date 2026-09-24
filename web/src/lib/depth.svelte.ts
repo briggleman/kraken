@@ -27,6 +27,12 @@ export interface Origin {
 export interface RestoreWatch {
   serverId: string;
   backupId: string;
+  /** When the watched restore began, by the SERVER's clock (its
+   *  restore.started_at). An outcome only counts if it finished after this —
+   *  which is what keeps an earlier restore's result, or a fleet read issued
+   *  before the POST and landing after the 202, from reading as this one's end.
+   *  Server time on both sides, so a skewed client clock cannot matter. */
+  since: string;
 }
 
 export interface RestoreNote {
@@ -658,18 +664,26 @@ function ledgerNeedsPoll(): boolean {
 }
 
 function startLedgerPoll() {
-  if (backupPoll === undefined) {
+  if (depth.open && backupPoll === undefined) {
     backupPoll = setInterval(() => void ledgerTick().catch(() => {}), LEDGER_POLL_MS);
   }
 }
 
+// Every await in here can return after the drill-in has closed (or moved to
+// another server); anything it did then would reopen the console socket and
+// keep polling a sheet nobody is looking at, so each one re-checks.
+function stillOn(id: string): boolean {
+  return depth.open && depth.serverId === id;
+}
+
 async function ledgerTick() {
   const id = depth.serverId;
-  if (!id) return stopBackupPoll();
+  if (!id || !depth.open) return stopBackupPoll();
   if (backupPending()) await refreshBackups();
+  if (!stillOn(id)) return stopBackupPoll();
   if (depth.restoreWatch !== null || depth.server?.state === "restoring") {
     const s = await api.getServer(id);
-    if (depth.serverId !== id) return;
+    if (!stillOn(id)) return stopBackupPoll();
     depth.server = s;
     stream.set(id, streamModeFor(s.state));
     syncRestore(s);
@@ -678,8 +692,10 @@ async function ledgerTick() {
 }
 
 async function refreshBackups() {
-  if (!depth.serverId) return;
-  const r = await api.listBackups(depth.serverId);
+  const id = depth.serverId;
+  if (!id) return;
+  const r = await api.listBackups(id);
+  if (depth.serverId !== id) return;
   depth.backups = r.backups ?? [];
   if (!ledgerNeedsPoll()) stopBackupPoll();
 }
@@ -741,10 +757,10 @@ export function restoreActive(server: Server | null | undefined, requesting: boo
 }
 
 /** How a watched restore ended, once the server says it has: the row is out
- *  of `restoring` and carries no job. A reason the Panel prefixed with
- *  "restore failed" is a failure; anything else is a restore that landed — an
- *  install_failed server keeps its install's reason through a good restore,
- *  and that reason is not this restore's. */
+ *  of `restoring`, carries no job, and holds a `restore_result` that finished
+ *  after the watch began. Read from restore_result and never from last_error —
+ *  a restore does not write last_error, and an install_failed server's own
+ *  reason there is not this restore's. */
 export function restoreOutcome(
   watch: RestoreWatch | null,
   server: Server | null | undefined,
@@ -752,11 +768,11 @@ export function restoreOutcome(
 ): RestoreNote | null {
   if (!watch || !server || server.id !== watch.serverId) return null;
   if (server.state === "restoring" || server.restore !== undefined) return null;
-  const name = backups.find((b) => b.id === watch.backupId)?.name ?? watch.backupId;
-  const err = server.last_error ?? "";
-  if (/^restore failed/i.test(err)) {
-    return { kind: "failed", name, reason: err.replace(/^restore failed:\s*/i, "") };
-  }
+  const res = server.restore_result;
+  if (!res || !(Date.parse(res.finished_at) > Date.parse(watch.since))) return null;
+  const id = res.backup_id || watch.backupId;
+  const name = backups.find((b) => b.id === id)?.name ?? id;
+  if (!res.ok) return { kind: "failed", name, reason: res.error ?? "" };
   return { kind: "done", name, reason: "" };
 }
 
@@ -766,13 +782,21 @@ export function restoreOutcome(
 function syncRestore(s: Server) {
   if (depth.serverId !== s.id) return;
   if (depth.restoreWatch === null && (s.state === "restoring" || s.restore !== undefined)) {
-    depth.restoreWatch = { serverId: s.id, backupId: s.restore?.backup_id ?? "" };
+    depth.restoreWatch = {
+      serverId: s.id,
+      backupId: s.restore?.backup_id ?? "",
+      since: s.restore?.started_at ?? new Date().toISOString(),
+    };
     depth.restoreNote = null;
     startLedgerPoll();
     return;
   }
   if (depth.restoreWatch !== null && !depth.restoreWatch.backupId && s.restore) {
-    depth.restoreWatch = { ...depth.restoreWatch, backupId: s.restore.backup_id };
+    depth.restoreWatch = {
+      ...depth.restoreWatch,
+      backupId: s.restore.backup_id,
+      since: s.restore.started_at,
+    };
   }
   const note = restoreOutcome(depth.restoreWatch, s, depth.backups);
   if (note) {
@@ -788,10 +812,14 @@ export async function backupRestore(b: Backup) {
   depth.restoreNote = null;
   try {
     const s = await api.restoreBackup(id, b.id);
-    if (depth.serverId !== id) return;
+    if (!depth.open || depth.serverId !== id) return;
     // The 202 already carries the server in `restoring`: take it now, so the
     // meter replaces the row on this frame instead of the next poll's.
-    depth.restoreWatch = { serverId: id, backupId: b.id };
+    depth.restoreWatch = {
+      serverId: id,
+      backupId: b.id,
+      since: s.restore?.started_at ?? new Date().toISOString(),
+    };
     depth.server = s;
     stream.set(id, streamModeFor(s.state));
     syncRestore(s);

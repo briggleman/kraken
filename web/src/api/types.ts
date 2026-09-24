@@ -277,6 +277,7 @@ export interface Server {
   pin_build?: boolean;
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
+  restore_result?: RestoreResult;
   created_at: string;
 }
 
@@ -291,7 +292,20 @@ export interface RestoreProgress {
   phase: string;
   bytes_done: number;
   bytes_total: number;
+  /** Server clock. */
   started_at: string;
+  /** Where the row goes back to when the restore ends. */
+  prev_state?: ServerState;
+}
+
+/** How the most recent restore ended (#361). It stays on the row until the
+ *  next restore replaces it; `finished_at` is the server's clock. */
+export interface RestoreResult {
+  backup_id: string;
+  ok: boolean;
+  /** The agent's reason, which says whether the files were rolled back. */
+  error?: string;
+  finished_at: string;
 }
 
 export interface SftpStatus {

@@ -31,9 +31,11 @@
     restoreTop,
     restoreActive,
     restoreMeter,
+    restoreNoteText,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
-  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, CD_SERVER_BODY } from "@/lib/state.svelte";
+  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote } from "@/lib/state.svelte";
+  import { retireAbandoned, retirePhaseWord } from "@/lib/views.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
@@ -77,6 +79,12 @@
   // quiet, and so does create — an archive taken mid-swap would capture a
   // half-restored tree.
   const restoring = $derived(restoreActive(server, depth.restoringBackup !== null));
+  // A retire in flight (#360, inherited — the mock draws only the resting
+  // block): the retire job owns the server, so the power controls are gone,
+  // backups and restores wait, and the retire control says what it is doing.
+  const retiring = $derived(server?.state === "retiring");
+  const retirePhase = $derived(server ? retirePhaseWord(server) : "");
+  const abandoned = $derived(retireAbandoned(server));
   const restoreJob = $derived(server?.restore);
   const meter = $derived(restoreMeter(server?.restore));
   const restoreRowMissing = $derived(
@@ -886,6 +894,19 @@
             lands; the backups ledger shows how far it has got.</b>
         </p>
       {/if}
+      <!-- Inherited states of the retire (#360; the mock draws neither): a
+           reopened drill-in on a server mid-retire names the phase, and a
+           retire the Panel abandoned — the server went back where it was —
+           says why, in Caution: something was prevented, nothing was lost. -->
+      {#if retiring}
+        <p class="depth-notice" role="status">
+          <b>retiring{retirePhase ? " — " + retirePhase : ""}…</b>
+        </p>
+      {:else if abandoned}
+        <p class="depth-notice" role="alert">
+          <b>{abandoned}</b>
+        </p>
+      {/if}
       {#if server?.state === "install_failed"}
         <p class="depth-notice bad" role="alert">
           <b>install failed — the server never provisioned.{failReason
@@ -1016,27 +1037,33 @@
       <section class="side-block" aria-label="Backups">
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
-          <!-- The restore meter (#361) takes the archive's own row while it runs.
-               Its fill is the agent's figure — compressed bytes read against the
-               archive's size — and an unsized restore (an old agent, or a target
-               that cannot size the archive) holds the fill at 0 and breathes the
-               ledger's in-flight dot instead of printing a number. -->
+          <!-- A restore measures itself (#361): the archive's own row becomes the
+               meter while it runs. Extracting against a known size, the reading
+               sits in its own .pct box and the fill is the same number —
+               compressed bytes read over the archive size, from the agent.
+               Every other moment (opening, applying, an old agent restoring
+               without progress) narrates a .phase word instead of a number; a
+               sized "applying" keeps the fill it earned. An archive the agent
+               cannot size is .unsized: fill at 0, no number (the Unsized Meter
+               Rule). .phase and .pct are never both on a row — the grid is two
+               columns. -->
           {#snippet restoreLive(label: string)}
-            <div class="bk-live" role="status" aria-label="restoring {label}: {meter.sized ? meter.pct + '%' : meter.label}">
-              <span>{label} · restoring…</span>{#if meter.sized}<span class="pct">{meter.label}</span>{:else}<span class="pct bk-state mirroring">{meter.label}</span>{/if}<span class="bk-progress" use:istyle={`--prog:${meter.pct}`}><i></i></span>
+            <div class="bk-live{meter.sized ? '' : ' unsized'}" role="status" aria-label="{label}: {meter.label}">
+              <span>{label}</span>{#if meter.numeric}<span class="pct">{meter.pct}%</span>{:else}<span class="phase">{meter.phase}</span>{/if}<span class="bk-progress" use:istyle={`--prog:${meter.pct}`}><i></i></span>
             </div>
           {/snippet}
           {#if restoreJob && restoreRowMissing}
-            {@render restoreLive(restoreJob.backup_id)}
+            {@render restoreLive(`restoring ${restoreJob.backup_id}`)}
           {/if}
           {#each depth.backups as b (b.id)}
             {#if restoreJob && restoreJob.backup_id === b.id}
-              {@render restoreLive(b.name)}
+              {@render restoreLive(`restoring ${fmtWhen(b.created_ms)} · ${b.name}`)}
             {:else if b.state === "pending"}
-              <!-- An archive being created has no measure the agent reports, so
-                   it gets the unsized reading: no fill, the in-flight dot. (This
-                   bar used to sit at a hard-wired 60 %.) -->
-              <div class="bk-live"><span>{b.name} · creating…</span><span class="pct bk-state mirroring" aria-hidden="true"></span><span class="bk-progress" use:istyle={"--prog:0"}><i></i></span></div>
+              <!-- A backup in flight reports no size, so the creating row is
+                   unsized by construction: the phase word wears the breathing
+                   dot and no number is invented. (This bar used to sit at a
+                   hard-wired 60 %.) -->
+              <div class="bk-live unsized"><span>{b.name} · creating…</span><span class="phase">archiving</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:0"}><i></i></span></div>
             {:else}
               {@const s = bkState(b)}
               {@const mirror = bkMirror(b.replication, depth.backupMirror)}
@@ -1070,6 +1097,16 @@
           {:else}
             <div class="backup-row"><span>no backups yet</span><span class="good"></span></div>
           {/each}
+          {#if depth.restoreNote}
+            {@const note = depth.restoreNote}
+            <!-- The restore's outcome, spoken once above the eviction line: Status
+                 Gold when the archive landed (finished, not alive), Crisis when it
+                 did not — no world came back, the reading a failed backup takes —
+                 with the agent's reason after the dash. There is no dismiss: the
+                 next backup or restore action replaces it (inherited from the
+                 mock, which draws none). -->
+            <p class="bk-note {note.kind === 'done' ? 'ok' : 'failed'}" role={note.kind === "done" ? "status" : "alert"}>{restoreNoteText(note, server?.state === "offline")}</p>
+          {/if}
           {#if keptBackups.length > 0}
             {#if backupsAtCap && oldestKept}
               <p class="bk-evict">at capacity — the next backup removes <b>{fmtWhen(oldestKept.created_ms)} · {oldestKept.name}</b>{replicationOn ? ", on this node and its mirror" : ""}</p>
@@ -1079,18 +1116,7 @@
               {#if replicationOn}<span>mirror <b>{depth.backupMirror}</b></span>{/if}
             </div>
           {/if}
-          {#if depth.restoreNote}
-            {@const note = depth.restoreNote}
-            <!-- How the restore ended. It never said so before: the button went
-                 back to "restore" and that was all. Landed is Status Gold; a
-                 failure is Caution — the restore was prevented, and the agent's
-                 reason says whether the files were rolled back. -->
-            <p class="bk-evict bk-note{note.kind === 'done' ? ' ok' : ''}" role={note.kind === "done" ? "status" : "alert"}>
-              <span>{#if note.kind === "done"}restored <b>{note.name}</b>{server?.state === "offline" ? " — start the server when ready" : ""}{:else}restore of <b>{note.name}</b> failed — {note.reason}{/if}</span>
-              <button class="mini-act" onclick={() => (depth.restoreNote = null)}>dismiss</button>
-            </p>
-          {/if}
-          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring} onclick={() => void backupCreate()}>create backup now</button>
+          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring || retiring} onclick={() => void backupCreate()}>create backup now</button>
         </div>
       </section>
       <section class="side-block" aria-label="Schedules">
@@ -1138,21 +1164,37 @@
           </div>
         </div>
       </section>
-      <section class="side-block danger-block" aria-label="Delete server">
-        <h3 class="pane-label">danger</h3>
-        <div class="side-body">
-          <p class="danger-note">{CD_SERVER_BODY}</p>
-          <button
-            class="ctl ctl-delete"
-            id="deleteSrvBtn"
-            disabled={server?.state === "retiring"}
-            onclick={(e) => openConfirm(name, e.currentTarget, { noun: "server", verb: "retire" })}
-          >
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
-            retire server
-          </button>
-        </div>
-      </section>
+      <!-- The retire block (DESIGN.md, Retire Block): the danger block no longer
+           deletes a server, it retires it. The note says what the act does in
+           the order the Panel does it, then what it keeps; the one choice it
+           offers — a final backup, on by default because revive needs something
+           to restore — sits between the note and the control, and both the note
+           and the typed confirmation follow it. The control stays Crisis: the
+           live world is destroyed either way. POST /retire needs server.delete,
+           so a role without it is not offered the block at all. -->
+      {#if hasPerm("server.delete")}
+        <section class="side-block danger-block" aria-label="Retire server">
+          <h3 class="pane-label">danger</h3>
+          <div class="side-body">
+            <p class="danger-note">{retireNote(depth.retireFinalBackup)}</p>
+            <label class="tgl retire-final"><input type="checkbox" id="retireFinalBackup" bind:checked={depth.retireFinalBackup} disabled={retiring} /><i></i>take a final backup first</label>
+            <button
+              class="ctl ctl-delete"
+              id="deleteSrvBtn"
+              disabled={retiring}
+              onclick={(e) =>
+                openConfirm(name, e.currentTarget, {
+                  noun: "server",
+                  verb: "retire",
+                  body: retireConfirmBody(depth.retireFinalBackup),
+                })}
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
+              {retiring ? "retiring…" : "retire server"}
+            </button>
+          </div>
+        </section>
+      {/if}
     </div>
   </div>
 </div>
@@ -1207,22 +1249,4 @@
     overflow-wrap: anywhere;
   }
 
-  /* How a restore ended (#361). It borrows the ledger's own caution line —
-     .bk-evict, the voice the ledger already spends on a consequence — so a
-     failure reads exactly like it, and a restore that landed is the same line
-     in Status Gold: nothing was prevented, the save is back. */
-  .bk-note {
-    align-items: center;
-  }
-  .bk-note > span {
-    flex: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .bk-note.ok {
-    color: var(--ok);
-  }
-  .bk-note.ok::before {
-    background: var(--ok);
-  }
 </style>

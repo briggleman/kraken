@@ -2,6 +2,8 @@
   import { istyle } from "@/lib/istyle";
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
+  import RetiredList from "./RetiredList.svelte";
+  import { rosterEmptyNote } from "@/lib/retired.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
   import { fleet, fleetHealth, gridServers } from "@/lib/fleet.svelte";
   import { logout } from "@/lib/auth.svelte";
@@ -121,11 +123,12 @@
       {:else}
         {#if fleet.loaded}
           <p class="roster-empty" use:istyle={"grid-column: 1 / -1"}>
-            no servers yet — deploy one from a node band's New Server
+            {rosterEmptyNote(fleet.servers)}
           </p>
         {/if}
       {/each}
     </div>
+    <RetiredList />
   </main>
 
   <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->

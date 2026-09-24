@@ -18,9 +18,37 @@ vi.mock("@/api/client", async (importOriginal) => {
       retireServer: (...a: unknown[]) => retireServer(...a),
       deleteServer: (...a: unknown[]) => deleteServer(...a),
       deleteSpec: (...a: unknown[]) => deleteSpec(...a),
+      // The drill-in's detail reads, when a test opens it: never answering, so
+      // nothing they would carry lands over what the test put on screen.
+      ...Object.fromEntries(
+        [
+          "getServer",
+          "listBackups",
+          "listSchedules",
+          "getServerDns",
+          "getServerSettings",
+          "listFiles",
+          "getServerSftp",
+          "getInstallLog",
+        ].map((k) => [k, () => new Promise(() => {})]),
+      ),
     },
   };
 });
+
+/** The drill-in re-targets its console stream on open, and the stream reaches
+ *  for the global WebSocket when it does; nothing here reads it. */
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onmessage: (() => void) | null = null;
+  close() {}
+  send() {}
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeWebSocket;
 
 vi.mock("./fleet.svelte", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./fleet.svelte")>();
@@ -28,10 +56,26 @@ vi.mock("./fleet.svelte", async (importOriginal) => {
 });
 
 import { ApiError } from "@/api/client";
-import { bootDeepLinks, depth, powerControls } from "./depth.svelte";
+import { bootDeepLinks, depth, openDepth, powerControls, surface, syncDepthFromFleet } from "./depth.svelte";
 import { fleet, fleetPollMs, gridServers } from "./fleet.svelte";
-import { CD_SERVER_BODY, confirmGo, confirmWord, openConfirm, ui } from "./state.svelte";
-import { chipKind, deadNote, pendingRemovalsNote, removalKind, serverMeta } from "./views.svelte";
+import {
+  CD_SERVER_BODY,
+  confirmGo,
+  confirmWord,
+  openConfirm,
+  retireConfirmBody,
+  retireNote,
+  ui,
+} from "./state.svelte";
+import {
+  chipKind,
+  deadNote,
+  pendingRemovalsNote,
+  removalKind,
+  retireAbandoned,
+  retirePhaseWord,
+  serverMeta,
+} from "./views.svelte";
 import type { Node, PendingRemoval, Server, Spec } from "@/api/types";
 
 function server(id: string, state: Server["state"], extra: Partial<Server> = {}): Server {
@@ -79,9 +123,37 @@ describe("the delete button", () => {
   });
 
   it("says what a retire does, in order, and that it can be undone", () => {
-    expect(CD_SERVER_BODY).toMatch(/^retiring stops this server, takes a final backup, then removes its world and config/);
-    expect(CD_SERVER_BODY).toMatch(/its backups are kept, and it can be revived later from any of them\.$/);
-    expect(CD_SERVER_BODY).not.toMatch(/cannot be undone/);
+    // The mock's confirmation body: the note's sentence, plus where it goes.
+    expect(CD_SERVER_BODY).toBe(
+      "this stops the server, takes a final backup, then removes its world and config from the node. " +
+        "its backups are kept, and it can be revived later from the retired list.",
+    );
+    expect(retireConfirmBody(true)).toBe(CD_SERVER_BODY);
+    expect(retireNote(true)).toMatch(/^retiring stops this server, takes a final backup, then removes its world and config/);
+    expect(retireNote(true)).toMatch(/its backups are kept, and it can be revived later from any of them\.$/);
+    for (const s of [CD_SERVER_BODY, retireConfirmBody(false), retireNote(true), retireNote(false)]) {
+      expect(s).not.toMatch(/cannot be undone/);
+    }
+  });
+
+  it("never claims a final backup the toggle turned off", () => {
+    expect(retireConfirmBody(false)).not.toMatch(/takes a final backup/);
+    expect(retireConfirmBody(false)).toMatch(/no final backup is taken/);
+    expect(retireNote(false)).not.toMatch(/takes a final backup/);
+    expect(retireNote(false)).toMatch(/without a final backup/);
+  });
+
+  it("sends the toggle with the retire, and every open starts it back on", async () => {
+    retireServer.mockResolvedValue(server("sv-live", "retiring"));
+    depth.retireFinalBackup = false;
+    openConfirm("valheim", null, { noun: "server", verb: "retire", body: retireConfirmBody(false) });
+    await confirmGo();
+    expect(retireServer).toHaveBeenCalledWith("sv-live", false);
+
+    fleet.servers = [server("sv-live", "offline")];
+    openDepth("sv-live", 0, 0, null);
+    expect(depth.retireFinalBackup).toBe(true);
+    surface();
   });
 
   it("asks for the word on its button: retire for a server, delete for the rest", () => {
@@ -103,6 +175,54 @@ describe("retiring", () => {
     expect(fleetPollMs([server("a", "retiring")])).toBeLessThan(fleetPollMs([server("a", "offline")]));
     expect(deadNote(server("a", "retiring"))).toMatch(/^retiring/);
   });
+
+  it("names its phase on the card", () => {
+    const job = (phase: "stopping" | "backing_up" | "removing") =>
+      server("a", "retiring", { retire: { phase, final_backup: "requested", started_at: "" } });
+    expect(retirePhaseWord(job("backing_up"))).toBe("backing up");
+    expect(serverMeta(job("backing_up"))).toMatch(/· retiring · backing up$/);
+    expect(deadNote(job("backing_up"))).toBe("retiring — taking the final backup, then its world leaves the node");
+    expect(deadNote(job("removing"))).toBe("retiring — its world is leaving the node");
+    expect(serverMeta(job("removing"))).toMatch(/· retiring · removing$/);
+    // no job reported yet: the note still says what is coming
+    expect(deadNote(server("a", "retiring"))).toBe("retiring — final backup, then its world leaves the node");
+  });
+
+  it("says an abandoned retire until the next start clears it", () => {
+    const why = "retire abandoned: the final backup failed: disk full; nothing was removed";
+    expect(retireAbandoned(server("a", "offline", { last_error: why, retire_note: why }))).toBe(why);
+    // the next start cleared last_error; retire_note still holds the sentence
+    expect(retireAbandoned(server("a", "running", { retire_note: why }))).toBe("");
+    expect(retireAbandoned(server("a", "offline", { last_error: "start after revive: node offline" }))).toBe("");
+    expect(retireAbandoned(server("a", "retiring", { last_error: why }))).toBe("");
+  });
+
+  it("surfaces an open drill-in once the fleet reads the server retired", () => {
+    fleet.servers = [server("sv-live", "retiring")];
+    openDepth("sv-live", 0, 0, null);
+    expect(depth.open).toBe(true);
+    fleet.servers = [server("sv-live", "retired")];
+    syncDepthFromFleet();
+    expect(depth.open).toBe(false);
+  });
+});
+
+describe("a stopped card's note", () => {
+  it("says a refused start or a failed restore instead of the plain line", () => {
+    expect(deadNote(server("a", "offline", { last_error: "start after revive: node titan is offline" }))).toBe(
+      "stopped · start after revive: node titan is offline",
+    );
+    expect(
+      deadNote(
+        server("a", "offline", {
+          restore_result: { backup_id: "b", ok: false, error: "gzip: invalid header", finished_at: "" },
+        }),
+      ),
+    ).toBe("stopped · last restore failed — gzip: invalid header");
+    expect(
+      deadNote(server("a", "offline", { restore_result: { backup_id: "b", ok: true, finished_at: "" } })),
+    ).toBe("stopped · world saved on shutdown");
+  });
 });
 
 describe("a pending removal's hover text", () => {
@@ -112,16 +232,17 @@ describe("a pending removal's hover text", () => {
 
   it("names a retire's, a permanent delete's and a plain delete's apart", () => {
     fleet.servers = [server("sv-x", "retired")];
-    expect(removalKind(owed({}))).toBe("retired in the panel, not yet removed from this node");
-    expect(removalKind(owed({ delete_backups: true }))).toMatch(/deleted for good.*archives go too/);
+    expect(removalKind(owed({}))).toBe("retired");
+    expect(removalKind(owed({ delete_backups: true }))).toBe("deleted for good");
     fleet.servers = [];
-    expect(removalKind(owed({}))).toBe("deleted in the panel, not yet removed from this node");
+    expect(removalKind(owed({}))).toBe("deleted");
   });
 
-  it("carries the kind on each line", () => {
+  it("carries the kind on each line, first among its facts", () => {
     fleet.servers = [server("sv-x", "retired")];
     const note = pendingRemovalsNote({ id: "n", pending_removals: [owed({})] } as Node);
-    expect(note?.title).toMatch(/sv-x — retired in the panel/);
+    // the retired row keeps its name, so the line is named by it
+    expect(note?.title).toMatch(/\(retired · container and data · 1 attempt\)/);
   });
 });
 

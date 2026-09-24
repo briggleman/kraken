@@ -38,6 +38,7 @@ export type SheetId =
   | "nodeAdd"
   | "nodeCfg"
   | "nsForm"
+  | "reviveForm"
   | "auditLog"
   | "apiDocs"
   | "setup";
@@ -89,6 +90,8 @@ export const ui = $state({
   nodeCfgId: null as string | null,
   specEditId: null as string | null,
   nsFormNodeId: null as string | null,
+  // which retired server the reviveForm sheet is bringing back (#360)
+  reviveServerId: null as string | null,
 });
 
 const sheetReturn = new Map<SheetId, HTMLElement | null>();
@@ -126,9 +129,43 @@ export function closeSheet(id: SheetId) {
 // came to look like another server's. The button retires the server now
 // (#360), and the retire takes a final backup before the world goes — which
 // the warning says first, because it is what makes the rest recoverable.
+//
+// Two sentences, because the mock writes two: the drill-in's danger note says
+// what retiring does ("retiring stops this server…"), and the typed confirmation
+// repeats it and adds where the server goes ("…from the retired list"). Each
+// follows the retire block's `take a final backup first` toggle, because the
+// no-backup retire must not claim a backup it will not take — and neither
+// says "it cannot be undone" (the Cannot-Be-Undone Rule): a retire keeps every
+// backup and can be revived.
 export const CD_SERVER_BODY =
-  "retiring stops this server, takes a final backup, then removes its world and config from the node. " +
-  "its backups are kept, and it can be revived later from any of them.";
+  "this stops the server, takes a final backup, then removes its world and config from the node. " +
+  "its backups are kept, and it can be revived later from the retired list.";
+export const CD_SERVER_BODY_NO_BACKUP =
+  "this stops the server, then removes its world and config from the node — no final backup is taken, " +
+  "so anything since its last backup is lost. its backups are kept, and it can be revived later from the retired list.";
+
+/** The typed confirmation's warning for a retire, as the toggle stands. */
+export function retireConfirmBody(finalBackup: boolean): string {
+  return finalBackup ? CD_SERVER_BODY : CD_SERVER_BODY_NO_BACKUP;
+}
+
+/** The retire block's danger note, as the toggle stands. */
+export function retireNote(finalBackup: boolean): string {
+  return finalBackup
+    ? "retiring stops this server, takes a final backup, then removes its world and config from the node. " +
+        "its backups are kept, and it can be revived later from any of them."
+    : "retiring stops this server, then removes its world and config from the node without a final backup. " +
+        "its existing backups are kept, and it can be revived later from one of them or as a fresh world.";
+}
+
+// Deleting a retired server for good (#360): the one lifecycle act that is
+// irreversible, and so the one place "cannot be undone" is spent (the
+// Cannot-Be-Undone Rule). Undesigned copy, inherited from the Panel's DELETE:
+// the row, its schedules and its own archives go; archives on a shared target
+// are the target's and are kept, and the Panel says so in its answer.
+export const CD_PURGE_BODY =
+  "this deletes the retired server for good: its row, its schedules and its own archives go. " +
+  "archives on a shared backup target are kept. it cannot be undone.";
 
 // Retiring an untracked container: the one confirmation that destroys nothing,
 // which is why it is not typed. The container goes; everything it was using

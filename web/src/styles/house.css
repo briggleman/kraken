@@ -485,6 +485,11 @@
   .danger-block { border-color: rgba(var(--crisis-rgb), 0.22); }
   .danger-block .pane-label { color: rgba(var(--crisis-rgb), 0.8); border-bottom-color: rgba(var(--crisis-rgb), 0.18); }
   .danger-note { margin: 0; font-size: clamp(11px, 0.74vw, 13px); line-height: 1.55; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
+  /* The one choice the retire offers: a final backup before the world goes. On by
+     default because revive needs something to restore; the toggle is the house
+     .tgl at the note's size, and the .ctl-delete below keeps Crisis because the
+     live world is still destroyed - the backups are what make it reversible. */
+  .danger-block .retire-final { display: inline-flex; margin: 10px 0 12px; padding: 0; font-size: clamp(11px, 0.74vw, 13px); color: var(--ink-2); }
 
   /* When a control is refused - the agent cannot reach its runtime, an image is
      missing, the gateway says no - the answer belongs where the eye already is:
@@ -695,6 +700,24 @@
     color: var(--ink); font-variant-numeric: tabular-nums;
   }
   .bk-live .pct { color: var(--lumen); }
+  /* A restore measures itself: compressed bytes read over the archive size, from
+     the agent. The reading sits in its own .pct box (Violet Pulse Rule, clause 5)
+     and the fill is a determinate reading of the same number. An archive the
+     agent cannot size (bytes_total 0) is .unsized: the fill stays at 0, no
+     number is invented, and the phase word wears the mirroring dot - work in
+     progress, narrated, not measured. */
+  .bk-live .phase { display: inline-flex; align-items: center; gap: 6px; color: var(--lumen); }
+  .bk-live .phase::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--lumen); animation: bk-breathe 1.6s ease-in-out infinite; }
+  .bk-live.unsized .pct { display: none; }
+  @keyframes bk-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .bk-live .phase::before { animation: none; } .bk-progress i { transition: none; } }
+  /* The restore's outcome, spoken once, where the ledger already speaks: Status
+     Gold when the archive landed (start the server when ready), Crisis when it
+     did not - the agent's reason follows the dash. */
+  .bk-note { display: flex; align-items: baseline; gap: 6px; font-family: var(--mono); font-weight: 300; font-size: 11px; line-height: 1.5; letter-spacing: 0.02em; color: var(--ink-3); }
+  .bk-note::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transform: translateY(-1px); }
+  .bk-note.ok { color: var(--ok); }
+  .bk-note.failed { color: var(--crisis); }
   .bk-progress { position: relative; height: 6px; border-radius: 3px; background: rgba(var(--lumen-rgb), 0.1); overflow: hidden; grid-column: 1 / -1; }
   .bk-progress i {
     position: absolute; inset: 0; transform-origin: left;
@@ -1209,10 +1232,26 @@
      clicking it DOES; "failed" would name the state twice and offer nothing. */
   .agent-drift.st-failed .ad-go::after { width: 0; }
   .agent-drift.st-failed .nc-v.act { color: var(--ink-3); }
-  .agent-drift .nc-fail {
+  /* Any condition may carry a refusal, not only the agent drift: the retire of
+     an untracked container is refused the same way an update push is. One rule,
+     one measure - the same 42ch the ticker family clips at. */
+  .node-cond .nc-fail {
     color: var(--caution);
     max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  /* Untracked containers are named on the line, each with its own retire chip:
+     a .nc-go with no sweep (the sweep says "a build is waiting for you", which
+     is not true of a container nobody asked for). Names print as the Panel
+     makes them - kraken_ plus the id's first eight - because the id column sizes
+     to its content and a whole UUID pushed the instruments into each other.
+     Past three names the line carries one "retire all" chip instead of a row of
+     them; the roll call stays in the title. The count keeps the line's one act
+     colour; the names are context. */
+  .container-drift .nc-name { font-family: var(--mono); font-weight: 300; color: var(--ink-3); }
+  /* Removals a node still owes are a reading, never a control - the Panel is
+     already doing the only thing there is to do (retrying), so the count wears
+     the plain value ink, and the roll call is in the title. */
+  .removals-owed .nc-v { color: var(--ink-3); }
   /* the signal survives without the motion: hold the lit state instead of pausing
      mid-sweep, which is the one place this parts with the ticker family's rule */
   @media (prefers-reduced-motion: reduce) {
@@ -1537,6 +1576,10 @@
      text and the padding is only making up the difference. */
   select.cfg-in.has-badge { padding-block: 3px; }
   select.cfg-in.has-badge > button > .cfg-badge { padding-block: 1px; line-height: 1; }
+  /* a value the sheet states rather than asks for - the ports a revive reuses -
+     sits in the house read-only well (.cfg-ro, dashed, mono) and carries the same
+     badge a select does for where its value came from, at the far edge */
+  .cfg-ro.has-badge { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow: hidden; }
 
   /* A filesystem path is longer than any label above it and must not wrap, so its field is
      sized to the VALUE - 48ch of mono, the accepted knob value - rather than to whatever a grid
@@ -1563,6 +1606,10 @@
   .ns-path { width: 48ch; max-width: 100%; }
   @media (min-width: 640px) {
     .ns-grid > .cfg-row:has(.ns-path) { grid-column: span 2; }
+    /* a row whose value is a sentence - which backup to restore, named by date,
+       schedule and size - takes the whole track: the reading needs the room, and
+       the sheet has it */
+    .ns-grid > .cfg-row.ns-wide { grid-column: 1 / -1; }
   }
 
   /* the dense sheet: every decision at once, grouped by rule but never hidden */
@@ -2318,6 +2365,19 @@
     border-color: transparent; box-shadow: 0 6px 20px rgba(var(--lumen-rgb), 0.25);
   }
   /* the platform chips filter in place, the same way the audit and users chips do */
+  /* Retired group: the fleet's last section, in the specs sheet's ledger voice.
+     .spec-row is reused whole - art, shade, id, actions - with two readings added
+     between the id and the actions, both mono 300/11px in Sand Faint like the
+     slug: when it went, and what it kept. The one coloured thing on a row is a
+     Caution note where the retire could not take its final backup - something
+     WAS prevented, and revive should know before it restores. */
+  .retired { margin-top: clamp(18px, 2.2vw, 34px); }
+  .retired-head { display: flex; align-items: baseline; gap: clamp(10px, 1.1vw, 20px); flex-wrap: wrap; margin-bottom: 10px; }
+  .retired-head .pane-label { margin: 0; border: none; padding: 0; }
+  .retired-note { font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); letter-spacing: 0.02em; }
+  .retired-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .rt-when, .rt-keep { font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+  .rt-note { color: var(--caution); }
   .specs-body:has(.sp-linux :checked) .spec-row:not(.p-linux),
   .specs-body:has(.sp-win :checked) .spec-row:not(.p-win),
   .specs-body:has(.sp-wine :checked) .spec-row:not(.p-wine) { display: none; }

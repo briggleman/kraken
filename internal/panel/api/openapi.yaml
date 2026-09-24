@@ -451,7 +451,8 @@ paths:
         server whose start does not update it (a pinned build, or a spec that
         opted out of update-on-start). Valid from the stopped states —
         install_failed, offline, crashed — and refused while the server is
-        installing, starting, running or stopping. Runs asynchronously: the
+        installing, starting, running, stopping or restoring (the last with
+        `code: server_restoring`). Runs asynchronously: the
         server flips to `installing` and the install log streams over the
         console socket.
       requestBody:
@@ -869,12 +870,18 @@ paths:
       description: >
         Only valid while the server is stopped (state offline, crashed or
         install_failed). Runs asynchronously: the server enters `restoring` at
-        once, and GET /servers/{id} carries a `restore` block with the phase and
-        the compressed bytes read until the restore ends. Start and restart are
-        refused while it runs (409 `server_restoring`). When it ends the server
-        goes back to offline (install_failed if it came from there); a failed
-        restore leaves its reason in `last_error`, including whether the files
-        were rolled back.
+        once, and GET /servers/{id} carries a `restore` block (the archive, the
+        state to return to, when it began, the phase and the compressed bytes
+        read) until the restore ends. While it runs every writer of the
+        server's tree answers 409 `server_restoring` — start, restart,
+        reinstall, server delete, settings save, backup create and delete, and
+        every file write, upload, move, copy, mkdir and delete (reads and
+        downloads are not refused) — and scheduled restarts, backups, commands
+        and replication are skipped with the reason in the schedule's
+        last_error. When it ends the server goes back to the state it came from
+        (`restore.prev_state`), and `restore_result` records the outcome; a
+        failed restore's reason says whether the files were rolled back.
+        `last_error` is never written by a restore.
       responses:
         '202':
           description: Restore started; the server is restoring
@@ -1733,10 +1740,21 @@ components:
         archive), and a client must then show progress as unknown, not as zero.
       properties:
         backup_id: { type: string }
+        prev_state: { $ref: '#/components/schemas/ServerState' }
         phase: { type: string, enum: [opening, extracting, applying, done, restoring], description: "restoring = an old agent restoring without progress" }
         bytes_done: { type: integer, format: int64 }
         bytes_total: { type: integer, format: int64 }
-        started_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, description: "server clock" }
+    RestoreResult:
+      type: object
+      description: >
+        How the most recent backup restore ended. Kept on the server until the
+        next restore replaces it.
+      properties:
+        backup_id: { type: string }
+        ok: { type: boolean }
+        error: { type: string, description: "the agent's reason, which says whether the files were rolled back; absent when ok" }
+        finished_at: { type: string, format: date-time, description: "server clock" }
     Server:
       type: object
       properties:
@@ -1757,10 +1775,16 @@ components:
           description: >-
             Pinned to the build on disk — the panel skips the install/update
             pass it otherwise runs before every start or restart.
-        last_error: { type: string, description: "why the most recent provisioning attempt, or backup restore, failed" }
+        last_error: { type: string, description: "why the most recent provisioning attempt failed (a backup restore never writes it)" }
         restore:
           allOf: [ { $ref: '#/components/schemas/RestoreProgress' } ]
-          description: Present only while a backup restore is running (state `restoring`).
+          description: >-
+            Present only while a backup restore is running (state `restoring`).
+            backup_id, prev_state and started_at are stored on the server; the
+            phase and byte counts are the running job's live reading.
+        restore_result:
+          allOf: [ { $ref: '#/components/schemas/RestoreResult' } ]
+          description: How the most recent backup restore ended.
         provisioned_at:
           type: string
           format: date-time

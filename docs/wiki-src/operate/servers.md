@@ -170,7 +170,8 @@ explicit update for a server whose start does not update it.
 
 It is accepted from `install_failed`, `offline` and `crashed`, and refused from
 `installing`, `starting`, `running` and `stopping` with a `409` that names the
-current state. It runs asynchronously, exactly like the create path: the server
+current state, and from `restoring` with a `409` carrying `code:
+server_restoring`. It runs asynchronously, exactly like the create path: the server
 flips to `installing` and the log streams.
 
 Unlike the update-on-start pass, a reinstall *does* re-run the spec's BepInEx

@@ -326,7 +326,7 @@ script once, immediately. It is both the retry for a failed install and the
 explicit update for a server whose start does not update it.</p>
 <p>It is accepted from <code>install_failed</code>, <code>offline</code> and <code>crashed</code>, and refused from
 <code>installing</code>, <code>starting</code>, <code>running</code> and <code>stopping</code> with a <code>409</code> that names the
-current state. It runs asynchronously, exactly like the create path: the server
+current state, and from <code>restoring</code> with a <code>409</code> carrying <code>code: server_restoring</code>. It runs asynchronously, exactly like the create path: the server
 flips to <code>installing</code> and the log streams.</p>
 <p>Unlike the update-on-start pass, a reinstall <em>does</em> re-run the spec&#39;s BepInEx
 overlay for a server deployed with it.</p>

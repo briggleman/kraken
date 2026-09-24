@@ -2,6 +2,7 @@ package agent
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,11 @@ import (
 // (created when missing, never replaced). A pre-#218 whole-tree archive still
 // degenerates to a full replace, because in one of those every directory
 // holding files is covered.
+//
+// Both phases honour the context (#361): extraction checks it between entries
+// and on every read of the archive, so a cancel lands mid-file; the swap checks
+// it between units and unwinds what it already moved. Once the last unit has
+// landed the restore is committed and a late cancel changes nothing.
 
 const (
 	// restoreScratchPrefix names the staging directory a restore extracts into;
@@ -142,18 +148,23 @@ func dirPerm(hdr *tar.Header) os.FileMode {
 	return 0o755
 }
 
-// extractArchive writes every entry of tr into the staging dir.
-func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) (*stagedArchive, error) {
+// extractArchive writes every entry of tr into the staging dir, naming each one
+// to m as it goes. m may carry a nil emit (the unary restore); it is never nil.
+func (d *DockerRuntime) extractArchive(ctx context.Context, tr *tar.Reader, serverID, staged string, m *restoreMeter) (*stagedArchive, error) {
 	st := &stagedArchive{dirModes: map[string]os.FileMode{}, fileDirs: map[string]bool{}}
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("docker: restore cancelled while staging: %w", err)
+		}
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			// Already rendered as "read backup <id>" by the archive reader
-			// (restoreBackup); wrapping it again would say so twice.
-			return nil, err
+			// A store read failure is already rendered as "read backup <id>" by
+			// the archive reader (restoreBackup); wrapping it again would say so
+			// twice. restoreCause names a cancel or a dead progress stream.
+			return nil, restoreCause(ctx, m, err)
 		}
 		// Validate the name BEFORE joining it into a filesystem path — protects
 		// against Zip Slip even if the withinHostDir() check below ever
@@ -165,6 +176,9 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 		}
 		if rel == "" {
 			continue
+		}
+		if err := m.setEntry(rel); err != nil {
+			return nil, fmt.Errorf("docker: restore progress stream: %w", err)
 		}
 		// filepath.IsLocal is the stdlib's own "safe to join under a root" verdict
 		// (no traversal, not absolute, no Windows device names) and the sanitizer
@@ -209,7 +223,7 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 			}
 			if _, cerr := io.Copy(f, tr); cerr != nil {
 				f.Close()
-				return nil, fmt.Errorf("docker: restore %s: %w", rel, cerr)
+				return nil, fmt.Errorf("docker: restore %s: %w", rel, restoreCause(ctx, m, cerr))
 			}
 			if cerr := f.Close(); cerr != nil {
 				return nil, cerr
@@ -224,6 +238,20 @@ func (d *DockerRuntime) extractArchive(tr *tar.Reader, serverID, staged string) 
 		}
 	}
 	return st, nil
+}
+
+// restoreCause names the real reason a read of the archive failed. The counting
+// reader returns the context's error (or a dead progress stream's) from inside
+// the gzip and tar layers, which may wrap or replace it on the way out — so the
+// cause is taken from the source rather than read back off the error.
+func restoreCause(ctx context.Context, m *restoreMeter, err error) error {
+	if cerr := ctx.Err(); cerr != nil {
+		return fmt.Errorf("restore cancelled: %w", cerr)
+	}
+	if m.err != nil {
+		return fmt.Errorf("progress stream: %w", m.err)
+	}
+	return err
 }
 
 // swapUnits is the set of paths the restore replaces wholesale, in a stable
@@ -274,8 +302,10 @@ type swapped struct {
 	aside string // "" when nothing occupied the live path
 }
 
-// applyRestore moves the staged copies into the live tree.
-func (d *DockerRuntime) applyRestore(serverID, root, staged string, st *stagedArchive) error {
+// applyRestore moves the staged copies into the live tree. A failure — including
+// a cancelled ctx between two units — puts back what had already moved; the
+// returned error says whether that rollback was complete.
+func (d *DockerRuntime) applyRestore(ctx context.Context, serverID, root, staged string, st *stagedArchive) error {
 	units := st.swapUnits()
 
 	// The archive's directories that no swap unit covers — the ancestors of the
@@ -301,7 +331,10 @@ func (d *DockerRuntime) applyRestore(serverID, root, staged string, st *stagedAr
 	// between the swap and the cleanup.
 	token := strings.TrimPrefix(filepath.Base(staged), restoreScratchPrefix)
 	var done []swapped
-	unwind := func() {
+	// unwind reverses the swaps so far and returns how many paths it could not
+	// put back — the one number that decides whether "rolled back" is true.
+	unwind := func() int {
+		stuck := 0
 		// Reverse order, so the tree comes back the way it was.
 		for i := len(done) - 1; i >= 0; i-- {
 			m := done[i]
@@ -309,6 +342,7 @@ func (d *DockerRuntime) applyRestore(serverID, root, staged string, st *stagedAr
 			// a rename never overwrites an existing destination on Windows.
 			if err := os.RemoveAll(m.live); err != nil {
 				slog.Error("restore rollback could not clear the restored path", "path", m.live, "err", err)
+				stuck++
 				continue
 			}
 			if m.aside == "" {
@@ -317,22 +351,35 @@ func (d *DockerRuntime) applyRestore(serverID, root, staged string, st *stagedAr
 			if err := restoreRename(m.aside, m.live); err != nil {
 				slog.Error("restore rollback could not put the original back; it is preserved beside it",
 					"path", m.live, "aside", m.aside, "err", err)
+				stuck++
 			}
 		}
+		return stuck
+	}
+	// fail unwinds and says what state the tree was left in, because that is
+	// the operator's next question and the Panel shows this message verbatim.
+	fail := func(stuck int, err error) error {
+		stuck += unwind()
+		if stuck > 0 {
+			return fmt.Errorf("%w; rollback incomplete: %d path(s) could not be put back, the originals are preserved beside them as *%s*",
+				err, stuck, asideMarker)
+		}
+		return fmt.Errorf("%w; the live tree was rolled back to how it was before the restore", err)
 	}
 
 	for _, unit := range units {
+		if err := ctx.Err(); err != nil {
+			return fail(0, fmt.Errorf("docker: restore cancelled before %q: %w", unit, err))
+		}
 		live := filepath.Join(root, filepath.FromSlash(unit))
 		if !d.withinHostDir(serverID, live) {
-			unwind()
-			return fmt.Errorf("docker: restore entry %q escapes data dir", unit)
+			return fail(0, fmt.Errorf("docker: restore entry %q escapes data dir", unit))
 		}
 		// A foreign archive can carry no directory entries at all, in which case
 		// the merge phase above created nothing and the unit's parent chain may
 		// be missing. Creating it is additive, like the merge.
 		if err := os.MkdirAll(filepath.Dir(live), 0o755); err != nil {
-			unwind()
-			return fmt.Errorf("docker: restore stopped at %q: %w", unit, err)
+			return fail(0, fmt.Errorf("docker: restore stopped at %q: %w", unit, err))
 		}
 		aside := ""
 		if _, err := os.Lstat(live); err == nil {
@@ -340,23 +387,22 @@ func (d *DockerRuntime) applyRestore(serverID, root, staged string, st *stagedAr
 			// rename onto an existing path never clobbers on Windows.
 			aside = live + asideMarker + token
 			if rerr := restoreRename(live, aside); rerr != nil {
-				unwind()
-				return fmt.Errorf("docker: restore stopped at %q moving the existing copy aside: %w", unit, rerr)
+				return fail(0, fmt.Errorf("docker: restore stopped at %q moving the existing copy aside: %w", unit, rerr))
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			unwind()
-			return fmt.Errorf("docker: restore stopped at %q: %w", unit, err)
+			return fail(0, fmt.Errorf("docker: restore stopped at %q: %w", unit, err))
 		}
 		if rerr := restoreRename(filepath.Join(staged, filepath.FromSlash(unit)), live); rerr != nil {
+			stuck := 0
 			if aside != "" {
 				// This unit's own original goes back first; done holds the rest.
 				if back := restoreRename(aside, live); back != nil {
 					slog.Error("restore could not put the original back; it is preserved beside it",
 						"path", live, "aside", aside, "err", back)
+					stuck++
 				}
 			}
-			unwind()
-			return fmt.Errorf("docker: restore stopped at %q installing the restored copy: %w", unit, rerr)
+			return fail(stuck, fmt.Errorf("docker: restore stopped at %q installing the restored copy: %w", unit, rerr))
 		}
 		done = append(done, swapped{live: live, aside: aside})
 	}

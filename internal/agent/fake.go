@@ -79,6 +79,18 @@ type FakeRuntime struct {
 	// fileErr, when set, is what every file operation that reads or changes the
 	// tree fails with (see WithFakeFileError).
 	fileErr error
+	// restoreEvents is the synthetic sequence RestoreBackupStream emits (see
+	// WithFakeRestoreProgress); nil means the default one, sized to the
+	// archive's recorded size. restoreErr fails every restore, streamed or
+	// unary, with that reason after the events. restoreGate, when set, holds a
+	// streamed restore open after its events until it is closed, so a test can
+	// look at the Panel while the restore is still in flight.
+	restoreEvents []*agentpb.RestoreEvent
+	restoreErr    string
+	restoreGate   <-chan struct{}
+	// restores records every restore request, per server, as "stream:<id>" or
+	// "unary:<id>" — which path the Panel took is the thing worth asserting.
+	restores map[string][]string
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -148,6 +160,26 @@ func WithFakeInstallDelay(d time.Duration) FakeOption {
 // the error crosses the same interceptor a real Agent's does.
 func WithFakeFileError(err error) FakeOption {
 	return func(f *FakeRuntime) { f.fileErr = err }
+}
+
+// WithFakeRestoreProgress makes RestoreBackupStream emit exactly these events
+// (then succeed, unless WithFakeRestoreFailure is also set), so the Panel's
+// restore job sees a deterministic meter.
+func WithFakeRestoreProgress(events ...*agentpb.RestoreEvent) FakeOption {
+	return func(f *FakeRuntime) { f.restoreEvents = events }
+}
+
+// WithFakeRestoreFailure makes every restore fail with reason after its events
+// — the shape of a real restore that dies mid-swap and rolls back.
+func WithFakeRestoreFailure(reason string) FakeOption {
+	return func(f *FakeRuntime) { f.restoreErr = reason }
+}
+
+// WithFakeRestoreGate holds every streamed restore open after its events until
+// gate is closed (or the stream's context ends), so a test can observe the
+// server while it is restoring.
+func WithFakeRestoreGate(gate <-chan struct{}) FakeOption {
+	return func(f *FakeRuntime) { f.restoreGate = gate }
 }
 
 // NewFakeRuntime returns a fake runtime identifying as the given node.
@@ -544,7 +576,80 @@ func (f *FakeRuntime) ListBackups(_ context.Context, serverID, _ string) ([]*age
 	return f.backups[serverID], nil
 }
 
-func (f *FakeRuntime) RestoreBackup(_ context.Context, _, _, _ string) error { return nil }
+func (f *FakeRuntime) recordRestore(serverID, how, id string) (failure string, events []*agentpb.RestoreEvent, gate <-chan struct{}, delay time.Duration, size int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.restores == nil {
+		f.restores = make(map[string][]string)
+	}
+	f.restores[serverID] = append(f.restores[serverID], how+":"+id)
+	for _, b := range f.backups[serverID] {
+		if b.Id == id {
+			size = b.Size
+		}
+	}
+	return f.restoreErr, f.restoreEvents, f.restoreGate, f.installDelay, size
+}
+
+// Restores reports every restore the fake was asked for on serverID, in order,
+// each as "stream:<backup id>" or "unary:<backup id>".
+func (f *FakeRuntime) Restores(serverID string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.restores[serverID]...)
+}
+
+// RestoreBackup is the unary restore an old Panel calls — and the one a new
+// Panel falls back to against an Agent without the stream.
+func (f *FakeRuntime) RestoreBackup(_ context.Context, serverID, _, id string) error {
+	if failure, _, _, _, _ := f.recordRestore(serverID, "unary", id); failure != "" {
+		return fmt.Errorf("%s", failure)
+	}
+	return nil
+}
+
+// RestoreBackupStream emits the configured events (or a default opening →
+// extracting ×3 → applying → done sequence over the archive's recorded size,
+// each step lingering for the install delay so the fake-live stack's meter is
+// watchable), waits on the gate, then fails or succeeds as configured.
+func (f *FakeRuntime) RestoreBackupStream(ctx context.Context, serverID, _, id string, emit func(*agentpb.RestoreEvent) error) error {
+	failure, events, gate, delay, size := f.recordRestore(serverID, "stream", id)
+	if events == nil {
+		events = []*agentpb.RestoreEvent{
+			{Phase: restorePhaseOpening},
+			{Phase: restorePhaseExtracting, BytesTotal: size},
+			{Phase: restorePhaseExtracting, BytesDone: size / 2, BytesTotal: size, Entry: "save/world.db"},
+			{Phase: restorePhaseExtracting, BytesDone: size, BytesTotal: size, Entry: "save/world.db"},
+			{Phase: restorePhaseApplying, BytesDone: size, BytesTotal: size},
+		}
+		if failure == "" {
+			events = append(events, &agentpb.RestoreEvent{Phase: restorePhaseDone, BytesDone: size, BytesTotal: size})
+		}
+	}
+	for _, ev := range events {
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		if err := emit(ev); err != nil {
+			return err
+		}
+	}
+	if gate != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-gate:
+		}
+	}
+	if failure != "" {
+		return fmt.Errorf("%s", failure)
+	}
+	return nil
+}
 
 func (f *FakeRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConfig, verify bool) (bool, string) {
 	if cfg == nil {

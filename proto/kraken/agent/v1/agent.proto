@@ -108,7 +108,16 @@ service NodeService {
   rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
 
   // RestoreBackup extracts a backup back into the server's data volume.
+  // Kept for Panels older than RestoreBackupStream; a current Panel calls the
+  // stream and falls back to this only when an old Agent answers Unimplemented.
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+
+  // RestoreBackupStream is RestoreBackup narrated: the same stage-then-swap
+  // restore, streaming its phase and the compressed bytes read so the Panel can
+  // show a real meter. The stream ends with a `done` event on success or a
+  // `failed` one (reason in RestoreEvent.failed) — the tree is rolled back on
+  // failure unless the reason says otherwise.
+  rpc RestoreBackupStream(RestoreBackupRequest) returns (stream RestoreEvent);
 
   // DeleteBackup removes a backup archive.
   rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
@@ -408,6 +417,22 @@ message RestoreBackupRequest {
   string slug = 3; // see CreateBackupRequest.slug
 }
 message RestoreBackupResponse {}
+
+// RestoreEvent is one step of a streamed restore. Progress is measured in
+// COMPRESSED bytes read from the archive against the archive's size, because
+// that is the one total known before extraction starts; bytes_total is 0 when
+// the backup target cannot size the archive, and the Panel then shows an
+// indeterminate meter rather than a guess.
+message RestoreEvent {
+  // "opening" (fetching the archive from its target), "extracting" (staging
+  // entries into the scratch dir), "applying" (swapping the staged copies into
+  // the live tree), "done" (the restore landed) or "failed" (see failed).
+  string phase = 1;
+  int64 bytes_done = 2;
+  int64 bytes_total = 3;
+  string entry = 4;  // the archive entry being extracted, when phase is extracting
+  string failed = 5; // why the restore failed; set only on the failed event
+}
 
 message DeleteBackupRequest {
   string server_id = 1;

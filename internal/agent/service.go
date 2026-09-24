@@ -404,6 +404,24 @@ func (s *Service) RestoreBackup(ctx context.Context, req *agentpb.RestoreBackupR
 	return &agentpb.RestoreBackupResponse{}, nil
 }
 
+// RestoreBackupStream runs the restore and narrates it. A restore that fails is
+// reported IN the stream as a `failed` event carrying the reason, not as the
+// RPC's status: the Panel reads a failed event as "the Agent tried and says
+// why", and a transport error as "the outcome is unknown" — the same split the
+// install stream makes. A cancelled context (the Panel went away) is the one
+// failure returned as a status, since nobody is left to read an event.
+func (s *Service) RestoreBackupStream(req *agentpb.RestoreBackupRequest, stream agentpb.NodeService_RestoreBackupStreamServer) error {
+	ctx := stream.Context()
+	err := s.rt.RestoreBackupStream(ctx, req.ServerId, req.Slug, req.Id, stream.Send)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return stream.Send(&agentpb.RestoreEvent{Phase: restorePhaseFailed, Failed: err.Error()})
+}
+
 func (s *Service) DeleteBackup(ctx context.Context, req *agentpb.DeleteBackupRequest) (*agentpb.DeleteBackupResponse, error) {
 	if err := s.rt.DeleteBackup(ctx, req.ServerId, req.Slug, req.Id); err != nil {
 		return nil, err

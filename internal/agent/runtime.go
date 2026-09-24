@@ -77,6 +77,11 @@ type Runtime interface {
 	ListBackups(ctx context.Context, serverID, slug string) ([]*agentpb.BackupInfo, error)
 	// RestoreBackup extracts a backup back into the data volume.
 	RestoreBackup(ctx context.Context, serverID, slug, id string) error
+	// RestoreBackupStream is RestoreBackup narrated: it emits the opening,
+	// extracting, applying and done phases with the compressed bytes read, and
+	// returns the failure (the Service turns it into the stream's failed event).
+	// It must honour ctx — a cancelled restore stops and unwinds.
+	RestoreBackupStream(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error
 	// DeleteBackup removes a backup archive.
 	DeleteBackup(ctx context.Context, serverID, slug, id string) error
 

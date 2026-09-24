@@ -214,6 +214,9 @@ type smbReadCloser struct {
 }
 
 func (r *smbReadCloser) Read(p []byte) (int, error) { return r.f.Read(p) }
+
+// Stat sizes the archive for a restore's progress meter (see archiveSize).
+func (r *smbReadCloser) Stat() (os.FileInfo, error) { return statOf(r.f) }
 func (r *smbReadCloser) Close() error {
 	cerr := r.f.Close()
 	_ = r.closeAll()

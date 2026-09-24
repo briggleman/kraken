@@ -533,6 +533,15 @@ export interface ServerSettings {
   /** False when the spec itself opted out of update-on-start, so the pin is
    *  moot and the toggle says so instead of promising updates. */
   updates_on_start?: boolean;
+  /** What the next operator start or restart through the Panel would do right
+   *  now: false when the spec opted out, the build is pinned, the server was
+   *  installed within the last 30 minutes, or its Steam-login install has no
+   *  stored credentials. Scheduled restarts and the node-scoped power endpoint
+   *  never run the pass, and it means nothing while installing or
+   *  install_failed, where a start is refused outright. */
+  next_start_updates?: boolean;
+  /** Why the next start skips the pass; absent when it runs. */
+  update_skip_reason?: "spec" | "pinned" | "fresh_install" | "steam_login";
 }
 
 export interface UpdateSettingsResult {

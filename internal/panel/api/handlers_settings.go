@@ -33,8 +33,20 @@ type settingsResponse struct {
 	// UpdatesOnStart is false when this server would not update on start no
 	// matter the pin — its spec opted out (per-spec or per-platform) — so the
 	// UI can say the toggle is moot rather than promising updates that the spec
-	// has turned off.
+	// has turned off. It is about the spec, not the next start: see
+	// NextStartUpdates for that.
 	UpdatesOnStart bool `json:"updates_on_start"`
+	// NextStartUpdates is the decision the next operator start or restart
+	// through the Panel would make right now: false when the spec opted out,
+	// the build is pinned, the server was installed within the last 30
+	// minutes, or its authenticated-Steam install has no stored credentials.
+	// UpdateSkipReason names which (spec | pinned | fresh_install |
+	// steam_login); empty when it updates. Scheduled restarts and the
+	// node-scoped power endpoint never run the pass, whatever this says, and it
+	// means nothing while the server is installing or install_failed, where a
+	// start is refused outright.
+	NextStartUpdates bool   `json:"next_start_updates"`
+	UpdateSkipReason string `json:"update_skip_reason,omitempty"`
 }
 
 // variableView is a launch variable surfaced on the Settings tab: the spec's
@@ -75,12 +87,15 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 	if groups == nil {
 		groups = []spec.SettingGroup{}
 	}
+	skip := s.updateSkipFor(ctx, sv, sp, sv.NodeID)
 	writeJSON(w, http.StatusOK, settingsResponse{
 		Groups: groups, Values: values,
-		Variables:      variableViews(sp, sv),
-		HotReload:      sp.Settings.HotReload,
-		PinBuild:       sv.PinBuild,
-		UpdatesOnStart: !sp.SkipUpdateOnStartFor(sv.Kind),
+		Variables:        variableViews(sp, sv),
+		HotReload:        sp.Settings.HotReload,
+		PinBuild:         sv.PinBuild,
+		UpdatesOnStart:   !sp.SkipUpdateOnStartFor(sv.Kind),
+		NextStartUpdates: skip == updateSkipNone,
+		UpdateSkipReason: string(skip),
 	})
 }
 
@@ -114,6 +129,9 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	// take effect on the next start too, since the install pass re-renders it
 	// from the current vars (#307) — unless this server pins its build or its
 	// spec opted out of update-on-start, where a reinstall is still the way.
+	// An edit clears the fresh-install stamp for that reason: the tree the
+	// stamp vouches for was installed with the old values, so the next start
+	// must re-run the pass rather than skip it as just installed.
 	// A running server keeps its old values until restarted; the response's
 	// restart_needed says so.
 	varsChanged := false
@@ -170,6 +188,9 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 		merged[k] = v
 	}
 	sv.Settings = merged
+	if varsChanged {
+		sv.ProvisionedAt = nil
+	}
 	// The build pin is a property of the server, not a game setting, but it
 	// lives on the Config tab beside them and saves with them.
 	if req.PinBuild != nil {

@@ -232,7 +232,8 @@ non-Steam games; `{{APP_ID}}` then stays unrendered, so do not reference it.
   `required_settings_missing` — and the deploy form won't auto-start the game. Only for an
   unconditional requirement: a value needed only when another setting is on (Factorio's
   public-listing token) must NOT be marked, or it blocks every private server. Never combine
-  with `read_only` — `Validate()` rejects it. Give the field a `label`; the refusal names it.
+  with `read_only`, and never put it on a `bool` (off is a value, not a blank) — `Validate()`
+  rejects both. Give the field a `label`; the refusal names it.
 - Every `default` is validated against its own field (`"true"`/`"false"` for bool, a listed
   option for enum, within bounds for numerics) or the spec fails `Validate()`.
 - `hot_reload: true` only changes what the UI says after a save; files are pushed either way.

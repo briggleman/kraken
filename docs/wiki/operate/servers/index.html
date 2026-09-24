@@ -203,11 +203,13 @@ install script before launching.</strong> For a SteamCMD title that is an
 <code>app_update … validate</code> pass, which is how a server picks up a game update at
 all. Before this, a healthy server stayed on the build SteamCMD pulled the day
 it was created, and the only way forward was delete and recreate.</p>
-<p>The sequence, once you press start:</p>
+<p>The sequence, once you press start and the pass runs:</p>
 <ol>
 <li>The Panel stops the container if anything is holding the data directory.</li>
 <li>It runs the install script. The server reads <code>installing</code>, the response is a
-<code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.</li>
+<code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.
+A start that skips the pass (the opt-outs and the paths below) is the plain
+synchronous <code>200</code> instead.</li>
 <li>It re-renders the config files over the fresh tree. <strong>After</strong> the update, not
 before, because the pass can restore a file the depot owns and your settings
 have to win.</li>
@@ -259,11 +261,29 @@ it. Setting it costs that game its updates, so I would treat it as a last
 resort rather than a convenience, and rewrite the script instead.</li>
 </ul>
 <h3 id="what-deliberately-does-not-update">What deliberately does not update <a class="hlink" href="#what-deliberately-does-not-update" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<p>Three paths start a server without re-running anything, and each is a decision
+<p>Four paths start a server without re-running anything, and each is a decision
 rather than an omission.</p>
 <ul>
+<li><strong>Any start within 30 minutes of an install.</strong> A create or reinstall that
+succeeds stamps the server&#39;s <code>provisioned_at</code>, and every start or restart
+inside that window skips the pass, which would only repeat an install that
+just ran. Starting does not clear the stamp, so a second start in the window
+skips it too. It
+covers the deploy form&#39;s &quot;start once the install finishes&quot; and an operator who
+stops to fill in settings first. It is a window rather than a &quot;never started&quot;
+flag so that a server created and left for days still updates on its first
+start. Editing a launch variable clears the stamp, because the install script
+may render it, even when the edit lands while the install is still running.
+A failed install clears it too. The settings response&#39;s
+<code>next_start_updates</code> says which way the next start will go.</li>
 <li><strong>Scheduled restarts.</strong> A cron restart drives the Agent directly. A nightly
-restart is not an invitation to validate a 30 GB tree nightly.</li>
+restart is not an invitation to validate a 30 GB tree nightly. It runs on a
+server that is <code>running</code>, <code>starting</code> or <code>crashed</code>, so it still revives a server
+the watchdog gave up on. It is skipped on an <code>offline</code> one, because the Agent&#39;s
+restart is a stop then a start and would start a server someone had stopped,
+and on <code>stopping</code>, <code>installing</code> and <code>install_failed</code>. It is also refused while
+a required setting is empty. Any skip is recorded as the schedule&#39;s last error,
+shown on its row.</li>
 <li><strong>The crash watchdog&#39;s restarts.</strong> The Agent restarts the container itself and
 never involves the Panel, so a crash loop cannot become a download loop.</li>
 <li><strong>A spec that needs a Steam login on a node with no stored credentials.</strong> The

@@ -160,7 +160,10 @@ func TestPanelToAgent_NodeInfoAndPower(t *testing.T) {
 
 	// The power endpoint is now object-level authorized, so the server must exist
 	// in the store. Seed it on the node (admin token has server.any → access ok).
-	if err := st.CreateServer(context.Background(), &store.Server{ID: "s1", Name: "s1", NodeID: nodeID, State: store.StateRunning, CreatedAt: time.Now()}); err != nil {
+	// It needs a real spec: a start is checked against the spec's required
+	// settings, and one whose spec cannot be loaded is refused.
+	specID := createSpec(t, h, token, "node-power")
+	if err := st.CreateServer(context.Background(), &store.Server{ID: "s1", Name: "s1", NodeID: nodeID, SpecID: specID, State: store.StateRunning, CreatedAt: time.Now()}); err != nil {
 		t.Fatalf("seed server: %v", err)
 	}
 

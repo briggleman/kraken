@@ -40,3 +40,7 @@ func (s *Server) ExpireDownloadTokensForTest() {
 		s.downloads.grants[k] = g
 	}
 }
+
+// RunDueSchedulesForTest runs a single pass of the scheduler — every enabled
+// task whose next run is due — without the ticker cmd/panel starts it on.
+func (s *Server) RunDueSchedulesForTest(ctx context.Context) { s.runDueSchedules(ctx) }

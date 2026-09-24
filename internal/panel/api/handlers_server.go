@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -276,7 +277,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
-	s.markProvisioned(server.ID, time.Now().UTC())
+	s.markProvisioned(server.ID, server.Vars, time.Now().UTC())
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
 	// and once the state leaves `installing` the console has no container to
@@ -305,7 +306,23 @@ func (s *Server) failServer(server *store.Server, reason string) {
 	// State first, then close the buffer: a subscriber released by Finish
 	// reconnects immediately, and it should find the failed state (and so be
 	// handed the log it just lost) rather than a still-installing one.
-	s.setServerState(server.ID, store.StateInstallFailed, reason)
+	//
+	// The provisioned_at stamp goes with it: it says "this tree was just
+	// installed", and a failed pass has left it suspect. install_failed already
+	// blocks a start until a reinstall succeeds (which stamps afresh), so this
+	// is insurance against any later path out of install_failed inheriting a
+	// stamp from the install before the one that failed.
+	sv, err := s.store.GetServer(context.Background(), server.ID)
+	if err != nil {
+		s.logger.Error("could not load server for state update", "id", server.ID, "err", err)
+	} else {
+		sv.State = store.StateInstallFailed
+		sv.LastError = reason
+		sv.ProvisionedAt = nil
+		if err := s.store.UpdateServer(context.Background(), sv); err != nil {
+			s.logger.Error("could not update server state", "id", server.ID, "err", err)
+		}
+	}
 	s.installs.Finish(server.ID)
 }
 
@@ -333,8 +350,16 @@ func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason st
 
 // markProvisioned records a successful create or reinstall: the server is
 // offline and ready to start, with no error, and its tree was installed at `at`
-// — which is what lets the first start after it skip a redundant update pass.
-func (s *Server) markProvisioned(id string, at time.Time) {
+// — which is what lets a start inside freshInstallWindow skip a redundant update
+// pass. installedVars is the variable snapshot the install script was rendered
+// from.
+//
+// The stamp vouches for a tree installed with those values, so it is withheld
+// when the row's variables no longer match them: an operator who edited one
+// while the install was running cleared the stamp (see the settings handler),
+// and stamping now would undo that and let the next start skip the pass the
+// edit needs.
+func (s *Server) markProvisioned(id string, installedVars map[string]string, at time.Time) {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
 		s.logger.Error("could not load server to mark it provisioned", "id", id, "err", err)
@@ -342,7 +367,13 @@ func (s *Server) markProvisioned(id string, at time.Time) {
 	}
 	sv.State = store.StateOffline
 	sv.LastError = ""
-	sv.ProvisionedAt = &at
+	if maps.Equal(sv.Vars, installedVars) {
+		sv.ProvisionedAt = &at
+	} else {
+		s.logger.Info("not stamping provisioned_at: variables were edited during the install, so the next start re-runs the pass",
+			"id", id)
+		sv.ProvisionedAt = nil
+	}
 	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
 		s.logger.Error("could not mark server provisioned", "id", id, "err", err)
 	}
@@ -371,6 +402,81 @@ func requiredSettingsMessage(missing []spec.SettingField) string {
 		verb, pronoun = "are", "them"
 	}
 	return list + " " + verb + " required before this server can start — set " + pronoun + " on the Settings tab"
+}
+
+// startRefusal is a start or restart the Panel will not send to the Agent: the
+// status and body a power endpoint answers with, and — as an error — the
+// sentence a scheduled restart records in its last_error.
+type startRefusal struct {
+	status  int
+	message string
+	code    string   // machine-readable reason; empty for a plain error body
+	missing []string // the empty required settings' keys, for required_settings_missing
+}
+
+func (e *startRefusal) Error() string { return e.message }
+
+// write answers a power request with the refusal.
+func (e *startRefusal) write(w http.ResponseWriter) {
+	if e.code == "" {
+		writeError(w, e.status, e.message)
+		return
+	}
+	writeJSON(w, e.status, map[string]any{
+		"error":            e.message,
+		"code":             e.code,
+		"missing_settings": e.missing,
+	})
+}
+
+// checkStartable reports why sv must not be started or restarted, or nil when
+// it may be. It is asked before the node is contacted and before any update
+// pass, so a refusal changes nothing — no install container, no state change.
+// Every path that boots a server asks it: both power endpoints and scheduled
+// restarts, so none of them starts a server another would refuse.
+//
+//   - A server that never completed its install would boot against an empty
+//     /data and crash-loop, with misleading "exe not found" errors.
+//   - A server whose spec cannot be loaded cannot be checked, so it is not
+//     started on the strength of a check that never ran: a spec that no longer
+//     exists is a 409 spec_missing, any other store error a 500.
+//   - A server with an empty required setting would boot into a crash its own
+//     spec predicts. Judged on the EFFECTIVE settings, so a field the spec
+//     added later counts its default.
+func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action agentpb.PowerAction) *startRefusal {
+	verb := "started"
+	if action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		verb = "restarted"
+	}
+	switch sv.State {
+	case store.StateInstalling:
+		return &startRefusal{status: http.StatusConflict,
+			message: "server is still installing; wait for the install to finish before starting"}
+	case store.StateInstallFailed:
+		return &startRefusal{status: http.StatusConflict,
+			message: "server install failed; POST /api/v1/servers/{id}/reinstall to retry"}
+	}
+	sp, err := s.store.GetSpec(ctx, sv.SpecID)
+	if errors.Is(err, store.ErrNotFound) {
+		// Permanent: a spec's id is a UUID, so re-adding the game makes a new
+		// spec rather than bringing this one back.
+		return &startRefusal{status: http.StatusConflict, code: "spec_missing",
+			message: "the game spec this server was built from no longer exists, so it was not " + verb}
+	}
+	if err != nil {
+		s.logger.Error("start refused: could not load the server's spec", "server", sv.ID, "spec", sv.SpecID, "err", err)
+		return &startRefusal{status: http.StatusInternalServerError,
+			message: "could not load this server's game spec, so it was not " + verb}
+	}
+	if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
+		keys := make([]string, 0, len(missing))
+		for _, f := range missing {
+			keys = append(keys, f.Key)
+		}
+		return &startRefusal{status: http.StatusConflict, message: requiredSettingsMessage(missing),
+			code: "required_settings_missing", missing: keys}
+	}
+	return nil
 }
 
 // setServerState reloads the server and updates only its state (plus the
@@ -527,37 +633,16 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	// Reject start/restart on a server that never completed its install phase.
-	// The runtime container would boot against empty /data and crash-loop
-	// immediately, producing misleading "exe not found" errors and locking the
-	// server. Stop/kill are allowed through — they're no-ops on a non-running
-	// container and let the operator clean up any lingering runtime state.
+	// Start and restart are refused on a server that has not finished its
+	// install, whose spec cannot be loaded, or whose required settings are
+	// empty (see checkStartable). Stop
+	// and kill are never refused: they're no-ops on a non-running container, let
+	// the operator clean up any lingering runtime state, and refusing to stop a
+	// server would be the opposite of safe.
 	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
-		switch sv.State {
-		case store.StateInstalling:
-			writeError(w, http.StatusConflict, "server is still installing; wait for the install to finish before starting")
+		if refusal := s.checkStartable(ctx, sv, action); refusal != nil {
+			refusal.write(w)
 			return
-		case store.StateInstallFailed:
-			writeError(w, http.StatusConflict, "server install failed; POST /api/v1/servers/{id}/reinstall to retry")
-			return
-		}
-		// Refuse to boot a server into a crash its own spec predicts. Checked
-		// before the node is contacted and before any update pass, so a refusal
-		// changes nothing — no install container, no state change. Judged on the
-		// EFFECTIVE settings, so a field the spec added later counts its default.
-		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
-			if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
-				keys := make([]string, 0, len(missing))
-				for _, f := range missing {
-					keys = append(keys, f.Key)
-				}
-				writeJSON(w, http.StatusConflict, map[string]any{
-					"error":            requiredSettingsMessage(missing),
-					"code":             "required_settings_missing",
-					"missing_settings": keys,
-				})
-				return
-			}
 		}
 	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
@@ -663,9 +748,15 @@ const freshInstallWindow = 30 * time.Minute
 
 // freshlyProvisioned reports whether sv's install pass completed within
 // freshInstallWindow of now — in which case the tree is already current and an
-// update pass would only repeat it.
+// update pass would only repeat it. A stamp in the future (a clock that stepped
+// back, a hand-edited row) is not fresh: it says nothing about when the tree
+// was installed, and the pass is the safe answer to not knowing.
 func freshlyProvisioned(sv *store.Server, now time.Time) bool {
-	return sv.ProvisionedAt != nil && now.Sub(*sv.ProvisionedAt) < freshInstallWindow
+	if sv.ProvisionedAt == nil {
+		return false
+	}
+	d := now.Sub(*sv.ProvisionedAt)
+	return d >= 0 && d < freshInstallWindow
 }
 
 // updatesOnStart reports whether an operator-initiated start/restart of sv
@@ -689,23 +780,50 @@ func freshlyProvisioned(sv *store.Server, now time.Time) bool {
 // loop. Scheduled restarts (schedule.go) likewise drive the Agent directly — a
 // nightly restart is not an invitation to validate a 30GB tree nightly.
 func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.Spec, node *cluster.Node) bool {
-	if sp == nil || sv.PinBuild || sp.SkipUpdateOnStartFor(sv.Kind) {
-		return false
-	}
-	if freshlyProvisioned(sv, time.Now()) {
+	switch s.updateSkipFor(ctx, sv, sp, node.ID) {
+	case updateSkipNone:
+		return true
+	case updateSkipFreshInstall:
 		s.logger.Info("skipping update-on-start: the install pass just ran",
 			"server", sv.ID, "provisioned_at", sv.ProvisionedAt)
-		return false
+	case updateSkipSteamLogin:
+		s.logger.Warn("skipping update-on-start: spec needs a Steam login and the node has no stored credentials",
+			"server", sv.ID, "node", node.ID)
+	}
+	return false
+}
+
+// updateSkip names why a start of a server would not run the update pass; the
+// empty value means it would. The Settings tab reports it as-is.
+type updateSkip string
+
+const (
+	updateSkipNone         updateSkip = ""
+	updateSkipSpec         updateSkip = "spec"          // the spec opted out
+	updateSkipPinned       updateSkip = "pinned"        // the operator pinned the build
+	updateSkipFreshInstall updateSkip = "fresh_install" // within freshInstallWindow of an install
+	updateSkipSteamLogin   updateSkip = "steam_login"   // authenticated Steam, no stored credentials
+)
+
+// updateSkipFor is updatesOnStart's decision without its logging, so a read
+// (the Settings tab) can ask what the next start would do without writing a
+// "skipping" line for a start that never happened.
+func (s *Server) updateSkipFor(ctx context.Context, sv *store.Server, sp *spec.Spec, nodeID string) updateSkip {
+	switch {
+	case sp == nil || sp.SkipUpdateOnStartFor(sv.Kind):
+		return updateSkipSpec
+	case sv.PinBuild:
+		return updateSkipPinned
+	case freshlyProvisioned(sv, time.Now()):
+		return updateSkipFreshInstall
 	}
 	if sp.Install.RequiresSteamLogin {
-		cfg, err := s.store.GetNodeConfig(ctx, node.ID)
+		cfg, err := s.store.GetNodeConfig(ctx, nodeID)
 		if err != nil || cfg == nil || cfg.SteamUsername == "" {
-			s.logger.Warn("skipping update-on-start: spec needs a Steam login and the node has no stored credentials",
-				"server", sv.ID, "node", node.ID)
-			return false
+			return updateSkipSteamLogin
 		}
 	}
-	return true
+	return updateSkipNone
 }
 
 // updateThenStart runs the pre-start update pass and then starts the server.

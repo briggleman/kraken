@@ -23,6 +23,10 @@ import (
 // fakeContainers is a daemon that knows a few containers by name. Removal is
 // by ID and lands at once; removeErr makes every removal fail instead.
 type fakeContainers struct {
+	// containerOps is nil: the removal paths call only the two methods below,
+	// and anything else panicking is the test telling you so.
+	containerOps
+
 	mu        sync.Mutex
 	byName    map[string]string // name → id
 	removed   []string          // names, in the order they went

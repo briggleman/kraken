@@ -3398,7 +3398,15 @@ type InstallEvent struct {
 	//	*InstallEvent_Progress
 	//	*InstallEvent_Completed
 	//	*InstallEvent_Failed
-	Event         isInstallEvent_Event `protobuf_oneof:"event"`
+	Event isInstallEvent_Event `protobuf_oneof:"event"`
+	// Set on a `failed` event when the pass ended before anything could write to
+	// the install tree — the pre-install guard refused it (a container still has
+	// the data dir; #351), or the previous install container's name never came
+	// free. The Panel then returns the server to the state it was in rather than
+	// install_failed, as it does for any phase that never touched the tree
+	// (#328). A Panel that predates the field ignores it and lands
+	// install_failed, as before.
+	TreeUntouched bool `protobuf:"varint,5,opt,name=tree_untouched,json=treeUntouched,proto3" json:"tree_untouched,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3474,6 +3482,13 @@ func (x *InstallEvent) GetFailed() string {
 		}
 	}
 	return ""
+}
+
+func (x *InstallEvent) GetTreeUntouched() bool {
+	if x != nil {
+		return x.TreeUntouched
+	}
+	return false
 }
 
 type isInstallEvent_Event interface {
@@ -4845,12 +4860,13 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fmemory_limit_mb\x18\x05 \x01(\x03R\rmemoryLimitMb\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8c\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb3\x01\n" +
 	"\fInstallEvent\x12\x1b\n" +
 	"\blog_line\x18\x01 \x01(\tH\x00R\alogLine\x12\x1c\n" +
 	"\bprogress\x18\x02 \x01(\x05H\x00R\bprogress\x12\x1e\n" +
 	"\tcompleted\x18\x03 \x01(\bH\x00R\tcompleted\x12\x18\n" +
-	"\x06failed\x18\x04 \x01(\tH\x00R\x06failedB\a\n" +
+	"\x06failed\x18\x04 \x01(\tH\x00R\x06failed\x12%\n" +
+	"\x0etree_untouched\x18\x05 \x01(\bR\rtreeUntouchedB\a\n" +
 	"\x05event\"g\n" +
 	"\x12PowerActionRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x124\n" +

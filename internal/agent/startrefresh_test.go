@@ -124,9 +124,14 @@ func TestStartRefreshJoinsAnInFlightPull(t *testing.T) {
 	}
 
 	close(gate)
+	// Wait for the pull to be deregistered, not merely for the new image to be
+	// visible: the fake lands the image inside doPull, before backgroundPull
+	// drops the in-flight record, so a start in between would still join it.
 	waitFor(t, "the shared pull to finish", func() bool {
-		got, err := f.ImageInspect(context.Background(), testRef)
-		return err == nil && got.ID != oldID
+		d.pullMu.Lock()
+		_, inFlight := d.pulls[testRef]
+		d.pullMu.Unlock()
+		return !inFlight
 	})
 
 	// Once it has finished, a later start joins nothing and pulls afresh.
@@ -196,5 +201,33 @@ func TestStartRefreshPolicyNeverDoesNotPull(t *testing.T) {
 	}
 	if f.pullCount() != 0 {
 		t.Errorf(`"never" must not contact the registry on start either, got %d`, f.pullCount())
+	}
+}
+
+func TestStartRefreshStopsWaitingWhenTheRPCEnds(t *testing.T) {
+	// The Panel's deadline passing must end the wait at once. Before, the wait
+	// ignored ctx and held the start for the whole pull budget, past a deadline
+	// nobody was listening to any more.
+	prev := startPullBudget
+	startPullBudget = 10 * time.Second
+	t.Cleanup(func() { startPullBudget = prev })
+	gate := make(chan struct{})
+	defer close(gate)
+	f := &fakeImages{
+		local:  map[string]image.InspectResponse{testRef: {ID: oldID}},
+		pulled: freshImage(),
+		gate:   gate,
+	}
+	d := newPullRuntime(t, pullAlways, f)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := d.refreshImageForStart(ctx, testRef, "srv-1")
+	if waited := time.Since(start); waited > 2*time.Second {
+		t.Fatalf("the refresh waited %v after its context ended", waited)
+	}
+	if err == nil || !strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+		t.Errorf("want the context's error, got %v", err)
 	}
 }

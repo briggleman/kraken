@@ -164,10 +164,8 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	// Checked before the state: a server mid-restore is not stopped either, and
 	// "stop the server" would send the operator after the wrong thing.
 	if s.restoreInProgress(sv) {
-		writeJSON(w, http.StatusConflict, errorCodeBody{
-			Error: "a restore is already in progress for this server; wait for it to finish",
-			Code:  "restore_in_progress",
-		})
+		writeCoded(w, http.StatusConflict, codeRestoreInProgress,
+			"a restore is already in progress for this server; wait for it to finish")
 		return
 	}
 	if !restorableStates[sv.State] {
@@ -184,27 +182,23 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	// (#328): otherwise the server would flip to restoring only for the job to
 	// fail on its first dial and write that back as a restore failure.
 	if lerr := s.ensureNodeLive(ctx, node); lerr != nil {
-		writeError(w, http.StatusServiceUnavailable,
+		writeCoded(w, http.StatusServiceUnavailable, codeNodeUnreachable,
 			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
 		return
 	}
 	job, refused := s.restores.start(sv.ID, backupID)
 	switch refused {
 	case restoreRefusedInProgress:
-		writeJSON(w, http.StatusConflict, errorCodeBody{
-			Error: "a restore is already in progress for this server; wait for it to finish",
-			Code:  "restore_in_progress",
-		})
+		writeCoded(w, http.StatusConflict, codeRestoreInProgress,
+			"a restore is already in progress for this server; wait for it to finish")
 		return
 	case restoreRefusedBusy:
 		// A start, restart or reinstall holds the server for its Agent call
 		// (claimStart). Its row may still read offline — that write comes
 		// after the Power call returns — which is exactly why the row cannot
 		// be the lock.
-		writeJSON(w, http.StatusConflict, errorCodeBody{
-			Error: "a start is in progress for this server; stop it before restoring a backup",
-			Code:  "server_busy",
-		})
+		writeCoded(w, http.StatusConflict, codeServerBusy,
+			"a start is in progress for this server; stop it before restoring a backup")
 		return
 	}
 	// Re-read now the job holds the lock: the row loaded above may be stale,
@@ -240,13 +234,6 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("backup restore started", "server", sv.ID, "name", sv.Name, "backup", backupID)
 	go s.runRestore(client, req)
 	writeJSON(w, http.StatusAccepted, s.serverResponse(sv))
-}
-
-// errorCodeBody is the error shape that also names a machine-readable code, so
-// a client can branch on the refusal instead of on its wording.
-type errorCodeBody struct {
-	Error string `json:"error"`
-	Code  string `json:"code"`
 }
 
 // runRestore is the restore job: it drives the Agent with a background context

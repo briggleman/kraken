@@ -78,10 +78,18 @@ func newRestoreJobs() *restoreJobs {
 	return &restoreJobs{byServer: map[string]*restoreJob{}, starts: map[string]int{}}
 }
 
+// The machine-readable codes a restore's refusals answer with, in the same
+// {"error","code"} envelope as the Agent-call failures (agenterror.go).
+const (
+	codeServerRestoring   = "server_restoring"    // 409: a restore holds the server's tree
+	codeRestoreInProgress = "restore_in_progress" // 409: a second restore was asked for
+	codeServerBusy        = "server_busy"         // 409: a start, restart or reinstall holds the server
+)
+
 // Why a restore could not be registered.
 const (
-	restoreRefusedInProgress = "restore_in_progress" // another restore holds the server
-	restoreRefusedBusy       = "server_busy"         // a start or reinstall holds it
+	restoreRefusedInProgress = codeRestoreInProgress // another restore holds the server
+	restoreRefusedBusy       = codeServerBusy        // a start or reinstall holds it
 )
 
 // start registers a job for serverID, or says why it cannot: a restore is
@@ -182,10 +190,8 @@ func (s *Server) refuseWhileRestoring(w http.ResponseWriter, sv *store.Server) b
 	if !s.restoreInProgress(sv) {
 		return false
 	}
-	writeJSON(w, http.StatusConflict, errorCodeBody{
-		Error: "a backup restore is in progress for this server; wait for the restore to finish",
-		Code:  "server_restoring",
-	})
+	writeCoded(w, http.StatusConflict, codeServerRestoring,
+		"a backup restore is in progress for this server; wait for the restore to finish")
 	return true
 }
 
@@ -212,7 +218,7 @@ func (s *Server) claimStart(serverID string) (release func(), refusal *startRefu
 
 // restoreRefusal is the start/restart/reinstall refusal while a restore runs.
 func restoreRefusal() *startRefusal {
-	return &startRefusal{status: http.StatusConflict, code: "server_restoring",
+	return &startRefusal{status: http.StatusConflict, code: codeServerRestoring,
 		message: "a backup restore is in progress; wait for the restore to finish"}
 }
 

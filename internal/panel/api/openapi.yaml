@@ -895,16 +895,8 @@ paths:
             in flight and still holds the server (`code: server_busy` — its row
             may read offline until the agent answers). Nothing was started.
           content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error: { type: string }
-                  code: { type: string, enum: [restore_in_progress, server_busy] }
-        '503':
-          description: >
-            The panel has no live connection to the hosting node's agent. Nothing
-            was attempted and the server's state is unchanged.
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/backups/{backupId}:
     parameters:
       - { $ref: '#/components/parameters/ServerId' }
@@ -1656,7 +1648,9 @@ components:
         The node refused the operation, and `code` says why: `file_in_use`
         (another process holds the file — usually the server's own game, still
         running), `node_refused` (the node's filesystem denied it) or
-        `already_exists`. `error` carries the node's own words.
+        `already_exists`. `error` carries the node's own words. On an
+        operation that writes the server's files, `server_restoring` means a
+        backup restore holds them and nothing was sent to the node.
       content:
         application/json: { schema: { $ref: '#/components/schemas/Error' } }
     AgentError:
@@ -1687,7 +1681,11 @@ components:
             not_found, bad_path, file_in_use, node_refused, already_exists,
             install_running or
             node_error; a settings save whose config could not be rendered
-            carries config_apply_failed.
+            carries config_apply_failed. A backup restore's refusals carry
+            server_restoring (a restore holds the server's files, so the
+            write, start or delete was refused), restore_in_progress (a second
+            restore) or server_busy (a start, restart or reinstall still holds
+            the server).
     CodedError:
       type: object
       properties:

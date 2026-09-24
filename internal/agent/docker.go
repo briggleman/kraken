@@ -2117,18 +2117,21 @@ func (d *DockerRuntime) inspectGameContainer(ctx context.Context, name string) (
 // rollback was complete. The Panel shows the message to the operator verbatim,
 // scrubbed of the node's host paths (see RestoreBackup).
 func (d *DockerRuntime) RestoreBackupStream(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error {
+	// The Agent's own check, behind the Panel's: the Panel refuses a restore on
+	// a server it believes is stopped, but its belief can be seconds stale — a
+	// start whose Power call is still in flight has not written the row yet.
+	// The container is the ground truth, so a running game is refused here.
+	// Returned outside the scrub: the refusal is a gRPC status already (the
+	// interceptor passes it through), names no host path, and must keep its
+	// code for the Panel to read it as a restore that did not start.
+	if err := d.refuseRestoreOverRunningContainer(ctx, serverID); err != nil {
+		return err
+	}
 	return d.scrubbed(serverID, d.restoreBackup(ctx, serverID, slug, id, emit))
 }
 
 func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string, emit func(*agentpb.RestoreEvent) error) error {
 	const untouched = "; the live tree was not touched"
-	// The Agent's own check, behind the Panel's: the Panel refuses a restore on
-	// a server it believes is stopped, but its belief can be seconds stale — a
-	// start whose Power call is still in flight has not written the row yet.
-	// The container is the ground truth, so a running game is refused here.
-	if err := d.refuseRestoreOverRunningContainer(ctx, serverID); err != nil {
-		return err
-	}
 	m := newRestoreMeter(ctx, emit)
 	if err := m.enter(restorePhaseOpening); err != nil {
 		return err

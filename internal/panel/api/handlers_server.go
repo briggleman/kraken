@@ -492,7 +492,7 @@ func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action ag
 	// as well as the state, so the gate holds even against a row write that
 	// raced the restore's own.
 	if s.restoreInProgress(sv) {
-		return &startRefusal{status: http.StatusConflict, code: "server_restoring",
+		return &startRefusal{status: http.StatusConflict, code: codeServerRestoring,
 			message: "a backup restore is in progress; the server can start once it finishes"}
 	}
 	sp, err := s.store.GetSpec(ctx, sv.SpecID)

@@ -533,6 +533,12 @@ export interface ServerSettings {
   /** False when the spec itself opted out of update-on-start, so the pin is
    *  moot and the toggle says so instead of promising updates. */
   updates_on_start?: boolean;
+  /** What the next start or restart would do right now: false when the spec
+   *  opted out, the build is pinned, the server was installed within the last
+   *  30 minutes, or its Steam-login install has no stored credentials. */
+  next_start_updates?: boolean;
+  /** Why the next start skips the pass; absent when it runs. */
+  update_skip_reason?: "spec" | "pinned" | "fresh_install" | "steam_login";
 }
 
 export interface UpdateSettingsResult {

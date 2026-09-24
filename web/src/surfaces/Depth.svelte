@@ -690,7 +690,8 @@
               <p class="cfg-help">
                 off (default): every start re-runs the game's install script first, so the
                 server picks up updates — on a large steam tree that validate pass adds time
-                to the start. on: this server stays on the build now on disk; use update in
+                to the start. within 30 minutes of an install the pass is skipped: the tree is
+                already current. on: this server stays on the build now on disk; use update in
                 the controls to move it deliberately.
               </p>
             {:else}

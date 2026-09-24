@@ -1,11 +1,13 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/briggleman/kraken/internal/agent"
 	"github.com/briggleman/kraken/internal/panel/store"
 )
 
@@ -119,5 +121,92 @@ func TestPower_StartLongAfterProvisionStillUpdates(t *testing.T) {
 	waitForState(t, h, token, sv.ID, "running")
 	if n := len(rt.InstallScripts(sv.ID)); n != 1 {
 		t.Fatalf("stale server ran %d install passes, want 1 — the update", n)
+	}
+}
+
+// readUpdateDecision is the Settings tab's view of what the next start does.
+func readUpdateDecision(t *testing.T, h http.Handler, token, id string) (updates bool, reason string) {
+	t.Helper()
+	rec := do(t, h, http.MethodGet, "/api/v1/servers/"+id+"/settings", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get settings: %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		NextStartUpdates bool   `json:"next_start_updates"`
+		UpdateSkipReason string `json:"update_skip_reason"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	return body.NextStartUpdates, body.UpdateSkipReason
+}
+
+// TestPower_VariableEditInsideWindowRearmsUpdatePass — install-script variables
+// take effect on the next start because the pass re-renders the script from
+// them. Inside the fresh-install window the pass was skipped, so an edit made
+// right after a deploy never reached the install: the stamp vouched for a tree
+// installed with the old values. An edit clears it; the next start updates.
+func TestPower_VariableEditInsideWindowRearmsUpdatePass(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	specID := createSpec(t, h, token, "fresh-varedit")
+	justNow := time.Now().UTC()
+	sv := seedOfflineServer(t, st, "sv-varedit", nodeID, specID, func(s *store.Server) {
+		s.ProvisionedAt = &justNow
+	})
+
+	// The Settings tab says what a start would do, window included.
+	if updates, reason := readUpdateDecision(t, h, token, sv.ID); updates || reason != "fresh_install" {
+		t.Fatalf("inside the window: next_start_updates=%v reason=%q, want false/fresh_install", updates, reason)
+	}
+
+	rec := do(t, h, http.MethodPut, "/api/v1/servers/"+sv.ID+"/settings", token,
+		map[string]any{"values": map[string]string{}, "variables": map[string]string{"MAX_PLAYERS": "32"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit variable: %d %s", rec.Code, rec.Body.String())
+	}
+	if updates, reason := readUpdateDecision(t, h, token, sv.ID); !updates || reason != "" {
+		t.Fatalf("after a variable edit: next_start_updates=%v reason=%q, want true/\"\"", updates, reason)
+	}
+
+	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/power", token,
+		map[string]string{"action": "start"})
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("start after a variable edit: got %d, want 202 (update pass); body: %s", rec.Code, rec.Body.String())
+	}
+	waitForState(t, h, token, sv.ID, "running")
+	if n := len(rt.InstallScripts(sv.ID)); n != 1 {
+		t.Fatalf("start after a variable edit ran %d install passes, want 1", n)
+	}
+}
+
+// TestReinstall_FailureClearsFreshInstallStamp — a failed install leaves the
+// tree suspect, so it must not leave a "just installed" stamp from the install
+// before it for a later start to trust.
+func TestReinstall_FailureClearsFreshInstallStamp(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startFakeAgentRuntime(t, "node-x", agent.WithFakeInstallFailure("depot unreachable"))
+	nodeID := registerNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "fresh-failed", map[string]any{"script": "install.sh"})
+	justNow := time.Now().UTC()
+	sv := seedOfflineServer(t, st, "sv-failed", nodeID, specID, func(s *store.Server) {
+		s.ProvisionedAt = &justNow
+	})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/reinstall", token, nil)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("reinstall: got %d, want 202; body: %s", rec.Code, rec.Body.String())
+	}
+	waitForStateWithin(t, h, token, sv.ID, "install_failed", 20*time.Second)
+	got, err := st.GetServer(context.Background(), sv.ID)
+	if err != nil {
+		t.Fatalf("get server: %v", err)
+	}
+	if got.ProvisionedAt != nil {
+		t.Fatalf("a failed reinstall kept the previous provisioned_at (%v)", got.ProvisionedAt)
+	}
+	if got.LastError == "" {
+		t.Fatal("a failed reinstall recorded no last_error")
 	}
 }

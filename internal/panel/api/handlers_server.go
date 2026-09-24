@@ -305,7 +305,23 @@ func (s *Server) failServer(server *store.Server, reason string) {
 	// State first, then close the buffer: a subscriber released by Finish
 	// reconnects immediately, and it should find the failed state (and so be
 	// handed the log it just lost) rather than a still-installing one.
-	s.setServerState(server.ID, store.StateInstallFailed, reason)
+	//
+	// The provisioned_at stamp goes with it: it says "this tree was just
+	// installed", and a failed pass has left it suspect. install_failed already
+	// blocks a start until a reinstall succeeds (which stamps afresh), so this
+	// is insurance against any later path out of install_failed inheriting a
+	// stamp from the install before the one that failed.
+	sv, err := s.store.GetServer(context.Background(), server.ID)
+	if err != nil {
+		s.logger.Error("could not load server for state update", "id", server.ID, "err", err)
+	} else {
+		sv.State = store.StateInstallFailed
+		sv.LastError = reason
+		sv.ProvisionedAt = nil
+		if err := s.store.UpdateServer(context.Background(), sv); err != nil {
+			s.logger.Error("could not update server state", "id", server.ID, "err", err)
+		}
+	}
 	s.installs.Finish(server.ID)
 }
 
@@ -705,9 +721,15 @@ const freshInstallWindow = 30 * time.Minute
 
 // freshlyProvisioned reports whether sv's install pass completed within
 // freshInstallWindow of now — in which case the tree is already current and an
-// update pass would only repeat it.
+// update pass would only repeat it. A stamp in the future (a clock that stepped
+// back, a hand-edited row) is not fresh: it says nothing about when the tree
+// was installed, and the pass is the safe answer to not knowing.
 func freshlyProvisioned(sv *store.Server, now time.Time) bool {
-	return sv.ProvisionedAt != nil && now.Sub(*sv.ProvisionedAt) < freshInstallWindow
+	if sv.ProvisionedAt == nil {
+		return false
+	}
+	d := now.Sub(*sv.ProvisionedAt)
+	return d >= 0 && d < freshInstallWindow
 }
 
 // updatesOnStart reports whether an operator-initiated start/restart of sv
@@ -731,23 +753,50 @@ func freshlyProvisioned(sv *store.Server, now time.Time) bool {
 // loop. Scheduled restarts (schedule.go) likewise drive the Agent directly — a
 // nightly restart is not an invitation to validate a 30GB tree nightly.
 func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.Spec, node *cluster.Node) bool {
-	if sp == nil || sv.PinBuild || sp.SkipUpdateOnStartFor(sv.Kind) {
-		return false
-	}
-	if freshlyProvisioned(sv, time.Now()) {
+	switch s.updateSkipFor(ctx, sv, sp, node.ID) {
+	case updateSkipNone:
+		return true
+	case updateSkipFreshInstall:
 		s.logger.Info("skipping update-on-start: the install pass just ran",
 			"server", sv.ID, "provisioned_at", sv.ProvisionedAt)
-		return false
+	case updateSkipSteamLogin:
+		s.logger.Warn("skipping update-on-start: spec needs a Steam login and the node has no stored credentials",
+			"server", sv.ID, "node", node.ID)
+	}
+	return false
+}
+
+// updateSkip names why a start of a server would not run the update pass; the
+// empty value means it would. The Settings tab reports it as-is.
+type updateSkip string
+
+const (
+	updateSkipNone         updateSkip = ""
+	updateSkipSpec         updateSkip = "spec"          // the spec opted out
+	updateSkipPinned       updateSkip = "pinned"        // the operator pinned the build
+	updateSkipFreshInstall updateSkip = "fresh_install" // within freshInstallWindow of an install
+	updateSkipSteamLogin   updateSkip = "steam_login"   // authenticated Steam, no stored credentials
+)
+
+// updateSkipFor is updatesOnStart's decision without its logging, so a read
+// (the Settings tab) can ask what the next start would do without writing a
+// "skipping" line for a start that never happened.
+func (s *Server) updateSkipFor(ctx context.Context, sv *store.Server, sp *spec.Spec, nodeID string) updateSkip {
+	switch {
+	case sp == nil || sp.SkipUpdateOnStartFor(sv.Kind):
+		return updateSkipSpec
+	case sv.PinBuild:
+		return updateSkipPinned
+	case freshlyProvisioned(sv, time.Now()):
+		return updateSkipFreshInstall
 	}
 	if sp.Install.RequiresSteamLogin {
-		cfg, err := s.store.GetNodeConfig(ctx, node.ID)
+		cfg, err := s.store.GetNodeConfig(ctx, nodeID)
 		if err != nil || cfg == nil || cfg.SteamUsername == "" {
-			s.logger.Warn("skipping update-on-start: spec needs a Steam login and the node has no stored credentials",
-				"server", sv.ID, "node", node.ID)
-			return false
+			return updateSkipSteamLogin
 		}
 	}
-	return true
+	return updateSkipNone
 }
 
 // updateThenStart runs the pre-start update pass and then starts the server.

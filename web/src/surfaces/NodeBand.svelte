@@ -13,10 +13,12 @@
   import {
     DRIFT_INLINE_MAX,
     agentDrift,
+    clipLine,
     containerDrift,
     nodeMemLabel,
     pendingRemovalsNote,
     retirable,
+    shortContainerLabel,
   } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
@@ -79,7 +81,7 @@
   // `docker ps` without guessing which half is which.
   const driftNames = $derived(
     containers && containers.items.length > 0 && containers.items.length <= DRIFT_INLINE_MAX
-      ? containers.items.map((c) => c.label).join(", ")
+      ? containers.items.map((c) => shortContainerLabel(c.label)).join(", ")
       : "",
   );
   // An untracked container can be retired from here — stopped, removed and
@@ -313,7 +315,7 @@
            operator can act on: up to three read inline, more stay in the title,
            and an agent too old to name them leaves both empty. -->
       <span class="node-meta node-cond container-drift" title={driftTitle}>
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id)}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{item.label}</b><button
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id)}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{shortContainerLabel(item.label)}</b><button
               class="nc-go"
               disabled={!!retire.busy[item.server_id]}
               title="stop and remove {item.label} on {node.name} — its data stays"
@@ -331,7 +333,7 @@
       <!-- A retire the panel refused says why on the band that offered it —
            otherwise the chip would look as if the click had done nothing. -->
       <span class="node-meta node-cond" title={retireErr}>
-        <span class="nc-k">retire</span><b class="nc-v act">{retireErr}</b>
+        <span class="nc-k">retire</span><b class="nc-v act">{clipLine(retireErr)}</b>
       </span>
     {/if}
     {#if pending}

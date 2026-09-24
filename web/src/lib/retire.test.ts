@@ -27,7 +27,7 @@ import { ApiError } from "@/api/client";
 import { fleet } from "./fleet.svelte";
 import { openRetire, openRetireAll, retire } from "./retire.svelte";
 import { CD_CONTAINER_BODY, CD_SERVER_BODY, confirmGo, openConfirm, ui } from "./state.svelte";
-import { containerDrift, pendingRemovalsNote, retirable } from "./views.svelte";
+import { clipLine, containerDrift, pendingRemovalsNote, retirable, shortContainerLabel } from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
@@ -153,6 +153,27 @@ describe("the delete confirmation", () => {
   it("stays typed by default", () => {
     openConfirm("valheim", null, { noun: "server" });
     expect(ui.confirm).toMatchObject({ verb: "delete", typed: true, body: CD_SERVER_BODY });
+  });
+});
+
+describe("shortContainerLabel", () => {
+  it("prints a Panel-made name by the first eight of its id", () => {
+    expect(shortContainerLabel("kraken_f4030778-08c8-47b7-abba-59bbd9cebd08")).toBe("kraken_f4030778…");
+    expect(shortContainerLabel("kraken_f4030778-08c8-47b7-abba-59bbd9cebd08_install")).toBe(
+      "kraken_f4030778…_install",
+    );
+  });
+
+  it("leaves a short name alone and clips a long one", () => {
+    expect(shortContainerLabel("kraken_srv-a")).toBe("kraken_srv-a");
+    expect(shortContainerLabel("a-container-someone-named-by-hand")).toBe("a-container-someone-nam…");
+  });
+
+  it("clipLine keeps a refusal to one readable line", () => {
+    const long = 'node local is unreachable: connection error: desc = "transport: Error while dialing"';
+    expect(clipLine(long)).toHaveLength(42);
+    expect(clipLine(long).endsWith("…")).toBe(true);
+    expect(clipLine("node local is unreachable")).toBe("node local is unreachable");
   });
 });
 

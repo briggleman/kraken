@@ -334,6 +334,13 @@ and `node.manage`. It opens the confirmation card untyped (see Destructive Contr
 and removes the container and forgets its spec, and the data stays. A refusal lands as its own
 condition line, `retire · <reason>`, on the band that offered the chip.
 
+**The id cell sizes to its content**, so nothing in a condition line may print at full length: a
+Panel-made container name is `kraken_` plus a 36-character id, and printed whole it pushed the
+band's five instruments into each other. Inline, a name prints as `kraken_<first 8 of the id>…`
+(`shortContainerLabel`) and a refusal is clipped at 42 characters (`clipLine`, the same measure as
+the agent-drift failure's 42ch) — the full text stays in the line's title and in every control's
+accessible label.
+
 **Pending removals** are the other half: a delete the node could not be told about is remembered
 and retried by the panel, and while it is owed the band carries `removals · N pending`, the count
 in `.nc-v.act` and the roll call (server id, what is owed, attempts, last error) in the title. It

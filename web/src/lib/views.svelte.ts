@@ -248,6 +248,31 @@ export function containerDrift(
 export const DRIFT_INLINE_MAX = 3;
 
 /**
+ * A container name as the band prints it inline. A Panel-made name is
+ * `kraken_` plus a 36-character server id, and printed whole it is the widest
+ * thing in the id cell — wide enough to push the band's instruments into each
+ * other, because that column sizes to its content. The first eight characters
+ * of the id are what an operator matches against `docker ps` anyway; the full
+ * name stays in the line's title and in every control's label.
+ */
+export function shortContainerLabel(label: string): string {
+  const m = /^kraken_([0-9a-f]{8})-[0-9a-f-]{27}(_install)?$/i.exec(label);
+  if (m) return `kraken_${m[1]}…${m[2] ?? ""}`;
+  return label.length > 24 ? label.slice(0, 23) + "…" : label;
+}
+
+/**
+ * A reason as a condition line prints it: at most `max` characters, the rest
+ * in the line's title. The id column sizes to its content, so one verbose
+ * gRPC error printed whole would squeeze every instrument on the band to
+ * nothing — the house clips the agent-drift failure at 42ch for the same
+ * reason.
+ */
+export function clipLine(text: string, max = 42): string {
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+}
+
+/**
  * The untracked containers the badge offers to retire, or [] when it offers
  * none. Only an untracked surplus has anything to retire — a missing container
  * is a row with nothing behind it — and only a named one: an agent that sends

@@ -544,7 +544,7 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	}
 	// Scope the list to servers the caller may access (owner, or PermServerAny),
 	// and strip SFTP credential material from the response.
-	visible := make([]serverResponse, 0, len(servers))
+	visible := make([]*store.Server, 0, len(servers))
 	for _, sv := range servers {
 		if s.mayAccessServer(r.Context(), sv) {
 			visible = append(visible, s.serverResponse(sv))
@@ -633,18 +633,13 @@ func serverView(sv *store.Server) *store.Server {
 }
 
 // serverResponse is a server as the list and get endpoints answer it: the
-// stripped record plus what this Panel process is doing to it right now. The
-// `restore` block exists only while a restore job runs (#361) — the row's
-// `restoring` state is the durable half, this is the reading the meter needs.
-type serverResponse struct {
-	*store.Server
-	Restore *restoreView `json:"restore,omitempty"`
-}
-
-func (s *Server) serverResponse(sv *store.Server) serverResponse {
-	out := serverResponse{Server: serverView(sv)}
+// stripped record with a running restore's live reading laid over the row's
+// `restore` block (#361). The row holds what the job knew when it began; the
+// meter needs the bytes read since, which only the job has.
+func (s *Server) serverResponse(sv *store.Server) *store.Server {
+	out := serverView(sv)
 	if job, ok := s.restores.active(sv.ID); ok {
-		out.Restore = job.view()
+		out.Restore = job.overlay(sv.Restore)
 	}
 	return out
 }
@@ -738,6 +733,12 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 			// server already in `installing` — which gates a racing start and
 			// routes the console to the live install log for free.
 			if s.updatesOnStart(ctx, sv, sp, node) {
+				// Otherwise `installing` would be written over a restore that
+				// began since the gate above, and SteamCMD run over the swap.
+				if s.restoreBegan(ctx, sv.ID) {
+					restoreRefusal().write(w)
+					return
+				}
 				// The state to fall back to if the pass aborts before it has
 				// touched the install tree (see updateThenStart): captured here,
 				// because the next line overwrites it.
@@ -761,6 +762,13 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// The spec re-push and config apply above are two Agent round trips after
+	// the start gate; a restore registered in that gap must still win.
+	if (action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART) &&
+		s.restoreBegan(ctx, sv.ID) {
+		restoreRefusal().write(w)
+		return
+	}
 	pctx, cancel := context.WithTimeout(ctx, powerTimeout(action))
 	defer cancel()
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
@@ -1007,6 +1015,9 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
+	if s.refuseWhileRestoring(w, sv) {
+		return
+	}
 	switch sv.State {
 	case store.StateInstallFailed, store.StateOffline, store.StateCrashed:
 		// Stopped states: nothing holds the data dir, so the install container
@@ -1033,6 +1044,10 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = decodeJSON(r, &req) // empty body is fine
 
+	if s.restoreBegan(ctx, sv.ID) {
+		restoreRefusal().write(w)
+		return
+	}
 	prev := sv.State // where a refused pass puts it back (see provision)
 	sv.State = store.StateInstalling
 	sv.LastError = "" // a fresh attempt starts with a clean slate
@@ -1066,6 +1081,11 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.authorizeServer(w, ctx, sv) {
+		return
+	}
+	// Before anything is recorded: a delete refused for a running restore
+	// must leave no pending removal behind for the reconciler to replay.
+	if s.refuseWhileRestoring(w, sv) {
 		return
 	}
 	// A node that no longer exists has nothing to be told and nothing to hold

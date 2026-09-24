@@ -123,6 +123,9 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	if s.refuseWhileRestoring(w, sv) {
+		return
+	}
 
 	// Launch-variable edits are accepted in any server state — the next start
 	// re-renders the startup command and container env from the stored vars,

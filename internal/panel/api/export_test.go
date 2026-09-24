@@ -58,3 +58,11 @@ func (s *Server) ExpireDownloadTokensForTest() {
 // RunDueSchedulesForTest runs a single pass of the scheduler — every enabled
 // task whose next run is due — without the ticker cmd/panel starts it on.
 func (s *Server) RunDueSchedulesForTest(ctx context.Context) { s.runDueSchedules(ctx) }
+
+// SetRestoreClaimHookForTest runs fn in the window between a start, restart or
+// reinstall's restore gate and its state write (see restoreBegan), so a test
+// can register a restore exactly there. The returned func clears it.
+func SetRestoreClaimHookForTest(fn func(serverID string)) func() {
+	restoreClaimHook = fn
+	return func() { restoreClaimHook = nil }
+}

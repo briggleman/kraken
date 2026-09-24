@@ -233,10 +233,20 @@ type Server struct {
 	// LastError is why the most recent provisioning attempt failed, verbatim —
 	// set alongside StateInstallFailed and cleared when an install succeeds or a
 	// reinstall begins. It is the operator's whole diagnosis, so it must live on
-	// the record, not only in the Panel's process log. A failed backup restore
-	// writes its reason here too ("restore failed: …"), and a restore that
-	// lands clears it.
+	// the record, not only in the Panel's process log. A backup restore never
+	// touches it: an install's reason must survive a restore either way, and a
+	// restore's own outcome is RestoreResult.
 	LastError string `json:"last_error,omitempty"`
+	// Restore is the durable half of a running backup restore (#361), set when
+	// the job starts and cleared when it settles. PrevState is where the row
+	// goes back to — kept here, not in the job, so a Panel that restarts
+	// mid-restore still returns an install_failed server to install_failed.
+	// The progress fields are filled from the in-memory job on read; what is
+	// stored is only what the job knew when it began.
+	Restore *ServerRestore `json:"restore,omitempty"`
+	// RestoreResult is how the most recent restore ended. It stays until the
+	// next one replaces it.
+	RestoreResult *RestoreResult `json:"restore_result,omitempty"`
 	// LastExitCode is the exit status of the container's most recent run, carried
 	// from the Agent's watchdog by the reconciler and held only while the server
 	// is crashed (any other state clears it). It is the operator's first clue
@@ -247,6 +257,27 @@ type Server struct {
 	LastExitCode      int64     `json:"last_exit_code,omitempty"`
 	LastExitCodeKnown bool      `json:"last_exit_code_known,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
+}
+
+// ServerRestore is a running backup restore as the server row records it.
+type ServerRestore struct {
+	BackupID  string      `json:"backup_id"`
+	PrevState ServerState `json:"prev_state"`
+	StartedAt time.Time   `json:"started_at"`
+	// Phase and the byte counts are the job's latest reading. They are not
+	// kept current in the store (a write per progress event would be a write
+	// every quarter second); the API overlays them from the running job.
+	Phase      string `json:"phase,omitempty"`
+	BytesDone  int64  `json:"bytes_done"`
+	BytesTotal int64  `json:"bytes_total"`
+}
+
+// RestoreResult is how a backup restore ended.
+type RestoreResult struct {
+	BackupID   string    `json:"backup_id"`
+	OK         bool      `json:"ok"`
+	Error      string    `json:"error,omitempty"` // the agent's reason, which says whether the files were rolled back
+	FinishedAt time.Time `json:"finished_at"`
 }
 
 // ScheduleAction is the operation a scheduled task performs on its server.

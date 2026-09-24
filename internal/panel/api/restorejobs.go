@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"net/http"
 	"sync"
 	"time"
 
@@ -10,11 +12,13 @@ import (
 // Restore jobs (#361): the Panel-side half of a backup restore, tracked in
 // memory the way agent-update pushes are (agentupdatejobs.go), and for the same
 // reason — a restore is inseparable from one Panel process's gRPC stream. The
-// durable half is the server row: it sits in `restoring` while a job exists and
-// is written back to offline (or install_failed) with last_error before the job
-// is cleared, so the row is never left claiming a restore nobody is running.
-// If the Panel dies mid-restore the row is the only thing left, and the
-// reconciler settles a `restoring` row that has no job here (reconcile.go).
+// durable half is the server row: it sits in `restoring` with a `restore`
+// record (backup, the state to return to, when it began) while a job exists,
+// and is written back to that prior state with a `restore_result` before the
+// job is cleared, so the row is never left claiming a restore nobody is
+// running. If the Panel dies mid-restore the row is the only thing left, and
+// the reconciler settles a `restoring` row that has no job here
+// (reconcile.go) — to the same prior state, because the row recorded it.
 //
 // There is at most one job per server. A finished job is dropped at once: its
 // outcome belongs on the row, and a second place to read it from would only be
@@ -41,20 +45,15 @@ type restoreJob struct {
 	StartedAt  time.Time
 }
 
-// restoreView is the `restore` field of a server view while a job is active.
-type restoreView struct {
-	BackupID   string    `json:"backup_id"`
-	Phase      string    `json:"phase"`
-	BytesDone  int64     `json:"bytes_done"`
-	BytesTotal int64     `json:"bytes_total"`
-	StartedAt  time.Time `json:"started_at"`
-}
-
-func (job restoreJob) view() *restoreView {
-	return &restoreView{
-		BackupID: job.BackupID, Phase: job.Phase,
-		BytesDone: job.BytesDone, BytesTotal: job.BytesTotal, StartedAt: job.StartedAt,
+// overlay is the row's durable restore record with this job's live reading
+// laid over it — a fresh value, never the stored one mutated.
+func (job restoreJob) overlay(r *store.ServerRestore) *store.ServerRestore {
+	out := store.ServerRestore{BackupID: job.BackupID, StartedAt: job.StartedAt}
+	if r != nil {
+		out = *r
 	}
+	out.Phase, out.BytesDone, out.BytesTotal = job.Phase, job.BytesDone, job.BytesTotal
+	return &out
 }
 
 type restoreJobs struct {
@@ -125,6 +124,56 @@ func (s *Server) restoreInProgress(sv *store.Server) bool {
 		return true
 	}
 	return sv.State == store.StateRestoring
+}
+
+// refuseWhileRestoring is the gate every writer of a server's tree asks
+// (#361): a restore swaps save files into place by rename, and anything that
+// writes the tree mid-swap — a file edit, a config push, a backup and its
+// retention pass, a reinstall, a delete — either lands in a directory about to
+// be replaced or is replaced itself. It answers 409 server_restoring and
+// reports true when the caller must stop. Reads and downloads never ask.
+// Called after the handler has authorized the caller, so a refusal reveals
+// nothing to someone who may not see the server.
+func (s *Server) refuseWhileRestoring(w http.ResponseWriter, sv *store.Server) bool {
+	if !s.restoreInProgress(sv) {
+		return false
+	}
+	writeJSON(w, http.StatusConflict, errorCodeBody{
+		Error: "a backup restore is in progress for this server; wait for the restore to finish",
+		Code:  "server_restoring",
+	})
+	return true
+}
+
+// restoreClaimHook, when set, runs at the top of every restoreBegan — the
+// window between a start's gate and its write. Tests use it to start a restore
+// exactly there; it is nil in the Panel.
+var restoreClaimHook func(serverID string)
+
+// restoreBegan is the second look a start, restart or reinstall takes
+// immediately before it writes the row or calls the Agent. The gate at the
+// top of those handlers is followed by store reads and, on the power path, two
+// Agent round trips (spec re-push, config apply); a restore registered in that
+// gap would otherwise have `installing` written over its `restoring`, or the
+// game started over its swap. It asks the in-process registry and re-reads the
+// row. A window remains between this check and the write that follows — the
+// store has no compare-and-swap to close it with — but it is the span of one
+// function call, not two network round trips, and that is accepted.
+func (s *Server) restoreBegan(ctx context.Context, serverID string) bool {
+	if restoreClaimHook != nil {
+		restoreClaimHook(serverID)
+	}
+	if _, ok := s.restores.active(serverID); ok {
+		return true
+	}
+	fresh, err := s.store.GetServer(ctx, serverID)
+	return err == nil && fresh.State == store.StateRestoring
+}
+
+// restoreRefusal is the start/restart/reinstall refusal while a restore runs.
+func restoreRefusal() *startRefusal {
+	return &startRefusal{status: http.StatusConflict, code: "server_restoring",
+		message: "a backup restore is in progress; wait for the restore to finish"}
 }
 
 // finish drops the job. The caller has already written the outcome to the row.

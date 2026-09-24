@@ -196,13 +196,17 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 // orphanedRestoreError is what a `restoring` row with no job behind it is left
 // saying. The only way to get one is a Panel that stopped mid-restore: the job
 // lived in its memory, and its stream to the Agent died with it.
-const orphanedRestoreError = "restore failed: the panel restarted while this restore was running, so its outcome is unknown. " +
-	"The agent rolls back a restore whose stream is cut, but check the server's files before starting it"
+const orphanedRestoreError = "the panel restarted while this restore was running, so its outcome is unknown. " +
+	"An agent that kept running saw its stream cut and rolled the files back; one that crashed or restarted " +
+	"mid-swap left the originals beside the tree as *" + agentAsideMarker + "* directories — check the server's files before starting it"
 
 // settleOrphanedRestore moves a `restoring` row this process has no job for
-// back to offline, with a reason. Without it the row would hold the start gate
-// forever. The row is re-read first: a job that finished between the list and
-// here has already written the real outcome, and must not be overwritten.
+// back to the state it came from (the row's Restore.PrevState — an
+// install_failed server keeps its reinstall gate), and records the unknown
+// outcome in restore_result; last_error is left alone. Without it the row would
+// hold the start gate forever. The row is re-read first: a job that finished
+// between the list and here has already written the real outcome, and must
+// not be overwritten.
 func (s *Server) settleOrphanedRestore(ctx context.Context, id string) {
 	sv, err := s.store.GetServer(ctx, id)
 	if err != nil || sv.State != store.StateRestoring {
@@ -211,8 +215,15 @@ func (s *Server) settleOrphanedRestore(ctx context.Context, id string) {
 	if _, restoring := s.restores.active(id); restoring {
 		return
 	}
-	sv.State = store.StateOffline
-	sv.LastError = orphanedRestoreError
+	backupID := ""
+	if sv.Restore != nil {
+		backupID = sv.Restore.BackupID
+	}
+	sv.State = restoreReturnState(sv.Restore)
+	sv.Restore = nil
+	sv.RestoreResult = &store.RestoreResult{
+		BackupID: backupID, OK: false, Error: orphanedRestoreError, FinishedAt: time.Now().UTC(),
+	}
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		s.logger.Warn("reconcile: settle orphaned restore failed", "server", id, "err", err)
 		return

@@ -70,6 +70,28 @@ func (w *removalWatch) none(t *testing.T) {
 	}
 }
 
+// removalReached arms the fake so the returned func blocks until a
+// RemoveServer has reached the node — the moment a held removal is in flight.
+// (It replaces the fake's remove hook; watchRemovals sets its own.)
+func removalReached(t *testing.T, rt *agent.FakeRuntime) func() {
+	t.Helper()
+	ch := make(chan struct{}, 1)
+	rt.SetRemoveHook(func(string, bool) {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	})
+	return func() {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Fatal("no removal reached the node")
+		}
+	}
+}
+
 // The archive is PENDING for a few polls; the removal waits for READY.
 func TestRetire_RemovalWaitsForTheFinalBackupToBeReady(t *testing.T) {
 	fastFinalBackup(t, 5*time.Second)
@@ -155,12 +177,35 @@ func TestRetire_AStopThatMissedIsRetriedBeforeAnyRemoval(t *testing.T) {
 	}
 	rt.FailNextPower(agentpb.PowerAction_POWER_ACTION_STOP, 1)
 	w := watchRemovals(rt, sv.ID)
+	// The retried STOP must land before the retried backup is taken, or the
+	// archive is of a world still being saved. The hook runs only for a STOP
+	// that landed (the first one missed the node), and records how many
+	// archives existed at that moment.
+	var mu sync.Mutex
+	var stopsLanded []int
+	rt.SetPowerHook(func(id string, a agentpb.PowerAction) {
+		if id != sv.ID || a != agentpb.PowerAction_POWER_ACTION_STOP {
+			return
+		}
+		n := len(rt.Backups(id))
+		mu.Lock()
+		defer mu.Unlock()
+		stopsLanded = append(stopsLanded, n)
+	})
 
 	v := retireAndWait(t, srv, token, sv.ID, true)
 	if v.State != "retired" || v.RetireNote != "" {
 		t.Fatalf("row = %+v, want retired with nothing to say (the retry took the backup)", v)
 	}
 	w.readyAtRemoval(t)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(stopsLanded) != 1 || stopsLanded[0] != 0 {
+		t.Fatalf("archives when each landed STOP arrived = %v, want one STOP with no backup taken yet", stopsLanded)
+	}
+	if len(rt.Backups(sv.ID)) != 1 {
+		t.Fatalf("archives = %+v, want the final backup, taken after the STOP", rt.Backups(sv.ID))
+	}
 }
 
 // ...and when the retried backup fails, the retire is abandoned: the node
@@ -204,15 +249,13 @@ func TestRetire_TheServerReadsRetiringWhileTheJobRuns(t *testing.T) {
 	sv := placedServer(t, st, "sv-busy", nodeID, specID)
 	release := rt.HoldRemovals()
 	t.Cleanup(release)
+	reached := removalReached(t, rt)
 
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/retire", token, map[string]bool{"final_backup": false})
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("retire: %d %s", rec.Code, rec.Body.String())
 	}
-	deadline := time.Now().Add(5 * time.Second)
-	for len(rt.Removals()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	reached()
 	if got := getRetireView(t, h, token, sv.ID); got.State != "retiring" || got.Retire == nil || got.Retire.PrevState != "offline" {
 		t.Fatalf("mid-retire row = %+v, want retiring from offline", got)
 	}
@@ -261,12 +304,13 @@ func TestPermanentDelete_HoldsTheRowAgainstARevive(t *testing.T) {
 	retireServer(t, srv, token, sv.ID)
 	release := rt.HoldRemovals()
 	t.Cleanup(release)
+	reached := removalReached(t, rt)
 
 	done := make(chan int, 1)
 	go func() { done <- do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil).Code }()
-	deadline := time.Now().Add(5 * time.Second)
-	for srv.OperationHeldForTest(sv.ID) != "delete" && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	reached() // the delete's RemoveServer is at the node, and the delete holds the row
+	if held := srv.OperationHeldForTest(sv.ID); held != "delete" {
+		t.Fatalf("mid-delete the row is held by %q", held)
 	}
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/revive", token, nil)
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "being deleted") {
@@ -336,11 +380,9 @@ func TestPendingRemoval_APurgeFoldedInMidReplayIsSentAgain(t *testing.T) {
 	}
 	release := rt.HoldRemovals()
 	t.Cleanup(release)
+	reached := removalReached(t, rt)
 	srv.ReconcileNodesPassForTest(ctx)
-	deadline := time.Now().Add(5 * time.Second)
-	for len(rt.Removals()) == 0 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
+	reached()
 	// The permanent delete lands on the record while the RPC is out.
 	n, err = st.Store.GetNode(ctx, nodeID)
 	if err != nil {

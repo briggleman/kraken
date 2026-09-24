@@ -180,17 +180,37 @@ func (t *localBackupTarget) Put(_ context.Context, serverID, id string, r io.Rea
 	if err != nil {
 		return err
 	}
-	f, err := os.Create(fp)
+	// Written beside the archive and renamed into place only once it is whole.
+	// An Agent that dies mid-copy used to leave a truncated <id>.tar.gz, and
+	// with the in-memory job gone List read it as a finished — READY — archive:
+	// a retire waiting on its final backup would then delete the world with
+	// only half a backup left (#360 review). A .partial is never listed, and a
+	// stale one is replaced by the next Put of the same id. SFTP and SMB have
+	// always done this with ".part" (sftp.go, smb.go).
+	part := fp + partialSuffix
+	_ = os.Remove(part)
+	f, err := os.Create(part)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(f, r); err != nil {
 		f.Close()
-		_ = os.Remove(fp)
+		_ = os.Remove(part)
 		return fmt.Errorf("backup: write: %w", err)
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(part)
+		return fmt.Errorf("backup: write: %w", err)
+	}
+	if err := os.Rename(part, fp); err != nil {
+		_ = os.Remove(part)
+		return fmt.Errorf("backup: publish: %w", err)
+	}
+	return nil
 }
+
+// partialSuffix marks an archive still being written by localBackupTarget.Put.
+const partialSuffix = ".partial"
 
 func (t *localBackupTarget) Open(_ context.Context, serverID, id string) (io.ReadCloser, error) {
 	fp, err := t.path(serverID, id)
@@ -210,7 +230,9 @@ func (t *localBackupTarget) List(_ context.Context, serverID string) ([]*agentpb
 	}
 	var out []*agentpb.BackupInfo
 	for _, e := range ents {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tar.gz") {
+		// An in-flight or interrupted write (<id>.tar.gz.partial) is not an
+		// archive; the suffix test keeps it out, and must keep doing so.
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tar.gz") || strings.HasSuffix(e.Name(), partialSuffix) {
 			continue
 		}
 		id := strings.TrimSuffix(e.Name(), ".tar.gz")

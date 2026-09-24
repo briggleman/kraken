@@ -525,6 +525,16 @@ paths:
     put:
       tags: [Servers]
       summary: Update game settings values
+      description: >-
+        Send only the settings you are changing. Every key in `values` is
+        stored on the server verbatim — the panel never compares a value with
+        the spec's default — so a key sent back unchanged becomes the server's
+        own value. A client that GETs the settings and PUTs the whole `values`
+        map back therefore freezes every value listed in `from_spec`: it stops
+        following the spec's default and is no longer reported as from the
+        spec. The web UI sends only the fields the operator edited. Sending a
+        blank for a required field that has a spec default hands it back to
+        that default.
       requestBody:
         required: true
         content:

@@ -473,6 +473,11 @@ func TestWritersAreRefusedWhileRestoring(t *testing.T) {
 	if row, err := r.st.GetServer(context.Background(), r.id); err != nil || row.State != store.StateRestoring {
 		t.Errorf("a refused writer changed the row: %v %+v", err, row)
 	}
+	// A refused delete is refused before #370's pending-removal recording: it
+	// must leave nothing for the node reconciler to replay later.
+	if node, err := r.st.GetNode(context.Background(), r.nodeID); err != nil || len(node.PendingRemovals) != 0 {
+		t.Errorf("a refused delete recorded a pending removal: %v %+v", err, node.PendingRemovals)
+	}
 }
 
 // doUpload posts a one-file multipart upload.

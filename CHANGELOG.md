@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.56.0](https://github.com/briggleman/kraken/compare/v0.55.0...v0.56.0) (2026-09-24)
+
+
+### Features
+
+* backup restore streams progress and holds the server in a restoring state ([#366](https://github.com/briggleman/kraken/issues/366)) ([a84cd41](https://github.com/briggleman/kraken/commit/a84cd41b5941e99dddd0e9c3ef038c0c0c13afc1))
+
+
+### Bug Fixes
+
+* a delete that cannot reach the node is remembered and finished later ([#370](https://github.com/briggleman/kraken/issues/370)) ([f0963cf](https://github.com/briggleman/kraken/commit/f0963cfda8e50b55de90e0d7ce3d32ec5e412f6b))
+* **agent:** never run the install pass while a container holds the data dir ([#362](https://github.com/briggleman/kraken/issues/362)) ([192b20e](https://github.com/briggleman/kraken/commit/192b20e3b1786fa687e7bba3a04652a3805ece29))
+* **agent:** recover from a failed steamcmd commit and decode the state bits ([#364](https://github.com/briggleman/kraken/issues/364)) ([d5d5464](https://github.com/briggleman/kraken/commit/d5d54646738a278ae0fec0ff99629e38e7cff24d))
+* **panel:** agent operation failures answer with the cause instead of a 502 ([#365](https://github.com/briggleman/kraken/issues/365)) ([a23675e](https://github.com/briggleman/kraken/commit/a23675e65b72fade084db695977286f2ff811d0f))
+* **panel:** the required-settings gate covers scheduled and node-scoped restarts ([#363](https://github.com/briggleman/kraken/issues/363)) ([89cc749](https://github.com/briggleman/kraken/commit/89cc74916c4b5a25dda9eb314b939c50b97709ed))
+
 ## [0.55.0](https://github.com/briggleman/kraken/compare/v0.54.0...v0.55.0) (2026-09-23)
 
 

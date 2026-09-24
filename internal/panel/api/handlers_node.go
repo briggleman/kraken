@@ -524,7 +524,7 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 			s.logger.Info("node unreachable", "node", n.ID, "name", n.Name, "addr", n.Address, "err", err)
 			n.Status = cluster.NodeOffline
 			n.RuntimeError = ""
-			_ = s.store.UpdateNode(ctx, n)
+			s.saveProbedNode(ctx, n)
 		}
 		return nil, err
 	}
@@ -694,7 +694,7 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		changed = true
 	}
 	if changed {
-		_ = s.store.UpdateNode(ctx, n)
+		s.saveProbedNode(ctx, n)
 	}
 	// If the node's player-facing host moved (e.g. a new WAN IP), the A/CNAME
 	// records we published for its servers now point at the old address — re-point
@@ -713,6 +713,18 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 	// Rotate the agent's mTLS cert when it nears expiry (best-effort, throttled).
 	s.maybeRotateAgentCert(ctx, n, client, info)
 	return info, nil
+}
+
+// saveProbedNode persists what a probe learned about a node. The probe works
+// on a copy read before it dialled, and a server delete can queue a pending
+// removal on the node meanwhile; writing the copy back as-is would erase that
+// record, and with it the only memory that the node still owes a removal. The
+// probe never changes the pending list, so the stored one is carried over.
+func (s *Server) saveProbedNode(ctx context.Context, n *cluster.Node) {
+	if fresh, err := s.store.GetNode(ctx, n.ID); err == nil {
+		n.PendingRemovals = fresh.PendingRemovals
+	}
+	_ = s.store.UpdateNode(ctx, n)
 }
 
 // nodeLabel is how a node is named to an operator: its name, or its id for one

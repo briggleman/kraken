@@ -547,6 +547,11 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermSettingsManage)).Put("/nodes/{id}/config", s.handleUpdateNodeConfig)
 			r.With(s.requirePermission(rbac.PermServerPower)).
 				Post("/nodes/{id}/servers/{serverID}/power", s.handleServerPower)
+			// Retire an untracked container (no Panel row on this node): stop and
+			// remove it, forget its spec, leave its data. node.manage is checked
+			// in the handler as well — there is no server owner to authorize.
+			r.With(s.requirePermission(rbac.PermServerDelete)).
+				Delete("/nodes/{id}/containers/{serverID}", s.handleRetireNodeContainer)
 
 			// Server lifecycle (schedule → install → run via the hosting Agent).
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers", s.handleListServers)

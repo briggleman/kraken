@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"errors"
+	"time"
 
 	"github.com/briggleman/kraken/internal/shared/spec"
 	"github.com/briggleman/kraken/internal/shared/tunnel"
@@ -106,6 +107,16 @@ type Node struct {
 	// count remains the thing to fall back on, never derived from this list.
 	ManagedContainers []ManagedContainer `json:"managed_containers,omitempty"`
 
+	// PendingRemovals are server removals the operator asked for that have not
+	// reached this node yet: the delete went through Panel-side, but the Agent
+	// was unreachable or its RemoveServer failed. The node reconciler replays
+	// each one with the operator's recorded intent until the Agent confirms it,
+	// then drops it. Without this a delete that missed the node left a container
+	// nothing owned, re-adopted by the watchdog on every Agent restart (#354).
+	// The Agent never decides to remove anything itself; this is the operator's
+	// own command, executed late.
+	PendingRemovals []PendingRemoval `json:"pending_removals,omitempty"`
+
 	// AgentSHA is the hex SHA-256 of the Agent's running binary, self-reported
 	// on last contact. Preferred over AgentVersion for skew detection: a
 	// panel-only release leaves the agent artifact byte-identical, and flagging
@@ -176,6 +187,53 @@ type Node struct {
 type ManagedContainer struct {
 	ServerID      string `json:"server_id"`
 	ContainerName string `json:"container_name"`
+}
+
+// PendingRemoval is one server removal owed to a node (see Node.PendingRemovals).
+// DeleteData is the operator's intent at the time of the delete and is replayed
+// verbatim — a retry never widens what the operator asked to destroy.
+type PendingRemoval struct {
+	ServerID    string    `json:"server_id"`
+	DeleteData  bool      `json:"delete_data"`
+	RequestedAt time.Time `json:"requested_at"`
+	// Attempts counts the tries that failed, including the first one made at
+	// delete time; LastError is the most recent failure, verbatim.
+	Attempts  int    `json:"attempts"`
+	LastError string `json:"last_error,omitempty"`
+}
+
+// AddPendingRemoval records a removal owed to this node. A second removal for
+// the same server is folded into the first — the operator's latest intent wins,
+// the original request time stays, the attempts add up — so a server is never
+// queued twice.
+func (n *Node) AddPendingRemoval(p PendingRemoval) {
+	for i := range n.PendingRemovals {
+		if n.PendingRemovals[i].ServerID == p.ServerID {
+			n.PendingRemovals[i].DeleteData = p.DeleteData
+			n.PendingRemovals[i].Attempts += p.Attempts
+			if p.LastError != "" {
+				n.PendingRemovals[i].LastError = p.LastError
+			}
+			return
+		}
+	}
+	n.PendingRemovals = append(n.PendingRemovals, p)
+}
+
+// DropPendingRemoval forgets the removal owed for serverID, reporting whether
+// there was one.
+func (n *Node) DropPendingRemoval(serverID string) bool {
+	var kept []PendingRemoval
+	dropped := false
+	for _, p := range n.PendingRemovals {
+		if p.ServerID == serverID {
+			dropped = true
+			continue
+		}
+		kept = append(kept, p)
+	}
+	n.PendingRemovals = kept
+	return dropped
 }
 
 // ConnectionMode is the transport direction between Panel and a node's Agent.

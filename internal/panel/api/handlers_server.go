@@ -961,10 +961,17 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
 }
 
-// handleDeleteServer removes the server's container on the Agent, releases its
-// node allocation, and deletes the record.
+// handleDeleteServer removes the server's container and data on the Agent,
+// releases its node allocation, and deletes the record and its schedules.
+//
+// A removal that does not land — the node is down, or the Agent reports a
+// failure — does not stop the delete: it is recorded on the node as a pending
+// removal and finished by the node reconciler once the node answers (#354).
+// Backups are not removed; they stay on the node.
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// Detached from the request: once the removal has been attempted, the
+	// record of how it went must be written even if the client has gone.
+	ctx := context.WithoutCancel(r.Context())
 	sv, err := s.store.GetServer(ctx, chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "server not found")
@@ -978,18 +985,8 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if node, err := s.store.GetNode(ctx, sv.NodeID); err == nil {
-		if client, cerr := s.nodes.Client(node.DialTarget()); cerr == nil {
-			dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			_, _ = client.RemoveServer(dctx, &agentpb.RemoveServerRequest{ServerId: sv.ID, DeleteData: true})
-			cancel()
-		}
-		// Release the node's reserved memory + ports.
-		ports := make([]int, 0, len(sv.Ports))
-		for _, p := range sv.Ports {
-			ports = append(ports, p)
-		}
-		node.Release(sv.MemoryMB, ports)
-		_ = s.store.UpdateNode(ctx, node)
+		removeErr := s.removeOnNode(ctx, node, sv.ID, true)
+		s.settleNodeAfterDelete(ctx, sv, node, removeErr)
 	}
 	// Best-effort cleanup of external resources this server published (Cloudflare
 	// DNS records + UniFi port-forwards).

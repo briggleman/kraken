@@ -11,6 +11,11 @@ import (
 // racing a background loop.
 func (s *Server) ReconcileOnceForTest(ctx context.Context) { s.reconcileOnce(ctx) }
 
+// ReconcileNodesOnceForTest runs a single pass of the node reconciler — node
+// health, then the pending removals owed to every node that answered — and
+// returns once that pass has settled.
+func (s *Server) ReconcileNodesOnceForTest(ctx context.Context) { s.reconcileNodesOnce(ctx) }
+
 // DownloadRedeemBurstForTest and LoginBurstForTest are the limiters' bursts, so
 // a test in the black-box package can walk up to the edge of one without
 // restating the number.

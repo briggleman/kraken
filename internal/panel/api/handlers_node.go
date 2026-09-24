@@ -889,6 +889,14 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 			refusal.write(w)
 			return
 		}
+		// This path never writes the row, so the claim is the only thing that
+		// keeps a restore from beginning while the Agent boots the game.
+		release, refusal := s.claimStart(sv.ID)
+		if refusal != nil {
+			refusal.write(w)
+			return
+		}
+		defer release()
 	}
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {

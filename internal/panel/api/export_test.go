@@ -59,9 +59,9 @@ func (s *Server) ExpireDownloadTokensForTest() {
 // task whose next run is due — without the ticker cmd/panel starts it on.
 func (s *Server) RunDueSchedulesForTest(ctx context.Context) { s.runDueSchedules(ctx) }
 
-// SetRestoreClaimHookForTest runs fn in the window between a start, restart or
-// reinstall's restore gate and its state write (see restoreBegan), so a test
-// can register a restore exactly there. The returned func clears it.
+// SetRestoreClaimHookForTest runs fn just after a start, restart or reinstall
+// claims the server (see claimStart), so a test can attempt a restore exactly
+// there. The returned func clears it.
 func SetRestoreClaimHookForTest(fn func(serverID string)) func() {
 	restoreClaimHook = fn
 	return func() { restoreClaimHook = nil }

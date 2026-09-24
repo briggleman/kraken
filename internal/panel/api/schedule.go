@@ -114,6 +114,13 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 
 	switch task.Action {
 	case store.ScheduleRestart:
+		// Held across the Power call and the write-back below, so a restore
+		// cannot begin on a crashed row while the Agent restarts it.
+		release, refusal := s.claimStart(sv.ID)
+		if refusal != nil {
+			return fmt.Errorf("a backup restore is in progress, so the scheduled restart was skipped")
+		}
+		defer release()
 		// Re-push the spec first so the Agent can recreate the container even if it
 		// lost its in-memory spec after a restart (mirrors the manual power path).
 		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {

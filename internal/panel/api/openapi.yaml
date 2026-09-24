@@ -890,15 +890,17 @@ paths:
               schema: { $ref: '#/components/schemas/Server' }
         '409':
           description: >
-            The server is not stopped, or a restore is already running for it
-            (`code: restore_in_progress`). Nothing was started.
+            The server is not stopped, a restore is already running for it
+            (`code: restore_in_progress`), or a start, restart or reinstall is
+            in flight and still holds the server (`code: server_busy` — its row
+            may read offline until the agent answers). Nothing was started.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   error: { type: string }
-                  code: { type: string, enum: [restore_in_progress] }
+                  code: { type: string, enum: [restore_in_progress, server_busy] }
         '503':
           description: >
             The panel has no live connection to the hosting node's agent. Nothing

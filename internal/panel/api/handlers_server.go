@@ -695,6 +695,17 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 			refusal.write(w)
 			return
 		}
+		// Held for the rest of the request: through the spec re-push, the
+		// config apply and the Power call, until the row is written — or, on
+		// the update-on-start path, until `installing` is written, which a
+		// restore refuses on its own. A restore asked for meanwhile gets 409
+		// server_busy instead of beginning while the game boots.
+		release, refusal := s.claimStart(sv.ID)
+		if refusal != nil {
+			refusal.write(w)
+			return
+		}
+		defer release()
 	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
@@ -733,12 +744,6 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 			// server already in `installing` — which gates a racing start and
 			// routes the console to the live install log for free.
 			if s.updatesOnStart(ctx, sv, sp, node) {
-				// Otherwise `installing` would be written over a restore that
-				// began since the gate above, and SteamCMD run over the swap.
-				if s.restoreBegan(ctx, sv.ID) {
-					restoreRefusal().write(w)
-					return
-				}
 				// The state to fall back to if the pass aborts before it has
 				// touched the install tree (see updateThenStart): captured here,
 				// because the next line overwrites it.
@@ -762,13 +767,6 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// The spec re-push and config apply above are two Agent round trips after
-	// the start gate; a restore registered in that gap must still win.
-	if (action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART) &&
-		s.restoreBegan(ctx, sv.ID) {
-		restoreRefusal().write(w)
-		return
-	}
 	pctx, cancel := context.WithTimeout(ctx, powerTimeout(action))
 	defer cancel()
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
@@ -1044,10 +1042,14 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = decodeJSON(r, &req) // empty body is fine
 
-	if s.restoreBegan(ctx, sv.ID) {
-		restoreRefusal().write(w)
+	// Held until `installing` is written; from then on the state itself keeps
+	// a restore out (it is not a restorable state).
+	release, refusal := s.claimStart(sv.ID)
+	if refusal != nil {
+		refusal.write(w)
 		return
 	}
+	defer release()
 	prev := sv.State // where a refused pass puts it back (see provision)
 	sv.State = store.StateInstalling
 	sv.LastError = "" // a fresh attempt starts with a clean slate

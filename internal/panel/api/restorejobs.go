@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -56,27 +55,72 @@ func (job restoreJob) overlay(r *store.ServerRestore) *store.ServerRestore {
 	return &out
 }
 
+// restoreJobs is also the per-server operation lock between a restore and
+// anything that boots or reinstalls the server. The row's state cannot be that
+// lock: a start writes its state only after its Power call returns — up to a
+// minute later — so a restore that re-read the row in between would see
+// `offline` and begin while the game boots. Instead every start, restart
+// (manual, scheduled or node-scoped) and reinstall holds a claim in `starts`
+// for the length of its Agent call, a restore holds its job in `byServer` for
+// its whole run, and each refuses while the other is held. Both live under one
+// mutex, so the check and the claim are one step.
+//
+// This is in-process only. A second Panel against the same database would not
+// see it; the Agent's own refusal to restore over a running container
+// (DockerRuntime.refuseRestoreOverRunningContainer) is the layer below.
 type restoreJobs struct {
 	mu       sync.Mutex
 	byServer map[string]*restoreJob
+	starts   map[string]int // serverID -> starts/reinstalls currently holding a claim
 }
 
 func newRestoreJobs() *restoreJobs {
-	return &restoreJobs{byServer: map[string]*restoreJob{}}
+	return &restoreJobs{byServer: map[string]*restoreJob{}, starts: map[string]int{}}
 }
 
-// start registers a job for serverID, or reports the one already running. It
-// is the single-flight gate: two restores racing over the same data dir would
-// each swap the other's staged copies out from under it.
-func (j *restoreJobs) start(serverID, backupID string) (restoreJob, bool) {
+// Why a restore could not be registered.
+const (
+	restoreRefusedInProgress = "restore_in_progress" // another restore holds the server
+	restoreRefusedBusy       = "server_busy"         // a start or reinstall holds it
+)
+
+// start registers a job for serverID, or says why it cannot: a restore is
+// already running (two restores racing over one data dir would each swap the
+// other's staged copies out from under it), or a start holds the server.
+func (j *restoreJobs) start(serverID, backupID string) (restoreJob, string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if cur := j.byServer[serverID]; cur != nil {
-		return *cur, false
+		return *cur, restoreRefusedInProgress
+	}
+	if j.starts[serverID] > 0 {
+		return restoreJob{}, restoreRefusedBusy
 	}
 	job := &restoreJob{ServerID: serverID, BackupID: backupID, Phase: "opening", StartedAt: time.Now().UTC()}
 	j.byServer[serverID] = job
-	return *job, true
+	return *job, ""
+}
+
+// claimStart takes the start side of the lock, or reports false when a restore
+// holds the server. Several starts may hold it at once — they do not exclude
+// each other here, only a restore. The returned release is idempotent.
+func (j *restoreJobs) claimStart(serverID string) (func(), bool) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.byServer[serverID] != nil {
+		return nil, false
+	}
+	j.starts[serverID]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			j.mu.Lock()
+			defer j.mu.Unlock()
+			if j.starts[serverID]--; j.starts[serverID] <= 0 {
+				delete(j.starts, serverID)
+			}
+		})
+	}, true
 }
 
 // active reports the server's running job. Callers get a copy, never the live
@@ -145,29 +189,25 @@ func (s *Server) refuseWhileRestoring(w http.ResponseWriter, sv *store.Server) b
 	return true
 }
 
-// restoreClaimHook, when set, runs at the top of every restoreBegan — the
-// window between a start's gate and its write. Tests use it to start a restore
-// exactly there; it is nil in the Panel.
+// restoreClaimHook, when set, runs just after a start claims the server (see
+// claimStart) — inside the window a restore used to slip into. Tests use it to
+// attempt a restore exactly there; it is nil in the Panel.
 var restoreClaimHook func(serverID string)
 
-// restoreBegan is the second look a start, restart or reinstall takes
-// immediately before it writes the row or calls the Agent. The gate at the
-// top of those handlers is followed by store reads and, on the power path, two
-// Agent round trips (spec re-push, config apply); a restore registered in that
-// gap would otherwise have `installing` written over its `restoring`, or the
-// game started over its swap. It asks the in-process registry and re-reads the
-// row. A window remains between this check and the write that follows — the
-// store has no compare-and-swap to close it with — but it is the span of one
-// function call, not two network round trips, and that is accepted.
-func (s *Server) restoreBegan(ctx context.Context, serverID string) bool {
+// claimStart is what every start, restart and reinstall takes before its
+// first Agent call and holds until the row is written (or the Agent call has
+// returned, on paths that never write the row): the start half of the
+// operation lock described on restoreJobs. It refuses with server_restoring
+// when a restore holds the server. The caller must call release.
+func (s *Server) claimStart(serverID string) (release func(), refusal *startRefusal) {
+	release, ok := s.restores.claimStart(serverID)
+	if !ok {
+		return nil, restoreRefusal()
+	}
 	if restoreClaimHook != nil {
 		restoreClaimHook(serverID)
 	}
-	if _, ok := s.restores.active(serverID); ok {
-		return true
-	}
-	fresh, err := s.store.GetServer(ctx, serverID)
-	return err == nil && fresh.State == store.StateRestoring
+	return release, nil
 }
 
 // restoreRefusal is the start/restart/reinstall refusal while a restore runs.

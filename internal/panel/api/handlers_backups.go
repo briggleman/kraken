@@ -188,17 +188,28 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
 		return
 	}
-	job, started := s.restores.start(sv.ID, backupID)
-	if !started {
+	job, refused := s.restores.start(sv.ID, backupID)
+	switch refused {
+	case restoreRefusedInProgress:
 		writeJSON(w, http.StatusConflict, errorCodeBody{
 			Error: "a restore is already in progress for this server; wait for it to finish",
 			Code:  "restore_in_progress",
 		})
 		return
+	case restoreRefusedBusy:
+		// A start, restart or reinstall holds the server for its Agent call
+		// (claimStart). Its row may still read offline — that write comes
+		// after the Power call returns — which is exactly why the row cannot
+		// be the lock.
+		writeJSON(w, http.StatusConflict, errorCodeBody{
+			Error: "a start is in progress for this server; stop it before restoring a backup",
+			Code:  "server_busy",
+		})
+		return
 	}
-	// Re-read now the job holds the registry: the row loaded above may be
-	// stale, and a start or reinstall that wrote a new state in between must
-	// win — its own re-check (claimForStart) will see this job and stop.
+	// Re-read now the job holds the lock: the row loaded above may be stale,
+	// and a start or reinstall that finished and wrote a new state in between
+	// must win. From here on, claimStart refuses every new one.
 	fresh, err := s.store.GetServer(ctx, sv.ID)
 	if err != nil || !restorableStates[fresh.State] {
 		s.restores.finish(sv.ID)
@@ -216,6 +227,9 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	sv.Restore = &store.ServerRestore{
 		BackupID: backupID, PrevState: sv.State, StartedAt: job.StartedAt, Phase: job.Phase,
 	}
+	// The previous restore's outcome describes a restore that is no longer the
+	// latest; leaving it would let a reader take it for this one's.
+	sv.RestoreResult = nil
 	sv.State = store.StateRestoring
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		s.restores.finish(sv.ID)
@@ -335,9 +349,9 @@ func (s *Server) finishRestore(serverID, backupID string, restoreErr error) {
 		s.logger.Info("backup restore finished", "server", serverID, "backup", backupID)
 	}
 	if sv.State == store.StateRestoring {
+		// The exit code is left as it was: a server that goes back to crashed
+		// still crashed that way, and the orphan settle keeps it too.
 		sv.State = restoreReturnState(sv.Restore)
-		// A crash's exit code described a run the restore has just replaced.
-		sv.LastExitCode, sv.LastExitCodeKnown = 0, false
 	} else {
 		s.logger.Warn("restore settled on a row someone else moved; leaving its state", "server", serverID, "state", sv.State)
 	}

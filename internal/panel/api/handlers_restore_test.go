@@ -107,12 +107,13 @@ func (unavailableAgent) RestoreBackupStream(*agentpb.RestoreBackupRequest, agent
 }
 
 type restoreHarness struct {
-	srv   *api.Server
-	h     http.Handler
-	st    *memory.Store
-	rt    *agent.FakeRuntime
-	token string
-	id    string
+	srv    *api.Server
+	h      http.Handler
+	st     *memory.Store
+	rt     *agent.FakeRuntime
+	token  string
+	id     string
+	nodeID string
 }
 
 // newRestoreHarness wires a Panel to a fake Agent (wrapped, to stand in for an
@@ -146,7 +147,7 @@ func newRestoreHarness(t *testing.T, wrap func(agentpb.NodeServiceServer) agentp
 		s.State = state
 		s.ProvisionedAt = &now
 	})
-	return &restoreHarness{srv: srv, h: h, st: st, rt: rt, token: token, id: sv.ID}
+	return &restoreHarness{srv: srv, h: h, st: st, rt: rt, token: token, id: sv.ID, nodeID: nodeID}
 }
 
 func (r *restoreHarness) restore(t *testing.T) *restoreServerView {
@@ -542,9 +543,82 @@ func TestScheduledRestartDoesNotWriteOverARestore(t *testing.T) {
 	}
 }
 
-// A restore registered after a start's gate but before its state write or
-// Agent call must still win: the start re-checks right before acting.
-func TestStartThatRacesARestoreLoses(t *testing.T) {
+// tryRestore asks for a restore and returns the status and body.
+func (r *restoreHarness) tryRestore(t *testing.T) (int, string) {
+	t.Helper()
+	rec := do(t, r.h, http.MethodPost, "/api/v1/servers/"+r.id+"/backups/"+restoreBackupID+"/restore", r.token, nil)
+	return rec.Code, rec.Body.String()
+}
+
+// busyRefusal reports whether a restore was refused because a start holds the
+// server.
+func busyRefusal(code int, body string) bool {
+	return code == http.StatusConflict && strings.Contains(body, `"code":"server_busy"`) &&
+		strings.Contains(body, "a start is in progress")
+}
+
+// A start holds the server from its gate until its row is written — through
+// the Agent call, which can take a minute while the row still reads offline.
+// A restore asked for in that window is refused with server_busy, on every
+// path that boots the server, and the start completes.
+func TestARestoreCannotBeginWhileAStartHoldsTheServer(t *testing.T) {
+	// During the Power call itself, via the fake's power hook: the case the
+	// row cannot guard, because nothing has been written yet.
+	for _, tc := range []struct {
+		name   string
+		state  store.ServerState
+		action agentpb.PowerAction
+		call   func(t *testing.T, r *restoreHarness) (int, string)
+	}{
+		{"start", store.StateOffline, agentpb.PowerAction_POWER_ACTION_START,
+			func(t *testing.T, r *restoreHarness) (int, string) { return r.power(t, "start") }},
+		{"restart of a crashed server", store.StateCrashed, agentpb.PowerAction_POWER_ACTION_RESTART,
+			func(t *testing.T, r *restoreHarness) (int, string) { return r.power(t, "restart") }},
+		{"node-scoped start", store.StateOffline, agentpb.PowerAction_POWER_ACTION_START,
+			func(t *testing.T, r *restoreHarness) (int, string) {
+				rec := do(t, r.h, http.MethodPost, "/api/v1/nodes/"+r.nodeID+"/servers/"+r.id+"/power", r.token, map[string]string{"action": "start"})
+				return rec.Code, rec.Body.String()
+			}},
+		{"scheduled restart of a crashed server", store.StateCrashed, agentpb.PowerAction_POWER_ACTION_RESTART,
+			func(t *testing.T, r *restoreHarness) (int, string) {
+				seedDueRestart(t, r.st, "sch-race", r.id)
+				r.srv.RunDueSchedulesForTest(context.Background())
+				task, err := r.st.GetSchedule(context.Background(), "sch-race")
+				if err != nil {
+					t.Fatalf("get schedule: %v", err)
+				}
+				return http.StatusOK, task.LastError
+			}},
+	} {
+		t.Run("during the power call: "+tc.name, func(t *testing.T) {
+			r := newRestoreHarness(t, nil, tc.state)
+			var restoreCode int
+			var restoreBody string
+			var once sync.Once
+			r.rt.SetPowerHook(func(serverID string, action agentpb.PowerAction) {
+				if action == tc.action {
+					once.Do(func() { restoreCode, restoreBody = r.tryRestore(t) })
+				}
+			})
+			code, body := tc.call(t, r)
+			if !busyRefusal(restoreCode, restoreBody) {
+				t.Errorf("a restore during the %s's Power call: %d %s; want 409 server_busy", tc.name, restoreCode, restoreBody)
+			}
+			if code >= 400 || strings.Contains(body, "restore") {
+				t.Errorf("the %s itself should have gone through: %d %s", tc.name, code, body)
+			}
+			if row, _ := r.st.GetServer(context.Background(), r.id); row.State == store.StateRestoring || row.Restore != nil {
+				t.Errorf("a restore began while the %s held the server: %+v", tc.name, row)
+			}
+			if got := r.rt.Restores(r.id); len(got) != 0 {
+				t.Errorf("the Agent was asked to restore (%v) while the game booted", got)
+			}
+		})
+	}
+
+	// Between the gate and the Agent call — the spec re-push, the config
+	// apply, the update pass's `installing` write, reinstall's state write —
+	// via the claim hook.
 	for _, tc := range []struct {
 		name   string
 		update bool // take the update-on-start path (writes `installing`)
@@ -557,32 +631,96 @@ func TestStartThatRacesARestoreLoses(t *testing.T) {
 			return rec.Code, rec.Body.String()
 		}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			g := newGate(t)
-			r := newRestoreHarness(t, nil, store.StateOffline, agent.WithFakeRestoreGate(g.ch))
+		t.Run("after the gate: "+tc.name, func(t *testing.T) {
+			r := newRestoreHarness(t, nil, store.StateOffline)
 			if tc.update {
 				r.setRow(t, func(s *store.Server) { s.ProvisionedAt = nil })
 			}
+			var restoreCode int
+			var restoreBody string
 			var once sync.Once
-			clear := api.SetRestoreClaimHookForTest(func(serverID string) {
-				once.Do(func() {
-					rec := do(t, r.h, http.MethodPost, "/api/v1/servers/"+r.id+"/backups/"+restoreBackupID+"/restore", r.token, nil)
-					if rec.Code != http.StatusAccepted {
-						t.Errorf("the racing restore: %d %s", rec.Code, rec.Body.String())
-					}
-				})
+			clear := api.SetRestoreClaimHookForTest(func(string) {
+				once.Do(func() { restoreCode, restoreBody = r.tryRestore(t) })
 			})
 			defer clear()
 			code, body := tc.call(t, r)
-			if code != http.StatusConflict || !strings.Contains(body, `"code":"server_restoring"`) {
-				t.Errorf("%s racing a restore: %d %s; want 409 server_restoring", tc.name, code, body)
+			if !busyRefusal(restoreCode, restoreBody) {
+				t.Errorf("a restore after the %s's gate: %d %s; want 409 server_busy", tc.name, restoreCode, restoreBody)
 			}
-			if row, _ := r.st.GetServer(context.Background(), r.id); row.State != store.StateRestoring {
-				t.Errorf("the row reads %q; the racing %s wrote over the restore", row.State, tc.name)
+			if code >= 400 {
+				t.Errorf("the %s itself should have gone through: %d %s", tc.name, code, body)
 			}
-			if got := agentState(t, r.rt, r.id); got == agentpb.ServerState_SERVER_STATE_RUNNING {
-				t.Errorf("the Agent was told to start the server over the restore")
+			if row, _ := r.st.GetServer(context.Background(), r.id); row.State == store.StateRestoring {
+				t.Errorf("a restore took the row while the %s held it", tc.name)
 			}
 		})
+	}
+}
+
+// The other direction: a start asked for while a restore holds the server is
+// refused on the node-scoped route too, and a scheduled restart of a restoring
+// row skips with the reason where an operator looks for it.
+func TestTheOtherStartPathsRefuseARestoringServer(t *testing.T) {
+	t.Run("node-scoped power", func(t *testing.T) {
+		g := newGate(t)
+		r := newRestoreHarness(t, nil, store.StateOffline, agent.WithFakeRestoreGate(g.ch))
+		r.restore(t)
+		for _, action := range []string{"start", "restart"} {
+			rec := do(t, r.h, http.MethodPost, "/api/v1/nodes/"+r.nodeID+"/servers/"+r.id+"/power", r.token, map[string]string{"action": action})
+			if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"server_restoring"`) {
+				t.Errorf("node-scoped %s while restoring: %d %s; want 409 server_restoring", action, rec.Code, rec.Body.String())
+			}
+		}
+	})
+	t.Run("scheduled restart", func(t *testing.T) {
+		g := newGate(t)
+		r := newRestoreHarness(t, nil, store.StateOffline, agent.WithFakeRestoreGate(g.ch))
+		r.restore(t)
+		seedDueRestart(t, r.st, "sch-restoring", r.id)
+		r.srv.RunDueSchedulesForTest(context.Background())
+		task, err := r.st.GetSchedule(context.Background(), "sch-restoring")
+		if err != nil {
+			t.Fatalf("get schedule: %v", err)
+		}
+		if !strings.Contains(task.LastError, "restoring") || !strings.Contains(task.LastError, "skipped") {
+			t.Errorf("last_error = %q; want the restore named as why the restart was skipped", task.LastError)
+		}
+		if got := agentState(t, r.rt, r.id); got == agentpb.ServerState_SERVER_STATE_RUNNING {
+			t.Error("the Agent was told to restart a restoring server")
+		}
+	})
+}
+
+// A new restore clears the previous one's result: while it runs, the row must
+// not carry an outcome that belongs to a different restore.
+func TestANewRestoreClearsThePreviousResult(t *testing.T) {
+	g := newGate(t)
+	r := newRestoreHarness(t, nil, store.StateOffline, agent.WithFakeRestoreGate(g.ch))
+	r.setRow(t, func(s *store.Server) {
+		s.RestoreResult = &store.RestoreResult{BackupID: "older", OK: false, Error: "an older failure", FinishedAt: time.Now().Add(-time.Hour)}
+	})
+	if v := r.restore(t); v.RestoreResult != nil {
+		t.Errorf("the 202 still carries the previous restore's result: %+v", v.RestoreResult)
+	}
+	if row, _ := r.st.GetServer(context.Background(), r.id); row.RestoreResult != nil {
+		t.Errorf("the row still carries the previous restore's result: %+v", row.RestoreResult)
+	}
+	g.release()
+	v := waitForRestoreView(t, r.h, r.token, r.id, settled)
+	if v.RestoreResult == nil || !v.RestoreResult.OK || v.RestoreResult.BackupID != restoreBackupID {
+		t.Errorf("restore_result = %+v; want this restore's own outcome", v.RestoreResult)
+	}
+}
+
+// A restore that returns a server to crashed keeps its exit code — the job and
+// the orphan settle agree on that.
+func TestARestoreKeepsACrashedServersExitCode(t *testing.T) {
+	r := newRestoreHarness(t, nil, store.StateCrashed)
+	r.setRow(t, func(s *store.Server) { s.LastExitCode, s.LastExitCodeKnown = 3221225781, true })
+	r.restore(t)
+	waitForRestoreView(t, r.h, r.token, r.id, settled)
+	row, _ := r.st.GetServer(context.Background(), r.id)
+	if row.State != store.StateCrashed || !row.LastExitCodeKnown || row.LastExitCode != 3221225781 {
+		t.Errorf("after the restore: state %q, exit %d known=%v; want crashed with the exit code kept", row.State, row.LastExitCode, row.LastExitCodeKnown)
 	}
 }

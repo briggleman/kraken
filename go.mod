@@ -15,6 +15,7 @@ require (
 	github.com/hashicorp/yamux v0.1.2
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/pkg/sftp v1.13.10
 	github.com/pressly/goose/v3 v3.26.0
 	golang.org/x/crypto v0.56.0
@@ -46,7 +47,6 @@ require (
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

@@ -9,7 +9,15 @@
   import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
-  import { agentDrift, containerDrift, nodeMemLabel } from "@/lib/views.svelte";
+  import { openRetire, openRetireAll, retire } from "@/lib/retire.svelte";
+  import {
+    DRIFT_INLINE_MAX,
+    agentDrift,
+    containerDrift,
+    nodeMemLabel,
+    pendingRemovalsNote,
+    retirable,
+  } from "@/lib/views.svelte";
   import type { Node } from "@/api/types";
 
   // cpu, disk and network are live host readings from the node's agent (see
@@ -70,10 +78,23 @@
   // each entry as name plus server id so it can be matched to a row or to
   // `docker ps` without guessing which half is which.
   const driftNames = $derived(
-    containers && containers.items.length > 0 && containers.items.length <= 3
+    containers && containers.items.length > 0 && containers.items.length <= DRIFT_INLINE_MAX
       ? containers.items.map((c) => c.label).join(", ")
       : "",
   );
+  // An untracked container can be retired from here — stopped, removed and
+  // forgotten by the node, its data left alone. The endpoint needs both
+  // server.delete and node.manage, so the chip is offered only to a role with
+  // both; a viewer still reads the badge. Named inline, each container gets its
+  // own chip; past the inline limit one chip takes them all, since chips with
+  // no names beside them would not say which is which.
+  const mayRetire = $derived(hasPerm("server.delete") && hasPerm("node.manage"));
+  const retireItems = $derived(mayRetire ? retirable(containers) : []);
+  const retireInline = $derived(retireItems.length > 0 && retireItems.length <= DRIFT_INLINE_MAX);
+  const retireErr = $derived(retire.errors[node.id] ?? "");
+  // Removals this node owes: servers deleted while it could not be told. A
+  // quiet count with the roll call in the title; the panel is already retrying.
+  const pending = $derived(pendingRemovalsNote(node));
   const driftTitle = $derived(
     containers && containers.items.length > 0
       ? `${containers.word}: ` +
@@ -292,7 +313,33 @@
            operator can act on: up to three read inline, more stay in the title,
            and an agent too old to name them leaves both empty. -->
       <span class="node-meta node-cond container-drift" title={driftTitle}>
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if driftNames}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{driftNames}</b>{/if}
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id)}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{item.label}</b><button
+              class="nc-go"
+              disabled={!!retire.busy[item.server_id]}
+              title="stop and remove {item.label} on {node.name} — its data stays"
+              aria-label="Retire untracked container {item.label} on {node.name}"
+              onclick={(e) => openRetire(node.id, item, e.currentTarget)}>retire</button
+            >{/each}{:else}{#if driftNames}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{driftNames}</b>{/if}{#if retireItems.length > 0}<button
+              class="nc-go"
+              title="stop and remove all {retireItems.length} untracked containers on {node.name} — their data stays"
+              aria-label="Retire all {retireItems.length} untracked containers on {node.name}"
+              onclick={(e) => openRetireAll(node.id, retireItems, e.currentTarget)}>retire all</button
+            >{/if}{/if}
+      </span>
+    {/if}
+    {#if retireErr}
+      <!-- A retire the panel refused says why on the band that offered it —
+           otherwise the chip would look as if the click had done nothing. -->
+      <span class="node-meta node-cond" title={retireErr}>
+        <span class="nc-k">retire</span><b class="nc-v act">{retireErr}</b>
+      </span>
+    {/if}
+    {#if pending}
+      <!-- Deleted in the panel, not yet removed from the node: the panel is
+           retrying on every pass the node answers, so this is a count to watch,
+           not a control. The one value in the line takes the caution colour. -->
+      <span class="node-meta node-cond pending-removals" title={pending.title}>
+        <span class="nc-k">removals</span><b class="nc-v act">{pending.count} pending</b>
       </span>
     {/if}
     <span class="node-actions">

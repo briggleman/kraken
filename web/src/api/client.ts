@@ -450,6 +450,13 @@ export const api = {
   deleteNode(id: string): Promise<void> {
     return request("DELETE", `/nodes/${id}`);
   },
+  /** Retire an untracked container: the node stops and removes the container it
+   *  runs for serverId (a server the panel has no row for on that node) and
+   *  forgets its spec. Its data is left untouched. 409 for a tracked server,
+   *  503 when the node cannot be reached. */
+  retireNodeContainer(nodeId: string, serverId: string): Promise<void> {
+    return request("DELETE", `/nodes/${nodeId}/containers/${encodeURIComponent(serverId)}`);
+  },
   getNodeConfig(id: string): Promise<NodeConfig> {
     return request("GET", `/nodes/${id}/config`);
   },

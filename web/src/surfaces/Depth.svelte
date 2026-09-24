@@ -1087,7 +1087,7 @@
       <section class="side-block danger-block" aria-label="Delete server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world, backups and config. it cannot be undone.</p>
+          <p class="danger-note">deleting removes this server's world and config. its backups stay on the node. it cannot be undone.</p>
           <button
             class="ctl ctl-delete"
             id="deleteSrvBtn"

@@ -180,10 +180,13 @@ export interface DriftItem {
  * panel reasons from its own rows outward, so this is the one question asked the
  * other way — and the only way an untracked container is seen.
  *
- * Reachable state, not a hypothetical: deleting a server while its node is
- * unreachable drops the row and leaves the container running, because the agent
- * call is best-effort. A deficit is reported too — containers stopped behind the
- * panel's back is the same class of divergence.
+ * Reachable state, not a hypothetical: before #354 deleting a server while its
+ * node was unreachable dropped the row and left the container running, and a
+ * node that carried one then still carries it. A delete now leaves a pending
+ * removal instead (pendingRemovalsNote), and an untracked container that
+ * predates that is retired from the badge (retirable). A deficit is reported
+ * too — containers stopped behind the panel's back is the same class of
+ * divergence.
  *
  * An agent from 0.54.0 on names the containers (node.managed_containers), and
  * then the answer is computed from identities rather than from two totals:
@@ -237,6 +240,45 @@ export function containerDrift(
     delta: Math.abs(delta),
     word: delta > 0 ? "untracked" : "missing",
     items: [],
+  };
+}
+
+/** How many untracked containers the badge names inline before it keeps only
+ *  the count (the rest ride the title). */
+export const DRIFT_INLINE_MAX = 3;
+
+/**
+ * The untracked containers the badge offers to retire, or [] when it offers
+ * none. Only an untracked surplus has anything to retire — a missing container
+ * is a row with nothing behind it — and only a named one: an agent that sends
+ * only the count gives no server id to aim at. Permission is the caller's check.
+ */
+export function retirable(
+  drift: ReturnType<typeof containerDrift>,
+): DriftItem[] {
+  if (!drift || drift.word !== "untracked") return [];
+  return drift.items;
+}
+
+/**
+ * The quiet line a node band carries while the node owes removals: servers
+ * deleted in the panel whose removal has not reached the node yet. The count is
+ * the reading; the title names each one with how it last went, because "2
+ * pending" alone does not say whether the node is simply away or refusing.
+ */
+export function pendingRemovalsNote(node: Node): { count: number; title: string } | undefined {
+  const owed = node.pending_removals ?? [];
+  if (owed.length === 0) return undefined;
+  const lines = owed.map((p) => {
+    const tries = p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`;
+    const what = p.delete_data ? "container and data" : "container";
+    return `${p.server_id} — ${what}, ${tries}` + (p.last_error ? `: ${p.last_error}` : "");
+  });
+  return {
+    count: owed.length,
+    title:
+      "deleted in the panel, not yet removed from this node — retried each time the node answers\n" +
+      lines.join("\n"),
   };
 }
 

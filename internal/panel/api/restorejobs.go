@@ -65,18 +65,30 @@ func (job restoreJob) overlay(r *store.ServerRestore) *store.ServerRestore {
 // its whole run, and each refuses while the other is held. Both live under one
 // mutex, so the check and the claim are one step.
 //
+// A retire or a revive (#360) holds the server in `ops` for as long as it
+// changes where the server lives — a retire for its whole run (stop, final
+// backup, removal), a revive until its row is placed and `installing` — and
+// excludes everything else: starts, restores, and a second retire or revive.
+//
 // This is in-process only. A second Panel against the same database would not
 // see it; the Agent's own refusal to restore over a running container
 // (DockerRuntime.refuseRestoreOverRunningContainer) is the layer below.
 type restoreJobs struct {
 	mu       sync.Mutex
 	byServer map[string]*restoreJob
-	starts   map[string]int // serverID -> starts/reinstalls currently holding a claim
+	starts   map[string]int    // serverID -> starts/reinstalls currently holding a claim
+	ops      map[string]string // serverID -> the retire or revive holding it (opRetire, opRevive)
 }
 
 func newRestoreJobs() *restoreJobs {
-	return &restoreJobs{byServer: map[string]*restoreJob{}, starts: map[string]int{}}
+	return &restoreJobs{byServer: map[string]*restoreJob{}, starts: map[string]int{}, ops: map[string]string{}}
 }
+
+// The operations that hold a server in restoreJobs.ops.
+const (
+	opRetire = "retire"
+	opRevive = "revive"
+)
 
 // The machine-readable codes a restore's refusals answer with, in the same
 // {"error","code"} envelope as the Agent-call failures (agenterror.go).
@@ -90,6 +102,7 @@ const (
 const (
 	restoreRefusedInProgress = codeRestoreInProgress // another restore holds the server
 	restoreRefusedBusy       = codeServerBusy        // a start or reinstall holds it
+	restoreRefusedOp         = "op"                  // a retire or revive holds it
 )
 
 // start registers a job for serverID, or says why it cannot: a restore is
@@ -104,19 +117,26 @@ func (j *restoreJobs) start(serverID, backupID string) (restoreJob, string) {
 	if j.starts[serverID] > 0 {
 		return restoreJob{}, restoreRefusedBusy
 	}
+	if j.ops[serverID] != "" {
+		return restoreJob{}, restoreRefusedOp
+	}
 	job := &restoreJob{ServerID: serverID, BackupID: backupID, Phase: "opening", StartedAt: time.Now().UTC()}
 	j.byServer[serverID] = job
 	return *job, ""
 }
 
-// claimStart takes the start side of the lock, or reports false when a restore
-// holds the server. Several starts may hold it at once — they do not exclude
-// each other here, only a restore. The returned release is idempotent.
-func (j *restoreJobs) claimStart(serverID string) (func(), bool) {
+// claimStart takes the start side of the lock, or reports what holds the
+// server instead: codeServerRestoring for a restore, or the retire or revive
+// (opRetire, opRevive). Several starts may hold it at once — they do not
+// exclude each other here. The returned release is idempotent.
+func (j *restoreJobs) claimStart(serverID string) (func(), string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.byServer[serverID] != nil {
-		return nil, false
+		return nil, codeServerRestoring
+	}
+	if op := j.ops[serverID]; op != "" {
+		return nil, op
 	}
 	j.starts[serverID]++
 	var once sync.Once
@@ -128,7 +148,42 @@ func (j *restoreJobs) claimStart(serverID string) (func(), bool) {
 				delete(j.starts, serverID)
 			}
 		})
-	}, true
+	}, ""
+}
+
+// holdOp takes the server for a retire or revive, or reports what already
+// holds it: codeServerRestoring, codeServerBusy (a start, restart or
+// reinstall), or the other operation's name.
+func (j *restoreJobs) holdOp(serverID, op string) string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	switch {
+	case j.byServer[serverID] != nil:
+		return codeServerRestoring
+	case j.starts[serverID] > 0:
+		return codeServerBusy
+	case j.ops[serverID] != "":
+		return j.ops[serverID]
+	}
+	j.ops[serverID] = op
+	return ""
+}
+
+// releaseOp drops a retire's or revive's hold. The caller has written the row.
+func (j *restoreJobs) releaseOp(serverID string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.ops, serverID)
+}
+
+// opHolding reports the retire or revive holding serverID, or "".
+func (j *restoreJobs) opHolding(serverID string) string {
+	if j == nil {
+		return ""
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.ops[serverID]
 }
 
 // active reports the server's running job. Callers get a copy, never the live
@@ -178,22 +233,51 @@ func (s *Server) restoreInProgress(sv *store.Server) bool {
 	return sv.State == store.StateRestoring
 }
 
-// refuseWhileRestoring is the gate every writer of a server's tree asks
-// (#361): a restore swaps save files into place by rename, and anything that
-// writes the tree mid-swap — a file edit, a config push, a backup and its
-// retention pass, a reinstall, a delete — either lands in a directory about to
-// be replaced or is replaced itself. It answers 409 server_restoring and
-// reports true when the caller must stop. Reads and downloads never ask.
-// Called after the handler has authorized the caller, so a refusal reveals
-// nothing to someone who may not see the server.
-func (s *Server) refuseWhileRestoring(w http.ResponseWriter, sv *store.Server) bool {
-	if !s.restoreInProgress(sv) {
+// retiring reports whether a retire is running for sv, by this process's
+// registry or by the row (whose retire block outlives a Panel restart until
+// the reconciler settles it).
+func (s *Server) retiring(sv *store.Server) bool {
+	return s.restores.opHolding(sv.ID) == opRetire || sv.Retire != nil
+}
+
+// refuseWhileHeld is the gate every writer of a server's tree or config asks.
+// It answers 409 and reports true when the caller must stop:
+//
+//   - server_busy while a retire or revive holds the server (#360): a retire
+//     is stopping it, archiving it and removing it, and a write in between is
+//     either archived half-done or deleted with the rest;
+//   - server_restoring while a restore runs (#361): a restore swaps save files
+//     into place by rename, and anything that writes the tree mid-swap — a
+//     file edit, a config push, a backup and its retention pass, a reinstall —
+//     either lands in a directory about to be replaced or is replaced itself;
+//   - server_retired on a retired server, which has no tree and no node to
+//     write to: revive it first.
+//
+// Reads never ask, except where a retired server has nothing to read (the
+// file handlers refuse it in agentForServer). Called after the handler has
+// authorized the caller, so a refusal reveals nothing to someone who may not
+// see the server.
+func (s *Server) refuseWhileHeld(w http.ResponseWriter, sv *store.Server) bool {
+	switch {
+	case s.retiring(sv):
+		writeCoded(w, http.StatusConflict, codeServerBusy,
+			"this server is being retired; nothing can change it until the retire finishes")
+	case s.restores.opHolding(sv.ID) == opRevive:
+		writeCoded(w, http.StatusConflict, codeServerBusy,
+			"this server is being revived; wait for its install to start")
+	case s.restoreInProgress(sv):
+		writeCoded(w, http.StatusConflict, codeServerRestoring,
+			"a backup restore is in progress for this server; wait for the restore to finish")
+	case sv.State == store.StateRetired:
+		writeCoded(w, http.StatusConflict, codeServerRetired, retiredRefusal)
+	default:
 		return false
 	}
-	writeCoded(w, http.StatusConflict, codeServerRestoring,
-		"a backup restore is in progress for this server; wait for the restore to finish")
 	return true
 }
+
+// retiredRefusal is what a retired server answers any change with.
+const retiredRefusal = "this server is retired — it is on no node and has no files; revive it first"
 
 // restoreClaimHook, when set, runs just after a start claims the server (see
 // claimStart) — inside the window a restore used to slip into. Tests use it to
@@ -206,9 +290,14 @@ var restoreClaimHook func(serverID string)
 // operation lock described on restoreJobs. It refuses with server_restoring
 // when a restore holds the server. The caller must call release.
 func (s *Server) claimStart(serverID string) (release func(), refusal *startRefusal) {
-	release, ok := s.restores.claimStart(serverID)
-	if !ok {
+	release, held := s.restores.claimStart(serverID)
+	switch held {
+	case "":
+	case codeServerRestoring:
 		return nil, restoreRefusal()
+	default:
+		return nil, &startRefusal{status: http.StatusConflict, code: codeServerBusy,
+			message: "this server is being " + held + "d; it can start once that finishes"}
 	}
 	if restoreClaimHook != nil {
 		restoreClaimHook(serverID)

@@ -60,8 +60,11 @@ func replicationStateString(s agentpb.ReplicationState) string {
 	}
 }
 
+// handleListBackups lists a server's archives — a retired one's too (#360):
+// keeping them listable is the point of retiring rather than deleting. A
+// retired server is on no node, so its list comes from the node it left.
 func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
-	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
+	client, sv, ok := s.agentForServerOrRetired(w, r, chi.URLParam(r, "id"))
 	if !ok {
 		return
 	}
@@ -82,7 +85,7 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	// which the UI reads as "no mirror line". A config the panel can't load is not
 	// fatal to listing backups — the mirror simply goes unnamed.
 	mirror := ""
-	if cfg, cerr := s.nodeConfigOrEmpty(ctx, sv.NodeID); cerr == nil {
+	if cfg, cerr := s.nodeConfigOrEmpty(ctx, hostNodeID(sv)); cerr == nil {
 		mirror = mirrorTarget(cfg)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backups": views, "mirror": mirror})
@@ -119,7 +122,7 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	// CreateBackup is asynchronous on the Agent — it returns a PENDING record
@@ -186,35 +189,66 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
 		return
 	}
-	job, refused := s.restores.start(sv.ID, backupID)
+	sv, refusal := s.beginRestore(ctx, sv.ID, backupID)
+	if refusal != nil {
+		refusal.write(w)
+		return
+	}
+	req := &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: backupID, Slug: s.serverSlug(ctx, sv)}
+	s.logger.Info("backup restore started", "server", sv.ID, "name", sv.Name, "backup", backupID)
+	go s.runRestore(client, req)
+	writeJSON(w, http.StatusAccepted, s.serverResponse(sv))
+}
+
+// opRefusal is an operation the Panel will not begin: the status, the
+// machine-readable code ("" for a plain error body) and the sentence.
+type opRefusal struct {
+	status int
+	code   string
+	msg    string
+}
+
+func (o *opRefusal) write(w http.ResponseWriter) {
+	if o.code == "" {
+		writeError(w, o.status, o.msg)
+		return
+	}
+	writeCoded(w, o.status, o.code, o.msg)
+}
+
+// beginRestore registers the restore job for serverID — the restore side of
+// the operation lock — and moves the row to `restoring`, or says why it will
+// not. The operator's restore and a revive's (#360) both begin here; the
+// caller then runs runRestore, which settles the row and drops the job.
+func (s *Server) beginRestore(ctx context.Context, serverID, backupID string) (*store.Server, *opRefusal) {
+	job, refused := s.restores.start(serverID, backupID)
 	switch refused {
 	case restoreRefusedInProgress:
-		writeCoded(w, http.StatusConflict, codeRestoreInProgress,
-			"a restore is already in progress for this server; wait for it to finish")
-		return
+		return nil, &opRefusal{http.StatusConflict, codeRestoreInProgress,
+			"a restore is already in progress for this server; wait for it to finish"}
 	case restoreRefusedBusy:
 		// A start, restart or reinstall holds the server for its Agent call
 		// (claimStart). Its row may still read offline — that write comes
 		// after the Power call returns — which is exactly why the row cannot
 		// be the lock.
-		writeCoded(w, http.StatusConflict, codeServerBusy,
-			"a start is in progress for this server; stop it before restoring a backup")
-		return
+		return nil, &opRefusal{http.StatusConflict, codeServerBusy,
+			"a start is in progress for this server; stop it before restoring a backup"}
+	case restoreRefusedOp:
+		return nil, &opRefusal{http.StatusConflict, codeServerBusy,
+			"this server is being " + s.restores.opHolding(serverID) + "d; restore a backup once that finishes"}
 	}
-	// Re-read now the job holds the lock: the row loaded above may be stale,
-	// and a start or reinstall that finished and wrote a new state in between
-	// must win. From here on, claimStart refuses every new one.
-	fresh, err := s.store.GetServer(ctx, sv.ID)
-	if err != nil || !restorableStates[fresh.State] {
-		s.restores.finish(sv.ID)
+	// Re-read now the job holds the lock: the row loaded by the caller may be
+	// stale, and a start or reinstall that finished and wrote a new state in
+	// between must win. From here on, claimStart refuses every new one.
+	sv, err := s.store.GetServer(ctx, serverID)
+	if err != nil || !restorableStates[sv.State] {
+		s.restores.finish(serverID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "could not load server")
-			return
+			return nil, &opRefusal{http.StatusInternalServerError, "", "could not load server"}
 		}
-		writeError(w, http.StatusConflict, "stop the server before restoring a backup (current state: "+string(fresh.State)+")")
-		return
+		return nil, &opRefusal{http.StatusConflict, "",
+			"stop the server before restoring a backup (current state: " + string(sv.State) + ")"}
 	}
-	sv = fresh
 	// Where the row goes back to, on the row itself: a Panel that restarts
 	// mid-restore loses the job, and the orphan settle still has to put an
 	// install_failed server back behind its reinstall gate.
@@ -226,14 +260,10 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	sv.RestoreResult = nil
 	sv.State = store.StateRestoring
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
-		s.restores.finish(sv.ID)
-		writeError(w, http.StatusInternalServerError, "could not update server state")
-		return
+		s.restores.finish(serverID)
+		return nil, &opRefusal{http.StatusInternalServerError, "", "could not update server state"}
 	}
-	req := &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: backupID, Slug: s.serverSlug(ctx, sv)}
-	s.logger.Info("backup restore started", "server", sv.ID, "name", sv.Name, "backup", backupID)
-	go s.runRestore(client, req)
-	writeJSON(w, http.StatusAccepted, s.serverResponse(sv))
+	return sv, nil
 }
 
 // runRestore is the restore job: it drives the Agent with a background context
@@ -365,7 +395,7 @@ func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.refuseWhileRestoring(w, sv) {
+	if s.refuseWhileHeld(w, sv) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)

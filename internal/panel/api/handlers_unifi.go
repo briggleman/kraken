@@ -80,6 +80,9 @@ func (s *Server) handleSetServerForward(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if s.refuseWhileHeld(w, sv) {
+		return
+	}
 	port := sv.Ports[portName]
 	if port == 0 {
 		writeError(w, http.StatusBadRequest, "no allocated port named "+portName)

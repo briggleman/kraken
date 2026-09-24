@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/briggleman/kraken/internal/panel/cron"
@@ -86,6 +87,15 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	if err != nil {
 		return fmt.Errorf("load server: %w", err)
 	}
+	// A retire switches its server's schedules off (#360); one switched back on
+	// by hand still has nothing to act on, and one that fires mid-retire would
+	// back up or restart a server that is being taken apart.
+	if sv.State == store.StateRetired {
+		return fmt.Errorf("the server is retired, so the scheduled %s was skipped", task.Action)
+	}
+	if s.retiring(sv) {
+		return fmt.Errorf("the server is being retired, so the scheduled %s was skipped", task.Action)
+	}
 	// A restart is stop-then-start on the Agent, so it boots the game: it is
 	// asked the same questions as an operator's start (checkStartable), before
 	// the node is contacted. The refusal's sentence becomes the schedule's
@@ -118,7 +128,7 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		// cannot begin on a crashed row while the Agent restarts it.
 		release, refusal := s.claimStart(sv.ID)
 		if refusal != nil {
-			return fmt.Errorf("a backup restore is in progress, so the scheduled restart was skipped")
+			return fmt.Errorf("%s, so the scheduled restart was skipped", strings.TrimSuffix(refusal.message, "; wait for the restore to finish"))
 		}
 		defer release()
 		// Re-push the spec first so the Agent can recreate the container even if it

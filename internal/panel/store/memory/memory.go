@@ -630,6 +630,20 @@ func cloneServer(sv *store.Server) *store.Server {
 		r := *sv.RestoreResult
 		c.RestoreResult = &r
 	}
+	if sv.Retire != nil {
+		r := *sv.Retire
+		c.Retire = &r
+	}
+	if sv.RetiredAt != nil {
+		at := *sv.RetiredAt
+		c.RetiredAt = &at
+	}
+	if sv.RetiredPorts != nil {
+		c.RetiredPorts = make(map[string]int, len(sv.RetiredPorts))
+		for k, v := range sv.RetiredPorts {
+			c.RetiredPorts[k] = v
+		}
+	}
 	return &c
 }
 

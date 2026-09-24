@@ -58,19 +58,37 @@ var errNodeNotLive = errors.New("node unreachable")
 
 // removeOnNode asks the node's Agent to remove a server, reporting why it could
 // not. A node the Panel cannot reach is not dialled for the full RPC budget:
-// ensureNodeLive answers that in one bounded probe.
-func (s *Server) removeOnNode(ctx context.Context, n *cluster.Node, serverID string, deleteData bool) error {
+// ensureNodeLive answers that in one bounded probe. deleteBackups is the
+// permanent delete of a retired server (#360); the response says what the
+// Agent did with the archives.
+func (s *Server) removeOnNode(ctx context.Context, n *cluster.Node, serverID string, deleteData, deleteBackups bool) (*agentpb.RemoveServerResponse, error) {
 	if err := s.ensureNodeLive(ctx, n); err != nil {
-		return fmt.Errorf("%w: %v", errNodeNotLive, err)
+		return nil, fmt.Errorf("%w: %v", errNodeNotLive, err)
 	}
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
-		return fmt.Errorf("%w: %v", errNodeNotLive, err)
+		return nil, fmt.Errorf("%w: %v", errNodeNotLive, err)
 	}
 	rctx, cancel := context.WithTimeout(ctx, removeServerTimeout)
 	defer cancel()
-	_, err = client.RemoveServer(rctx, &agentpb.RemoveServerRequest{ServerId: serverID, DeleteData: deleteData})
-	return err
+	return client.RemoveServer(rctx, &agentpb.RemoveServerRequest{
+		ServerId: serverID, DeleteData: deleteData, DeleteBackups: deleteBackups,
+	})
+}
+
+// backupsKeptNote is the sentence an operator reads about a server's archives
+// after a removal that asked for them to be deleted, or "" when they all went.
+func backupsKeptNote(resp *agentpb.RemoveServerResponse) string {
+	switch {
+	case resp == nil:
+		return ""
+	case !resp.GetBackupsHandled():
+		return "the node's agent is too old to delete backup archives, so this server's archives were kept on the node"
+	case resp.GetBackupsKept() != "":
+		return "archives on a shared backup target were kept (" + resp.GetBackupsKept() +
+			"): they sit beside other servers' archives and cannot be told apart, so delete them there by hand"
+	}
+	return ""
 }
 
 // removalErrorText is how a failed removal is recorded for an operator: the
@@ -190,17 +208,26 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 		}
 		s.replays.clearLookupFailure(nodeID, p.ServerID)
 		if claimed {
-			// A server row on this node answers to the id again. Until the
-			// retire/revive model (#360) says what that means, the removal
-			// waits rather than destroy what may be a live server.
+			// A live server row on this node answers to the id — a retire that
+			// queued this removal and has not written `retired` yet, or a row
+			// someone placed here since. The removal waits rather than destroy
+			// what may be a live server.
 			continue
 		}
 		rctx, cancel := context.WithTimeout(ctx, removeServerTimeout)
-		_, rerr := client.RemoveServer(rctx, &agentpb.RemoveServerRequest{ServerId: p.ServerID, DeleteData: p.DeleteData})
+		resp, rerr := client.RemoveServer(rctx, &agentpb.RemoveServerRequest{
+			ServerId: p.ServerID, DeleteData: p.DeleteData, DeleteBackups: p.DeleteBackups,
+		})
 		cancel()
 		if rerr != nil {
 			failed[p.ServerID] = removalErrorText(rerr)
 			continue
+		}
+		if p.DeleteBackups {
+			// The row is gone, so the log is the only place left to say it.
+			if note := backupsKeptNote(resp); note != "" {
+				s.logger.Warn("pending permanent delete landed, but not every archive went", "node", nodeID, "server", p.ServerID, "note", note)
+			}
 		}
 		done[p.ServerID] = true
 	}
@@ -242,11 +269,19 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 // serverID — the test for "this container is the Panel's, not an orphan". An
 // error other than not-found is returned as-is: the caller cannot tell "no
 // row" from "could not look", and must not guess.
+//
+// A retired row claims nothing (#360). It is on no node — its node_id is
+// empty and retired_from_node_id is only where it was — and the removal owed
+// for it is its own retire's (or its permanent delete's): the operator's
+// command, which a replay must be allowed to finish. Every other state claims
+// the node it is placed on, so a removal owed there waits rather than destroy
+// what may be a live server. A revive, which would place the id again, is
+// refused while any removal for it is still owed.
 func (s *Server) serverClaimsID(ctx context.Context, nodeID, serverID string) (bool, error) {
 	sv, err := s.store.GetServer(ctx, serverID)
 	switch {
 	case err == nil:
-		return sv.NodeID == nodeID, nil
+		return sv.State != store.StateRetired && sv.NodeID == nodeID, nil
 	case errors.Is(err, store.ErrNotFound):
 		return false, nil
 	default:
@@ -254,51 +289,70 @@ func (s *Server) serverClaimsID(ctx context.Context, nodeID, serverID string) (b
 	}
 }
 
-// settleNodeAfterDelete records the outcome of a delete's removal on the
-// node: a removal that landed releases the server's allocation now; one that
-// did not is remembered as a pending removal that carries the allocation
-// until it lands. One read-modify-write on a fresh copy taken after the RPC,
-// so nothing is lost to a write made while the RPC was in flight.
-//
-// An error means the outcome could not be recorded, and the caller must not
-// delete the server: a delete the Panel cannot remember does not happen.
-func (s *Server) settleNodeAfterDelete(ctx context.Context, sv *store.Server, nodeID string, removeErr error) error {
-	n, err := s.store.GetNode(ctx, nodeID)
-	if err != nil {
-		return fmt.Errorf("reload node: %w", err)
-	}
+// nodeRemoval is what a removal owes a node and carries while it is owed: the
+// server, the operator's intent, and the allocation the node still holds for
+// it (none, for a retired server — its retire released it, or queued a
+// removal of its own that holds it).
+type nodeRemoval struct {
+	serverID, name string
+	deleteBackups  bool
+	memoryMB       int
+	ports          []int
+}
+
+// removalOf is the removal a placed server owes its node, holding what it holds.
+func removalOf(sv *store.Server) nodeRemoval {
 	ports := make([]int, 0, len(sv.Ports))
 	for _, p := range sv.Ports {
 		ports = append(ports, p)
 	}
+	return nodeRemoval{serverID: sv.ID, name: sv.Name, memoryMB: sv.MemoryMB, ports: ports}
+}
+
+// settleNodeAfterRemoval records the outcome of a removal on the node: a
+// removal that landed releases the server's allocation now; one that did not
+// is remembered as a pending removal that carries the allocation until it
+// lands. One read-modify-write on a fresh copy taken after the RPC, so nothing
+// is lost to a write made while the RPC was in flight.
+//
+// An error means the outcome could not be recorded, and the caller must not go
+// on: a retire or delete the Panel cannot remember does not happen.
+func (s *Server) settleNodeAfterRemoval(ctx context.Context, rm nodeRemoval, nodeID string, removeErr error) error {
+	n, err := s.store.GetNode(ctx, nodeID)
+	if err != nil {
+		return fmt.Errorf("reload node: %w", err)
+	}
+	ports := rm.ports
 	if removeErr == nil {
 		// A retried delete can find a pending removal an earlier attempt
 		// recorded (its removal failed, then the row delete failed and the row
 		// stayed). That record holds this allocation; finishing it is the
 		// release, and releasing here as well would free the ports a second
 		// time — possibly out from under a server placed on them since.
-		if !n.FinishPendingRemoval(sv.ID) {
-			n.Release(sv.MemoryMB, ports)
+		if !n.FinishPendingRemoval(rm.serverID) {
+			n.Release(rm.memoryMB, ports)
 		}
 	} else {
 		now := time.Now().UTC()
 		n.AddPendingRemoval(cluster.PendingRemoval{
-			ServerID:    sv.ID,
-			DeleteData:  true,
-			RequestedAt: now,
-			Attempts:    1,
-			LastError:   removalErrorText(removeErr),
-			NextAttempt: now.Add(cluster.RemovalBackoff(1)),
-			MemoryMB:    sv.MemoryMB,
-			Ports:       ports,
+			ServerID:      rm.serverID,
+			DeleteData:    true,
+			DeleteBackups: rm.deleteBackups,
+			RequestedAt:   now,
+			Attempts:      1,
+			LastError:     removalErrorText(removeErr),
+			NextAttempt:   now.Add(cluster.RemovalBackoff(1)),
+			MemoryMB:      rm.memoryMB,
+			Ports:         ports,
 		})
 	}
 	if err := s.store.UpdateNode(ctx, n); err != nil {
 		return fmt.Errorf("save node: %w", err)
 	}
 	if removeErr != nil {
-		s.logger.Warn("server deleted but its removal did not reach the node; queued for the node reconciler",
-			"server", sv.ID, "name", sv.Name, "node", n.ID, "held_memory_mb", sv.MemoryMB, "held_ports", ports, "err", removeErr)
+		s.logger.Warn("server's removal did not reach its node; queued for the node reconciler",
+			"server", rm.serverID, "name", rm.name, "node", n.ID, "delete_backups", rm.deleteBackups,
+			"held_memory_mb", rm.memoryMB, "held_ports", ports, "err", removeErr)
 	}
 	return nil
 }
@@ -353,7 +407,7 @@ func (s *Server) handleRetireNodeContainer(w http.ResponseWriter, r *http.Reques
 	// container now would promise the data stays, and the next replay would
 	// delete it. The pending removal is the operator's standing order; it wins.
 	if _, owed := n.PendingRemovalFor(serverID); owed {
-		writeCoded(w, http.StatusConflict, "removal_pending",
+		writeCoded(w, http.StatusConflict, codeRemovalPending,
 			"a removal is already pending for this server on this node — it finishes when the node accepts it, or dismiss it first")
 		return
 	}
@@ -366,7 +420,7 @@ func (s *Server) handleRetireNodeContainer(w http.ResponseWriter, r *http.Reques
 			"a server with this id is managed by the Panel on this node — delete the server instead")
 		return
 	}
-	if err := s.removeOnNode(ctx, n, serverID, false); err != nil {
+	if _, err := s.removeOnNode(ctx, n, serverID, false, false); err != nil {
 		// Never dialled: the liveness probe (or the client) already failed.
 		if errors.Is(err, errNodeNotLive) {
 			writeCoded(w, http.StatusServiceUnavailable, codeNodeUnreachable,

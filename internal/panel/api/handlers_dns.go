@@ -333,6 +333,9 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if s.refuseWhileHeld(w, sv) {
+		return
+	}
 	node, _ := s.store.GetNode(ctx, sv.NodeID)
 	host := serverExternalHost(node)
 	if host == "" {

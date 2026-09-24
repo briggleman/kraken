@@ -139,9 +139,10 @@ func TestServerLifecycle_CreateInstallStart(t *testing.T) {
 		t.Fatalf("expected offline after stop, got %q", st)
 	}
 
-	// Delete it.
+	// Retire it, then delete it permanently.
+	retireServer(t, h, token, created.ID)
 	rec = do(t, h, http.MethodDelete, "/api/v1/servers/"+created.ID, token, nil)
-	if rec.Code != http.StatusNoContent {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("delete server: status %d", rec.Code)
 	}
 }

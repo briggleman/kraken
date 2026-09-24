@@ -132,8 +132,9 @@ func TestInstallLog_UnretainedReadsAsEmptyNotMissing(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	// Deleting the server drops its buffer — the same end state as a Panel
-	// restart, reached without one.
+	// Retiring and deleting the server drops its buffer — the same end state
+	// as a Panel restart, reached without one.
+	retireServer(t, h, token, created.ID)
 	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+created.ID, token, nil); rec.Code != http.StatusOK &&
 		rec.Code != http.StatusNoContent && rec.Code != http.StatusAccepted {
 		t.Fatalf("delete server: status %d, body %s", rec.Code, rec.Body.String())

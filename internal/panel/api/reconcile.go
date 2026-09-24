@@ -126,6 +126,15 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if _, restoring := s.restores.active(sv.ID); restoring {
 			continue
 		}
+		// A retire or revive owns its row the same way (#360), and a retired
+		// server is on no node: there is nothing to ask an Agent about.
+		if s.restores.opHolding(sv.ID) != "" || sv.State == store.StateRetired {
+			continue
+		}
+		if sv.Retire != nil {
+			s.settleOrphanedRetire(ctx, sv.ID)
+			continue
+		}
 		if sv.State == store.StateRestoring {
 			s.settleOrphanedRestore(ctx, sv.ID)
 			continue
@@ -155,8 +164,9 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		// The round trip above takes time; a restore may have begun during it.
-		if _, restoring := s.restores.active(sv.ID); restoring {
+		// The round trip above takes time; a restore, retire or revive may have
+		// begun during it.
+		if _, restoring := s.restores.active(sv.ID); restoring || s.restores.opHolding(sv.ID) != "" {
 			continue
 		}
 		if adopt {

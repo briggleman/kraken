@@ -99,7 +99,8 @@ dir (or a folder inside it, or a writable folder above it), is still running,
 and says so by name: the pass fails with
 `refused to run the install pass: container kraken_<id> (<short id>) is running…`
 in `last_error` and in the install console. Nothing on disk is touched, so the
-server goes back to the state it was in rather than `install_failed`. Stop that
+server is not marked `install_failed`: an update lands `offline` (its stop had
+already run), and a reinstall stays in the stopped state it started from. Stop that
 container — `docker ps` on the node shows it, and it may be one Kraken is not
 tracking — then run the install again. A container that has merely exited is
 removed for you, with a `[kraken]` line in the install console saying which.

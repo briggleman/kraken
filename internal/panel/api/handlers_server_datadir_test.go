@@ -12,10 +12,11 @@ import (
 // stop succeeds, but a container it did not account for (untracked, or one
 // whose stop did not take) still has the data dir mounted and running. The
 // Agent refuses the pass rather than run SteamCMD under it, and no install
-// container runs. Nothing touched the tree, so — the #328/#339 rule for any
-// phase that never touched it — the server goes back to the state it was in,
-// with the refusal naming the container in last_error and in the console; it
-// is not install_failed, which would lock start behind a needless reinstall.
+// container runs. Nothing touched the tree, so it is not install_failed, which
+// would lock start behind a needless reinstall. Nor is it the running it
+// started from: the pre-update stop already ran and was confirmed. It lands
+// offline, with the refusal naming the container in last_error and in the
+// console.
 func TestPower_UpdateRefusedWhileAContainerHoldsTheDataDir(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)
@@ -34,8 +35,8 @@ func TestPower_UpdateRefusedWhileAContainerHoldsTheDataDir(t *testing.T) {
 	}
 
 	state, lastErr := waitForLastError(t, h, token, sv.ID)
-	if state != "running" {
-		t.Errorf("state after a refused pass: got %q, want running (where it was; the tree was never touched)", state)
+	if state != "offline" {
+		t.Errorf("state after a refused pass: got %q, want offline (the stop ran; nothing else did)", state)
 	}
 	if !strings.Contains(lastErr, "refused to run the install pass") || !strings.Contains(lastErr, "kraken_"+sv.ID) {
 		t.Errorf("last_error should carry the refusal naming the container; got %q", lastErr)

@@ -211,11 +211,11 @@ and the Agent confirms the container is really down before reporting the
 stop done.</li>
 <li>The Agent checks nothing else still has the data directory: an exited
 container bound to it is removed, and a running one refuses the pass by
-name, since SteamCMD writing under a live game corrupts the tree. Nothing
-has been touched at that point, so a refusal puts the server back where it
-was, with the container named in <code>last_error</code>. Until the pass ends the
-Agent also refuses any start or restart of the server, the crash watchdog&#39;s
-included.</li>
+name, since SteamCMD writing under a live game corrupts the tree. Only the
+stop has happened at that point, so a refusal leaves the server <code>offline</code>,
+not <code>install_failed</code>, with the container named in <code>last_error</code>. Until the
+pass ends the Agent also refuses any start or restart of the server, the
+crash watchdog&#39;s included; stop and kill still work.</li>
 <li>It runs the install script. The server reads <code>installing</code>, the response is a
 <code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.
 A start that skips the pass (the opt-outs and the paths below) is the plain
@@ -240,7 +240,7 @@ phases say different things about the install tree:</p>
 </tr>
 <tr>
 <td>the Agent&#39;s check that nothing holds the data directory</td>
-<td><strong>back where it was</strong>, with the container that holds it named in <code>last_error</code>. Stop that container, then start again.</td>
+<td><code>offline</code> — the stop before it ran, nothing else did — with the container that holds it named in <code>last_error</code>. Stop that container, then start again. A reinstall refused the same way stays in the stopped state it started from.</td>
 </tr>
 <tr>
 <td>the install script</td>

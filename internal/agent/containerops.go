@@ -102,6 +102,29 @@ func decideNameHolder(info container.InspectResponse, serverID string) nameHolde
 	return holderRemove
 }
 
+// createdAdoptWindow is how recently a `created` container must have been
+// created for ensureContainer's first look to treat it as another start's,
+// mid-flight, rather than a leftover. A create and its ContainerStart are
+// seconds apart even on a slow Windows daemon; a `created` container older than
+// this is a start that failed, and recreating it picks up the current spec.
+const createdAdoptWindow = 30 * time.Second
+
+// adoptableCreated reports whether info is this server's own container, in the
+// `created` state, created within createdAdoptWindow of now.
+func adoptableCreated(info container.InspectResponse, serverID string, now time.Time) bool {
+	if info.ContainerJSONBase == nil || info.State == nil || info.State.Status != container.StateCreated {
+		return false
+	}
+	if info.Config == nil || info.Config.Labels[labelServerID] != serverID {
+		return false
+	}
+	created, err := time.Parse(time.RFC3339Nano, info.Created)
+	if err != nil {
+		return false
+	}
+	return now.Sub(created) < createdAdoptWindow
+}
+
 // resolveNameConflict handles a create that lost the race for name. adopted is
 // true when a live container of this server's already holds it, and then there
 // is nothing to create. Otherwise, on a nil error, the name is free and the

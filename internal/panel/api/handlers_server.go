@@ -915,10 +915,12 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	// installScriptFor).
 	if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
 		// A pass the Agent refused before touching the tree (a container still
-		// holds the data dir) says nothing about the tree: back to prev, like a
-		// failed stop. Anything else may have half-written it.
+		// holds the data dir) says nothing about the tree, so it is not
+		// install_failed. It is not prev either: the stop above has already
+		// run and been confirmed, so the server is stopped — offline, with
+		// the refusal as the reason. Anything else may have half-written it.
 		if treeUntouched(err) {
-			s.abortUpdate(sv, prev, err.Error())
+			s.abortUpdate(sv, store.StateOffline, err.Error())
 			return
 		}
 		s.failServer(sv, err.Error())

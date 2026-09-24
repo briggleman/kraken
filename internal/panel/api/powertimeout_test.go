@@ -1,6 +1,9 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,8 +18,9 @@ import (
 // cancels an action the Agent would have finished; the direct START (15s) and
 // the scheduled restart (20s, less than the stop grace alone) used to.
 //
-// The named deadlines are checked by name, so a call site that drifts back to
-// a literal shorter than its budget — schedule.go at 20s, say — fails here.
+// This checks the deadline values — powerTimeout and the named deadlines
+// built from it. TestPowerCallSitesUseTheNamedDeadlines checks that every
+// call site actually uses one of them.
 func TestPowerDeadlinesCoverTheAgentsBudget(t *testing.T) {
 	start := agentpb.PowerAction_POWER_ACTION_START
 	stop := agentpb.PowerAction_POWER_ACTION_STOP
@@ -53,5 +57,53 @@ func TestPowerDeadlinesCoverTheAgentsBudget(t *testing.T) {
 	}
 	if agent.PowerRPCBudget(stop, "windows") <= agent.PowerRPCBudget(stop, "linux") {
 		t.Error("the Windows stop budget should exceed Linux's (the daemon's 75s kill wait)")
+	}
+}
+
+// TestPowerCallSitesUseTheNamedDeadlines — every PowerAction RPC the Panel
+// sends must be bounded by powerTimeout or one of the named deadlines, never a
+// literal: a literal is exactly how the scheduled restart sat at 20s while the
+// Agent's stop grace alone was 30s. It reads this package's source, finds
+// each `.PowerAction(` call, and requires the nearest context.WithTimeout above
+// it to use a named deadline.
+func TestPowerCallSitesUseTheNamedDeadlines(t *testing.T) {
+	named := []string{"powerTimeout(", "scheduledRestartTimeout", "preUpdateStopTimeout", "postUpdateStartTimeout"}
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(b), "\n")
+		for i, line := range lines {
+			if !strings.Contains(line, ".PowerAction(") || strings.Contains(line, "func ") {
+				continue
+			}
+			calls++
+			timeout := ""
+			for j := i; j >= 0 && j >= i-8; j-- {
+				if strings.Contains(lines[j], "context.WithTimeout(") {
+					timeout = lines[j]
+					break
+				}
+			}
+			ok := false
+			for _, n := range named {
+				ok = ok || strings.Contains(timeout, n)
+			}
+			if !ok {
+				t.Errorf("%s:%d: PowerAction bounded by %q, not a named power deadline", f, i+1, strings.TrimSpace(timeout))
+			}
+		}
+	}
+	if calls < 5 {
+		t.Errorf("found only %d PowerAction call sites; the scan is not seeing the code", calls)
 	}
 }

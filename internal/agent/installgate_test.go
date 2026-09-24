@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -98,6 +99,109 @@ func TestFakePower_StartRefusedDuringInstall(t *testing.T) {
 	}
 	if _, err := f.Power(context.Background(), guardServer, agentpb.PowerAction_POWER_ACTION_START); err != nil {
 		t.Errorf("START after the install: %v", err)
+	}
+}
+
+// The Panel acts on Completed at once — the START after an update, the deploy
+// form's start-after-install — while Install may still be removing the exited
+// install container. That START must find the gate open. The emit callback
+// issues it synchronously, before Install returns: the same ordering as over
+// gRPC.
+func TestFakeInstall_StartRightAfterCompletedIsAccepted(t *testing.T) {
+	f := NewFakeRuntime("n", "linux", false, "test")
+	var startErr error
+	started := false
+	err := f.Install(context.Background(), &agentpb.InstallServerRequest{ServerId: guardServer, InstallScript: "steamcmd"},
+		func(ev *agentpb.InstallEvent) error {
+			if ev.GetCompleted() {
+				started = true
+				_, startErr = f.Power(context.Background(), guardServer, agentpb.PowerAction_POWER_ACTION_START)
+			}
+			return nil
+		})
+	if err != nil || !started {
+		t.Fatalf("install: err=%v completed=%v", err, started)
+	}
+	if startErr != nil {
+		t.Fatalf("a START sent on Completed was refused: %v", startErr)
+	}
+}
+
+// The same on a failed pass: the verdict opens the gate.
+func TestReleaseOnVerdict(t *testing.T) {
+	for _, verdict := range []*agentpb.InstallEvent{
+		{Event: &agentpb.InstallEvent_Completed{Completed: true}},
+		{Event: &agentpb.InstallEvent_Failed{Failed: "x"}},
+	} {
+		var g installGate
+		leave := g.enter(guardServer)
+		var during error
+		emit := releaseOnVerdict(func(ev *agentpb.InstallEvent) error {
+			if ev == verdict {
+				during = g.check(guardServer)
+			}
+			return nil
+		}, leave)
+		_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_LogLine{LogLine: "progress"}})
+		if g.check(guardServer) == nil {
+			t.Fatal("a log line must not open the gate")
+		}
+		_ = emit(verdict)
+		if during != nil {
+			t.Errorf("%T: the gate was still shut when the verdict went out", verdict.Event)
+		}
+		leave() // the deferred call: safe a second time
+	}
+}
+
+// STOP and KILL are never gated: stopping a server mid-install is always
+// allowed, and neither starts anything on the data dir.
+func TestPower_StopAndKillAllowedWhileInstalling(t *testing.T) {
+	d := newFileOpsRuntime(t)
+	ops := &fakeOps{}
+	d.containers = ops
+	defer d.installs.enter(guardServer)()
+
+	if _, err := d.Power(context.Background(), guardServer, agentpb.PowerAction_POWER_ACTION_STOP); err != nil {
+		t.Errorf("STOP during an install: %v", err)
+	}
+	if _, err := d.Power(context.Background(), guardServer, agentpb.PowerAction_POWER_ACTION_KILL); err != nil {
+		t.Errorf("KILL during an install: %v", err)
+	}
+	if ops.stops != 1 || ops.kills != 1 {
+		t.Errorf("want one stop and one kill sent, got %d and %d", ops.stops, ops.kills)
+	}
+}
+
+// ensureContainer's first look finding this server's own container freshly
+// `created` is another start between its create and its ContainerStart: leave
+// it. A `created` one that has sat there is a failed start's leftover and is
+// recreated.
+func TestEnsureContainer_AdoptsAFreshlyCreatedContainer(t *testing.T) {
+	fresh := createdState(runningID, guardServer)
+	fresh.Created = time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339Nano)
+	stale := createdState(exitedID, guardServer)
+	stale.Created = time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339Nano)
+
+	d := newFileOpsRuntime(t)
+	ops := &fakeOps{names: map[string]container.InspectResponse{guardName: fresh}}
+	d.containers = ops
+	if err := d.ensureContainer(context.Background(), guardServer, keepImage); err != nil {
+		t.Fatalf("a freshly created container of ours should be adopted: %v", err)
+	}
+	if len(ops.removed) != 0 {
+		t.Fatalf("the other start's created container was removed: %v", ops.removed)
+	}
+
+	ops = &fakeOps{names: map[string]container.InspectResponse{guardName: stale}}
+	d.containers = ops
+	_ = d.ensureContainer(context.Background(), guardServer, keepImage) // no spec: fails after the removal
+	if len(ops.removed) != 1 || ops.removed[0] != exitedID {
+		t.Errorf("a stale created container should be recreated; removed %v", ops.removed)
+	}
+
+	if adoptableCreated(createdState(otherID, "srv-2"), guardServer, time.Now()) {
+		t.Error("another server's created container is never adopted")
 	}
 }
 

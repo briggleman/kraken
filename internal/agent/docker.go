@@ -822,8 +822,16 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	// Nothing may start the game on this data dir while the pass runs (see
 	// installgate.go). The watchdog goes first: the Panel has already stopped
 	// the server, and the monitor is re-armed by the next start.
+	//
+	// The gate is released the moment the verdict (Completed or Failed) is
+	// sent, not when Install returns: the Panel acts on the verdict at once —
+	// the START after an update, the deploy form's start-after-install — while
+	// the deferred removal of the exited install container can still be
+	// waiting up to 30s for its name. That container holds nothing, and the
+	// next pass's guard clears it if it lingers.
 	leave := d.installs.enter(req.ServerId)
 	defer leave()
+	emit = releaseOnVerdict(emit, leave)
 	d.stopMonitor(req.ServerId)
 
 	dataPath := d.containerDataTarget(req.ServerId)
@@ -1022,7 +1030,7 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 	case agentpb.PowerAction_POWER_ACTION_KILL:
 		d.markExpectedDown(serverID)
 		d.setMonitorState(serverID, agentpb.ServerState_SERVER_STATE_STOPPING)
-		_ = d.cli.ContainerKill(ctx, containerName(serverID), "SIGKILL")
+		_ = d.containers.ContainerKill(ctx, containerName(serverID), "SIGKILL")
 		return agentpb.ServerState_SERVER_STATE_OFFLINE, nil
 	default:
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("docker: unknown power action %v", action)
@@ -1077,6 +1085,15 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 	if info, err := inspectRetryOnce(ctx, d.containers, name, inspectRetryDelay); err == nil {
 		if info.State != nil && info.State.Running {
 			return nil // already running
+		}
+		// Another start caught between its create and its ContainerStart: the
+		// container is this server's and only just created. Leave it for the
+		// ContainerStart by name that follows — removing it would make the
+		// other start's ContainerStart fail. A `created` container that has
+		// sat there longer is a leftover from a start that failed, and is
+		// recreated from the current spec as before.
+		if adoptableCreated(info, serverID, time.Now()) {
+			return nil
 		}
 		// The remove and the create that follows share one name, and Docker
 		// frees it asynchronously — so wait for it, and report a removal that
@@ -1412,7 +1429,6 @@ func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, er
 
 // isWindows reports whether this agent's daemon runs Windows containers.
 func (d *DockerRuntime) isWindows() bool { return d.OSType() == "windows" }
-
 
 // foldHostPaths reports whether host paths — a bind source, a mount source the
 // daemon reports — compare case-insensitively. They do whenever either side is

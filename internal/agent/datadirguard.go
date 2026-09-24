@@ -33,6 +33,7 @@ type containerOps interface {
 	containerRemovalAPI // ContainerInspect, ContainerRemove
 	ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error
 	ContainerWait(ctx context.Context, containerID string, condition container.WaitCondition) (<-chan container.WaitResponse, <-chan error)
+	ContainerKill(ctx context.Context, containerID, signal string) error
 }
 
 // dataDirHolder is a container that has a server's data dir bound, whatever its

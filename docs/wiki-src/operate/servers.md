@@ -72,11 +72,11 @@ The sequence, once you press start and the pass runs:
    stop done.
 2. The Agent checks nothing else still has the data directory: an exited
    container bound to it is removed, and a running one refuses the pass by
-   name, since SteamCMD writing under a live game corrupts the tree. Nothing
-   has been touched at that point, so a refusal puts the server back where it
-   was, with the container named in `last_error`. Until the pass ends the
-   Agent also refuses any start or restart of the server, the crash watchdog's
-   included.
+   name, since SteamCMD writing under a live game corrupts the tree. Only the
+   stop has happened at that point, so a refusal leaves the server `offline`,
+   not `install_failed`, with the container named in `last_error`. Until the
+   pass ends the Agent also refuses any start or restart of the server, the
+   crash watchdog's included; stop and kill still work.
 3. It runs the install script. The server reads `installing`, the response is a
    `202` carrying `updating: true`, and the install log streams to the console.
    A start that skips the pass (the opt-outs and the paths below) is the plain
@@ -92,7 +92,7 @@ phases say different things about the install tree:
 | phase that failed | where the server lands |
 | --- | --- |
 | the stop before the update (or reaching the Agent at all) | **back where it was** — `running` if it was running — with `last_error` set. Nothing on the node was touched, so there is nothing to reinstall; press start again once the node is back. |
-| the Agent's check that nothing holds the data directory | **back where it was**, with the container that holds it named in `last_error`. Stop that container, then start again. |
+| the Agent's check that nothing holds the data directory | `offline` — the stop before it ran, nothing else did — with the container that holds it named in `last_error`. Stop that container, then start again. A reinstall refused the same way stays in the stopped state it started from. |
 | the install script | `install_failed` with `last_error` set. Start is refused until you reinstall — a half-written tree must not be launched over. |
 | the start after a good install | `offline`. The tree is fine, the game did not come up, and a plain start retries it. |
 

@@ -32,6 +32,7 @@ type fakeOps struct {
 
 	stopErr   error
 	stops     int
+	kills     int
 	waitErr   error // sent on the error channel when set
 	waitBlock bool  // neither channel ever fires (only ctx ends the wait)
 	waits     int
@@ -75,6 +76,11 @@ func (f *fakeOps) ContainerRemove(_ context.Context, id string, _ container.Remo
 		}
 	}
 	return f.removeErr
+}
+
+func (f *fakeOps) ContainerKill(context.Context, string, string) error {
+	f.kills++
+	return nil
 }
 
 func (f *fakeOps) ContainerStop(_ context.Context, _ string, _ container.StopOptions) error {
@@ -296,6 +302,44 @@ func TestFindDataDirHolders(t *testing.T) {
 	}
 	if got := findDataDirHolders([]container.Summary{summary(runningID, "x", container.StateRunning, nil, "")}, guardServer, "", true, ""); len(got) != 0 {
 		t.Error("an empty bind source must not match an empty mount source")
+	}
+}
+
+// The same rules on a Linux node, where paths are case-sensitive and nothing
+// is folded: the compose Agent's data-root bind (with the socket) and a
+// read-only `/` are skipped; a stray container binding the root writable is a
+// holder.
+func TestFindDataDirHolders_LinuxPaths(t *testing.T) {
+	const root = "/var/lib/kraken/server-data"
+	const dir = root + "/srv-1"
+	cases := []struct {
+		name  string
+		c     container.Summary
+		match bool
+	}{
+		{"the dir", summary(runningID, "x", container.StateRunning, nil, dir), true},
+		{"a child", summary(runningID, "x", container.StateRunning, nil, dir+"/saves"), true},
+		{"a sibling sharing a prefix", summary(runningID, "x", container.StateRunning, nil, dir+"0"), false},
+		{"different case is a different path", summary(runningID, "x", container.StateRunning, nil, "/var/lib/Kraken/server-data/srv-1"), false},
+		{"the Agent: data root plus the socket", withSocket(summary(runningID, "kraken-agent", container.StateRunning, nil, root)), false},
+		{"cAdvisor: / read-only", readOnly(summary(runningID, "cadvisor", container.StateRunning, nil, "/")), false},
+		{"a stray container binding the root writable", summary(runningID, "stray", container.StateRunning, nil, root), true},
+		{"a stray container binding / writable", summary(runningID, "stray", container.StateRunning, nil, "/"), true},
+	}
+	for _, tc := range cases {
+		got := findDataDirHolders([]container.Summary{tc.c}, guardServer, dir, false, "")
+		if (len(got) == 1) != tc.match {
+			t.Errorf("%s: match = %v, want %v", tc.name, len(got) == 1, tc.match)
+		}
+	}
+	// And through the guard: the stray writable root bind refuses the pass.
+	f := &fakeOps{list: []container.Summary{
+		withSocket(summary(otherID, "kraken-agent", container.StateRunning, nil, root)),
+		summary(runningID, "stray", container.StateRunning, nil, root),
+	}}
+	err := clearDataDir(context.Background(), f, guardServer, dir, guardInst, false, "", func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "stray") || strings.Contains(err.Error(), "kraken-agent") {
+		t.Errorf("want a refusal naming the stray container only; got %v", err)
 	}
 }
 

@@ -658,8 +658,10 @@ func (f *FakeRuntime) HoldDataDir(serverID, name, state string) {
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
 	// The same gate as the Docker runtime: a START/RESTART arriving while the
 	// pass runs is refused (installgate.go).
+	// Released on the verdict, before Install returns, exactly as there.
 	leave := f.installs.enter(req.ServerId)
 	defer leave()
+	emit = releaseOnVerdict(emit, leave)
 
 	f.mu.Lock()
 	installName := containerName(req.ServerId) + "_install"

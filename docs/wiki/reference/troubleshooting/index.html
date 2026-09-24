@@ -194,7 +194,8 @@ dir (or a folder inside it, or a writable folder above it), is still running,
 and says so by name: the pass fails with
 <code>refused to run the install pass: container kraken_&lt;id&gt; (&lt;short id&gt;) is running…</code>
 in <code>last_error</code> and in the install console. Nothing on disk is touched, so the
-server goes back to the state it was in rather than <code>install_failed</code>. Stop that
+server is not marked <code>install_failed</code>: an update lands <code>offline</code> (its stop had
+already run), and a reinstall stays in the stopped state it started from. Stop that
 container — <code>docker ps</code> on the node shows it, and it may be one Kraken is not
 tracking — then run the install again. A container that has merely exited is
 removed for you, with a <code>[kraken]</code> line in the install console saying which.

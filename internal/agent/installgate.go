@@ -5,6 +5,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
+
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // The pre-install guard (clearDataDir) is a check, not a lock: it proves
@@ -49,6 +51,19 @@ func (g *installGate) enter(serverID string) (leave func()) {
 			}
 			g.mu.Unlock()
 		})
+	}
+}
+
+// releaseOnVerdict wraps an install's emit so leave runs just before the pass's
+// verdict — a Completed or Failed event — is sent. Whoever acts on the verdict
+// must find the gate open. leave must be safe to call twice (enter's is).
+func releaseOnVerdict(emit func(*agentpb.InstallEvent) error, leave func()) func(*agentpb.InstallEvent) error {
+	return func(ev *agentpb.InstallEvent) error {
+		switch ev.GetEvent().(type) {
+		case *agentpb.InstallEvent_Completed, *agentpb.InstallEvent_Failed:
+			leave()
+		}
+		return emit(ev)
 	}
 }
 

@@ -188,6 +188,11 @@ func (d *DockerRuntime) refreshImageForStart(ctx context.Context, ref, serverID 
 		slog.Info("newer image for "+ref+" still downloading in the background; it takes effect on the next start",
 			"server", serverID, "image", ref, "local", imageIdentity(local), "waited", startPullBudget)
 		return nil
+	case <-ctx.Done():
+		// The RPC is over — the Panel's deadline passed, or the caller went
+		// away. Stop waiting now rather than holding the start past a deadline
+		// nobody is listening to; the pull itself carries on in the background.
+		return fmt.Errorf("waiting for image %s: %w", ref, ctx.Err())
 	}
 }
 

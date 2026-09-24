@@ -42,13 +42,19 @@ type containerRemovalAPI interface {
 
 // containerNameFreeAttempts and containerNameFreeDelay bound the wait for a
 // removed container's name to come free: ~8s in total. Long enough for a slow
-// Windows removal, short enough to stay well inside the Panel's 45s Power RPC
-// budget — a name that is never coming back should fail the start with a clear
-// reason rather than hold the operator's request until it times out.
+// Windows removal, short enough that a start which also waits out the image
+// refresh (startPullBudget) still fits the Panel's START deadline — the
+// Panel's power deadlines are tested against PowerRPCBudget, which is built
+// from these. A name that is never coming back should fail the start with a
+// clear reason rather than hold the operator's request until it times out.
 const (
 	containerNameFreeAttempts = 16
 	containerNameFreeDelay    = 500 * time.Millisecond
 )
+
+// containerNameFreeWait is the longest awaitNameFree sleeps in total: every
+// attempt but the last is followed by one delay.
+const containerNameFreeWait = (containerNameFreeAttempts - 1) * containerNameFreeDelay
 
 // errNameStillTaken is the failure awaitNameFree reports when the name is still
 // in use after every attempt. It reads as a stuck name rather than as the

@@ -705,19 +705,7 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// Deadline by action. Start/kill return promptly (start is async — the Agent
-	// reports STARTING and the watchdog flips to running). Stop/restart must clear
-	// the Agent's graceful-stop grace (30s ContainerStop timeout) before it SIGKILLs,
-	// plus the recreate+start on restart — otherwise a slow-saving game server (e.g.
-	// Palworld) times out mid-stop and the restart never fires.
-	powerTimeout := 15 * time.Second
-	switch action {
-	case agentpb.PowerAction_POWER_ACTION_STOP:
-		powerTimeout = 45 * time.Second
-	case agentpb.PowerAction_POWER_ACTION_RESTART:
-		powerTimeout = 60 * time.Second
-	}
-	pctx, cancel := context.WithTimeout(ctx, powerTimeout)
+	pctx, cancel := context.WithTimeout(ctx, powerTimeout(action))
 	defer cancel()
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
 	if err != nil {
@@ -736,6 +724,39 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": sv.State})
+}
+
+// Power RPC deadlines, by action. Each must cover the longest the Agent can
+// spend inside the action (agent.PowerRPCBudget), or the Panel cancels a
+// start, stop or restart the Agent would have finished — a test holds them to
+// it.
+//
+//   - START is async on the Agent's side (it reports STARTING and the watchdog
+//     flips to running), but before it returns it may wait for a removed
+//     container's name to come free and for the image refresh budget.
+//   - STOP must clear the graceful-stop grace before the daemon kills, plus the
+//     Agent's confirmation that the container is down — otherwise a
+//     slow-saving game server (e.g. Palworld) times out mid-stop.
+//   - RESTART is a STOP and then a START.
+//   - KILL waits on nothing.
+const (
+	powerStartTimeout   = 45 * time.Second
+	powerStopTimeout    = 45 * time.Second
+	powerRestartTimeout = 60 * time.Second
+	powerKillTimeout    = 15 * time.Second
+)
+
+// powerTimeout is the deadline for one power RPC of the given action.
+func powerTimeout(action agentpb.PowerAction) time.Duration {
+	switch action {
+	case agentpb.PowerAction_POWER_ACTION_START:
+		return powerStartTimeout
+	case agentpb.PowerAction_POWER_ACTION_STOP:
+		return powerStopTimeout
+	case agentpb.PowerAction_POWER_ACTION_RESTART:
+		return powerRestartTimeout
+	}
+	return powerKillTimeout
 }
 
 // freshInstallWindow is how long after a create or reinstall a start skips the

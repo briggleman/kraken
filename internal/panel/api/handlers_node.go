@@ -895,7 +895,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 		writeAgentError(w, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), powerTimeout(action))
 	defer cancel()
 	resp, err := client.PowerAction(ctx, &agentpb.PowerActionRequest{
 		ServerId: chi.URLParam(r, "serverID"),

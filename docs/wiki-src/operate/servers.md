@@ -67,15 +67,22 @@ it was created, and the only way forward was delete and recreate.
 
 The sequence, once you press start and the pass runs:
 
-1. The Panel stops the container if anything is holding the data directory.
-2. It runs the install script. The server reads `installing`, the response is a
+1. The Panel stops the container if anything is holding the data directory,
+   and the Agent confirms the container is really down before reporting the
+   stop done.
+2. The Agent checks nothing else still has the data directory: an exited
+   container bound to it is removed, and a running one refuses the pass by
+   name, since SteamCMD writing under a live game corrupts the tree. A refusal
+   lands in `install_failed` like any other install failure, with the
+   container named in `last_error`.
+3. It runs the install script. The server reads `installing`, the response is a
    `202` carrying `updating: true`, and the install log streams to the console.
    A start that skips the pass (the opt-outs and the paths below) is the plain
    synchronous `200` instead.
-3. It re-renders the config files over the fresh tree. **After** the update, not
+4. It re-renders the config files over the fresh tree. **After** the update, not
    before, because the pass can restore a file the depot owns and your settings
    have to win.
-4. It starts the game.
+5. It starts the game.
 
 Where a failed pass leaves the server depends on how far it got, because the
 three phases say different things about the install tree:

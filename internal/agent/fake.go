@@ -46,6 +46,11 @@ type FakeRuntime struct {
 	// actually sent is worth asserting: the pre-start pass must carry the
 	// vanilla install script and NOT the BepInEx overlay.
 	installScripts map[string][]string
+	// holders simulates containers that still have a server's data dir mounted
+	// (see HoldDataDir). The install pass runs them through the same guard
+	// policy as the Docker runtime: a live one refuses the pass before any
+	// install container exists, a stopped one is removed.
+	holders map[string][]dataDirHolder
 	// installErr, when set, makes every install fail with this reason — the
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
@@ -631,7 +636,39 @@ func (f *FakeRuntime) InstallScripts(serverID string) []string {
 	return append([]string(nil), f.installScripts[serverID]...)
 }
 
+// HoldDataDir simulates a container that still has serverID's data dir
+// mounted, in the given Docker state ("running", "exited", "paused", …) — the
+// game container a pre-update stop did not account for (#351). It survives
+// power actions, the way an untracked container does. The next install pass
+// sees it exactly as the Docker runtime's guard would: a live holder refuses
+// the pass and no install container is run (no entry in InstallScripts); a
+// stopped one is removed, with a console line, and the pass proceeds.
+func (f *FakeRuntime) HoldDataDir(serverID, name, state string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.holders == nil {
+		f.holders = make(map[string][]dataDirHolder)
+	}
+	id := fmt.Sprintf("%064x", len(f.holders[serverID])+1)
+	f.holders[serverID] = append(f.holders[serverID], dataDirHolder{ID: id, Name: name, State: state})
+}
+
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	f.mu.Lock()
+	installName := containerName(req.ServerId) + "_install"
+	plan := planDataDirHolders(f.holders[req.ServerId], installName)
+	if len(plan.refuse) > 0 {
+		f.mu.Unlock()
+		return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: dataDirRefusal(plan.refuse)}})
+	}
+	delete(f.holders, req.ServerId)
+	f.mu.Unlock()
+	for _, h := range plan.remove {
+		if err := emit(logLine(dataDirRemovalNote(h, installName))); err != nil {
+			return err
+		}
+	}
+
 	f.mu.Lock()
 	if f.installScripts == nil {
 		f.installScripts = make(map[string][]string)

@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -856,14 +857,18 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	}
 	d.applyIsolation(host)
 	installName := installContainerName(req.ServerId)
-	_ = d.cli.ContainerRemove(ctx, installName, container.RemoveOptions{Force: true})
+	// Never run SteamCMD while anything else holds the data dir (#351). This
+	// also clears a previous pass's install container, waiting for its name
+	// the way ensureContainer does (#355) — the create below reuses it.
+	if err := clearDataDir(ctx, d.cli, req.ServerId, d.bindSource(req.ServerId), installName, d.foldHostPaths(),
+		func(line string) { _ = emit(logLine(line)) }); err != nil {
+		return d.fail(emit, err.Error())
+	}
 	created, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, installName)
 	if err != nil {
 		return d.fail(emit, "create install container: "+err.Error())
 	}
-	defer func() {
-		_ = d.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
-	}()
+	defer d.removeInstallContainer(created.ID, installName)
 
 	if err := d.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return d.fail(emit, "start install container: "+err.Error())
@@ -1037,6 +1042,8 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 		if err := d.removeAndAwaitName(ctx, info.ID, name); err != nil {
 			return err
 		}
+	} else if !isNotFound(err) {
+		return fmt.Errorf("docker: inspect %s: %w", name, err)
 	}
 	spec, ok := d.getSpec(serverID)
 	if !ok {
@@ -1055,47 +1062,39 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 	if !isNameConflict(err) {
 		return err
 	}
-	// Someone else holds the name: an orphan from a removal that never landed,
-	// or a container made outside the Agent. Clear it once and retry, so a
-	// stuck name resolves itself rather than needing an operator with
-	// `docker rm` — which is what this cost us live (#353).
-	slog.Warn("container name already in use — clearing the orphan and retrying",
-		"server", serverID, "name", name, "err", err)
-	if cerr := d.clearContainerName(ctx, name); cerr != nil {
-		return fmt.Errorf("docker: create %s: %w (clearing the name that held it: %v)", name, err, cerr)
+	// Someone else holds the name. If it is this server's own container and it
+	// is running, another start won the race (a watchdog fast-restart, a
+	// double-clicked Start) and the server is already ensured — the
+	// ContainerStart that follows is a no-op on a running container. Anything
+	// not running is an orphan from a removal that never landed: clear it once
+	// and retry, so a stuck name resolves itself rather than needing an
+	// operator with `docker rm` — which is what this cost us live (#353). A
+	// running container that is not this server's is refused, never killed.
+	adopted, cerr := resolveNameConflict(ctx, d.containers, serverID, name)
+	if cerr != nil {
+		return fmt.Errorf("docker: create %s: %w (resolving the container that held the name: %v)", name, err, cerr)
 	}
+	if adopted {
+		slog.Info("container name already held by this server's running container — another start got there first",
+			"server", serverID, "name", name)
+		return nil
+	}
+	slog.Warn("container name was held by an orphan — cleared it, retrying the create",
+		"server", serverID, "name", name, "err", err)
 	return d.createRuntimeContainer(ctx, spec)
 }
 
 // removeAndAwaitName force-removes a container and does not return until its
-// name is free for reuse.
-//
-// It removes by ID rather than by name on purpose: the name is the thing being
-// raced for, and an ID cannot resolve to some container created after the
-// inspect that produced it. A removal that finds nothing has already done its
-// job and is not an error.
+// name is free for reuse. See removeAndAwait.
 func (d *DockerRuntime) removeAndAwaitName(ctx context.Context, id, name string) error {
-	if err := d.containers.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil && !isNotFound(err) {
-		return fmt.Errorf("docker: remove %s: %w", name, err)
-	}
-	if err := awaitNameFree(ctx, func(ctx context.Context) (bool, error) {
-		_, err := d.containers.ContainerInspect(ctx, name)
-		switch {
-		case err == nil:
-			return true, nil
-		case isNotFound(err):
-			return false, nil
-		default:
-			return false, err
-		}
-	}, containerNameFreeAttempts, containerNameFreeDelay); err != nil {
-		return fmt.Errorf("docker: waiting for %s to be reusable: %w", name, err)
-	}
-	return nil
+	return removeAndAwait(ctx, d.containers, id, name)
 }
 
 // clearContainerName removes whatever currently answers to name, whether or not
-// the Agent put it there. A name that resolves to nothing needs no clearing.
+// the Agent put it there, running or not. A name that resolves to nothing needs
+// no clearing. It is for Remove, where the server is being deleted; a start
+// that loses the name race goes through resolveNameConflict instead, which
+// never kills a running container.
 func (d *DockerRuntime) clearContainerName(ctx context.Context, name string) error {
 	info, err := d.containers.ContainerInspect(ctx, name)
 	if err != nil {
@@ -1169,7 +1168,7 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 
 func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 	name := containerName(serverID)
-	timeout := 30
+	timeout := int(stopGrace / time.Second)
 	opts := container.StopOptions{Timeout: &timeout}
 	// Windows containers don't support arbitrary stop signals (the daemon sends a
 	// shutdown event then kills); only honor a custom signal on Linux. A
@@ -1181,7 +1180,9 @@ func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 			opts.Signal = spec.StopSignal
 		}
 	}
-	return d.cli.ContainerStop(ctx, name, opts)
+	// A missing container is already stopped, and a stop is not done until the
+	// daemon says the container is not running — see stopAndConfirm.
+	return stopAndConfirm(ctx, d.cli, name, opts, stopConfirmMargin)
 }
 
 // isPosixSignal reports whether s names a signal a Linux daemon accepts:
@@ -1369,6 +1370,31 @@ func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, er
 
 // isWindows reports whether this agent's daemon runs Windows containers.
 func (d *DockerRuntime) isWindows() bool { return d.OSType() == "windows" }
+
+// foldHostPaths reports whether host paths — a bind source, a mount source the
+// daemon reports — compare case-insensitively. They do whenever either side is
+// Windows: a Windows daemon, or an Agent on a Windows host (Docker Desktop).
+func (d *DockerRuntime) foldHostPaths() bool {
+	return d.isWindows() || runtime.GOOS == "windows"
+}
+
+// installRemoveTimeout bounds the removal of a finished install container,
+// including the wait for its name to come free. The pass is already over; a
+// removal that does not land in this time is logged, not failed, and the next
+// pass's guard clears it.
+const installRemoveTimeout = 30 * time.Second
+
+// removeInstallContainer removes a finished install container and waits for
+// its name, so the next pass — a retry, or the next update — does not walk
+// into the name it still holds (#355).
+func (d *DockerRuntime) removeInstallContainer(id, name string) {
+	ctx, cancel := context.WithTimeout(context.Background(), installRemoveTimeout)
+	defer cancel()
+	if err := d.removeAndAwaitName(ctx, id, name); err != nil {
+		slog.Warn("install container did not clear after the pass; the next pass will clear it",
+			"name", name, "err", err)
+	}
+}
 
 // dataRoot is the in-container mount point for the server's data dir, and the
 // namespace the file browser is confined to. Windows containers use C:\data,

@@ -5,6 +5,7 @@ package memory
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -329,6 +330,12 @@ func (s *Store) DeleteServer(_ context.Context, id string) error {
 		return store.ErrNotFound
 	}
 	delete(s.servers, id)
+	// Its schedules go with it, under the same lock (see store.ServerStore).
+	for sid, t := range s.schedules {
+		if t.ServerID == id {
+			delete(s.schedules, sid)
+		}
+	}
 	return nil
 }
 
@@ -636,6 +643,11 @@ func cloneNode(n *cluster.Node) *cluster.Node {
 	if n.Ports != nil {
 		c.Ports = n.Ports.Clone()
 	}
+	// Slices the Panel edits in place must not share a backing array with the
+	// stored copy, or a caller's edit lands in the store before UpdateNode —
+	// which Postgres, round-tripping through JSON, would never do.
+	c.ManagedContainers = slices.Clone(n.ManagedContainers)
+	c.PendingRemovals = slices.Clone(n.PendingRemovals)
 	return &c
 }
 

@@ -423,3 +423,38 @@ func TestPostgresPruneAudit(t *testing.T) {
 		t.Fatalf("%d rows left, want the one inside the window", got)
 	}
 }
+
+// A deleted server takes its schedules with it, and nobody else's: a schedule
+// left behind fires forever and fails with "load server" (#354).
+func TestPostgresDeleteServerTakesItsSchedules(t *testing.T) {
+	st := testDB(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	gone := &store.Server{ID: uuid.NewString(), Name: "gone", SpecID: uuid.NewString(), NodeID: uuid.NewString(), State: store.StateOffline, CreatedAt: now}
+	kept := &store.Server{ID: uuid.NewString(), Name: "kept", SpecID: uuid.NewString(), NodeID: uuid.NewString(), State: store.StateOffline, CreatedAt: now}
+	for _, sv := range []*store.Server{gone, kept} {
+		if err := st.CreateServer(ctx, sv); err != nil {
+			t.Fatalf("CreateServer: %v", err)
+		}
+	}
+	t.Cleanup(func() { _ = st.DeleteServer(ctx, kept.ID) })
+	for _, sid := range []string{gone.ID, gone.ID, kept.ID} {
+		if err := st.CreateSchedule(ctx, &store.ScheduledTask{ID: uuid.NewString(), ServerID: sid, Action: store.ScheduleRestart, Cron: "0 4 * * *", Enabled: true, CreatedAt: now}); err != nil {
+			t.Fatalf("CreateSchedule: %v", err)
+		}
+	}
+
+	if err := st.DeleteServer(ctx, gone.ID); err != nil {
+		t.Fatalf("DeleteServer: %v", err)
+	}
+	if left, err := st.ListSchedulesByServer(ctx, gone.ID); err != nil || len(left) != 0 {
+		t.Fatalf("schedules of the deleted server = %d (err %v), want none", len(left), err)
+	}
+	if left, err := st.ListSchedulesByServer(ctx, kept.ID); err != nil || len(left) != 1 {
+		t.Fatalf("schedules of another server = %d (err %v), want its one", len(left), err)
+	}
+	if err := st.DeleteServer(ctx, gone.ID); err != store.ErrNotFound {
+		t.Fatalf("second DeleteServer = %v, want ErrNotFound", err)
+	}
+}

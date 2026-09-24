@@ -488,6 +488,13 @@ func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action ag
 		return &startRefusal{status: http.StatusConflict,
 			message: "server install failed; POST /api/v1/servers/{id}/reinstall to retry"}
 	}
+	// A restore is swapping the save files the game would open (#361). The job
+	// as well as the state, so the gate holds even against a row write that
+	// raced the restore's own.
+	if s.restoreInProgress(sv) {
+		return &startRefusal{status: http.StatusConflict, code: "server_restoring",
+			message: "a backup restore is in progress; the server can start once it finishes"}
+	}
 	sp, err := s.store.GetSpec(ctx, sv.SpecID)
 	if errors.Is(err, store.ErrNotFound) {
 		// Permanent: a spec's id is a UUID, so re-adding the game makes a new
@@ -537,10 +544,10 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	}
 	// Scope the list to servers the caller may access (owner, or PermServerAny),
 	// and strip SFTP credential material from the response.
-	visible := make([]*store.Server, 0, len(servers))
+	visible := make([]serverResponse, 0, len(servers))
 	for _, sv := range servers {
 		if s.mayAccessServer(r.Context(), sv) {
-			visible = append(visible, serverView(sv))
+			visible = append(visible, s.serverResponse(sv))
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"servers": visible})
@@ -559,7 +566,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return
 	}
-	writeJSON(w, http.StatusOK, serverView(sv))
+	writeJSON(w, http.StatusOK, s.serverResponse(sv))
 }
 
 // installLogResponse is the retained install output for one server.
@@ -623,6 +630,23 @@ func serverView(sv *store.Server) *store.Server {
 	cp := *sv
 	cp.SFTP = nil
 	return &cp
+}
+
+// serverResponse is a server as the list and get endpoints answer it: the
+// stripped record plus what this Panel process is doing to it right now. The
+// `restore` block exists only while a restore job runs (#361) — the row's
+// `restoring` state is the durable half, this is the reading the meter needs.
+type serverResponse struct {
+	*store.Server
+	Restore *restoreView `json:"restore,omitempty"`
+}
+
+func (s *Server) serverResponse(sv *store.Server) serverResponse {
+	out := serverResponse{Server: serverView(sv)}
+	if job, ok := s.restores.active(sv.ID); ok {
+		out.Restore = job.view()
+	}
+	return out
 }
 
 // handleServerLifecyclePower forwards a power action to the Agent hosting the
@@ -742,6 +766,14 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
 	if err != nil {
 		writeAgentError(w, err)
+		return
+	}
+	// Stop and kill still reach the Agent while a restore runs — they are how
+	// an operator clears a container that should not be there — but the row
+	// stays `restoring`: writing the Agent's `offline` over it would lift the
+	// start gate with the swap still underway. The job settles the row.
+	if _, restoring := s.restores.active(sv.ID); restoring {
+		writeJSON(w, http.StatusOK, map[string]any{"state": store.StateRestoring})
 		return
 	}
 	sv.State = storeStateFromAgent(resp.State)

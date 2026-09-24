@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.
+description: Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.
 section: operate
 order: 31
 ---
@@ -37,7 +37,7 @@ Ports come from the node's pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to `installing` and the install log streams into the console
 pane while SteamCMD works.
 
-## The seven states
+## The eight states
 
 | state | what is true |
 | --- | --- |
@@ -48,6 +48,7 @@ pane while SteamCMD works.
 | `running` | the game is serving |
 | `stopping` | a graceful stop is in progress |
 | `crashed` | the process exited unexpectedly; the exit code is kept |
+| `restoring` | a backup restore is swapping save files on the node; start is refused until it ends ([Backups](/wiki/operate/backups/#restoring)) |
 
 Four power actions drive it: `start`, `stop`, `restart` and `kill`. `kill` is
 the one that does not ask the game nicely, and a world that saves on shutdown

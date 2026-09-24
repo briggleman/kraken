@@ -2,10 +2,15 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -138,22 +143,172 @@ var restorableStates = map[store.ServerState]bool{
 	store.StateInstallFailed: true,
 }
 
+// handleRestoreBackup starts a restore and answers at once (#361).
+//
+// It used to hold the request open on one unary RPC for up to ten minutes with
+// the server sitting in `offline` — so nothing stopped a start racing the
+// extraction, the reconciler could adopt a container over it, and the only
+// sign of life was the button's own label. Now the server enters `restoring`
+// before the answer goes out (202, with the server view carrying the job), and
+// a background job streams the Agent's progress into GET /servers/{id} until
+// the restore lands or fails and the row goes back to offline.
 func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	client, sv, ok := s.agentForServer(w, r, chi.URLParam(r, "id"))
 	if !ok {
+		return
+	}
+	backupID := chi.URLParam(r, "backupId")
+	// Checked before the state: a server mid-restore is not stopped either, and
+	// "stop the server" would send the operator after the wrong thing.
+	if _, busy := s.restores.active(sv.ID); busy || sv.State == store.StateRestoring {
+		writeJSON(w, http.StatusConflict, errorCodeBody{
+			Error: "a restore is already in progress for this server; wait for it to finish",
+			Code:  "restore_in_progress",
+		})
 		return
 	}
 	if !restorableStates[sv.State] {
 		writeError(w, http.StatusConflict, "stop the server before restoring a backup (current state: "+string(sv.State)+")")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
-	defer cancel()
-	if _, err := client.RestoreBackup(ctx, &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: chi.URLParam(r, "backupId"), Slug: s.serverSlug(ctx, sv)}); err != nil {
-		writeAgentError(w, err)
+	ctx := r.Context()
+	node, err := s.store.GetNode(ctx, sv.NodeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load hosting node")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
+	// Refuse up front when the node is unreachable, as a power action does
+	// (#328): otherwise the server would flip to restoring only for the job to
+	// fail on its first dial and write that back as a restore failure.
+	if lerr := s.ensureNodeLive(ctx, node); lerr != nil {
+		writeError(w, http.StatusServiceUnavailable,
+			"node "+nodeLabel(node)+" is offline — the panel has no live connection to its agent ("+lerr.Error()+"); nothing was changed")
+		return
+	}
+	job, started := s.restores.start(sv.ID, backupID)
+	if !started {
+		writeJSON(w, http.StatusConflict, errorCodeBody{
+			Error: "a restore is already in progress for this server; wait for it to finish",
+			Code:  "restore_in_progress",
+		})
+		return
+	}
+	// The state to return to when the job ends, captured before it is
+	// overwritten (see finishRestore for why it matters).
+	prev := sv.State
+	sv.State = store.StateRestoring
+	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		s.restores.finish(sv.ID)
+		writeError(w, http.StatusInternalServerError, "could not update server state")
+		return
+	}
+	req := &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: backupID, Slug: s.serverSlug(ctx, sv)}
+	s.logger.Info("backup restore started", "server", sv.ID, "name", sv.Name, "backup", backupID)
+	go s.runRestore(client, req, prev)
+	writeJSON(w, http.StatusAccepted, serverResponse{Server: serverView(sv), Restore: job.view()})
+}
+
+// errorCodeBody is the error shape that also names a machine-readable code, so
+// a client can branch on the refusal instead of on its wording.
+type errorCodeBody struct {
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
+// runRestore is the restore job: it drives the Agent with a background context
+// (the restore outlives the request that asked for it), then settles the row.
+func (s *Server) runRestore(client agentpb.NodeServiceClient, req *agentpb.RestoreBackupRequest, prev store.ServerState) {
+	ctx, cancel := context.WithTimeout(context.Background(), restoreDeadline)
+	defer cancel()
+	err := s.restoreOnAgent(ctx, client, req)
+	s.finishRestore(req.ServerId, req.Id, prev, err)
+}
+
+// restoreOnAgent runs the streamed restore, falling back to the unary call
+// against an Agent that predates the stream. The fallback is decided on the
+// FIRST response only: an Unimplemented after progress has flowed is not an
+// old Agent, and replaying the restore through the unary call would run it a
+// second time over a tree the first one may have half-swapped.
+func (s *Server) restoreOnAgent(ctx context.Context, client agentpb.NodeServiceClient, req *agentpb.RestoreBackupRequest) error {
+	stream, err := client.RestoreBackupStream(ctx, req)
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return s.restoreUnary(ctx, client, req)
+		}
+		return fmt.Errorf("could not start the restore on the agent: %w", err)
+	}
+	heard := false
+	for {
+		ev, rerr := stream.Recv()
+		if errors.Is(rerr, io.EOF) {
+			return nil // a clean end of the stream is a restore that landed
+		}
+		if rerr != nil {
+			if !heard && status.Code(rerr) == codes.Unimplemented {
+				return s.restoreUnary(ctx, client, req)
+			}
+			// The stream died mid-restore (agent restart, tunnel drop). The Agent
+			// unwinds a restore whose stream is cut, but the Panel cannot see
+			// whether it got the chance — so it says so rather than guessing.
+			return fmt.Errorf("the restore stream was interrupted (%v); the agent rolls back a restore it cannot finish, but check the server's files before starting it", rerr)
+		}
+		heard = true
+		if ev.GetFailed() != "" || ev.GetPhase() == "failed" {
+			reason := ev.GetFailed()
+			if reason == "" {
+				reason = "the agent reported a failure without a reason"
+			}
+			return errors.New(reason)
+		}
+		s.restores.progress(req.ServerId, ev.GetPhase(), ev.GetBytesDone(), ev.GetBytesTotal())
+	}
+}
+
+// restoreUnary is the old Agent's restore: one blocking call, no progress. The
+// job says so by its phase and leaves bytes_total at 0, which the UI draws as
+// an indeterminate meter rather than a number it would have to invent.
+func (s *Server) restoreUnary(ctx context.Context, client agentpb.NodeServiceClient, req *agentpb.RestoreBackupRequest) error {
+	s.restores.progress(req.ServerId, restorePhaseUnary, 0, 0)
+	if _, err := client.RestoreBackup(ctx, req); err != nil {
+		return err
+	}
+	return nil
+}
+
+// finishRestore writes the job's outcome to the row, and only then drops the
+// job — in that order, so the reconciler can never see a `restoring` row with
+// no job behind it and mistake a restore that just ended for one the Panel lost.
+//
+// The row goes back to offline, except from install_failed: a restore puts save
+// files back, it does not repair an install, so clearing that gate would offer
+// START over a tree that was never provisioned. A restore that lands clears
+// last_error (a crash's exit code goes too — it described a run the restore has
+// just replaced); a failed one leaves its reason there for the operator.
+func (s *Server) finishRestore(serverID, backupID string, prev store.ServerState, restoreErr error) {
+	defer s.restores.finish(serverID)
+	sv, err := s.store.GetServer(context.Background(), serverID)
+	if err != nil {
+		s.logger.Error("could not load server to settle its restore", "server", serverID, "err", err)
+		return
+	}
+	next := store.StateOffline
+	if prev == store.StateInstallFailed {
+		next = store.StateInstallFailed
+	}
+	sv.State = next
+	sv.LastExitCode, sv.LastExitCodeKnown = 0, false
+	if restoreErr != nil {
+		sv.LastError = "restore failed: " + restoreErr.Error()
+		s.logger.Warn("backup restore failed", "server", serverID, "backup", backupID, "err", restoreErr)
+	} else {
+		if next != store.StateInstallFailed {
+			sv.LastError = ""
+		}
+		s.logger.Info("backup restore finished", "server", serverID, "backup", backupID)
+	}
+	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
+		s.logger.Error("could not settle the server after its restore", "server", serverID, "err", err)
+	}
 }
 
 func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {

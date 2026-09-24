@@ -169,7 +169,21 @@ const (
 	StateRunning       ServerState = "running"
 	StateStopping      ServerState = "stopping"
 	StateCrashed       ServerState = "crashed"
+	// StateRestoring holds a stopped server while a backup restore swaps its
+	// save files (#361): start and restart are refused, and the reconciler
+	// neither adopts a container for it nor overwrites it. The restore job
+	// writes it back to offline (install_failed, if that is where it came
+	// from) when it ends.
+	StateRestoring ServerState = "restoring"
 )
+
+// ServerStates is every lifecycle state, in the order the API documents them.
+func ServerStates() []ServerState {
+	return []ServerState{
+		StateInstalling, StateInstallFailed, StateOffline, StateStarting,
+		StateRunning, StateStopping, StateCrashed, StateRestoring,
+	}
+}
 
 // Server is a provisioned game server: a spec deployed onto a node with resolved
 // variables and allocated ports.
@@ -219,7 +233,9 @@ type Server struct {
 	// LastError is why the most recent provisioning attempt failed, verbatim —
 	// set alongside StateInstallFailed and cleared when an install succeeds or a
 	// reinstall begins. It is the operator's whole diagnosis, so it must live on
-	// the record, not only in the Panel's process log.
+	// the record, not only in the Panel's process log. A failed backup restore
+	// writes its reason here too ("restore failed: …"), and a restore that
+	// lands clears it.
 	LastError string `json:"last_error,omitempty"`
 	// LastExitCode is the exit status of the container's most recent run, carried
 	// from the Agent's watchdog by the reconciler and held only while the server

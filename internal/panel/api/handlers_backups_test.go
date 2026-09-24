@@ -195,7 +195,7 @@ func TestRestoreBackupCarriesNoGlobs(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(res.Body.Bytes(), &view)
-	if rr := do(t, h, http.MethodPost, "/api/v1/servers/"+serverID+"/backups/"+view.ID+"/restore", token, nil); rr.Code != http.StatusOK {
+	if rr := do(t, h, http.MethodPost, "/api/v1/servers/"+serverID+"/backups/"+view.ID+"/restore", token, nil); rr.Code != http.StatusAccepted {
 		t.Fatalf("restore: status %d, body %s", rr.Code, rr.Body.String())
 	}
 	if got := rec.last(t); !slices.Equal(got.BackupInclude, []string{"save/**"}) {
@@ -236,9 +236,9 @@ func TestRestoreBackupRequiresAStoppedServer(t *testing.T) {
 		{store.StateStarting, http.StatusConflict},
 		{store.StateStopping, http.StatusConflict},
 		{store.StateInstalling, http.StatusConflict},
-		{store.StateOffline, http.StatusOK},
-		{store.StateCrashed, http.StatusOK},
-		{store.StateInstallFailed, http.StatusOK},
+		{store.StateOffline, http.StatusAccepted},
+		{store.StateCrashed, http.StatusAccepted},
+		{store.StateInstallFailed, http.StatusAccepted},
 	}
 	for _, tc := range cases {
 		id := "sv-" + string(tc.state)

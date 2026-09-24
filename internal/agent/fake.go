@@ -175,9 +175,9 @@ func WithFakeRestoreFailure(reason string) FakeOption {
 	return func(f *FakeRuntime) { f.restoreErr = reason }
 }
 
-// WithFakeRestoreGate holds every streamed restore open after its events until
-// gate is closed (or the stream's context ends), so a test can observe the
-// server while it is restoring.
+// WithFakeRestoreGate holds every restore open — a streamed one after its
+// events — until gate is closed (or the call's context ends), so a test can
+// observe the server while it is restoring.
 func WithFakeRestoreGate(gate <-chan struct{}) FakeOption {
 	return func(f *FakeRuntime) { f.restoreGate = gate }
 }
@@ -601,8 +601,18 @@ func (f *FakeRuntime) Restores(serverID string) []string {
 
 // RestoreBackup is the unary restore an old Panel calls — and the one a new
 // Panel falls back to against an Agent without the stream.
-func (f *FakeRuntime) RestoreBackup(_ context.Context, serverID, _, id string) error {
-	if failure, _, _, _, _ := f.recordRestore(serverID, "unary", id); failure != "" {
+// It waits on the restore gate too, so a test can watch the Panel's
+// indeterminate meter while an old Agent's restore is still in flight.
+func (f *FakeRuntime) RestoreBackup(ctx context.Context, serverID, _, id string) error {
+	failure, _, gate, _, _ := f.recordRestore(serverID, "unary", id)
+	if gate != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-gate:
+		}
+	}
+	if failure != "" {
 		return fmt.Errorf("%s", failure)
 	}
 	return nil

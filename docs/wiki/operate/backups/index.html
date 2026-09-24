@@ -282,6 +282,18 @@ control and let your own tooling keep what it wants; the mirror copy is a
 <p><strong>Stop the server first.</strong> The Panel refuses a restore unless the server is
 already in <code>offline</code>, <code>crashed</code> or <code>install_failed</code>, and answers <code>409</code> naming
 the current state otherwise. It will not stop a running game on your behalf.</p>
+<p><strong>A restore runs in the background.</strong> The request answers at once and the
+server moves to <code>restoring</code>, where it stays until the restore ends. While it is
+there, start and restart are refused (<code>409</code>, code <code>server_restoring</code>) — as is a
+scheduled restart — a second restore is refused (<code>restore_in_progress</code>), and
+the reconciler leaves the row alone. Stop and kill still reach the node. The
+backups ledger draws the restore&#39;s progress as the compressed bytes read from
+the archive against its size; an Agent older than 0.56 cannot report progress,
+and the meter then shows the restore as running without a figure. When it ends
+the server goes back to <code>offline</code> (or <code>install_failed</code>, if that is where it
+was — a restore puts saves back, it does not repair an install). A failed
+restore leaves its reason in <code>last_error</code>, and the reason says whether the
+files were rolled back.</p>
 <p>The restore is staged rather than streamed into place: the archive is extracted
 into a scratch directory inside the server&#39;s own data directory, and only then
 are the covered paths renamed into place, with the previous versions set aside
@@ -293,7 +305,10 @@ rejected, the joined destination is prefix-checked against the staging directory
 and again against the server&#39;s own host directory, and symlink and hardlink
 entries are <strong>skipped rather than materialised</strong>. A restore that skipped entries
 logs what it skipped.</p>
-<p>Restore has a ten-minute ceiling of its own. An archive only ever contains what
+<p>Restore has a two-hour ceiling of its own, and a Panel restart mid-restore
+leaves the server <code>offline</code> with a <code>last_error</code> saying the outcome is unknown
+(the Agent rolls back a restore whose connection is cut, but check the files
+before starting). An archive only ever contains what
 was included, so a restore cannot bring back a file the globs never captured,
 which is the other reason to check that <code>captured</code> line early.</p>
     </article>

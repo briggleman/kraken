@@ -113,7 +113,7 @@
     <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
@@ -154,7 +154,7 @@ Steam login. Used for that one install and never persisted.</li>
 <p>Ports come from the node&#39;s pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to <code>installing</code> and the install log streams into the console
 pane while SteamCMD works.</p>
-<h2 id="the-seven-states">The seven states <a class="hlink" href="#the-seven-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<h2 id="the-eight-states">The eight states <a class="hlink" href="#the-eight-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -189,6 +189,10 @@ pane while SteamCMD works.</p>
 <tr>
 <td><code>crashed</code></td>
 <td>the process exited unexpectedly; the exit code is kept</td>
+</tr>
+<tr>
+<td><code>restoring</code></td>
+<td>a backup restore is swapping save files on the node; start is refused until it ends (<a href="/wiki/operate/backups/#restoring">Backups</a>)</td>
 </tr>
 </tbody></table>
 </div>
@@ -427,7 +431,7 @@ refused with a <code>500</code> and nothing is deleted.</p>
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
+<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>

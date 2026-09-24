@@ -119,6 +119,17 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		return
 	}
 	for _, sv := range servers {
+		// A restore job owns its row until it settles it (#361). Checked on the
+		// job, not only the state: the list above may predate the handler's
+		// write of `restoring`, and a live-path write of the Agent's state would
+		// then clobber it and lift the start gate mid-swap.
+		if _, restoring := s.restores.active(sv.ID); restoring {
+			continue
+		}
+		if sv.State == store.StateRestoring {
+			s.settleOrphanedRestore(ctx, sv.ID)
+			continue
+		}
 		live := reconcileLive(sv.State)
 		adopt := !live && reconcileAdoptable(sv.State)
 		if !live && !adopt {
@@ -142,6 +153,10 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		status, err := client.GetServerStatus(cctx, &agentpb.GetServerStatusRequest{ServerId: sv.ID})
 		cancel()
 		if err != nil {
+			continue
+		}
+		// The round trip above takes time; a restore may have begun during it.
+		if _, restoring := s.restores.active(sv.ID); restoring {
 			continue
 		}
 		if adopt {
@@ -176,6 +191,33 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 			continue
 		}
 	}
+}
+
+// orphanedRestoreError is what a `restoring` row with no job behind it is left
+// saying. The only way to get one is a Panel that stopped mid-restore: the job
+// lived in its memory, and its stream to the Agent died with it.
+const orphanedRestoreError = "restore failed: the panel restarted while this restore was running, so its outcome is unknown. " +
+	"The agent rolls back a restore whose stream is cut, but check the server's files before starting it"
+
+// settleOrphanedRestore moves a `restoring` row this process has no job for
+// back to offline, with a reason. Without it the row would hold the start gate
+// forever. The row is re-read first: a job that finished between the list and
+// here has already written the real outcome, and must not be overwritten.
+func (s *Server) settleOrphanedRestore(ctx context.Context, id string) {
+	sv, err := s.store.GetServer(ctx, id)
+	if err != nil || sv.State != store.StateRestoring {
+		return
+	}
+	if _, restoring := s.restores.active(id); restoring {
+		return
+	}
+	sv.State = store.StateOffline
+	sv.LastError = orphanedRestoreError
+	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		s.logger.Warn("reconcile: settle orphaned restore failed", "server", id, "err", err)
+		return
+	}
+	s.logger.Warn("reconcile: settled a restore this panel has no job for (it restarted mid-restore)", "server", id)
 }
 
 // adoptRunning corrects a stopped server row the Agent contradicts: its managed

@@ -142,6 +142,19 @@ the backups section of a server drill-in: three archives, one expanded to show w
 already in `offline`, `crashed` or `install_failed`, and answers `409` naming
 the current state otherwise. It will not stop a running game on your behalf.
 
+**A restore runs in the background.** The request answers at once and the
+server moves to `restoring`, where it stays until the restore ends. While it is
+there, start and restart are refused (`409`, code `server_restoring`) — as is a
+scheduled restart — a second restore is refused (`restore_in_progress`), and
+the reconciler leaves the row alone. Stop and kill still reach the node. The
+backups ledger draws the restore's progress as the compressed bytes read from
+the archive against its size; an Agent older than 0.56 cannot report progress,
+and the meter then shows the restore as running without a figure. When it ends
+the server goes back to `offline` (or `install_failed`, if that is where it
+was — a restore puts saves back, it does not repair an install). A failed
+restore leaves its reason in `last_error`, and the reason says whether the
+files were rolled back.
+
 The restore is staged rather than streamed into place: the archive is extracted
 into a scratch directory inside the server's own data directory, and only then
 are the covered paths renamed into place, with the previous versions set aside
@@ -155,6 +168,9 @@ and again against the server's own host directory, and symlink and hardlink
 entries are **skipped rather than materialised**. A restore that skipped entries
 logs what it skipped.
 
-Restore has a ten-minute ceiling of its own. An archive only ever contains what
+Restore has a two-hour ceiling of its own, and a Panel restart mid-restore
+leaves the server `offline` with a `last_error` saying the outcome is unknown
+(the Agent rolls back a restore whose connection is cut, but check the files
+before starting). An archive only ever contains what
 was included, so a restore cannot bring back a file the globs never captured,
 which is the other reason to check that `captured` line early.

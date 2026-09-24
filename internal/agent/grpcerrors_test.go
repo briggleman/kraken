@@ -325,21 +325,39 @@ func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
 // open and the reads that follow (gzip's header, every tar entry) fail with an
 // *fs.PathError carrying that location.
 func TestRestoreErrorsDoNotLeakTheArchivePath(t *testing.T) {
-	for _, openErr := range []bool{true, false} {
+	const sid, id = "s1", "1726000000000__nightly"
+	// A share path is named by no local root, so only rendering the store's
+	// own failure by the backup's id keeps it out; the local one is caught
+	// either way.
+	share := `\\nas\kraken-backups\` + sid + `\` + id + ".tar.gz"
+	for _, tc := range []struct {
+		name    string
+		local   bool
+		openErr bool
+	}{
+		{"local open", true, true},
+		{"local read", true, false},
+		{"share open", false, true},
+		{"share read", false, false},
+	} {
 		d := newFileOpsRuntime(t)
 		d.backupDir = t.TempDir()
-		const sid, id = "s1", "1726000000000__nightly"
-		archive := filepath.Join(d.backupDir, sid, id+".tar.gz")
-		d.backups = &archiveStub{path: archive, openErr: openErr}
+		archive := share
+		if tc.local {
+			archive = filepath.Join(d.backupDir, sid, id+".tar.gz")
+		}
+		d.backups = &archiveStub{path: archive, openErr: tc.openErr}
 		err := d.RestoreBackup(context.Background(), sid, "", id)
 		if err == nil {
-			t.Fatalf("openErr=%v: expected an error", openErr)
+			t.Fatalf("%s: expected an error", tc.name)
 		}
-		if strings.Contains(err.Error(), d.backupDir) || strings.Contains(err.Error(), d.dataDir) {
-			t.Fatalf("openErr=%v: restore failure names a host path: %v", openErr, err)
+		for _, leak := range []string{d.backupDir, d.dataDir, "kraken-backups"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Fatalf("%s: restore failure names a host path (%s): %v", tc.name, leak, err)
+			}
 		}
 		if !strings.Contains(err.Error(), id) {
-			t.Fatalf("openErr=%v: restore failure does not name the backup: %v", openErr, err)
+			t.Fatalf("%s: restore failure does not name the backup: %v", tc.name, err)
 		}
 	}
 

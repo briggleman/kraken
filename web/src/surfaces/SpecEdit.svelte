@@ -21,6 +21,14 @@
   let spec = $state<SpecDoc | null>(null);
   let codeText = $state("");
   let note = $state<string | null>(null);
+  // A refused delete (#360: a retired server still uses the spec) is said here,
+  // in the editor the confirm left open.
+  $effect(() => {
+    if (ui.specError) {
+      note = ui.specError;
+      ui.specError = null;
+    }
+  });
   let saving = $state(false);
   let view = $state<"form" | "code">("form");
   // The code view's serialisation (the mock's json|yaml switch). The document

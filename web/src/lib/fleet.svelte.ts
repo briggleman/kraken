@@ -19,7 +19,9 @@ const TRANSIENT_POLL_MS = 2_500;
 // `restoring` (#361) is one too: the job settles the row on its own when the
 // archive lands, and a card still reading "restoring" 10s after it did holds a
 // start the operator is waiting to press.
-const TRANSIENT_STATES: readonly Server["state"][] = ["installing", "starting", "stopping", "restoring"];
+// `retiring` (#360) the same: the job lands `retired` (or puts the row back)
+// on its own.
+const TRANSIENT_STATES: readonly Server["state"][] = ["installing", "starting", "stopping", "restoring", "retiring"];
 
 // How many resting poll intervals may pass with no *fully* successful refresh
 // before the header stops claiming the deck is live. Three is one tick for the

@@ -6,7 +6,7 @@
 // no feed to draw from yet (phase 2 of the node & fleet telemetry issue).
 // Tracks are cached per server so the walks keep their history across polls.
 
-import type { Node, Server, Spec } from "@/api/types";
+import type { Node, PendingRemoval, Server, Spec } from "@/api/types";
 import { fleet, specOf, nodeOf } from "./fleet.svelte";
 import { seedHistory, type WalkSpec } from "./walk";
 import { fmtGb } from "./fmt";
@@ -312,14 +312,22 @@ export function pendingRemovalsNote(node: Node): { count: number; title: string 
     const tries = p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`;
     const what = p.delete_data ? "container and data" : "container";
     const still = running.has(p.server_id) ? " · container still running" : "";
-    return `${p.server_id} — ${what}, ${tries}${still}` + (p.last_error ? `: ${p.last_error}` : "");
+    return `${p.server_id} — ${removalKind(p)}: ${what}, ${tries}${still}` + (p.last_error ? `: ${p.last_error}` : "");
   });
   return {
     count: owed.length,
-    title:
-      "deleted in the panel, not yet removed from this node — retried each time the node answers\n" +
-      lines.join("\n"),
+    title: "removals the panel asked for that have not reached this node yet — retried each time the node answers\n" + lines.join("\n"),
   };
+}
+
+/** What a pending removal is the tail of (#360): a retire whose node did not
+ *  answer (the server is still in the panel, retired), a permanent delete that
+ *  also takes the archives, or a plain delete from before retiring existed. */
+export function removalKind(p: PendingRemoval): string {
+  if (p.delete_backups) return "deleted for good in the panel; its own archives go too";
+  const row = fleet.servers.find((s) => s.id === p.server_id);
+  if (row?.state === "retired") return "retired in the panel, not yet removed from this node";
+  return "deleted in the panel, not yet removed from this node";
 }
 
 /** The dead-note under a stopped card — real facts only. */
@@ -329,5 +337,6 @@ export function deadNote(server: Server): string {
   if (server.state === "crashed") return "crashed · logs held until next start";
   if (server.state === "installing") return "installing — first start follows";
   if (server.state === "restoring") return "restoring a backup — start waits for it";
+  if (server.state === "retiring") return "retiring — final backup, then its world leaves the node";
   return "stopped · world saved on shutdown";
 }

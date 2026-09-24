@@ -12,6 +12,10 @@ export type ServerState =
   | "crashed"
   /** A backup restore is swapping save files; start waits for it (#361). */
   | "restoring"
+  /** A retire is running (#360): stop, final backup, removal. Everything that
+   *  would change the server waits for it; it lands `retired`, or goes back
+   *  to the state it came from if abandoned. */
+  | "retiring"
   /** On no node (#360): its containers and world are gone, its row, config,
    *  schedules (switched off) and backups are kept. Revive or delete it. */
   | "retired";
@@ -244,6 +248,9 @@ export interface ScheduledTask {
   last_run_at?: string;
   next_run_at?: string;
   last_error?: string;
+  /** Switched off by its server's retire; a revive switches it back on
+   *  (#360). An operator's own enable or disable clears it. */
+  disabled_by_retire?: boolean;
   created_at: string;
 }
 
@@ -281,8 +288,7 @@ export interface Server {
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;
-  /** Present only while a retire runs (#360); the state is unchanged until
-   *  the row flips to `retired`. */
+  /** Present only while a retire runs (#360), with state `retiring`. */
   retire?: RetireProgress;
   /** When the server was retired — only on a retired server. */
   retired_at?: string;
@@ -301,7 +307,13 @@ export interface Server {
 /** A retire in progress, as the server row records it (#360). */
 export interface RetireProgress {
   phase: "stopping" | "backing_up" | "removing";
-  final_backup: boolean;
+  /** Where the server goes back to if the retire is abandoned. */
+  prev_state?: ServerState;
+  /** The final backup so far: off (not asked for), requested, ready, failed or
+   *  skipped; final_backup_note says why it failed or was skipped. */
+  final_backup: "off" | "requested" | "ready" | "failed" | "skipped";
+  final_backup_note?: string;
+  final_backup_id?: string;
   /** Server clock. */
   started_at: string;
 }

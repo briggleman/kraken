@@ -140,7 +140,7 @@ describe("retirable", () => {
     const drift = containerDrift(n);
     expect(drift).toBeUndefined();
     expect(retirable(drift)).toEqual([]);
-    expect(pendingRemovalsNote(n)?.title).toContain(`${UUID} — container and data, 2 attempts · container still running: docker down`);
+    expect(pendingRemovalsNote(n)?.title).toContain(`${UUID} — deleted in the panel, not yet removed from this node: container and data, 2 attempts · container still running: docker down`);
   });
 });
 
@@ -256,7 +256,7 @@ describe("pendingRemovalsNote", () => {
     );
     // Shown for an offline node too: an unreachable node is the usual reason.
     expect(note?.count).toBe(2);
-    expect(note?.title).toContain("f4030778 — container and data, 3 attempts: node unreachable");
-    expect(note?.title).toContain("8f8d725c — container, 1 attempt");
+    expect(note?.title).toContain("f4030778 — deleted in the panel, not yet removed from this node: container and data, 3 attempts: node unreachable");
+    expect(note?.title).toContain("8f8d725c — deleted in the panel, not yet removed from this node: container, 1 attempt");
   });
 });

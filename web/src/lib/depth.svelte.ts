@@ -219,7 +219,10 @@ export function stateLabel(state: Server["state"] | undefined, updating: boolean
 /** Which pair of power controls a state offers: "stop" is stop + restart, and
  *  "start" is start (+ update, where the state allows it). Keyed off the store
  *  state and nothing else — never the `updating` label. */
-export function powerControls(state: Server["state"] | undefined): "stop" | "start" {
+export function powerControls(state: Server["state"] | undefined): "stop" | "start" | "none" {
+  // A retired server is on no node, and a retiring one belongs to its job:
+  // there is nothing to power (#360).
+  if (state === "retired" || state === "retiring") return "none";
   return state === "running" || state === "starting" || state === "stopping" ? "stop" : "start";
 }
 
@@ -422,7 +425,9 @@ function applyRoute() {
     return;
   }
   const sv = fleet.servers.find((s) => s.id === m[1]);
-  if (!sv) {
+  // A retired server has no drill-in (#360): no node, no console, no files.
+  // Back/forward or a bookmark to one lands on the fleet instead.
+  if (!sv || sv.state === "retired") {
     history.replaceState(null, "", "/");
     if (depth.open) surface();
     return;

@@ -33,7 +33,7 @@
     restoreMeter,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
-  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
+  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, CD_SERVER_BODY } from "@/lib/state.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
@@ -69,6 +69,7 @@
   const restoreBlocked = $derived.by(() => {
     const st = server?.state;
     if (st === "restoring") return "a restore is in progress — wait for it to finish";
+    if (st === "retiring") return "the server is being retired";
     if (st === "offline" || st === "crashed" || st === "install_failed") return "";
     return `stop the server before restoring (state: ${st ?? "unknown"})`;
   });
@@ -912,7 +913,9 @@
         </p>
       {/if}
       <div class="controls-row" id="dControls">
-        {#if powerControls(server?.state) === "stop"}
+        {#if powerControls(server?.state) === "none"}
+          <!-- retiring or retired (#360): the retire job owns the server -->
+        {:else if powerControls(server?.state) === "stop"}
           <button class="ctl ctl-stop" disabled={depth.powerBusy} onclick={() => void power("stop")}>stop</button>
           <button class="ctl ctl-restart" disabled={depth.powerBusy} onclick={() => void power("restart")}>restart</button>
         {:else}
@@ -1138,14 +1141,15 @@
       <section class="side-block danger-block" aria-label="Delete server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world and config. its backups are kept. it cannot be undone.</p>
+          <p class="danger-note">{CD_SERVER_BODY}</p>
           <button
             class="ctl ctl-delete"
             id="deleteSrvBtn"
-            onclick={(e) => openConfirm(name, e.currentTarget, { noun: "server" })}
+            disabled={server?.state === "retiring"}
+            onclick={(e) => openConfirm(name, e.currentTarget, { noun: "server", verb: "retire" })}
           >
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
-            delete server
+            retire server
           </button>
         </div>
       </section>

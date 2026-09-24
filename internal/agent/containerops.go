@@ -8,6 +8,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/powerbudget"
 )
 
 // removeAndAwait force-removes a container and does not return until its name
@@ -43,6 +44,25 @@ func removeAndAwait(ctx context.Context, c containerRemovalAPI, id, name string)
 	return nil
 }
 
+// inspectRetryDelay is the pause before inspectRetryOnce's second try.
+const inspectRetryDelay = 500 * time.Millisecond
+
+// inspectRetryOnce inspects name, and if the daemon answers with anything but
+// the container or a clean "not found", tries once more after delay. Not-found
+// is an answer, not a hiccup, and is returned at once.
+func inspectRetryOnce(ctx context.Context, c containerOps, name string, delay time.Duration) (container.InspectResponse, error) {
+	info, err := c.ContainerInspect(ctx, name)
+	if err == nil || isNotFound(err) {
+		return info, err
+	}
+	select {
+	case <-ctx.Done():
+		return info, err
+	case <-time.After(delay):
+	}
+	return c.ContainerInspect(ctx, name)
+}
+
 // nameHolderAction is what ensureContainer does about a container that won the
 // race for its server's container name.
 type nameHolderAction int
@@ -64,15 +84,22 @@ const (
 // decideNameHolder is the policy for a container found holding serverID's
 // container name. It is pure so the three outcomes are testable without a
 // daemon.
+//
+// A `created` holder of this server's is adopted too, not removed: that is the
+// other start caught between its create and its ContainerStart. Removing it
+// would make the winner's start-by-name fail, or start the container this call
+// creates instead of its own.
 func decideNameHolder(info container.InspectResponse, serverID string) nameHolderAction {
 	live := info.State != nil && (info.State.Running || info.State.Restarting || info.State.Paused)
-	if !live {
-		return holderRemove
-	}
-	if info.Config != nil && info.Config.Labels[labelServerID] == serverID {
+	created := info.State != nil && info.State.Status == container.StateCreated
+	ours := info.Config != nil && info.Config.Labels[labelServerID] == serverID
+	switch {
+	case ours && (live || created):
 		return holderAdopt
+	case live:
+		return holderRefuse
 	}
-	return holderRefuse
+	return holderRemove
 }
 
 // resolveNameConflict handles a create that lost the race for name. adopted is
@@ -99,13 +126,13 @@ func resolveNameConflict(ctx context.Context, c containerRemovalAPI, serverID, n
 
 // stopGrace is the graceful-stop window ContainerStop gets before the daemon
 // kills the container.
-const stopGrace = 30 * time.Second
+const stopGrace = powerbudget.StopGrace
 
-// stopConfirmMargin is how long, after ContainerStop returns, the Agent waits
-// for the daemon to report the container not running. ContainerStop has
-// already waited out the grace and killed on expiry, so this is a
-// confirmation, not a second grace: normally it returns at once.
-const stopConfirmMargin = 10 * time.Second
+// stopConfirmMargin bounds the Agent's check, after ContainerStop returns, that
+// the daemon reports the container not running. ContainerStop has already
+// waited out the grace and the daemon's kill-and-wait, so this is a sanity
+// check that normally returns at once — not a second wait.
+const stopConfirmMargin = powerbudget.StopConfirm
 
 // stopAndConfirm stops a container and does not report success until the
 // daemon agrees it is no longer running. A container that is already gone is
@@ -140,23 +167,32 @@ func stopAndConfirm(ctx context.Context, c containerOps, name string, opts conta
 }
 
 // PowerRPCBudget is the longest the Agent can spend inside one power RPC for
-// action, built from its own timing constants. The Panel sizes its power
-// deadlines to cover it, and its tests hold it to that: a deadline shorter
-// than this cancels an action the Agent would have finished.
+// action on a node running containerOS ("linux" or "windows"), built from the
+// values the Agent actually runs on — its own name-wait and pull-budget
+// settings — plus the daemon's documented kill waits (see powerbudget). The
+// Panel's deadlines are tested against it: one shorter than this cancels an
+// action the Agent would have finished.
 //
-//   - START: one wait for a removed container's name to come free, plus the
-//     image refresh budget (see refreshImageForStart).
-//   - STOP: the stop grace, plus the post-stop confirmation.
+//   - STOP: the grace, the daemon's kill-and-wait on expiry and its settle,
+//     and the Agent's confirmation.
+//   - KILL: the daemon's kill-and-wait and settle.
+//   - START: two name waits (the exited container ensureContainer removes, and
+//     the conflict path) plus the image refresh budget.
 //   - RESTART: a STOP, then a START.
-//   - KILL: nothing the Agent waits on.
-func PowerRPCBudget(action agentpb.PowerAction) time.Duration {
-	start := containerNameFreeWait + startPullBudget
-	stop := stopGrace + stopConfirmMargin
+func PowerRPCBudget(action agentpb.PowerAction, containerOS string) time.Duration {
+	killWait := powerbudget.DaemonKillWaitLinux
+	if containerOS == "windows" {
+		killWait = powerbudget.DaemonKillWaitWindows
+	}
+	stop := stopGrace + killWait + powerbudget.DaemonKillSettle + stopConfirmMargin
+	start := 2*containerNameFreeWait + startPullBudget
 	switch action {
-	case agentpb.PowerAction_POWER_ACTION_START:
-		return start
 	case agentpb.PowerAction_POWER_ACTION_STOP:
 		return stop
+	case agentpb.PowerAction_POWER_ACTION_KILL:
+		return killWait + powerbudget.DaemonKillSettle
+	case agentpb.PowerAction_POWER_ACTION_START:
+		return start
 	case agentpb.PowerAction_POWER_ACTION_RESTART:
 		return stop + start
 	}

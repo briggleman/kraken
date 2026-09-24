@@ -124,9 +124,14 @@ func TestStartRefreshJoinsAnInFlightPull(t *testing.T) {
 	}
 
 	close(gate)
+	// Wait for the pull to be deregistered, not merely for the new image to be
+	// visible: the fake lands the image inside doPull, before backgroundPull
+	// drops the in-flight record, so a start in between would still join it.
 	waitFor(t, "the shared pull to finish", func() bool {
-		got, err := f.ImageInspect(context.Background(), testRef)
-		return err == nil && got.ID != oldID
+		d.pullMu.Lock()
+		_, inFlight := d.pulls[testRef]
+		d.pullMu.Unlock()
+		return !inFlight
 	})
 
 	// Once it has finished, a later start joins nothing and pulls afresh.

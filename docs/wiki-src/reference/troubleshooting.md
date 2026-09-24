@@ -94,13 +94,19 @@ thing.
 
 A running container on the data dir is how the tree got into this state in the
 first place, so the Agent now checks before every pass. It refuses to run the
-install while any container that has the server's data dir mounted, or carries
-its label, is still running, and says so by name: the pass fails with
+install while any container that carries the server's label, or binds its data
+dir (or a folder inside it, or a writable folder above it), is still running,
+and says so by name: the pass fails with
 `refused to run the install pass: container kraken_<id> (<short id>) is running…`
-in `last_error` and nothing on disk is touched. Stop that container — `docker
-ps` on the node shows it, and it may be one Kraken is not tracking — then run
-the install again. A container that has merely exited is removed for you, with a
-`[kraken]` line in the install console saying which.
+in `last_error` and in the install console. Nothing on disk is touched, so the
+server goes back to the state it was in rather than `install_failed`. Stop that
+container — `docker ps` on the node shows it, and it may be one Kraken is not
+tracking — then run the install again. A container that has merely exited is
+removed for you, with a `[kraken]` line in the install console saying which.
+The one exception to the refusal is the server's own install container,
+`kraken_<id>_install`, left over from an earlier pass: it is removed in any
+state, running included, because the pass is about to replace it. While a pass
+runs, the Agent also refuses any start or restart of that server.
 
 The saves are not in any of these; they are wherever the spec's backup globs
 point. Since 0.50.1 the Agent treats the `state is 0x…` family as an install

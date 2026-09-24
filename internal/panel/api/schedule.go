@@ -114,7 +114,7 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		}
 		// The same deadline as an operator's restart: the Agent's stop grace
 		// alone is longer than the 20s this used to allow.
-		cctx, cancel := context.WithTimeout(ctx, powerTimeout(agentpb.PowerAction_POWER_ACTION_RESTART))
+		cctx, cancel := context.WithTimeout(ctx, scheduledRestartTimeout)
 		defer cancel()
 		resp, err := client.PowerAction(cctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_RESTART})
 		if err != nil {

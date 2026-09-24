@@ -50,10 +50,10 @@ type DockerRuntime struct {
 	// images is the same client, narrowed to the image calls, so the pull policy
 	// can be exercised against a fake in tests (#288). Never nil.
 	images imageAPI
-	// containers is the same client again, narrowed to the two calls a removal
-	// makes (remove by ID, inspect by name), so Remove's error handling can be
-	// exercised against a fake (#354). Never nil.
-	containers containerRemovalAPI
+	// containers is the same client again, narrowed to the container calls the
+	// removal, install-guard, stop and name-race paths make (containerOps), so
+	// they can be exercised against a fake (#354, #351). Never nil.
+	containers containerOps
 	// pullPolicy is how hard this node tries the registry before using a local
 	// copy of an image (KRAKEN_IMAGE_PULL).
 	pullPolicy imagePullPolicy
@@ -100,6 +100,11 @@ type DockerRuntime struct {
 
 	monMu    sync.Mutex
 	monitors map[string]*monitor // serverID → crash watchdog
+
+	// installs is the set of servers with an install pass running (see
+	// installGate). While a server is in it, nothing may start its game
+	// container: not a Power START/RESTART, not the crash watchdog.
+	installs installGate
 
 	// bjMu guards backupJobs: the live state of asynchronous backups, keyed by
 	// "<serverID>/<id>". Holds in-flight (PENDING) jobs and recently-finished ones
@@ -814,6 +819,13 @@ func dataRemoveError(root string, err error) error {
 }
 
 func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	// Nothing may start the game on this data dir while the pass runs (see
+	// installgate.go). The watchdog goes first: the Panel has already stopped
+	// the server, and the monitor is re-armed by the next start.
+	leave := d.installs.enter(req.ServerId)
+	defer leave()
+	d.stopMonitor(req.ServerId)
+
 	dataPath := d.containerDataTarget(req.ServerId)
 	// Ensure the host data dir exists even if Create was not called.
 	if err := os.MkdirAll(d.localDir(req.ServerId), 0o755); err != nil {
@@ -860,9 +872,12 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	// Never run SteamCMD while anything else holds the data dir (#351). This
 	// also clears a previous pass's install container, waiting for its name
 	// the way ensureContainer does (#355) — the create below reuses it.
-	if err := clearDataDir(ctx, d.cli, req.ServerId, d.bindSource(req.ServerId), installName, d.foldHostPaths(),
-		func(line string) { _ = emit(logLine(line)) }); err != nil {
-		return d.fail(emit, err.Error())
+	// A guard failure — a refusal, or the old install container's name never
+	// freeing — happens before anything touches the tree, and says so, so the
+	// Panel puts the server back where it was instead of install_failed.
+	if err := clearDataDir(ctx, d.containers, req.ServerId, d.bindSource(req.ServerId), installName, d.foldHostPaths(),
+		selfContainerID(), func(line string) { _ = emit(logLine(line)) }); err != nil {
+		return d.failUntouched(emit, err.Error())
 	}
 	created, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, installName)
 	if err != nil {
@@ -966,6 +981,15 @@ func steamInstallOutcome(pending, text string) string {
 
 func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
 	switch action {
+	case agentpb.PowerAction_POWER_ACTION_START, agentpb.PowerAction_POWER_ACTION_RESTART:
+		// Never start the game under a running install pass (installgate.go).
+		// Checked before a RESTART's stop, so a refused restart leaves the server
+		// exactly as it was.
+		if err := d.installs.check(serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
+		}
+	}
+	switch action {
 	case agentpb.PowerAction_POWER_ACTION_START:
 		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
@@ -977,7 +1001,12 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 	case agentpb.PowerAction_POWER_ACTION_RESTART:
 		// Mark the in-flight monitor down first so the stop isn't read as a crash.
 		d.markExpectedDown(serverID)
-		_ = d.stop(ctx, serverID)
+		// A stop that failed means the container may still be running, and
+		// ensureContainer keeps a running container as-is — so carrying on
+		// would report STARTING for a restart that never happened.
+		if err := d.stop(ctx, serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("restart: stop: %w", err)
+		}
 		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
 		}
@@ -1018,8 +1047,19 @@ const (
 	keepImage imageRefresh = false
 )
 
+// ensureAndStart is the one path that starts a server's game container — for a
+// Power START/RESTART and for the crash watchdog's auto-restart alike — so it
+// is where the install gate is enforced for all of them. It is checked again
+// right before the start, to close the window where an install began while
+// the container was being recreated.
 func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, refresh imageRefresh) error {
+	if err := d.installs.check(serverID); err != nil {
+		return err
+	}
 	if err := d.ensureContainer(ctx, serverID, refresh); err != nil {
+		return err
+	}
+	if err := d.installs.check(serverID); err != nil {
 		return err
 	}
 	return d.cli.ContainerStart(ctx, containerName(serverID), container.StartOptions{})
@@ -1032,7 +1072,9 @@ func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, ref
 // this lets an image rebuild take effect on the next start.
 func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, refresh imageRefresh) error {
 	name := containerName(serverID)
-	if info, err := d.cli.ContainerInspect(ctx, name); err == nil {
+	// One retry: a single daemon hiccup here, during a watchdog auto-restart,
+	// would otherwise land the server CRASHED with nothing to retry it.
+	if info, err := inspectRetryOnce(ctx, d.containers, name, inspectRetryDelay); err == nil {
 		if info.State != nil && info.State.Running {
 			return nil // already running
 		}
@@ -1182,7 +1224,7 @@ func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 	}
 	// A missing container is already stopped, and a stop is not done until the
 	// daemon says the container is not running — see stopAndConfirm.
-	return stopAndConfirm(ctx, d.cli, name, opts, stopConfirmMargin)
+	return stopAndConfirm(ctx, d.containers, name, opts, stopConfirmMargin)
 }
 
 // isPosixSignal reports whether s names a signal a Linux daemon accepts:
@@ -1370,6 +1412,7 @@ func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, er
 
 // isWindows reports whether this agent's daemon runs Windows containers.
 func (d *DockerRuntime) isWindows() bool { return d.OSType() == "windows" }
+
 
 // foldHostPaths reports whether host paths — a bind source, a mount source the
 // daemon reports — compare case-insensitively. They do whenever either side is
@@ -2062,6 +2105,18 @@ func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id str
 func (d *DockerRuntime) fail(emit func(*agentpb.InstallEvent) error, msg string) error {
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: msg}})
 	return fmt.Errorf("docker install: %s", msg)
+}
+
+// failUntouched is fail for a pass that ended before anything could write to
+// the install tree (InstallEvent.tree_untouched).
+func (d *DockerRuntime) failUntouched(emit func(*agentpb.InstallEvent) error, msg string) error {
+	_ = emit(untouchedFailure(msg))
+	return fmt.Errorf("docker install: %s", msg)
+}
+
+// untouchedFailure is the Failed event for a pass that never touched the tree.
+func untouchedFailure(msg string) *agentpb.InstallEvent {
+	return &agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: msg}, TreeUntouched: true}
 }
 
 // streamLogs streams a container's logs to fn until the stream ends (used for

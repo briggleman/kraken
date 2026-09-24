@@ -76,18 +76,41 @@ func (h dataDirHolder) stopped() bool {
 // finds a container that is bound to the dir but lost the label — untracked,
 // or made by hand.
 //
+// A mount counts when it is the data dir, anything inside it, or — writable —
+// anything above it: a container binding a child or a parent has files in the
+// tree open just as surely as one binding the dir itself. Two containers that
+// bind a parent are not holders:
+//
+//   - the Agent's own container (selfID), which binds the whole data root by
+//     design (deploy/docker-compose.full.yml); and
+//   - a container that also binds the Docker socket — a control-plane
+//     container like the Agent, never a game. This is the fallback for an
+//     Agent whose own id could not be read.
+//
+// A read-only bind of a parent (cAdvisor's `/:/rootfs:ro`, say) is not a
+// holder either: it cannot write under SteamCMD, and counting it would refuse
+// every install on a host that runs one.
+//
 // bindSource is the daemon's view of the data dir (see DockerRuntime.bindSource)
 // because Mounts[].Source is reported in the daemon's view too. fold compares
 // the paths case-insensitively, which Windows paths need.
-func findDataDirHolders(list []container.Summary, serverID, bindSource string, fold bool) []dataDirHolder {
+func findDataDirHolders(list []container.Summary, serverID, bindSource string, fold bool, selfID string) []dataDirHolder {
 	var out []dataDirHolder
 	for _, c := range list {
+		if isSelf(c.ID, selfID) {
+			continue
+		}
 		match := serverID != "" && c.Labels[labelServerID] == serverID
 		for _, m := range c.Mounts {
 			if match {
 				break
 			}
-			match = sameHostPath(m.Source, bindSource, fold)
+			switch mountOverlap(m.Source, bindSource, fold) {
+			case overlapSame, overlapInside:
+				match = true
+			case overlapAbove:
+				match = m.RW && !bindsDockerSocket(c)
+			}
 		}
 		if !match {
 			continue
@@ -101,26 +124,89 @@ func findDataDirHolders(list []container.Summary, serverID, bindSource string, f
 	return out
 }
 
-// sameHostPath compares two host paths after normalising the separators and
-// cleaning them, so `C:\data\x`, `C:/data/x/` and `c:\data\x` agree when fold
-// is set. An empty path never matches — an empty bind source must not match
-// every container with an empty mount source.
-func sameHostPath(a, b string, fold bool) bool {
-	norm := func(p string) string {
-		p = strings.ReplaceAll(p, `\`, "/")
-		if p == "" {
-			return ""
-		}
-		return path.Clean(p)
+// dockerDesktopHostPrefix is how Docker Desktop's Linux engine, on a Windows
+// host, reports a bind of a Windows path: `C:\kraken\data\x` comes back as
+// `/run/desktop/mnt/host/c/kraken/data/x`. The Agent's bind source is the
+// Windows form, so without translating one to the other an unlabelled holder
+// on such a host is never seen.
+const dockerDesktopHostPrefix = "/run/desktop/mnt/host/"
+
+// normHostPath puts a host path into one comparable form: forward slashes,
+// cleaned, and Docker Desktop's Linux-engine form translated back to a drive
+// path (`/run/desktop/mnt/host/c/x` → `C:/x`). "" stays "".
+func normHostPath(p string) string {
+	p = strings.ReplaceAll(p, `\`, "/")
+	if p == "" {
+		return ""
 	}
-	na, nb := norm(a), norm(b)
-	if na == "" || nb == "" {
-		return false
+	p = path.Clean(p)
+	if rest, ok := strings.CutPrefix(p, dockerDesktopHostPrefix); ok && len(rest) >= 1 {
+		drive, tail, _ := strings.Cut(rest, "/")
+		if len(drive) == 1 {
+			p = strings.ToUpper(drive) + ":/" + tail
+			p = path.Clean(p)
+		}
+	}
+	return p
+}
+
+// overlap is how a mount source relates to the data dir.
+type overlap int
+
+const (
+	overlapNone   overlap = iota
+	overlapSame           // the data dir itself
+	overlapInside         // a dir or file inside the data dir
+	overlapAbove          // a parent of the data dir
+)
+
+// mountOverlap says how mount source src relates to the data dir. The
+// comparison is by path segment, so `srv-1` and `srv-10` do not overlap. fold
+// compares case-insensitively, which Windows paths need. An empty path never
+// overlaps anything.
+func mountOverlap(src, dataDir string, fold bool) overlap {
+	ns, nd := normHostPath(src), normHostPath(dataDir)
+	if ns == "" || nd == "" {
+		return overlapNone
 	}
 	if fold {
-		return strings.EqualFold(na, nb)
+		ns, nd = strings.ToLower(ns), strings.ToLower(nd)
 	}
-	return na == nb
+	switch {
+	case ns == nd:
+		return overlapSame
+	case isPathWithin(ns, nd):
+		return overlapInside
+	case isPathWithin(nd, ns):
+		return overlapAbove
+	}
+	return overlapNone
+}
+
+// bindsDockerSocket reports whether a container mounts the Docker socket.
+func bindsDockerSocket(c container.Summary) bool {
+	for _, m := range c.Mounts {
+		if strings.HasSuffix(strings.ReplaceAll(m.Source, `\`, "/"), "/docker.sock") ||
+			strings.Contains(strings.ToLower(m.Source), `pipe\docker_engine`) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSelf reports whether container id is the Agent's own container. selfID may
+// be a full id or a prefix; "" never matches.
+func isSelf(id, selfID string) bool {
+	return selfID != "" && strings.HasPrefix(id, selfID)
+}
+
+// isPathWithin reports whether child is strictly inside parent, by segment.
+// Both are normalised and cleaned.
+func isPathWithin(child, parent string) bool {
+	if !strings.HasSuffix(parent, "/") {
+		parent += "/"
+	}
+	return strings.HasPrefix(child, parent)
 }
 
 // dataDirPlan is what the guard will do about the holders it found.
@@ -181,12 +267,12 @@ func dataDirRemovalNote(h dataDirHolder, installName string) string {
 //
 // The refusal is checked before anything is removed, so a refused pass leaves
 // the node exactly as it found it.
-func clearDataDir(ctx context.Context, c containerOps, serverID, bindSource, installName string, fold bool, note func(string)) error {
+func clearDataDir(ctx context.Context, c containerOps, serverID, bindSource, installName string, fold bool, selfID string, note func(string)) error {
 	list, err := c.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return fmt.Errorf("list containers to check nothing holds the data dir: %w", err)
 	}
-	plan := planDataDirHolders(findDataDirHolders(list, serverID, bindSource, fold), installName)
+	plan := planDataDirHolders(findDataDirHolders(list, serverID, bindSource, fold, selfID), installName)
 	if len(plan.refuse) > 0 {
 		return fmt.Errorf("%s", dataDirRefusal(plan.refuse))
 	}

@@ -11,6 +11,8 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+
+	"github.com/briggleman/kraken/internal/shared/powerbudget"
 )
 
 // imageAPI is the slice of the Docker client the image paths use. It exists as a
@@ -72,12 +74,12 @@ const installPullTimeout = 30 * time.Minute
 // startPullBudget is how long an operator-driven start is willing to *wait* for
 // a refresh before proceeding without it.
 //
-// The Panel bounds the Power RPC — START 15s, RESTART 60s
-// (internal/panel/api/handlers_server.go) — so a pull that blocks the RPC past
-// that makes the Panel report "agent error: context deadline exceeded" while the
-// Agent is still working, and the operator sees a failed start that then
-// mysteriously succeeds. Eight seconds clears the tightest of those deadlines
-// with room for the container recreate and ContainerStart that follow.
+// The Panel bounds the Power RPC (its deadlines are derived from
+// internal/shared/powerbudget, and tested against PowerRPCBudget), so a pull
+// that blocks the RPC past that makes the Panel report "agent error: context
+// deadline exceeded" while the Agent is still working, and the operator sees a
+// failed start that then mysteriously succeeds. The wait also ends as soon as
+// the RPC's context does.
 //
 // The common case, an unchanged moving tag, is a manifest check of a few KB and
 // finishes well inside this, so a start still comes up on the refreshed image. A
@@ -85,7 +87,7 @@ const installPullTimeout = 30 * time.Minute
 // instead — see refreshImageForStart.
 //
 // A var, not a const, only so tests can shorten it.
-var startPullBudget = 8 * time.Second
+var startPullBudget = powerbudget.StartPullBudget
 
 // pullImage makes ref available locally, preferring the registry.
 //

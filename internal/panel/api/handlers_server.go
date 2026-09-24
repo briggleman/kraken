@@ -18,6 +18,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/scheduler"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/powerbudget"
 	"github.com/briggleman/kraken/internal/shared/spec"
 )
 
@@ -161,7 +162,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go s.provision(server, sp, chosen, req.SteamGuardCode)
+	go s.provision(server, sp, chosen, req.SteamGuardCode, "")
 
 	s.logger.Info("server scheduled", "id", server.ID, "name", server.Name, "node", chosen.Name, "kind", placement.Kind)
 	writeJSON(w, http.StatusCreated, server)
@@ -189,6 +190,26 @@ func installScriptFor(sv *store.Server, sp *spec.Spec, withBepInEx bool) string 
 		script = script + sep + sp.Install.BepInExScript
 	}
 	return spec.Render(script, sv.Vars)
+}
+
+// installPassError is an install failure the Agent reported. treeUntouched is
+// the Agent saying the pass ended before anything could write to the install
+// tree — its pre-install guard refused it because a container still has the
+// data dir (#351). A pass like that says nothing about the tree, so callers
+// that know the server's previous state put it back there, the way #328 does
+// for a pre-update stop that failed, instead of install_failed.
+type installPassError struct {
+	msg           string
+	treeUntouched bool
+}
+
+func (e *installPassError) Error() string { return e.msg }
+
+// treeUntouched reports whether err is an Agent-reported failure of a pass that
+// never touched the install tree.
+func treeUntouched(err error) bool {
+	var e *installPassError
+	return errors.As(err, &e) && e.treeUntouched
 }
 
 // runInstallPass runs one install phase on the Agent, streaming the installer's
@@ -249,7 +270,10 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 			// exists: the install container is removed when the phase ends.
 			s.installs.Append(server.ID, e.LogLine)
 		case *agentpb.InstallEvent_Failed:
-			return fmt.Errorf("install failed: %s", e.Failed)
+			return &installPassError{
+				msg:           "install failed: " + e.Failed,
+				treeUntouched: ev.GetTreeUntouched(),
+			}
 		}
 	}
 }
@@ -257,7 +281,11 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 // provision runs the install phase on the Agent and flips the server's state.
 // Runs in its own goroutine with a background context so it survives the request.
 // steamGuardCode is the optional one-time 2FA code for authenticated installs.
-func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string) {
+//
+// prev is the state a reinstall started from, or "" for a fresh create. A
+// reinstall the Agent refused before touching the tree goes back to prev; a
+// fresh create has nothing to go back to and lands install_failed.
+func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, prev store.ServerState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -272,6 +300,10 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	s.installs.Append(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
 
 	if err := s.runInstallPass(ctx, server, sp, node, steamGuardCode, server.BepInEx); err != nil {
+		if prev != "" && treeUntouched(err) {
+			s.abortUpdate(server, prev, err.Error())
+			return
+		}
 		s.failServer(server, err.Error())
 		return
 	}
@@ -339,7 +371,7 @@ func (s *Server) failServer(server *store.Server, reason string) {
 // the state goes back, the reason lands in last_error where the operator reads
 // it, and the retry is the button they already pressed.
 func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason string) {
-	s.logger.Error("update pass aborted before install", "id", sv.ID, "reason", reason, "state", prev)
+	s.logger.Error("install pass aborted before it touched the tree", "id", sv.ID, "reason", reason, "state", prev)
 	s.installs.AppendError(sv.ID, "[panel] "+reason)
 	// State before Finish, for the reason failServer gives: a subscriber
 	// released by Finish reconnects immediately and should find the settled
@@ -726,38 +758,27 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"state": sv.State})
 }
 
-// Power RPC deadlines, by action. Each must cover the longest the Agent can
-// spend inside the action (agent.PowerRPCBudget), or the Panel cancels a
-// start, stop or restart the Agent would have finished — a test holds them to
-// it.
-//
-//   - START is async on the Agent's side (it reports STARTING and the watchdog
-//     flips to running), but before it returns it may wait for a removed
-//     container's name to come free and for the image refresh budget.
-//   - STOP must clear the graceful-stop grace before the daemon kills, plus the
-//     Agent's confirmation that the container is down — otherwise a
-//     slow-saving game server (e.g. Palworld) times out mid-stop.
-//   - RESTART is a STOP and then a START.
-//   - KILL waits on nothing.
-const (
-	powerStartTimeout   = 45 * time.Second
-	powerStopTimeout    = 45 * time.Second
-	powerRestartTimeout = 60 * time.Second
-	powerKillTimeout    = 15 * time.Second
-)
-
-// powerTimeout is the deadline for one power RPC of the given action.
+// powerTimeout is the Panel's deadline for one power RPC of the given action:
+// the Agent's worst case on a Windows node — the slow one, where the daemon
+// waits up to 75s for a killed container — plus a margin (see powerbudget).
+// Every Panel call site that sends a PowerAction uses it, or one of the named
+// deadlines below that are built from it, and a test holds each to the
+// Agent's own budget: a deadline shorter than that cancels an action the Agent
+// would have finished.
 func powerTimeout(action agentpb.PowerAction) time.Duration {
-	switch action {
-	case agentpb.PowerAction_POWER_ACTION_START:
-		return powerStartTimeout
-	case agentpb.PowerAction_POWER_ACTION_STOP:
-		return powerStopTimeout
-	case agentpb.PowerAction_POWER_ACTION_RESTART:
-		return powerRestartTimeout
-	}
-	return powerKillTimeout
+	return powerbudget.Deadline(action)
 }
+
+// The power deadlines outside the power handler, named so the budget test can
+// check them rather than re-test powerTimeout.
+var (
+	// scheduledRestartTimeout bounds a scheduled task's RESTART (schedule.go).
+	scheduledRestartTimeout = powerTimeout(agentpb.PowerAction_POWER_ACTION_RESTART)
+	// preUpdateStopTimeout bounds the STOP before an update pass (updateThenStart).
+	preUpdateStopTimeout = powerTimeout(agentpb.PowerAction_POWER_ACTION_STOP)
+	// postUpdateStartTimeout bounds the START after an update pass.
+	postUpdateStartTimeout = powerTimeout(agentpb.PowerAction_POWER_ACTION_START)
+)
 
 // freshInstallWindow is how long after a create or reinstall a start skips the
 // update-on-start pass. It covers the deploy form's "start once the install
@@ -880,7 +901,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	// bind-mount the same data dir, and SteamCMD writing under a running game
 	// is how an update pass corrupts a live server. On a `start` the server is
 	// already down and this is a no-op; on a `restart` it is the stop half.
-	sctx, scancel := context.WithTimeout(ctx, 60*time.Second)
+	sctx, scancel := context.WithTimeout(ctx, preUpdateStopTimeout)
 	_, perr := client.PowerAction(sctx, &agentpb.PowerActionRequest{
 		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_STOP,
 	})
@@ -893,6 +914,13 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	// Vanilla install script only — never the BepInEx overlay (see
 	// installScriptFor).
 	if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
+		// A pass the Agent refused before touching the tree (a container still
+		// holds the data dir) says nothing about the tree: back to prev, like a
+		// failed stop. Anything else may have half-written it.
+		if treeUntouched(err) {
+			s.abortUpdate(sv, prev, err.Error())
+			return
+		}
 		s.failServer(sv, err.Error())
 		return
 	}
@@ -903,7 +931,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	if _, aerr := s.applyConfig(ctx, sv, sp); aerr != nil {
 		s.logger.Warn("config apply after update failed", "server", sv.ID, "err", aerr)
 	}
-	pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
+	pctx, pcancel := context.WithTimeout(ctx, postUpdateStartTimeout)
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{
 		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_START,
 	})
@@ -971,6 +999,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = decodeJSON(r, &req) // empty body is fine
 
+	prev := sv.State // where a refused pass puts it back (see provision)
 	sv.State = store.StateInstalling
 	sv.LastError = "" // a fresh attempt starts with a clean slate
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
@@ -978,7 +1007,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Info("server reinstall requested", "id", sv.ID, "name", sv.Name)
-	go s.provision(sv, sp, node, req.SteamGuardCode)
+	go s.provision(sv, sp, node, req.SteamGuardCode, prev)
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
 }
 

@@ -51,6 +51,8 @@ type FakeRuntime struct {
 	// policy as the Docker runtime: a live one refuses the pass before any
 	// install container exists, a stopped one is removed.
 	holders map[string][]dataDirHolder
+	// installs gates starts while an install pass runs, as on DockerRuntime.
+	installs installGate
 	// installErr, when set, makes every install fail with this reason — the
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
@@ -654,12 +656,17 @@ func (f *FakeRuntime) HoldDataDir(serverID, name, state string) {
 }
 
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	// The same gate as the Docker runtime: a START/RESTART arriving while the
+	// pass runs is refused (installgate.go).
+	leave := f.installs.enter(req.ServerId)
+	defer leave()
+
 	f.mu.Lock()
 	installName := containerName(req.ServerId) + "_install"
 	plan := planDataDirHolders(f.holders[req.ServerId], installName)
 	if len(plan.refuse) > 0 {
 		f.mu.Unlock()
-		return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: dataDirRefusal(plan.refuse)}})
+		return emit(untouchedFailure(dataDirRefusal(plan.refuse)))
 	}
 	delete(f.holders, req.ServerId)
 	f.mu.Unlock()
@@ -711,6 +718,11 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 }
 
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
+	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		if err := f.installs.check(serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
+		}
+	}
 	f.mu.Lock()
 	reason, failing := f.powerErrs[action]
 	perr := f.powerFailures[action]

@@ -482,6 +482,11 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .danger-block { border-color: rgba(var(--crisis-rgb), 0.22); }
   .danger-block .pane-label { color: rgba(var(--crisis-rgb), 0.8); border-bottom-color: rgba(var(--crisis-rgb), 0.18); }
   .danger-note { margin: 0; font-size: clamp(11px, 0.74vw, 13px); line-height: 1.55; color: var(--ink-3); text-transform: none; letter-spacing: 0; }
+  /* The one choice the retire offers: a final backup before the world goes. On by
+     default because revive needs something to restore; the toggle is the house
+     .tgl at the note's size, and the .ctl-delete below keeps Crisis because the
+     live world is still destroyed - the backups are what make it reversible. */
+  .danger-block .retire-final { display: inline-flex; margin: 10px 0 12px; padding: 0; font-size: clamp(11px, 0.74vw, 13px); color: var(--ink-2); }
 
   /* When a control is refused - the agent cannot reach its runtime, an image is
      missing, the gateway says no - the answer belongs where the eye already is:
@@ -692,6 +697,24 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     color: var(--ink); font-variant-numeric: tabular-nums;
   }
   .bk-live .pct { color: var(--lumen); }
+  /* A restore measures itself: compressed bytes read over the archive size, from
+     the agent. The reading sits in its own .pct box (Violet Pulse Rule, clause 5)
+     and the fill is a determinate reading of the same number. An archive the
+     agent cannot size (bytes_total 0) is .unsized: the fill stays at 0, no
+     number is invented, and the phase word wears the mirroring dot - work in
+     progress, narrated, not measured. */
+  .bk-live .phase { display: inline-flex; align-items: center; gap: 6px; color: var(--lumen); }
+  .bk-live .phase::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--lumen); animation: bk-breathe 1.6s ease-in-out infinite; }
+  .bk-live.unsized .pct { display: none; }
+  @keyframes bk-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .bk-live .phase::before { animation: none; } .bk-progress i { transition: none; } }
+  /* The restore's outcome, spoken once, where the ledger already speaks: Status
+     Gold when the archive landed (start the server when ready), Crisis when it
+     did not - the agent's reason follows the dash. */
+  .bk-note { display: flex; align-items: baseline; gap: 6px; font-family: var(--mono); font-weight: 300; font-size: 11px; line-height: 1.5; letter-spacing: 0.02em; color: var(--ink-3); }
+  .bk-note::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%; background: currentColor; transform: translateY(-1px); }
+  .bk-note.ok { color: var(--ok); }
+  .bk-note.failed { color: var(--crisis); }
   .bk-progress { position: relative; height: 6px; border-radius: 3px; background: rgba(var(--lumen-rgb), 0.1); overflow: hidden; grid-column: 1 / -1; }
   .bk-progress i {
     position: absolute; inset: 0; transform-origin: left;
@@ -1206,10 +1229,26 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      clicking it DOES; "failed" would name the state twice and offer nothing. */
   .agent-drift.st-failed .ad-go::after { width: 0; }
   .agent-drift.st-failed .nc-v.act { color: var(--ink-3); }
-  .agent-drift .nc-fail {
+  /* Any condition may carry a refusal, not only the agent drift: the retire of
+     an untracked container is refused the same way an update push is. One rule,
+     one measure - the same 42ch the ticker family clips at. */
+  .node-cond .nc-fail {
     color: var(--caution);
     max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  /* Untracked containers are named on the line, each with its own retire chip:
+     a .nc-go with no sweep (the sweep says "a build is waiting for you", which
+     is not true of a container nobody asked for). Names print as the Panel
+     makes them - kraken_ plus the id's first eight - because the id column sizes
+     to its content and a whole UUID pushed the instruments into each other.
+     Past three names the line carries one "retire all" chip instead of a row of
+     them; the roll call stays in the title. The count keeps the line's one act
+     colour; the names are context. */
+  .container-drift .nc-name { font-family: var(--mono); font-weight: 300; color: var(--ink-3); }
+  /* Removals a node still owes are a reading, never a control - the Panel is
+     already doing the only thing there is to do (retrying), so the count wears
+     the plain value ink, and the roll call is in the title. */
+  .removals-owed .nc-v { color: var(--ink-3); }
   /* the signal survives without the motion: hold the lit state instead of pausing
      mid-sweep, which is the one place this parts with the ticker family's rule */
   @media (prefers-reduced-motion: reduce) {
@@ -1534,6 +1573,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      text and the padding is only making up the difference. */
   select.cfg-in.has-badge { padding-block: 3px; }
   select.cfg-in.has-badge > button > .cfg-badge { padding-block: 1px; line-height: 1; }
+  /* a value the sheet states rather than asks for - the ports a revive reuses -
+     sits in the house read-only well (.cfg-ro, dashed, mono) and carries the same
+     badge a select does for where its value came from, at the far edge */
+  .cfg-ro.has-badge { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow: hidden; }
 
   /* A filesystem path is longer than any label above it and must not wrap, so its field is
      sized to the VALUE - 48ch of mono, the accepted knob value - rather than to whatever a grid
@@ -1560,6 +1603,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .ns-path { width: 48ch; max-width: 100%; }
   @media (min-width: 640px) {
     .ns-grid > .cfg-row:has(.ns-path) { grid-column: span 2; }
+    /* a row whose value is a sentence - which backup to restore, named by date,
+       schedule and size - takes the whole track: the reading needs the room, and
+       the sheet has it */
+    .ns-grid > .cfg-row.ns-wide { grid-column: 1 / -1; }
   }
 
   /* the dense sheet: every decision at once, grouped by rule but never hidden */
@@ -2315,6 +2362,19 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     border-color: transparent; box-shadow: 0 6px 20px rgba(var(--lumen-rgb), 0.25);
   }
   /* the platform chips filter in place, the same way the audit and users chips do */
+  /* Retired group: the fleet's last section, in the specs sheet's ledger voice.
+     .spec-row is reused whole - art, shade, id, actions - with two readings added
+     between the id and the actions, both mono 300/11px in Sand Faint like the
+     slug: when it went, and what it kept. The one coloured thing on a row is a
+     Caution note where the retire could not take its final backup - something
+     WAS prevented, and revive should know before it restores. */
+  .retired { margin-top: clamp(18px, 2.2vw, 34px); }
+  .retired-head { display: flex; align-items: baseline; gap: clamp(10px, 1.1vw, 20px); flex-wrap: wrap; margin-bottom: 10px; }
+  .retired-head .pane-label { margin: 0; border: none; padding: 0; }
+  .retired-note { font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); letter-spacing: 0.02em; }
+  .retired-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .rt-when, .rt-keep { font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+  .rt-note { color: var(--caution); }
   .specs-body:has(.sp-linux :checked) .spec-row:not(.p-linux),
   .specs-body:has(.sp-win :checked) .spec-row:not(.p-win),
   .specs-body:has(.sp-wine :checked) .spec-row:not(.p-wine) { display: none; }
@@ -2474,6 +2534,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-meta">10.0.0.4 · debian 12</span>
       <span class="node-meta node-cond container-drift">
         <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
+        <span class="nc-sep" aria-hidden="true">&middot;</span><span class="nc-name" title="kraken_f4030778-08c8-47b7-abba-59bbd9cebd08 (f4030778-08c8-47b7-abba-59bbd9cebd08)">kraken_f4030778…</span>
+        <button class="nc-go" aria-label="Retire the untracked container kraken_f4030778… on BEHEMOTH — it is stopped and removed, its data untouched">retire</button>
+        <span class="nc-fail" title="retire · node behemoth did not answer within the time allowed — the action may still be completing on the node">retire · node did not answer within the time allowed — the action may still be completing</span>
       </span>
       <span class="node-actions">
         <button class="prefs-open" data-sheet-open="nodeCfg" aria-label="Open node settings">node settings</button>
@@ -2530,6 +2593,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-name">TITAN</span>
       <span class="node-meta">node 02 &middot; 8c/16t &middot; up 6d 11h</span>
       <span class="node-meta">10.0.0.7 &middot; debian 12</span>
+      <span class="node-meta node-cond removals-owed">
+        <span class="nc-k">removals</span><b class="nc-v" title="dragonwilds-02 (retry in 40s · could not reach the node's agent)">1 pending</b>
+      </span>
       <span class="node-meta node-cond agent-drift st-rest">
         <span class="nc-k">agent</span><b class="nc-v">v0.27.1</b><span class="nc-sep" aria-hidden="true">&rarr;</span><b class="nc-v act">v0.28.0</b>
         <button class="nc-go ad-go" aria-label="Update the agent on TITAN to v0.28.0"><i class="ad-fill" aria-hidden="true"></i><span class="ad-lbl">update</span></button>
@@ -2681,6 +2747,35 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="descend"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M 4 2 L 11 7 L 4 12 Z"/></svg>start</span>
     </button>
   </div>
+  <!-- The retired group. A retired server is one the operator took off its node on
+       purpose: stopped, its world and config removed, its backups kept. It is not
+       a card - a card is a live thing with vitals - but a ledger row in the specs
+       sheet's voice, because what is left of it is a record: name, game, where it
+       was, when it went, and what it kept. Two controls per row and no lamp: revive
+       is the plain ghost, delete-for-good the Crisis full-size control, which is
+       the one place "cannot be undone" still holds. -->
+  <section class="retired" aria-labelledby="retiredTitle">
+    <div class="retired-head">
+      <h2 class="pane-label" id="retiredTitle">retired &middot; 2</h2>
+      <span class="retired-note">taken off their nodes; their backups are kept until they are deleted for good</span>
+    </div>
+    <div class="spec-list retired-list">
+      <div class="spec-row retired-row">
+        <span class="spec-art" style="background-image: url('https://cdn.cloudflare.steamstatic.com/steam/apps/3061810/library_hero.jpg')" aria-hidden="true"></span><span class="spec-shade" aria-hidden="true"></span>
+        <span class="spec-id"><span class="spec-name">dragonwilds-02</span><span class="spec-slug">runescape dragonwilds &middot; was on behemoth</span></span>
+        <span class="rt-when">retired sep 21 &middot; 3d ago</span>
+        <span class="rt-keep">4 backups &middot; 9.6G kept</span>
+        <span class="spec-act"><button class="cfg-btn ghost spec-go" data-sheet-open="reviveForm">revive</button><button class="cfg-btn danger">delete for good</button></span>
+      </div>
+      <div class="spec-row retired-row">
+        <span class="spec-art" style="background-image: url('https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/library_hero.jpg')" aria-hidden="true"></span><span class="spec-shade" aria-hidden="true"></span>
+        <span class="spec-id"><span class="spec-name">vrising-01</span><span class="spec-slug">v rising &middot; was on titan</span></span>
+        <span class="rt-when">retired aug 30 &middot; 25d ago</span>
+        <span class="rt-keep"><span class="rt-note" title="the node was unreachable when it was retired, so no final backup was taken; the removal is queued on titan">final backup skipped</span> &middot; 2 backups &middot; 3.1G kept</span>
+        <span class="spec-act"><button class="cfg-btn ghost spec-go" data-sheet-open="reviveForm">revive</button><button class="cfg-btn danger">delete for good</button></span>
+      </div>
+    </div>
+  </section>
   </main>
 
   <footer class="floor fl-door" data-sheet-open="auditLog" role="button" tabindex="0" aria-label="Open the full audit log">
@@ -2819,6 +2914,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
           <div class="backup-row"><span>tonight 03:00</span><span class="good">scheduled</span></div>
+          <div class="bk-live" aria-live="polite"><span>restoring aug 20 03:00 · nightly</span><span class="pct">41%</span><span class="bk-progress" style="--prog:41"><i></i></span></div>
           <!-- Every detail field is a fact the API already carries or the spec makes
                derivable: `captured` is the spec's backup globs, `archive` the name and
                size, `mirror` the node's configured target plus the replication state,
@@ -2901,6 +2997,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
                recent archives, oldest evicted on the next backup. `data-keep="5"` is the
                retention cap the mock's create/delete logic reads; the counts are derived
                by refreshRetention(), never written twice. -->
+          <p class="bk-note ok">restored aug 21 03:00 · nightly — start the server when ready</p>
           <p class="bk-evict" id="bkEvict">at capacity — the next backup removes <b id="bkEvictWhich" style="color: inherit; font-weight: 400;">aug 17 03:00</b>, on this node and its mirror</p>
           <div class="bk-foot" id="bkFoot" data-keep="5"><span>keep <b>5</b> · <b id="bkKept" class="at-cap">5 of 5</b> · <b id="bkDisk">23.7G</b> on disk</span><span>mirror <b>sftp nas.local</b></span></div>
           <button class="bk-big" id="createBackupBtn">create backup now</button>
@@ -2955,13 +3052,14 @@ FINISH: mock for direction comparison; the chosen direction's production build e
           </div>
         </div>
       </section>
-      <section class="side-block danger-block" aria-label="Delete server">
+      <section class="side-block danger-block" aria-label="Retire server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world and config. its backups are kept. it cannot be undone.</p>
+          <p class="danger-note">retiring stops this server, takes a final backup, then removes its world and config from the node. its backups are kept, and it can be revived later from any of them.</p>
+          <label class="tgl retire-final"><input type="checkbox" checked id="retireFinalBackup"><i></i>take a final backup first</label>
           <button class="ctl ctl-delete" id="deleteSrvBtn">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
-            delete server
+            retire server
           </button>
         </div>
       </section>
@@ -3400,6 +3498,64 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   </div>
 </div>
 
+<!-- The revive sheet. It is the deploy sheet with everything the server already
+     knows filled in: its old node first, its old ports reused where they are still
+     free, and one choice the deploy sheet never had - which backup to restore
+     before the first start. The order of the sections is the order the Panel does
+     the work: place, install, restore, start. -->
+<div class="sheet" id="reviveForm" role="dialog" aria-modal="true" aria-labelledby="reviveFormTitle">
+  <div class="depth-head">
+    <button class="surface-btn" data-sheet-close="reviveForm">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 6 10 V 2 M 2 6 L 6 2 L 10 6"/></svg>
+      surface
+    </button>
+    <h2 class="depth-title" id="reviveFormTitle">revive <b class="node-name-inline">dragonwilds-02</b></h2>
+    <div class="prefs-note"><span class="synthetic">values are sample &mdash; surface not wired</span></div>
+  </div>
+  <div class="sheet-body ns-body">
+    <section class="prefs-group" aria-label="Revive settings">
+      <div class="cfg-head">
+        <h3 class="pane-label">back the way it was, or not</h3>
+        <span class="cfg-badge env">config kept from before it was retired</span>
+        <span class="cfg-badge ok">old ports free</span>
+      </div>
+      <div class="ns-pad ns-grid">
+        <div class="ns-legend"><h4>placement</h4><i></i><small>its old node first; any node that can host the spec is offered</small></div>
+        <div class="cfg-row">
+          <span>node</span>
+          <select class="cfg-in has-badge" aria-label="Node"><button><selectedcontent></selectedcontent><span class="cfg-badge env">previous</span></button><option selected>behemoth</option><option>titan</option></select>
+        </div>
+        <div class="cfg-row">
+          <span>ports</span>
+          <span class="cfg-ro has-badge" role="status" aria-label="Ports: 28010 and 28011, the ones it had before"><span>28010 &middot; 28011</span><span class="cfg-badge env">previous</span></span>
+        </div>
+        <div class="cfg-row">
+          <span>memory cap</span>
+          <input type="text" class="cfg-in" value="8G" aria-label="Memory cap">
+        </div>
+
+        <div class="ns-legend"><h4>restore</h4><i></i><small>after the install lands, before anything starts</small></div>
+        <div class="cfg-row ns-wide">
+          <span>from backup</span>
+          <select class="cfg-in" aria-label="Backup to restore"><option selected>sep 21 03:00 &middot; final-before-retire &middot; 2.4G &mdash; latest</option><option>sep 20 04:00 &middot; nightly &middot; 2.4G</option><option>sep 19 04:00 &middot; nightly &middot; 2.3G</option><option>sep 18 04:00 &middot; nightly &middot; 2.3G</option><option>none &mdash; a fresh world</option></select>
+        </div>
+
+        <div class="ns-legend"><h4>operations</h4><i></i><small>its schedules come back with it</small></div>
+        <label class="tgl"><input type="checkbox" checked><i></i>start once the install and restore finish</label>
+        <label class="tgl"><input type="checkbox" checked><i></i>re-enable its schedules (nightly backup 04:00, nightly restart 04:30)</label>
+      </div>
+      <div class="ns-alloc">
+        <div class="ns-cost"><span>memory after</span><b>29.4<em>/64G</em></b></div>
+        <div class="ns-cost"><span>download</span><b>~9<em>G</em></b></div>
+        <div class="ns-cost"><span>restore</span><b>2.4<em>G</em></b></div>
+        <div class="ns-acts">
+          <button class="cfg-btn ghost" data-sheet-close="reviveForm">cancel</button>
+          <button class="cfg-btn solid">revive server</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
 <div class="sheet" id="nsForm" role="dialog" aria-modal="true" aria-labelledby="nsFormTitle">
   <div class="depth-head">
     <button class="surface-btn" data-sheet-close="nsForm">
@@ -3624,8 +3780,8 @@ FINISH: mock for direction comparison; the chosen direction's production build e
           <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required · the server uuid</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>the server and its live state</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
         </details>
         <details class="ep m-delete w">
-          <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>{id}</em></span><span class="ep-r"><span class="ep-s">delete a server and its data</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; its backups are kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
+          <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>{id}</em></span><span class="ep-r"><span class="ep-s">permanently delete a retired server, archives included</span></span></summary>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>gone — row, world and archives; a note when archives on a shared target were kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>server_not_retired — retire it first</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>{id}</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>
@@ -4237,10 +4393,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   <div class="confirm-card">
     <h2 class="confirm-title" id="cdTitle">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 8 1.5 L 15 14 H 1 Z M 8 6 V 9.5 M 8 11.5 V 11.6"/></svg>
-      delete <b id="cdName">server</b>
+      retire <b id="cdName">server</b>
     </h2>
-    <p class="confirm-body" id="cdBody">this removes the world and config for this server. its backups are kept. it cannot be undone.</p>
-    <label class="confirm-label" for="cdInput">type <b>delete</b> to confirm</label>
+    <p class="confirm-body" id="cdBody">this stops the server, takes a final backup, then removes its world and config from the node. its backups are kept, and it can be revived later from the retired list.</p>
+    <label class="confirm-label" for="cdInput">type <b>retire</b> to confirm</label>
     <input class="confirm-input" id="cdInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="cdHint">
     <p class="confirm-hint" id="cdHint" role="status" aria-live="polite"></p>
     <div class="confirm-acts">
@@ -4606,7 +4762,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   });
   $('surfaceBtn').addEventListener('click', surface);
   // ---- delete server: typed confirmation ----
-  const CD_WORD = 'delete';
+  const CD_WORD = 'retire';
   const confirmEl = $('confirmDelete');
   const cdInput = $('cdInput');
   const cdGo = $('cdGo');
@@ -4673,7 +4829,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       closeSheet($('specEdit'));
       return;
     }
-    logDepthLine('[Server] ' + name + ' deleted — world and config removed, backups kept', 'warn');
+    logDepthLine('[Server] ' + name + ' retired — world and config removed, backups kept; revive it from the retired list', 'warn');
     delete SERVERS[name];
     document.querySelectorAll('.srv').forEach(b => {
       const n = b.querySelector('.srv-name');
@@ -5210,15 +5366,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     btn.disabled = true;
     const name = 'manual-' + backupSeq++;
     const row = document.createElement('div');
-    row.className = 'bk-live';
-    row.innerHTML = '<span>' + name + ' · creating…</span><span class="pct">0%</span><span class="bk-progress" style="--prog:0"><i></i></span>';
+    // a backup in flight reports no size, so the row is unsized: the phase word
+    // wears the dot and no number is invented (the agent sends none)
+    row.className = 'bk-live unsized';
+    row.innerHTML = '<span>' + name + ' · creating…</span><span class="phase">archiving</span><span class="pct"></span><span class="bk-progress" style="--prog:0"><i></i></span>';
     const body = $('backupBody');
     body.insertBefore(row, body.firstElementChild);
     let prog = 0;
     const timer = setInterval(() => {
-      prog = Math.min(100, prog + 4 + Math.random() * 6);
-      row.querySelector('.pct').textContent = Math.round(prog) + '%';
-      row.querySelector('.bk-progress').style.setProperty('--prog', prog);
+      prog = Math.min(100, prog + 4 + Math.random() * 6); // paces the demo only; the bar stays at 0
       if (prog >= 100) {
         clearInterval(timer);
         setTimeout(() => {

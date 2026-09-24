@@ -205,7 +205,7 @@ the layout is composed against the 1080p floor Layout commits to and scales by `
 above it, so a
 breakpoint here is always a specific structural failure being caught, never a device class.
 - **1100px (max-width), twice:** the deck reflow. Above it the fleet is a multi-column grid and the node band sits beside it; below it both go to one column. The drill-in body collapses at the same number for the same reason.
-- **640px (min-width):** an opt-in, gating the data-directory field's `grid-column: span 2`. It is a `min-width` rather than a `max-width` because `auto-fit` manufactures a second track for a spanning item even when only one track fits - ungated, a 380px viewport got tracks of 210px and 108px and every other row in the sheet was squeezed by a field that only needed room on wide screens.
+- **640px (min-width):** an opt-in, gating the data-directory field's `grid-column: span 2`. It is a `min-width` rather than a `max-width` because `auto-fit` manufactures a second track for a spanning item even when only one track fits - ungated, a 380px viewport got tracks of 210px and 108px and every other row in the sheet was squeezed by a field that only needed room on wide screens. The revive sheet added the gate's second member, `.ns-grid > .cfg-row.ns-wide` (`grid-column: 1 / -1`), for a row whose value is a sentence — see Revive Sheet.
 - **640px (max-width):** the wizard's own two-column config grid (`.cfg-2`) collapsing to one. The same number in the opposite direction, and deliberately not folded into the rule above: one is a field asking for room it can only use when there is room, the other is a fixed two-track grid that has to stop being two tracks. Sharing a number is a coincidence, and writing them as one query would make the next person believe it is a system.
 
 ### Named Rules
@@ -245,8 +245,8 @@ nobody is tracking; everything else in the line is context, and colouring contex
 semantic for nothing.
 
 A condition is not the node being unwell, which is why none of this touches Status: the node is
-online, and something about it nevertheless needs attention. Two members so far — Agent Drift and
-Container Drift below.
+online, and something about it nevertheless needs attention. Three members so far — Agent Drift,
+Container Drift and Removals Owed below.
 
 ### Agent Drift (panel newer than the node's agent)
 
@@ -320,14 +320,43 @@ the panel reasons from its own rows outward — `reconcileOnce` walks its record
 about each — so this is the one place the question runs the other way, and the only way an
 untracked container can ever be seen.
 
-It exists because that state is reachable: deleting a server while its node is unreachable removes
-the row and leaves the container running, since the agent call is best-effort. Nothing else would
-ever notice. Caution Violet is the right band for it by the closed-port test — the node is
+It exists because that state is reachable: a server retired while its node is unreachable leaves
+its container on the host until the queued removal lands (see Removals Owed), and an agent call that
+never answered can leave one behind for good. Nothing else would ever notice. Caution Violet is the right band for it by the closed-port test — the node is
 perfectly healthy, but something on it is outside what the panel is guarding, and a surplus
 container is holding memory and ports the scheduler believes are free.
 
 A **deficit** reads the same way and is not an error either: containers stopped behind the panel's
 back. The line names whichever direction is true rather than assuming a surplus.
+
+**The line names the containers and offers each its retire.** An untracked container is printed on
+the line as a `.nc-name` — mono 300 in Sand Faint, so it reads as context beside the count — spelt
+the way the Panel makes it, `kraken_` plus the id's first eight (`kraken_f4030778…`), with the full
+name and id in the title. The id column sizes to its content, and a whole UUID pushed the
+instruments into each other. Each name is followed by its own `.nc-go` chip reading `retire`
+(0.76em/0.2em caps in Caution Violet, `3px 9px`, 3px radius, a 0.5 border on a 0.05 ground — the
+Locked Node's chip), and it carries **no sweep**: a sweep says "a build is waiting for you", which
+is not true of a container nobody asked for. The sweep is the agent update's alone. **Past three
+names the line carries one `retire all` chip** instead of a row of them, and the roll call stays in
+the title. The count keeps the line's one act colour; the names are context.
+
+**Any condition may carry a refusal.** `.node-cond .nc-fail` — generalised from
+`.agent-drift .nc-fail`, which it replaces — is the answer where the eye already is when the node
+says no: Caution Violet, `max-width: 42ch` with an ellipsis, the same measure the ticker family clips
+at, the whole sentence in the title. The retire of an untracked container is refused the same way
+an update push is (`retire · node did not answer within the time allowed — the action may still be
+completing`). One rule, one measure.
+
+### Removals Owed (a node still owes a removal)
+A Node Condition line reading `removals · 1 pending`, in which **nothing takes the act colour**:
+`.removals-owed .nc-v` is the plain value ink (`--ink-3`, Sand Faint), and the roll call —
+`dragonwilds-02 (retry in 40s · could not reach the node's agent)` — is in the title. It appears
+when a server was retired while its node could not be reached: the row is already in the retired
+group, the world and config are still on the host, and the Panel is retrying the removal. That is
+the whole reason it is a reading and not a condition to act on — the Panel is already doing the only
+thing there is to do.
+
+**The Pending Is a Reading Rule.** A count of work the Panel is already retrying is a reading, never a control. It wears the plain value ink, offers no chip and takes no Caution Violet: the semantic colour asks for an act, and there is none to ask for. A pending count that turned violet would put the operator to work on something that will finish by itself.
 
 ### Locked Node (cordon)
 **"Lock" is the operator's word; `cordon` is the API's.** The panel says lock, `POST
@@ -477,7 +506,7 @@ The house's one navigation mechanism, since there are no routes. A sheet is `pos
 The first-run wizard is a member with **one deliberate omission: it has no `surface` button.** Every other sheet can be left because there is a fleet behind it; on first run there is not one yet. The way out is the footer's own opt-out — "skip for now", "skip", "skip & finish" — a `cfg-btn ghost` in the forward cluster beside the step's primary action, never quieter than that: an exit rendered as bare text read as an afterthought next to a solid continue, so the text-skip idiom was retired and every opt-out wears the same ghost the back button does. Where leaving costs context the label says what leaving means ("skip for now"); a mid-flow step whose skip simply closes the sheet may say just "skip". Its focus landing follows from the missing `surface` button: the plunge ends on the open step's first field, or on its primary action when the step has no fields. The wizard also owns **no manual catalog step** — the bundled Game Specs import themselves during setup, and the deploy step says so in one `cfg-help` line rather than spending a whole step on a table that always ends fully imported.
 
 ### Modal Card (centred dialog family)
-The house's *other* overlay, and deliberately not a member of the Sheet family. A modal card is `position: fixed; inset: 0` with `display: grid; place-items: center` and a 24px gutter, over a full-bleed veil layer that closes on click; the card itself is `width: min(<measure>, 100%)`, 6px radius, 1px border, the panel gradient (`#0a1e2c` → `#071521`) and the **Lifted** shadow. Two members so far: the typed-delete confirmation (`.confirm`, `z-index: 40`, 430px, crisis-tinted border) and SFTP access (`.sftp`, `z-index: 42`, 780px, neutral Edge border). They are the same card at two widths, and the border colour is the only thing severity changes.
+The house's *other* overlay, and deliberately not a member of the Sheet family. A modal card is `position: fixed; inset: 0` with `display: grid; place-items: center` and a 24px gutter, over a full-bleed veil layer that closes on click; the card itself is `width: min(<measure>, 100%)`, 6px radius, 1px border, the panel gradient (`#0a1e2c` → `#071521`) and the **Lifted** shadow. Two members so far: the typed confirmation (`.confirm`, `z-index: 40`, 430px, crisis-tinted border) and SFTP access (`.sftp`, `z-index: 42`, 780px, neutral Edge border). They are the same card at two widths, and the border colour is the only thing severity changes.
 
 **The No-Plunge Rule.** A modal card appears; it does not descend. The circular `clip-path` wipe is the Sheet family's signature and it means *you have gone somewhere* — so a surface you will dismiss in ten seconds without leaving the page must not spend it. The measure follows from the same reasoning: a card is sized to its content, not to a `--measure` token, because it is an interruption rather than a page. 430px holds one sentence and one input; 780px is what the SFTP connection URI needs to sit on one line, and the width was chosen by what wrapped, not by a scale.
 
@@ -571,6 +600,28 @@ by what it prevents:
 - **`failed`** (Crisis Magenta) — no world was captured at all. Its restore ghost is `disabled`,
   because there is no archive to restore.
 
+**A restore measures itself.** An archive being restored keeps its place in the ledger as a
+`.bk-live` row (mono 300/13px, tabular, a `1fr auto` grid with a `6px 12px` gap): `restoring
+aug 20 03:00 · nightly` on the left, the reading in its **own `.pct` box** in Sodium Lumen at the
+right — the Violet Pulse Rule's fifth clause, one element cannot both narrate and measure — and
+beneath both, spanning the row, the 6px/3px `.bk-progress` track whose fill is `scaleX(--prog / 100)`
+of the same number, easing on `transform 0.3s linear`. The number is compressed bytes read over the
+archive size, from the agent. A create in flight is the same row with a **`.phase`** word where the
+state word would sit — `archiving`, Sodium Lumen, a 5px dot before it breathing opacity 1 → 0.3 on
+`bk-breathe` 1.6s: the mirroring dot, because this too is work in progress narrating itself. An
+archive the agent cannot size (`bytes_total` 0) is **`.bk-live.unsized`**: the fill stays at 0,
+`.pct` is `display: none`, and the phase word's dot is what says "in progress" — narrated, not
+measured. The creating row is unsized by construction, since a backup in flight reports no size;
+the ticking 60% it used to carry was invented. Under `prefers-reduced-motion` the dot holds and the
+fill drops its transition.
+
+**The restore's outcome is spoken once**, above the eviction line, as a `.bk-note` — mono 300/11px
+at 0.02em with a 5px `currentColor` dot before it, the eviction line's own shape in a different ink.
+`.ok` is Status Gold when the archive landed (`restored aug 21 03:00 · nightly — start the server
+when ready`): gold rather than lumen because a landed restore is *finished*, not alive. `.failed` is
+Crisis Magenta when it did not, the agent's reason following the dash: crisis rather than caution
+because no world came back, the same reading a `failed` backup takes.
+
 The chevron reveals a `.bk-detail` block in place — never a modal — of house **Label-Value
 Rows** indented to the summary text: `captured` (the spec’s backup globs), `archive` (the file
 name), `mirror` (the node’s target plus the replication state in words), and `note` (the
@@ -595,6 +646,8 @@ Crisis: an operator-configured rotation is expected, not an outage.
 `done` / `mirroring` / `failed` / none each get their own word — never folded into a single
 green `ok`. A mirror that failed is Caution, because the redundancy you asked for is the thing
 prevented; the local save is still safe, and the word says exactly that.
+
+**The Unsized Meter Rule.** A meter shows a number only when the agent sent one. An archive the agent cannot size gets a fill held at 0, no percentage, and a breathing phase word — work in progress, narrated, not measured. Inventing a figure to make a bar move is the same lie as the ticking 60% the creating row used to carry, and a reading that is not a reading teaches the operator to ignore the ones that are.
 
 ### Schedule Row
 A standing order in the drill-in’s schedules block: the order’s name in mono 300/13px over
@@ -671,7 +724,7 @@ one fact or a sequence.
 ### Destructive Control
 Crisis Magenta, at one of three weights chosen by the control’s size, all off the same tokens. A **table-row pill** (`.mini-act.del`) carries the colour on its text and a 0.45 border with no ground — eight washed pills in a list would read as a warning about the table rather than about a row. A **full-size button** (`.cfg-btn.danger`) and a **drill-in control** (`.ctl-delete`) both take text, a 0.35 border and a 0.08 crisis ground. Those last two stay separate rules on purpose: the `.ctl-*` family hovers with `filter: brightness(1.3)` and `.cfg-btn` controls move their own values, so one shared selector would force one base’s idiom onto the other.
 
-Anything irreversible is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost, and keeps its confirm disabled until the word `delete` is typed — matched case-insensitively, so `DELETE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this removes the world, backups and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through.
+Anything that destroys a live world is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost *and what is kept*, and keeps its confirm disabled until the word is typed — `retire` for a server (`CD_WORD`), compared after trim and lower-case, so `RETIRE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this stops the server, takes a final backup, then removes its world and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through.
 
 **The Revealed Pill Rule.** The pills on a row in a list whose length the operator does not
 control — the drill-in's file listing (`.f-row .f-acts`), where a Steam install tree runs to
@@ -705,6 +758,46 @@ new noun's: everything in it is true of a node and false of a server (the agent 
 containers keep running, nothing on the host is stopped or deleted, the servers placed here lose
 their node, and re-adding needs a fresh enrollment token because the old identity is orphaned).
 
+### Retire Block (the drill-in's danger block)
+The danger block (`.danger-block`, `aria-label="Retire server"`, a crisis-tinted 0.22 border with
+its `pane-label` at 0.8 crisis) no longer deletes a server: it **retires** it. The note
+(`.danger-note`, clamp(11–13px) at 1.55 in Sand Faint) says what the act does in the order the
+Panel does it — stops the server, takes a final backup, then removes its world and config from the
+node — and then what it keeps: its backups, and that it can be revived later from any of them.
+Between the note and the control sits the one choice the retire offers, `take a final backup
+first`: the house Toggle Switch as `.tgl.retire-final`, at the note's size (clamp(11–13px), Sand
+Secondary, `margin: 10px 0 12px`, no padding), **on by default** because revive needs something to
+restore. The control beneath is still `.ctl-delete` and still Crisis — glyph, then `retire server`
+— because the live world is destroyed either way; the backups are what make it reversible, not the
+colour. Its typed confirmation is titled `retire <name>`, repeats the note's sentence and adds where
+the server goes (`the retired list`). What the body no longer says is *it cannot be undone*, because
+it can.
+
+**The Cannot-Be-Undone Rule.** The sentence "it cannot be undone" is spent only where it is true. A retire keeps every backup and can be revived, so neither its note nor its confirmation says it; of the two lifecycle controls a server has, only the retired group's `delete for good` may. Every other typed confirmation in the house — node, spec, folder, file — says it because it is true there, and the moment a reversible act borrows the phrase the irreversible ones stop being believed.
+
+### Retired Row (the fleet's last section)
+The retired group (`section.retired`) sits at the foot of the deck below the last server card,
+`margin-top: clamp(18px, 2.2vw, 34px)`. Its head is a `.pane-label` with border and padding
+stripped (`retired · 2`) and, on the same baseline, a mono 300/11px Sand Faint `.retired-note` in
+the specs sheet's footnote voice: *taken off their nodes; their backups are kept until they are
+deleted for good*. A retired server is not a card — a card is a live thing with vitals — but a
+**ledger row in the specs sheet's voice**, because what is left of it is a record: name, game,
+where it was, when it went, what it kept. `.spec-list` and `.spec-row` are reused whole — art
+(`.spec-art`, the pulled-back duotone at 0.42), shade, id (`.spec-name` over a `.spec-slug`
+reading `runescape dragonwilds · was on behemoth`), actions — and `.retired-row` changes only the
+tracks, to `minmax(0, 1fr) auto auto auto`, to seat two readings between the id and the actions.
+Both are mono 300/11px in Sand Faint like the slug, `nowrap`: `.rt-when` (`retired sep 21 · 3d
+ago`) and `.rt-keep` (`4 backups · 9.6G kept`). No lamp and no status chip: a retired server is
+neither running nor stopped, it is off its node.
+
+The one coloured thing a row may carry is an `.rt-note` in Caution Violet at the head of `.rt-keep`
+— `final backup skipped`, its reason in the title (the node was unreachable when it was retired;
+the removal is queued there). Something *was* prevented — the archive the retire meant to take —
+and revive should know that before it restores, which is the closed-port test coming out the same
+way once more. Two controls per row, in read-then-destroy order: the plain ghost `revive`
+(`.cfg-btn.ghost.spec-go`, warming on row hover exactly as a spec row's control does) and the
+Crisis full-size `.cfg-btn.danger` `delete for good` — the one place "cannot be undone" still holds.
+
 ### Split Read-Only Field (a value you also have to act on)
 A `.cfg-ro` that carries an action becomes two cells rather than a control floated over the value
 (`.cfg-ro.tok-split`): the value keeps its own `overflow-x` and the action takes a fixed-width
@@ -721,6 +814,32 @@ well is `overflow: hidden` and clips an outset one away entirely; and a glyph-on
 `.ns-w`'s `-0.18em` and `letter-spacing`, because that cancel exists for a *text* pill's trailing
 space and skews a lone glyph off centre. First member: the enrollment token's refresh
 (`.tok-new`), a 17px rotate arc at the house 1.5px stroke.
+
+### Revive Sheet (the deploy sheet's twin)
+`#reviveForm` is the new-server sheet with everything the server already knows filled in — same
+`.ns-body`, `.ns-grid` and legends, the same one solid control (`revive server`) — plus one choice
+the deploy sheet never had: which backup to restore before the first start. Its head says where the
+values came from once, in two badges: `config kept from before it was retired` (the dashed
+`.cfg-badge.env`) and `old ports free` (`.cfg-badge.ok`). Three marks below are its own:
+
+- **A badge inside a select** (`select.cfg-in.has-badge`): the node picker's closed button carries
+  a dashed `.cfg-badge.env` reading `previous` after the selected name. The select drops to
+  `padding-block: 3px` and the badge to 1px with `line-height: 1`, so the control lands back on the
+  35px every other field in the grid holds. Its old node is offered first; any node that can host
+  the spec follows.
+- **A badge inside the read-only well** (`.cfg-ro.has-badge`): the reused ports are a value the
+  sheet *states* rather than asks for, so they sit in the house dashed mono well (`28010 · 28011`,
+  `role="status"`) and the same `previous` badge rides at its far edge — `display: flex;
+  justify-content: space-between; gap: 8px; overflow: hidden`. Dashed edge and dashed badge say the
+  same thing twice on purpose: not yours to change here, and carried from before.
+- **A row that takes the whole track** (`.ns-grid > .cfg-row.ns-wide`, `grid-column: 1 / -1` from
+  640px up): `from backup` is a select whose options are sentences — `sep 21 03:00 ·
+  final-before-retire · 2.4G — latest`, down to `none — a fresh world` — and a reading that long
+  needs the room; the sheet has it.
+
+The sections run in the order the Panel does the work — **placement, restore, operations**: place,
+install, restore, start — and the `.ns-alloc` footer adds a `restore 2.4G` readout beside memory
+and download, so the cost of the choice is read where the other costs are.
 
 ### Step Rail (first run)
 Four stops on one line — database, secure, connect a node, deploy — and the light travels down it. The current step carries a lumen ring and

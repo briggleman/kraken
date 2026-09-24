@@ -92,7 +92,7 @@ month, month, day of week. Four actions:
 
 | action | what it does |
 | --- | --- |
-| `restart` | restarts the server. Drives the Agent directly, so it does **not** re-run the install pass. |
+| `restart` | restarts the server. Drives the Agent directly, so it does **not** re-run the install pass. It runs on a server that is `running`, `starting` or `crashed`, so it still revives a server the watchdog gave up on, and is skipped on `offline` (someone stopped it, and a restart would start it again), `stopping`, `installing` and `install_failed`. It is also refused while a required setting is empty. A skip is recorded as the schedule's last error, shown on its row. |
 | `backup` | takes a backup. |
 | `command` | sends a console command. |
 | `replicate` | mirrors existing archives off the node. |

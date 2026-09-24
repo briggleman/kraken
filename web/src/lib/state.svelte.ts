@@ -66,6 +66,12 @@ export const ui = $state({
     // The consequence, when the opener owns it (a file, a folder). Without it
     // the dialog falls through to the noun branches in confirmGo.
     go?: () => Promise<void> | void;
+    // What the confirm button does ("delete" unless the opener says otherwise),
+    // and whether the word must be typed first. Typing is for what cannot be
+    // undone; an opener whose consequence destroys nothing (retiring an
+    // untracked container) passes typed: false and gets a plain confirm.
+    verb: string;
+    typed: boolean;
   },
 
   // first-run overlays (the login itself is auth-driven; these are the
@@ -110,8 +116,21 @@ export function closeSheet(id: SheetId) {
 // ---------------------------------------------------------------------------
 // typed-confirmation dialog: the noun and warning come from whoever opened it
 
+// Backups are named because they are NOT taken: they are kept (on the node, a
+// share or a mirror — wherever the target puts them), and a
+// warning that claimed otherwise (it did, until #354) is how a surviving archive
+// came to look like another server's.
 export const CD_SERVER_BODY =
-  "this removes the world, backups and config for this server. it cannot be undone.";
+  "this removes the world and config for this server. its backups are kept. " +
+  "it cannot be undone.";
+
+// Retiring an untracked container: the one confirmation that destroys nothing,
+// which is why it is not typed. The container goes; everything it was using
+// stays exactly where it is.
+export const CD_CONTAINER_BODY =
+  "the node stops and removes this container and forgets it, so its watchdog never brings it " +
+  "back. the panel has no server for it. its world and config stay on the node untouched, and " +
+  "its backups are kept.";
 
 // Every word of this is true of a node and false of a server, which is the point:
 // DESIGN.md requires the warning to describe the noun that opened the dialog.
@@ -136,7 +155,13 @@ let confirmReturn: HTMLElement | null = null;
 export function openConfirm(
   name: string,
   returnTo: HTMLElement | null,
-  opts?: { noun?: string; body?: string; go?: () => Promise<void> | void },
+  opts?: {
+    noun?: string;
+    body?: string;
+    go?: () => Promise<void> | void;
+    verb?: string;
+    typed?: boolean;
+  },
 ) {
   confirmReturn = returnTo;
   ui.confirm = {
@@ -144,6 +169,8 @@ export function openConfirm(
     noun: opts?.noun || "server",
     body: opts?.body || CD_SERVER_BODY,
     go: opts?.go,
+    verb: opts?.verb || "delete",
+    typed: opts?.typed ?? true,
   };
 }
 

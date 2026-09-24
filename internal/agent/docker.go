@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -47,6 +50,10 @@ type DockerRuntime struct {
 	// images is the same client, narrowed to the image calls, so the pull policy
 	// can be exercised against a fake in tests (#288). Never nil.
 	images imageAPI
+	// containers is the same client again, narrowed to the container calls the
+	// removal, install-guard, stop and name-race paths make (containerOps), so
+	// they can be exercised against a fake (#354, #351). Never nil.
+	containers containerOps
 	// pullPolicy is how hard this node tries the registry before using a local
 	// copy of an image (KRAKEN_IMAGE_PULL).
 	pullPolicy imagePullPolicy
@@ -94,6 +101,11 @@ type DockerRuntime struct {
 	monMu    sync.Mutex
 	monitors map[string]*monitor // serverID → crash watchdog
 
+	// installs is the set of servers with an install pass running (see
+	// installGate). While a server is in it, nothing may start its game
+	// container: not a Power START/RESTART, not the crash watchdog.
+	installs installGate
+
 	// bjMu guards backupJobs: the live state of asynchronous backups, keyed by
 	// "<serverID>/<id>". Holds in-flight (PENDING) jobs and recently-finished ones
 	// so ListBackups can report archiving + replication state the on-disk listing
@@ -103,6 +115,9 @@ type DockerRuntime struct {
 	// failures persists FAILED records across restarts (#221); nil in tests
 	// that assemble a DockerRuntime by hand — every use is nil-guarded.
 	failures *failureLog
+	// removeAll deletes a server's data dir; nil means os.RemoveAll. A seam
+	// only, so a deletion the filesystem refuses is testable on any OS (#354).
+	removeAll func(string) error
 
 	// pcMu guards playerSamples: the last online-player count per server, TTL-cached
 	// so StreamStats (live) and Status (reconcile poll) share one query rather than
@@ -145,6 +160,12 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if backupDir == "" {
 		backupDir = "backups"
 	}
+	// Absolute, like the data dir below: it is where archives land, and it is a
+	// root the error scrubber rewrites — a relative "backups" would match the
+	// word wherever a message happened to contain it.
+	if abs, aerr := filepath.Abs(backupDir); aerr == nil {
+		backupDir = abs
+	}
 	// Server data lives in a host directory bind-mounted into each container, so
 	// the Agent has direct (native) filesystem access for the file browser and
 	// backups — no Docker archive API or helper containers, and it works the same
@@ -164,7 +185,7 @@ func NewDockerRuntime(ctx context.Context, nodeID, nodeOS string, wineEnabled bo
 	if stateDir == "" {
 		stateDir = "."
 	}
-	d := &DockerRuntime{cli: cli, images: cli, pullPolicy: parsePullPolicy(os.Getenv("KRAKEN_IMAGE_PULL")), nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir), imagePrune: !strings.EqualFold(os.Getenv("KRAKEN_IMAGE_PRUNE"), "off"), pruneClock: newPruneClock(stateDir)}
+	d := &DockerRuntime{cli: cli, images: cli, containers: cli, pullPolicy: parsePullPolicy(os.Getenv("KRAKEN_IMAGE_PULL")), nodeID: nodeID, wineEnabled: wineEnabled, version: version, osType: osType, dataDir: dataDir, hostDataDir: hostDataDir, backupDir: backupDir, specDir: filepath.Join(stateDir, "agent-specs"), winIsolation: windowsIsolation(), specs: map[string]*agentpb.ServerSpec{}, monitors: map[string]*monitor{}, backupJobs: map[string]*agentpb.BackupInfo{}, failures: newFailureLog(stateDir), imagePrune: !strings.EqualFold(os.Getenv("KRAKEN_IMAGE_PRUNE"), "off"), pruneClock: newPruneClock(stateDir)}
 	d.backups = selectBackupTarget(backupDir)
 	// Failed backups outlive the process: without this an agent restart erased
 	// every FAILED row from ListBackups and the operator saw a backup that
@@ -714,22 +735,105 @@ func (d *DockerRuntime) Create(ctx context.Context, spec *agentpb.ServerSpec) er
 	return nil
 }
 
+// Remove retires a server from this node: its watchdog, both of its containers,
+// its runtime spec and its tracked backup jobs, and — only when the operator
+// asked for it — its data directory. Backup archives are never touched here.
+//
+// It reports what it could not do. It used to discard every error and return
+// nil, which let the Panel believe a removal had landed when the container was
+// still running (#354): the Panel deleted its row, the watchdog re-adopted the
+// container on the next Agent restart, and nothing owned it again. The Panel now
+// keeps a removal that failed and retries it, so an honest error is what gets
+// the job finished.
+//
+// A container that is already gone is success — that is what makes a retry safe.
+// A container that will not go stops the removal before the data and the spec
+// are touched: the server is still there, and a retry must find it whole.
 func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData bool) error {
-	d.stopMonitor(serverID)
-	name := containerName(serverID)
-	_ = d.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
-	if deleteData {
-		_ = os.RemoveAll(d.localDir(serverID))
+	// The id becomes a path under the data root and the spec dir. An empty one
+	// is the data root itself, so it is checked before anything is touched —
+	// the caller is a Panel, and not necessarily this version of it.
+	if err := validRemoveID(serverID); err != nil {
+		return err
 	}
+	d.stopMonitor(serverID)
+	// The install container too: an install interrupted by an Agent restart or a
+	// daemon hiccup can leave kraken_<id>_install behind, bind-mounted onto the
+	// data dir the operator is deleting.
+	for _, name := range []string{containerName(serverID), installContainerName(serverID)} {
+		if err := d.clearContainerName(ctx, name); err != nil {
+			return fmt.Errorf("docker: remove server %s: %w", serverID, err)
+		}
+	}
+	var dataErr error
+	if deleteData {
+		removeAll := d.removeAll
+		if removeAll == nil {
+			removeAll = os.RemoveAll
+		}
+		if err := removeAll(d.localDir(serverID)); err != nil {
+			dataErr = fmt.Errorf("docker: remove server %s: delete its data: %w", serverID, dataRemoveError(d.localDir(serverID), err))
+		}
+	}
+	// The containers are gone, so the server is gone as far as this node is
+	// concerned, even if some of its bytes stayed behind. Forgetting it now is
+	// what keeps a restarted Agent from treating a half-deleted tree as a server.
 	d.mu.Lock()
 	delete(d.specs, serverID)
 	d.mu.Unlock()
 	d.forgetSpec(serverID)
 	d.forgetServerBackupJobs(serverID)
+	return dataErr
+}
+
+// validRemoveID refuses a server id that could not name a single directory
+// under the data root: empty, containing a path separator of either OS, or a
+// dot-dot. InvalidArgument, because it is the request that is wrong.
+func validRemoveID(serverID string) error {
+	if serverID == "" || serverID == "." || strings.Contains(serverID, "..") ||
+		strings.ContainsAny(serverID, `/\:`) {
+		return grpcstatus.Errorf(codes.InvalidArgument, "remove: invalid server id %q", serverID)
+	}
 	return nil
 }
 
+// installContainerName is the one-shot install container's name for a server.
+func installContainerName(serverID string) string { return containerName(serverID) + "_install" }
+
+// dataRemoveError renders a failed data-dir deletion against the server's
+// logical /data path, never the host one: the message reaches the Panel, its
+// log and its node view, and where this node keeps its storage is not the
+// operator's business through that channel (see statError). The cause — the
+// errno an *os.PathError wraps — is kept, because "permission denied" and
+// "the process cannot access the file" are different problems.
+func dataRemoveError(root string, err error) error {
+	pe, ok := err.(*os.PathError)
+	if !ok || pe.Err == nil {
+		return err
+	}
+	logical := "/data"
+	if rel, rerr := filepath.Rel(root, pe.Path); rerr == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		logical = path.Join(logical, filepath.ToSlash(rel))
+	}
+	return fmt.Errorf("%s %s: %w", pe.Op, logical, pe.Err)
+}
+
 func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	// Nothing may start the game on this data dir while the pass runs (see
+	// installgate.go). The watchdog goes first: the Panel has already stopped
+	// the server, and the monitor is re-armed by the next start.
+	//
+	// The gate is released the moment the verdict (Completed or Failed) is
+	// sent, not when Install returns: the Panel acts on the verdict at once —
+	// the START after an update, the deploy form's start-after-install — while
+	// the deferred removal of the exited install container can still be
+	// waiting up to 30s for its name. That container holds nothing, and the
+	// next pass's guard clears it if it lingers.
+	leave := d.installs.enter(req.ServerId)
+	defer leave()
+	emit = releaseOnVerdict(emit, leave)
+	d.stopMonitor(req.ServerId)
+
 	dataPath := d.containerDataTarget(req.ServerId)
 	// Ensure the host data dir exists even if Create was not called.
 	if err := os.MkdirAll(d.localDir(req.ServerId), 0o755); err != nil {
@@ -772,15 +876,22 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		host.Resources.Memory = req.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
-	installName := containerName(req.ServerId) + "_install"
-	_ = d.cli.ContainerRemove(ctx, installName, container.RemoveOptions{Force: true})
+	installName := installContainerName(req.ServerId)
+	// Never run SteamCMD while anything else holds the data dir (#351). This
+	// also clears a previous pass's install container, waiting for its name
+	// the way ensureContainer does (#355) — the create below reuses it.
+	// A guard failure — a refusal, or the old install container's name never
+	// freeing — happens before anything touches the tree, and says so, so the
+	// Panel puts the server back where it was instead of install_failed.
+	if err := clearDataDir(ctx, d.containers, req.ServerId, d.bindSource(req.ServerId), installName, d.foldHostPaths(),
+		selfContainerID(), func(line string) { _ = emit(logLine(line)) }); err != nil {
+		return d.failUntouched(emit, err.Error())
+	}
 	created, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, installName)
 	if err != nil {
 		return d.fail(emit, "create install container: "+err.Error())
 	}
-	defer func() {
-		_ = d.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
-	}()
+	defer d.removeInstallContainer(created.ID, installName)
 
 	if err := d.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return d.fail(emit, "start install container: "+err.Error())
@@ -878,6 +989,15 @@ func steamInstallOutcome(pending, text string) string {
 
 func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
 	switch action {
+	case agentpb.PowerAction_POWER_ACTION_START, agentpb.PowerAction_POWER_ACTION_RESTART:
+		// Never start the game under a running install pass (installgate.go).
+		// Checked before a RESTART's stop, so a refused restart leaves the server
+		// exactly as it was.
+		if err := d.installs.check(serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
+		}
+	}
+	switch action {
 	case agentpb.PowerAction_POWER_ACTION_START:
 		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
@@ -889,7 +1009,12 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 	case agentpb.PowerAction_POWER_ACTION_RESTART:
 		// Mark the in-flight monitor down first so the stop isn't read as a crash.
 		d.markExpectedDown(serverID)
-		_ = d.stop(ctx, serverID)
+		// A stop that failed means the container may still be running, and
+		// ensureContainer keeps a running container as-is — so carrying on
+		// would report STARTING for a restart that never happened.
+		if err := d.stop(ctx, serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("restart: stop: %w", err)
+		}
 		if err := d.ensureAndStart(ctx, serverID, refreshImage); err != nil {
 			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
 		}
@@ -905,7 +1030,7 @@ func (d *DockerRuntime) Power(ctx context.Context, serverID string, action agent
 	case agentpb.PowerAction_POWER_ACTION_KILL:
 		d.markExpectedDown(serverID)
 		d.setMonitorState(serverID, agentpb.ServerState_SERVER_STATE_STOPPING)
-		_ = d.cli.ContainerKill(ctx, containerName(serverID), "SIGKILL")
+		_ = d.containers.ContainerKill(ctx, containerName(serverID), "SIGKILL")
 		return agentpb.ServerState_SERVER_STATE_OFFLINE, nil
 	default:
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, fmt.Errorf("docker: unknown power action %v", action)
@@ -930,8 +1055,19 @@ const (
 	keepImage imageRefresh = false
 )
 
+// ensureAndStart is the one path that starts a server's game container — for a
+// Power START/RESTART and for the crash watchdog's auto-restart alike — so it
+// is where the install gate is enforced for all of them. It is checked again
+// right before the start, to close the window where an install began while
+// the container was being recreated.
 func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, refresh imageRefresh) error {
+	if err := d.installs.check(serverID); err != nil {
+		return err
+	}
 	if err := d.ensureContainer(ctx, serverID, refresh); err != nil {
+		return err
+	}
+	if err := d.installs.check(serverID); err != nil {
 		return err
 	}
 	return d.cli.ContainerStart(ctx, containerName(serverID), container.StartOptions{})
@@ -944,9 +1080,20 @@ func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, ref
 // this lets an image rebuild take effect on the next start.
 func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, refresh imageRefresh) error {
 	name := containerName(serverID)
-	if info, err := d.cli.ContainerInspect(ctx, name); err == nil {
+	// One retry: a single daemon hiccup here, during a watchdog auto-restart,
+	// would otherwise land the server CRASHED with nothing to retry it.
+	if info, err := inspectRetryOnce(ctx, d.containers, name, inspectRetryDelay); err == nil {
 		if info.State != nil && info.State.Running {
 			return nil // already running
+		}
+		// Another start caught between its create and its ContainerStart: the
+		// container is this server's and only just created. Leave it for the
+		// ContainerStart by name that follows — removing it would make the
+		// other start's ContainerStart fail. A `created` container that has
+		// sat there longer is a leftover from a start that failed, and is
+		// recreated from the current spec as before.
+		if adoptableCreated(info, serverID, time.Now()) {
+			return nil
 		}
 		// The remove and the create that follows share one name, and Docker
 		// frees it asynchronously — so wait for it, and report a removal that
@@ -954,6 +1101,8 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 		if err := d.removeAndAwaitName(ctx, info.ID, name); err != nil {
 			return err
 		}
+	} else if !isNotFound(err) {
+		return fmt.Errorf("docker: inspect %s: %w", name, err)
 	}
 	spec, ok := d.getSpec(serverID)
 	if !ok {
@@ -972,49 +1121,41 @@ func (d *DockerRuntime) ensureContainer(ctx context.Context, serverID string, re
 	if !isNameConflict(err) {
 		return err
 	}
-	// Someone else holds the name: an orphan from a removal that never landed,
-	// or a container made outside the Agent. Clear it once and retry, so a
-	// stuck name resolves itself rather than needing an operator with
-	// `docker rm` — which is what this cost us live (#353).
-	slog.Warn("container name already in use — clearing the orphan and retrying",
-		"server", serverID, "name", name, "err", err)
-	if cerr := d.clearContainerName(ctx, name); cerr != nil {
-		return fmt.Errorf("docker: create %s: %w (clearing the name that held it: %v)", name, err, cerr)
+	// Someone else holds the name. If it is this server's own container and it
+	// is running, another start won the race (a watchdog fast-restart, a
+	// double-clicked Start) and the server is already ensured — the
+	// ContainerStart that follows is a no-op on a running container. Anything
+	// not running is an orphan from a removal that never landed: clear it once
+	// and retry, so a stuck name resolves itself rather than needing an
+	// operator with `docker rm` — which is what this cost us live (#353). A
+	// running container that is not this server's is refused, never killed.
+	adopted, cerr := resolveNameConflict(ctx, d.containers, serverID, name)
+	if cerr != nil {
+		return fmt.Errorf("docker: create %s: %w (resolving the container that held the name: %v)", name, err, cerr)
 	}
+	if adopted {
+		slog.Info("container name already held by this server's running container — another start got there first",
+			"server", serverID, "name", name)
+		return nil
+	}
+	slog.Warn("container name was held by an orphan — cleared it, retrying the create",
+		"server", serverID, "name", name, "err", err)
 	return d.createRuntimeContainer(ctx, spec)
 }
 
 // removeAndAwaitName force-removes a container and does not return until its
-// name is free for reuse.
-//
-// It removes by ID rather than by name on purpose: the name is the thing being
-// raced for, and an ID cannot resolve to some container created after the
-// inspect that produced it. A removal that finds nothing has already done its
-// job and is not an error.
+// name is free for reuse. See removeAndAwait.
 func (d *DockerRuntime) removeAndAwaitName(ctx context.Context, id, name string) error {
-	if err := d.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil && !isNotFound(err) {
-		return fmt.Errorf("docker: remove %s: %w", name, err)
-	}
-	if err := awaitNameFree(ctx, func(ctx context.Context) (bool, error) {
-		_, err := d.cli.ContainerInspect(ctx, name)
-		switch {
-		case err == nil:
-			return true, nil
-		case isNotFound(err):
-			return false, nil
-		default:
-			return false, err
-		}
-	}, containerNameFreeAttempts, containerNameFreeDelay); err != nil {
-		return fmt.Errorf("docker: waiting for %s to be reusable: %w", name, err)
-	}
-	return nil
+	return removeAndAwait(ctx, d.containers, id, name)
 }
 
 // clearContainerName removes whatever currently answers to name, whether or not
-// the Agent put it there. A name that resolves to nothing needs no clearing.
+// the Agent put it there, running or not. A name that resolves to nothing needs
+// no clearing. It is for Remove, where the server is being deleted; a start
+// that loses the name race goes through resolveNameConflict instead, which
+// never kills a running container.
 func (d *DockerRuntime) clearContainerName(ctx context.Context, name string) error {
-	info, err := d.cli.ContainerInspect(ctx, name)
+	info, err := d.containers.ContainerInspect(ctx, name)
 	if err != nil {
 		if isNotFound(err) {
 			return nil
@@ -1086,7 +1227,7 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 
 func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 	name := containerName(serverID)
-	timeout := 30
+	timeout := int(stopGrace / time.Second)
 	opts := container.StopOptions{Timeout: &timeout}
 	// Windows containers don't support arbitrary stop signals (the daemon sends a
 	// shutdown event then kills); only honor a custom signal on Linux. A
@@ -1098,7 +1239,9 @@ func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
 			opts.Signal = spec.StopSignal
 		}
 	}
-	return d.cli.ContainerStop(ctx, name, opts)
+	// A missing container is already stopped, and a stop is not done until the
+	// daemon says the container is not running — see stopAndConfirm.
+	return stopAndConfirm(ctx, d.containers, name, opts, stopConfirmMargin)
 }
 
 // isPosixSignal reports whether s names a signal a Linux daemon accepts:
@@ -1287,6 +1430,31 @@ func (d *DockerRuntime) dirSizeMB(_ context.Context, serverID string) (int64, er
 // isWindows reports whether this agent's daemon runs Windows containers.
 func (d *DockerRuntime) isWindows() bool { return d.OSType() == "windows" }
 
+// foldHostPaths reports whether host paths — a bind source, a mount source the
+// daemon reports — compare case-insensitively. They do whenever either side is
+// Windows: a Windows daemon, or an Agent on a Windows host (Docker Desktop).
+func (d *DockerRuntime) foldHostPaths() bool {
+	return d.isWindows() || runtime.GOOS == "windows"
+}
+
+// installRemoveTimeout bounds the removal of a finished install container,
+// including the wait for its name to come free. The pass is already over; a
+// removal that does not land in this time is logged, not failed, and the next
+// pass's guard clears it.
+const installRemoveTimeout = 30 * time.Second
+
+// removeInstallContainer removes a finished install container and waits for
+// its name, so the next pass — a retry, or the next update — does not walk
+// into the name it still holds (#355).
+func (d *DockerRuntime) removeInstallContainer(id, name string) {
+	ctx, cancel := context.WithTimeout(context.Background(), installRemoveTimeout)
+	defer cancel()
+	if err := d.removeAndAwaitName(ctx, id, name); err != nil {
+		slog.Warn("install container did not clear after the pass; the next pass will clear it",
+			"name", name, "err", err)
+	}
+}
+
 // dataRoot is the in-container mount point for the server's data dir, and the
 // namespace the file browser is confined to. Windows containers use C:\data,
 // Linux uses /data. It's kept in forward-slash POSIX form for path-safety logic
@@ -1326,7 +1494,7 @@ func (d *DockerRuntime) safePath(p string) (string, error) {
 	}
 	clean := path.Clean(p)
 	if clean != root && !strings.HasPrefix(clean, root+"/") {
-		return "", fmt.Errorf("docker: path %q escapes %s", p, root)
+		return "", badPath("docker: path %q escapes %s", p, root)
 	}
 	return clean, nil
 }
@@ -1341,7 +1509,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("docker: list %s: %w", p, err)
+		return nil, d.fileErr(serverID, "list", p, "", err)
 	}
 	entries := make([]*agentpb.FileEntry, 0, len(ents))
 	for _, e := range ents {
@@ -1368,7 +1536,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 // identical.
 //
 // The message names the LOGICAL path only. Whatever this returns reaches an API
-// client verbatim ("agent error: …"), and an *os.PathError from os.Stat carries
+// client verbatim (see fileerrors.go), and an *os.PathError from os.Stat carries
 // the resolved HOST path — so returning it as-is would teach anyone with
 // server.files.read where the node keeps its storage. What is worth keeping is
 // the distinction between the failures, not the filename that came with it:
@@ -1385,27 +1553,9 @@ func (d *DockerRuntime) statLocal(serverID, p string) (string, os.FileInfo, erro
 		return "", nil, statError(p, err)
 	}
 	if st.IsDir() {
-		return "", nil, fmt.Errorf("docker: %s is a directory", p)
+		return "", nil, badPath("docker: %s is a directory", p)
 	}
 	return host, st, nil
-}
-
-// statError renders a filesystem failure (stat, open, read) against the
-// logical path, never the host one. Anything unrecognized is reported by its underlying cause (the syscall
-// errno, which an *os.PathError wraps) rather than the PathError itself, whose
-// Error() would print the host path we are keeping out of the response.
-func statError(p string, err error) error {
-	switch {
-	case os.IsNotExist(err):
-		return fmt.Errorf("docker: %s not found", p)
-	case os.IsPermission(err):
-		return fmt.Errorf("docker: %s: permission denied", p)
-	}
-	cause := err
-	if pe, ok := err.(*os.PathError); ok && pe.Err != nil {
-		cause = pe.Err
-	}
-	return fmt.Errorf("docker: %s: %v", p, cause)
 }
 
 // ReadFile returns the contents of a single file in the volume, capped at
@@ -1456,7 +1606,10 @@ func (d *DockerRuntime) DownloadFile(_ context.Context, serverID, p string, w io
 		return statError(p, err)
 	}
 	defer f.Close()
-	_, err = io.Copy(w, f)
+	// A read that fails mid-file (a byte-range lock a running game holds on its
+	// save, on Windows) is an *os.PathError naming the host path, so it is
+	// rendered like every other read failure; a write failure is the stream's.
+	_, err = io.Copy(w, readErrs{r: f, wrap: func(rerr error) error { return statError(p, rerr) }})
 	return err
 }
 
@@ -1498,7 +1651,7 @@ func (d *DockerRuntime) ZipFiles(_ context.Context, serverID string, paths []str
 			return cerr
 		})
 		if err != nil {
-			return fmt.Errorf("docker: zip %s: %w", p, err)
+			return d.fileErr(serverID, "zip", p, "", err)
 		}
 	}
 	return nil
@@ -1514,7 +1667,7 @@ func (d *DockerRuntime) MakeDir(_ context.Context, serverID, p string) error {
 		return nil
 	}
 	if err := os.MkdirAll(d.localOf(serverID, dir), 0o755); err != nil {
-		return fmt.Errorf("docker: mkdir %s: %w", p, err)
+		return d.fileErr(serverID, "mkdir", p, "", err)
 	}
 	return nil
 }
@@ -1527,10 +1680,10 @@ func (d *DockerRuntime) WriteFile(_ context.Context, serverID, p string, content
 	}
 	host := d.localOf(serverID, fp)
 	if err := os.MkdirAll(filepath.Dir(host), 0o755); err != nil {
-		return fmt.Errorf("docker: dir for %s: %w", p, err)
+		return d.fileErr(serverID, "create the folder for", p, "", err)
 	}
 	if err := os.WriteFile(host, content, 0o644); err != nil {
-		return fmt.Errorf("docker: write %s: %w", p, err)
+		return d.fileErr(serverID, "write", p, "", err)
 	}
 	return nil
 }
@@ -1546,7 +1699,7 @@ func (d *DockerRuntime) DeletePaths(_ context.Context, serverID string, paths []
 			continue // never delete the data root
 		}
 		if err := os.RemoveAll(d.localOf(serverID, sp)); err != nil {
-			return fmt.Errorf("docker: delete %s: %w", p, err)
+			return d.fileErr(serverID, "delete", p, "", err)
 		}
 	}
 	return nil
@@ -1563,14 +1716,14 @@ func (d *DockerRuntime) MovePath(_ context.Context, serverID, src, dst string) e
 		return err
 	}
 	if s == d.dataRoot() || dp == d.dataRoot() {
-		return fmt.Errorf("docker: cannot move the data root")
+		return badPath("docker: cannot move the data root")
 	}
 	hostDst := d.localOf(serverID, dp)
 	if err := os.MkdirAll(filepath.Dir(hostDst), 0o755); err != nil {
-		return err
+		return d.fileErr(serverID, "create the folder for", dst, "", err)
 	}
 	if err := os.Rename(d.localOf(serverID, s), hostDst); err != nil {
-		return fmt.Errorf("docker: move %s → %s: %w", src, dst, err)
+		return d.fileErr(serverID, "move", src, " → "+dst, err)
 	}
 	return nil
 }
@@ -1586,13 +1739,13 @@ func (d *DockerRuntime) CopyPath(_ context.Context, serverID, src, dst string) e
 		return err
 	}
 	if s == d.dataRoot() {
-		return fmt.Errorf("docker: cannot copy the data root")
+		return badPath("docker: cannot copy the data root")
 	}
 	if dp == d.dataRoot() {
-		return fmt.Errorf("docker: cannot copy onto the data root")
+		return badPath("docker: cannot copy onto the data root")
 	}
 	if err := copyTreeFS(d.localOf(serverID, s), d.localOf(serverID, dp)); err != nil {
-		return fmt.Errorf("docker: copy %s → %s: %w", src, dst, err)
+		return d.fileErr(serverID, "copy", src, " → "+dst, err)
 	}
 	return nil
 }
@@ -1891,17 +2044,35 @@ func (d *DockerRuntime) ListBackups(ctx context.Context, serverID, slug string) 
 // The caller is expected to have stopped the server: the Panel refuses a
 // restore otherwise (a running game holds the very files a save-set restore
 // replaces), and the Agent cannot see the Panel's view of that state.
+//
+// Its failure reaches the operator verbatim, so it is scrubbed of the node's
+// host paths on the way out (the staging dir and every unit it names live under
+// the data dir) — the error chain is kept, so a locked file still classifies as
+// one at the gRPC boundary.
 func (d *DockerRuntime) RestoreBackup(ctx context.Context, serverID, slug, id string) error {
+	return d.scrubbed(serverID, d.restoreBackup(ctx, serverID, slug, id))
+}
+
+func (d *DockerRuntime) restoreBackup(ctx context.Context, serverID, slug, id string) error {
 	root := d.localDir(serverID)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
 	r, err := d.backupTargetFor(slug).Open(ctx, serverID, id)
 	if err != nil {
-		return fmt.Errorf("docker: open backup: %w", err)
+		// The local store's *fs.PathError names the node's backup dir; the
+		// backup's id is what the operator knows it by.
+		return d.fileErr(serverID, "open backup", id, "", err)
 	}
 	defer r.Close()
-	gz, err := gzip.NewReader(r)
+	// Every read of the archive — gzip's header, then each tar entry — goes
+	// through the store, and a store's read failure names the archive where it
+	// lives (KRAKEN_BACKUP_DIR, a share). The backup's id is what the operator
+	// knows it by.
+	archive := readErrs{r: r, wrap: func(rerr error) error {
+		return d.fileErr(serverID, "read backup", id, "", rerr)
+	}}
+	gz, err := gzip.NewReader(archive)
 	if err != nil {
 		return fmt.Errorf("docker: gunzip backup: %w", err)
 	}
@@ -1939,7 +2110,10 @@ func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id str
 		_ = rep.Delete(ctx, serverID, id)
 	}
 	d.forgetBackupJob(serverID, id)
-	return err
+	if err != nil {
+		return d.fileErr(serverID, "delete backup", id, "", err)
+	}
+	return nil
 }
 
 // ---- helpers ----
@@ -1947,6 +2121,18 @@ func (d *DockerRuntime) DeleteBackup(ctx context.Context, serverID, slug, id str
 func (d *DockerRuntime) fail(emit func(*agentpb.InstallEvent) error, msg string) error {
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: msg}})
 	return fmt.Errorf("docker install: %s", msg)
+}
+
+// failUntouched is fail for a pass that ended before anything could write to
+// the install tree (InstallEvent.tree_untouched).
+func (d *DockerRuntime) failUntouched(emit func(*agentpb.InstallEvent) error, msg string) error {
+	_ = emit(untouchedFailure(msg))
+	return fmt.Errorf("docker install: %s", msg)
+}
+
+// untouchedFailure is the Failed event for a pass that never touched the tree.
+func untouchedFailure(msg string) *agentpb.InstallEvent {
+	return &agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: msg}, TreeUntouched: true}
 }
 
 // streamLogs streams a container's logs to fn until the stream ends (used for

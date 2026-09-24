@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"errors"
+	"time"
 
 	"github.com/briggleman/kraken/internal/shared/spec"
 	"github.com/briggleman/kraken/internal/shared/tunnel"
@@ -106,6 +107,16 @@ type Node struct {
 	// count remains the thing to fall back on, never derived from this list.
 	ManagedContainers []ManagedContainer `json:"managed_containers,omitempty"`
 
+	// PendingRemovals are server removals the operator asked for that have not
+	// reached this node yet: the delete went through Panel-side, but the Agent
+	// was unreachable or its RemoveServer failed. The node reconciler replays
+	// each one with the operator's recorded intent until the Agent confirms it,
+	// then drops it. Without this a delete that missed the node left a container
+	// nothing owned, re-adopted by the watchdog on every Agent restart (#354).
+	// The Agent never decides to remove anything itself; this is the operator's
+	// own command, executed late.
+	PendingRemovals []PendingRemoval `json:"pending_removals,omitempty"`
+
 	// AgentSHA is the hex SHA-256 of the Agent's running binary, self-reported
 	// on last contact. Preferred over AgentVersion for skew detection: a
 	// panel-only release leaves the agent artifact byte-identical, and flagging
@@ -176,6 +187,117 @@ type Node struct {
 type ManagedContainer struct {
 	ServerID      string `json:"server_id"`
 	ContainerName string `json:"container_name"`
+}
+
+// PendingRemoval is one server removal owed to a node (see Node.PendingRemovals).
+// DeleteData is the operator's intent at the time of the delete and is replayed
+// verbatim — a retry never widens what the operator asked to destroy.
+type PendingRemoval struct {
+	ServerID    string    `json:"server_id"`
+	DeleteData  bool      `json:"delete_data"`
+	RequestedAt time.Time `json:"requested_at"`
+	// Attempts counts the tries that failed, including the first one made at
+	// delete time; LastError is the most recent failure, verbatim.
+	Attempts  int    `json:"attempts"`
+	LastError string `json:"last_error,omitempty"`
+	// NextAttempt is when the reconciler may try again; failures back off
+	// (see RemovalBackoff) so a node that keeps refusing is not hammered, and
+	// its log not flooded, every pass.
+	NextAttempt time.Time `json:"next_attempt,omitempty"`
+	// MemoryMB and Ports are the deleted server's allocation, still held on
+	// this node: the container may be running and bound until the removal
+	// lands, so they are released when it does (FinishPendingRemoval), once,
+	// and not a moment before.
+	MemoryMB int   `json:"memory_mb,omitempty"`
+	Ports    []int `json:"ports,omitempty"`
+}
+
+// Removal retry backoff: the first retry 20s after a failure, doubling with
+// each one after, never more than an hour apart.
+const (
+	removalBackoffBase = 20 * time.Second
+	removalBackoffCap  = time.Hour
+)
+
+// RemovalBackoff is how long to wait after the attempts-th failed try.
+func RemovalBackoff(attempts int) time.Duration {
+	d := removalBackoffBase
+	for i := 1; i < attempts && d < removalBackoffCap; i++ {
+		d *= 2
+	}
+	return min(d, removalBackoffCap)
+}
+
+// Due reports whether the removal may be tried at now.
+func (p PendingRemoval) Due(now time.Time) bool { return !now.Before(p.NextAttempt) }
+
+// AddPendingRemoval records a removal owed to this node. A second removal for
+// the same server is folded into the first — the operator's latest intent wins,
+// the original request time stays, the attempts add up — so a server is never
+// queued twice. The allocation the first one carries is kept rather than
+// added to: the node holds it once.
+func (n *Node) AddPendingRemoval(p PendingRemoval) {
+	for i := range n.PendingRemovals {
+		if n.PendingRemovals[i].ServerID == p.ServerID {
+			n.PendingRemovals[i].DeleteData = p.DeleteData
+			n.PendingRemovals[i].Attempts += p.Attempts
+			n.PendingRemovals[i].NextAttempt = p.NextAttempt
+			if p.LastError != "" {
+				n.PendingRemovals[i].LastError = p.LastError
+			}
+			return
+		}
+	}
+	n.PendingRemovals = append(n.PendingRemovals, p)
+}
+
+// PendingRemovalFor returns the removal owed for serverID, if there is one.
+func (n *Node) PendingRemovalFor(serverID string) (PendingRemoval, bool) {
+	for _, p := range n.PendingRemovals {
+		if p.ServerID == serverID {
+			return p, true
+		}
+	}
+	return PendingRemoval{}, false
+}
+
+// RecordRemovalFailure counts a failed retry of the removal owed for serverID
+// and schedules the next one, reporting whether the reason differs from the
+// last one (the reconciler logs loudly only then).
+func (n *Node) RecordRemovalFailure(serverID, reason string, now time.Time) (changed bool) {
+	for i := range n.PendingRemovals {
+		p := &n.PendingRemovals[i]
+		if p.ServerID != serverID {
+			continue
+		}
+		changed = p.LastError != reason
+		p.Attempts++
+		p.LastError = reason
+		p.NextAttempt = now.Add(RemovalBackoff(p.Attempts))
+		return changed
+	}
+	return false
+}
+
+// FinishPendingRemoval forgets the removal owed for serverID and releases the
+// allocation it was holding, reporting whether there was one. It is the only
+// place that allocation is released, so it cannot be released twice.
+func (n *Node) FinishPendingRemoval(serverID string) bool {
+	var kept []PendingRemoval
+	var done *PendingRemoval
+	for _, p := range n.PendingRemovals {
+		if p.ServerID == serverID && done == nil {
+			done = &p
+			continue
+		}
+		kept = append(kept, p)
+	}
+	n.PendingRemovals = kept
+	if done == nil {
+		return false
+	}
+	n.Release(done.MemoryMB, done.Ports)
+	return true
 }
 
 // ConnectionMode is the transport direction between Panel and a node's Agent.

@@ -211,8 +211,8 @@ func (s *Server) serveRedeemed(gated http.Handler, kind string, w http.ResponseW
 		return
 	}
 	// Audit the OUTCOME, not the intent: the handler can still 404 on the
-	// ownership scope, 403 on the first-run password gate or 502 on an
-	// unreachable Agent, and a row that says every redemption streamed is worse
+	// ownership scope, 403 on the first-run password gate, 404 on a file the
+	// node does not have or 503 on an unreachable Agent, and a row that says every redemption streamed is worse
 	// than no row at all — so even the verb comes from the status. The recorder
 	// is the audit middleware's (it forwards Unwrap, so the stream still
 	// flushes), and the row is deferred so a stream that aborts mid-way

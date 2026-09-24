@@ -553,6 +553,14 @@ message InstallEvent {
     bool completed = 3;      // install finished successfully
     string failed = 4;       // install failed, with reason
   }
+  // Set on a `failed` event when the pass ended before anything could write to
+  // the install tree — the pre-install guard refused it (a container still has
+  // the data dir; #351), or the previous install container's name never came
+  // free. The Panel then returns the server to the state it was in rather than
+  // install_failed, as it does for any phase that never touched the tree
+  // (#328). A Panel that predates the field ignores it and lands
+  // install_failed, as before.
+  bool tree_untouched = 5;
 }
 
 message PowerActionRequest {

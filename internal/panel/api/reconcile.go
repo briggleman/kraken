@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -58,12 +59,21 @@ func (s *Server) reconcileNodesOnce(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	var reached []*cluster.Node
 	for _, n := range nodes {
 		// reconcileNode persists the status transition (including offline on
 		// failure), which is the whole point of the poll — the error is expected
 		// and already logged there.
-		_, _ = s.reconcileNode(ctx, n)
+		if _, err := s.reconcileNode(ctx, n); err != nil {
+			continue
+		}
+		reached = append(reached, n)
 	}
+	// Every node that answered can be handed the removals it is owed. Which
+	// ones those are is read from the stored record, not this pass's snapshot,
+	// so a removal queued a moment ago is not left for the next pass. The
+	// replays run beside this pass and are never waited on here.
+	s.startPendingRemovals(ctx, reached)
 }
 
 // reconcileLive are the states worth polling the Agent about for a running

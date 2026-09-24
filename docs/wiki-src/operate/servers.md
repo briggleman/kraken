@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart.
+description: Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.
 section: operate
 order: 31
 ---
@@ -65,22 +65,34 @@ install script before launching.** For a SteamCMD title that is an
 all. Before this, a healthy server stayed on the build SteamCMD pulled the day
 it was created, and the only way forward was delete and recreate.
 
-The sequence, once you press start:
+The sequence, once you press start and the pass runs:
 
-1. The Panel stops the container if anything is holding the data directory.
-2. It runs the install script. The server reads `installing`, the response is a
+1. The Panel stops the container if anything is holding the data directory,
+   and the Agent confirms the container is really down before reporting the
+   stop done.
+2. The Agent checks nothing else still has the data directory: an exited
+   container bound to it is removed, and a running one refuses the pass by
+   name, since SteamCMD writing under a live game corrupts the tree. Only the
+   stop has happened at that point, so a refusal leaves the server `offline`,
+   not `install_failed`, with the container named in `last_error`. Until the
+   pass ends the Agent also refuses any start or restart of the server, the
+   crash watchdog's included; stop and kill still work.
+3. It runs the install script. The server reads `installing`, the response is a
    `202` carrying `updating: true`, and the install log streams to the console.
-3. It re-renders the config files over the fresh tree. **After** the update, not
+   A start that skips the pass (the opt-outs and the paths below) is the plain
+   synchronous `200` instead.
+4. It re-renders the config files over the fresh tree. **After** the update, not
    before, because the pass can restore a file the depot owns and your settings
    have to win.
-4. It starts the game.
+5. It starts the game.
 
 Where a failed pass leaves the server depends on how far it got, because the
-three phases say different things about the install tree:
+phases say different things about the install tree:
 
 | phase that failed | where the server lands |
 | --- | --- |
 | the stop before the update (or reaching the Agent at all) | **back where it was** — `running` if it was running — with `last_error` set. Nothing on the node was touched, so there is nothing to reinstall; press start again once the node is back. |
+| the Agent's check that nothing holds the data directory | `offline` — the stop before it ran, nothing else did — with the container that holds it named in `last_error`. Stop that container, then start again. A reinstall refused the same way stays in the stopped state it started from. |
 | the install script | `install_failed` with `last_error` set. Start is refused until you reinstall — a half-written tree must not be launched over. |
 | the start after a good install | `offline`. The tree is fine, the game did not come up, and a plain start retries it. |
 
@@ -110,11 +122,29 @@ stale error.
 
 ### What deliberately does not update
 
-Three paths start a server without re-running anything, and each is a decision
+Four paths start a server without re-running anything, and each is a decision
 rather than an omission.
 
+- **Any start within 30 minutes of an install.** A create or reinstall that
+  succeeds stamps the server's `provisioned_at`, and every start or restart
+  inside that window skips the pass, which would only repeat an install that
+  just ran. Starting does not clear the stamp, so a second start in the window
+  skips it too. It
+  covers the deploy form's "start once the install finishes" and an operator who
+  stops to fill in settings first. It is a window rather than a "never started"
+  flag so that a server created and left for days still updates on its first
+  start. Editing a launch variable clears the stamp, because the install script
+  may render it, even when the edit lands while the install is still running.
+  A failed install clears it too. The settings response's
+  `next_start_updates` says which way the next start will go.
 - **Scheduled restarts.** A cron restart drives the Agent directly. A nightly
-  restart is not an invitation to validate a 30 GB tree nightly.
+  restart is not an invitation to validate a 30 GB tree nightly. It runs on a
+  server that is `running`, `starting` or `crashed`, so it still revives a server
+  the watchdog gave up on. It is skipped on an `offline` one, because the Agent's
+  restart is a stop then a start and would start a server someone had stopped,
+  and on `stopping`, `installing` and `install_failed`. It is also refused while
+  a required setting is empty. Any skip is recorded as the schedule's last error,
+  shown on its row.
 - **The crash watchdog's restarts.** The Agent restarts the container itself and
   never involves the Panel, so a crash loop cannot become a download loop.
 - **A spec that needs a Steam login on a node with no stored credentials.** The
@@ -202,3 +232,26 @@ variable or a settings change on a spec that does not hot-reload.
 
 There is no per-setting "requires restart" flag. If you author specs, that is
 worth knowing before you go looking for one.
+
+## Deleting a server
+
+Delete is in the drill-in, behind the typed confirmation. It removes the
+server's containers and its data directory — the world and the rendered config —
+on its node, releases the memory and ports it reserved, and deletes the record
+together with its schedules.
+
+**Backups are kept.** The archives are keyed by server id and stay wherever the
+node's backup target keeps them — the node, a share, a mirror; the confirmation
+says so. They are the part of a server most worth keeping, and a
+retire-and-revive model that makes use of them is tracked in
+[#360](https://github.com/briggleman/kraken/issues/360).
+
+**A node that is down does not block a delete.** When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete still goes
+through and the removal is remembered on the node. Until it lands the node keeps
+the server's memory and ports allocated — the container may still be running and
+bound — and the band reads `removals · 1 pending`. The Panel's node reconciler
+retries it, backing off, until the node confirms; the allocation is released
+then. [The fleet page](/wiki/operate/fleet/) has the details. If the Panel
+cannot record the removal at all (its database is failing), the delete is
+refused with a `500` and nothing is deleted.

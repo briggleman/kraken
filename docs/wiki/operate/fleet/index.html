@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.54.0</span>
+      <span class="stamp mono">v0.55.0</span>
     </nav>
   </div>
 </header>
@@ -115,6 +115,8 @@
 <a class="toc-link lvl-2" href="#a-node-band">A node band</a>
 <a class="toc-link lvl-3" href="#three-health-states-and-a-fourth-that-is-a-decision">Three health states, and a fourth that is a decision</a>
 <a class="toc-link lvl-2" href="#the-container-drift-badge">The container-drift badge</a>
+<a class="toc-link lvl-3" href="#retiring-an-untracked-container">Retiring an untracked container</a>
+<a class="toc-link lvl-3" href="#pending-removals">Pending removals</a>
 <a class="toc-link lvl-2" href="#server-cards">Server cards</a>
 <a class="toc-link lvl-2" href="#live-or-stale">live, or stale</a>
 </div></details>
@@ -252,11 +254,55 @@ both find it, and while it ran the node had one more managed container than the
 Panel had <code>running</code> rows for. An Agent that names its containers reports that
 one against the server id it belongs to, the Panel finds the row, and the badge
 stays quiet for the length of the pass.</p>
-<p>A badge that does <em>not</em> clear is worth acting on. The usual cause is a
-restart that failed at the &quot;stop before update&quot; step while the Agent was
-unreachable: the Panel marked the row <code>install_failed</code> while the container kept
-running. <a href="/wiki/reference/troubleshooting/">Troubleshooting</a> has that one written
-out.</p>
+<p>A badge that does <em>not</em> clear is worth acting on. There are two causes, and
+the badge tells you which. If a server row exists for the id — it shows
+<code>install_failed</code> or <code>offline</code> while players are connected — it is a restart
+that failed at the &quot;stop before update&quot; step while the Agent was unreachable.
+If no row matches, it is an <strong>orphan</strong>: a server deleted while its node could
+not be told, on a Panel from before that was remembered.
+<a href="/wiki/reference/troubleshooting/">Troubleshooting</a> has both written out.</p>
+<h3 id="retiring-an-untracked-container">Retiring an untracked container <a class="hlink" href="#retiring-an-untracked-container" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>Each named untracked container on the line carries a <strong>retire</strong> chip (past
+three, one <strong>retire all</strong> takes them together). It is offered to a role holding
+both <code>server.delete</code> and <code>node.manage</code>, and it asks for a plain confirmation
+rather than the typed one, because it destroys nothing:</p>
+<ul>
+<li>the node stops and removes the container, and the install container if one
+was left behind;</li>
+<li>the Agent forgets the server&#39;s persisted spec, so its watchdog never adopts
+the container again after an Agent restart;</li>
+<li>the server&#39;s data directory stays exactly where it is, and its backups are
+kept.</li>
+</ul>
+<p>It is refused with <code>409 server_tracked</code> if the Panel does have a server with
+that id on that node — use the server&#39;s own delete for that — and with
+<code>409 removal_pending</code> if a removal is already owed for that id (see below: that
+removal may delete the data, so a retire promising otherwise would be undone by
+the next retry). A node that is not answering is <code>503 node_unreachable</code>; one
+that answers but cannot remove the container is <code>500 node_error</code> with its
+reason. A refusal lands on the band as <code>retire · &lt;reason&gt;</code> and clears once the
+container is gone.</p>
+<p>The API is <code>DELETE /api/v1/nodes/{id}/containers/{serverID}</code>.</p>
+<h3 id="pending-removals">Pending removals <a class="hlink" href="#pending-removals" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>A delete no longer needs the node to be there. When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete goes through
+anyway — row and schedules — and the removal is remembered on the node together
+with what you asked for (container and data). The server&#39;s <strong>memory and ports
+stay allocated</strong> on the node until the removal lands, because the container may
+still be running and bound; they are released when the node confirms.</p>
+<p>While it is owed, the band reads <code>removals · 1 pending</code>, and the container, if
+it is still running, is counted there rather than as untracked. Hover it for the
+server id, how many tries it has had and the last failure. The Panel&#39;s node
+reconciler retries each pending removal while the node answers, backing off
+after each failure — 20 seconds, then 40, doubling up to an hour apart — and the
+line goes away when the Agent confirms. It never holds up the node health pass:
+a node whose removals hang does not delay any other node&#39;s status.</p>
+<p>If the Panel cannot record the removal at all (its database is failing), the
+delete is refused with a <code>500</code> and nothing is deleted.</p>
+<p>This is your delete, carried out late. The Agent never decides on its own that
+a container it finds should go: it adopts what it finds running, as it always
+has, and removes only what the Panel tells it to. The same list is on the node
+record as <code>pending_removals</code> in <code>GET /api/v1/nodes</code>.</p>
 <h2 id="server-cards">Server cards <a class="hlink" href="#server-cards" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Below the bands, one card per server, and clicking one opens the full-screen
 drill-in where the real instruments live.</p>
@@ -336,6 +382,8 @@ browser tab cannot reach the Panel. What has stopped is your view.</p>
 <a class="toc-link lvl-2" href="#a-node-band">A node band</a>
 <a class="toc-link lvl-3" href="#three-health-states-and-a-fourth-that-is-a-decision">Three health states, and a fourth that is a decision</a>
 <a class="toc-link lvl-2" href="#the-container-drift-badge">The container-drift badge</a>
+<a class="toc-link lvl-3" href="#retiring-an-untracked-container">Retiring an untracked container</a>
+<a class="toc-link lvl-3" href="#pending-removals">Pending removals</a>
 <a class="toc-link lvl-2" href="#server-cards">Server cards</a>
 <a class="toc-link lvl-2" href="#live-or-stale">live, or stale</a>
     </div>
@@ -353,7 +401,7 @@ browser tab cannot reach the Panel. What has stopped is your view.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.54.0</span><span class="sep">·</span>
+      <span>documentation for v0.55.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

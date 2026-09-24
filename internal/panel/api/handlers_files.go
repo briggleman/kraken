@@ -125,7 +125,9 @@ func contentDisposition(name string) string {
 func (s *Server) streamChunks(w http.ResponseWriter, recv func() ([]byte, int64, error), contentType, filename string, about ...any) {
 	first, size, err := recv()
 	if err != nil && err != io.EOF {
-		writeError(w, http.StatusBadGateway, "download failed: "+err.Error())
+		// No header is out yet, so the failure still gets a real status: a
+		// missing file is a 404, a locked one a 409 (see agentFailure).
+		writeAgentError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
@@ -206,7 +208,7 @@ func (s *Server) agentForServer(w http.ResponseWriter, r *http.Request, id strin
 	}
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not connect to agent")
+		writeAgentError(w, err)
 		return nil, nil, false
 	}
 	return client, sv, true
@@ -232,7 +234,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	resp, err := client.ListFiles(ctx, &agentpb.ListFilesRequest{ServerId: sv.ID, Path: r.URL.Query().Get("path")})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	views := make([]fileEntryView, 0, len(resp.Entries))
@@ -261,7 +263,7 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	resp, err := client.ReadFile(ctx, &agentpb.ReadFileRequest{ServerId: sv.ID, Path: p, MaxBytes: maxEditBytes})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	tooLarge := resp.Truncated || resp.Size > maxEditBytes
@@ -308,7 +310,7 @@ func (s *Server) handleMakeDir(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	if _, err := client.MakeDir(ctx, &agentpb.MakeDirRequest{ServerId: sv.ID, Path: req.Path}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "created"})
@@ -332,7 +334,7 @@ func (s *Server) handleMovePath(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	if _, err := client.MovePath(ctx, &agentpb.MovePathRequest{ServerId: sv.ID, Src: req.Src, Dst: req.Dst}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "moved"})
@@ -351,7 +353,7 @@ func (s *Server) handleCopyPath(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
 	if _, err := client.CopyPath(ctx, &agentpb.CopyPathRequest{ServerId: sv.ID, Src: req.Src, Dst: req.Dst}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "copied"})
@@ -375,7 +377,7 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if _, err := client.WriteFile(ctx, &agentpb.WriteFileRequest{ServerId: sv.ID, Path: req.Path, Content: []byte(req.Content)}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "written"})
@@ -432,7 +434,7 @@ func (s *Server) handleUploadFiles(w http.ResponseWriter, r *http.Request) {
 		_, err = client.WriteFile(ctx, &agentpb.WriteFileRequest{ServerId: sv.ID, Path: dir + "/" + fh.Filename, Content: data})
 		cancel()
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+			writeAgentError(w, err)
 			return
 		}
 	}
@@ -456,7 +458,7 @@ func (s *Server) handleDeleteFiles(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	if _, err := client.DeletePaths(ctx, &agentpb.DeletePathsRequest{ServerId: sv.ID, Paths: req.Paths}); err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -477,7 +479,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	stream, err := client.DownloadFile(ctx, &agentpb.DownloadFileRequest{ServerId: sv.ID, Path: p})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 
@@ -537,7 +539,7 @@ func (s *Server) streamZip(w http.ResponseWriter, r *http.Request, paths []strin
 	defer cancel()
 	stream, err := client.DownloadFiles(ctx, &agentpb.DownloadFilesRequest{ServerId: sv.ID, Paths: paths})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent error: "+err.Error())
+		writeAgentError(w, err)
 		return
 	}
 

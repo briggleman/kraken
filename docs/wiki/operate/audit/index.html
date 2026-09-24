@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.54.0</span>
+      <span class="stamp mono">v0.55.0</span>
     </nav>
   </div>
 </header>
@@ -199,7 +199,9 @@ is somebody fumbling, a screen of magenta is something to go and fix.</p>
 <p>The path <strong>count</strong>, not the paths. The token itself appears in no log line at
 all. A redemption that was refused reads <code>download token refused (…)</code>, because
 the row carries the request&#39;s real outcome rather than an assumed 200: a
-download the node could not serve is on the record as the 502 it was.</p>
+download the node could not serve is on the record with the status it got — a
+404 for a file that is not there, a 409 for one another process holds, a 503
+when the node could not be reached.</p>
 <p>A redemption rejected before it got that far, an expired or forged token, is
 <strong>not</strong> an audit row. It is a <code>Debug</code> log line and a counter,
 <code>kraken_download_tokens_rejected_total</code>, so an unauthenticated caller with a bad
@@ -322,7 +324,7 @@ into the copy.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.54.0</span><span class="sep">·</span>
+      <span>documentation for v0.55.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

@@ -3,8 +3,10 @@ package agent
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"sort"
 	"strings"
@@ -44,6 +46,13 @@ type FakeRuntime struct {
 	// actually sent is worth asserting: the pre-start pass must carry the
 	// vanilla install script and NOT the BepInEx overlay.
 	installScripts map[string][]string
+	// holders simulates containers that still have a server's data dir mounted
+	// (see HoldDataDir). The install pass runs them through the same guard
+	// policy as the Docker runtime: a live one refuses the pass before any
+	// install container exists, a stopped one is removed.
+	holders map[string][]dataDirHolder
+	// installs gates starts while an install pass runs, as on DockerRuntime.
+	installs installGate
 	// installErr, when set, makes every install fail with this reason — the
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
@@ -52,11 +61,24 @@ type FakeRuntime struct {
 	// WithFakePowerFailure). The recorded state is left alone, the way it is on
 	// a node the Panel cannot reach: the container goes on doing what it was.
 	powerErrs map[agentpb.PowerAction]string
+	// powerFailures makes the named power actions fail with exactly this
+	// error, the way the Docker runtime's would (see WithFakePowerError).
+	powerFailures map[agentpb.PowerAction]error
 	// installDelay, when set, is how long each install step lingers, so the
 	// installing state is observable from a browser instead of flashing past
 	// in microseconds. The install-progress UI is otherwise unreachable on the
 	// fake-live stack. Zero (the default) keeps tests fast.
 	installDelay time.Duration
+	// removals records every Remove, and removeErr, when set, makes them fail
+	// (see SetRemoveFailure).
+	removals  []FakeRemoval
+	removeErr string
+	// removeGate, when set, holds every Remove until it is closed (see
+	// HoldRemovals) — a removal that hangs on the node.
+	removeGate chan struct{}
+	// fileErr, when set, is what every file operation that reads or changes the
+	// tree fails with (see WithFakeFileError).
+	fileErr error
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -98,11 +120,34 @@ func WithFakePowerFailure(action agentpb.PowerAction, reason string) FakeOption 
 	}
 }
 
+// WithFakePowerError makes the given power action fail with err as the runtime
+// returned it — a Docker engine that is down, a socket the Agent may not open —
+// so the Panel's answer to a non-file failure is testable through the real
+// gRPC path, classification included.
+func WithFakePowerError(action agentpb.PowerAction, err error) FakeOption {
+	return func(f *FakeRuntime) {
+		if f.powerFailures == nil {
+			f.powerFailures = make(map[agentpb.PowerAction]error)
+		}
+		f.powerFailures[action] = err
+	}
+}
+
 // WithFakeInstallDelay makes every install step linger for d before the next
 // one is emitted (see installDelay). cmd/agent wires KRAKEN_FAKE_INSTALL_DELAY
 // to it for the fake-live stack.
 func WithFakeInstallDelay(d time.Duration) FakeOption {
 	return func(f *FakeRuntime) { f.installDelay = d }
+}
+
+// WithFakeFileError makes every file operation that reads or changes the tree
+// (read, stat, download, mkdir, write, move, copy, delete) fail with err, the
+// way a real node's filesystem refuses one: a save file a running game holds
+// open, a directory the Agent may not write. It is how the Panel's mapping of
+// those failures to HTTP statuses is exercised through the real gRPC path —
+// the error crosses the same interceptor a real Agent's does.
+func WithFakeFileError(err error) FakeOption {
+	return func(f *FakeRuntime) { f.fileErr = err }
 }
 
 // NewFakeRuntime returns a fake runtime identifying as the given node.
@@ -193,11 +238,75 @@ func (f *FakeRuntime) fakeRoster(serverID string, since time.Time) (players, cap
 	}
 }
 
-func (f *FakeRuntime) Remove(_ context.Context, serverID string, _ bool) error {
+// FakeRemoval is one RemoveServer the fake received, with the intent it carried.
+type FakeRemoval struct {
+	ServerID   string
+	DeleteData bool
+}
+
+// SetRemoveFailure makes every later Remove fail with the given reason as a
+// plain error, the way the Docker runtime reports a removal the daemon refused
+// (it reaches the Panel as codes.Unknown, not Unavailable — the node answered);
+// "" makes removals succeed again. A runtime switch rather than a FakeOption,
+// because what it exists to test is a removal that fails and then, once the
+// node recovers, is finished by the Panel's retry (#354).
+func (f *FakeRuntime) SetRemoveFailure(reason string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.removeErr = reason
+}
+
+// HoldRemovals makes every later Remove hang — recorded, but not answered —
+// until the returned func is called, the way a removal stuck on a slow Docker
+// daemon does. It is what shows the Panel's health pass does not wait on one.
+func (f *FakeRuntime) HoldRemovals() (release func()) {
+	gate := make(chan struct{})
+	f.mu.Lock()
+	f.removeGate = gate
+	f.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			f.mu.Lock()
+			f.removeGate = nil
+			f.mu.Unlock()
+			close(gate)
+		})
+	}
+}
+
+// Removals returns every removal that reached the fake — failed ones included —
+// in order.
+func (f *FakeRuntime) Removals() []FakeRemoval {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]FakeRemoval(nil), f.removals...)
+}
+
+// Remove forgets the server, and its files only when deleteData is set — the
+// same promise the Docker runtime makes, so a Panel test can tell a removal
+// that kept the world from one that did not.
+func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bool) error {
+	f.mu.Lock()
+	f.removals = append(f.removals, FakeRemoval{ServerID: serverID, DeleteData: deleteData})
+	gate := f.removeGate
+	f.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.removeErr != "" {
+		return errors.New(f.removeErr)
+	}
 	delete(f.states, serverID)
-	delete(f.files, serverID)
+	if deleteData {
+		delete(f.files, serverID)
+	}
 	return nil
 }
 
@@ -318,9 +427,12 @@ func (f *FakeRuntime) ListFiles(_ context.Context, serverID string, p string) ([
 func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ int64) ([]byte, int64, bool, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return nil, 0, false, false, fileFailure("read", p, f.fileErr)
+	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return nil, 0, false, false, fmt.Errorf("fake: %s: no such file", p)
+		return nil, 0, false, false, fileFailure("read", p, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist))
 	}
 	return ff.data, int64(len(ff.data)), false, false, nil
 }
@@ -330,9 +442,12 @@ func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ i
 func (f *FakeRuntime) StatFile(_ context.Context, serverID string, p string) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return 0, fileFailure("read", p, f.fileErr)
+	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return 0, fmt.Errorf("fake: %s: no such file", p)
+		return 0, fileFailure("read", p, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist))
 	}
 	return int64(len(ff.data)), nil
 }
@@ -356,15 +471,22 @@ func (f *FakeRuntime) CopyPath(_ context.Context, serverID string, src, dst stri
 }
 
 func (f *FakeRuntime) transplant(serverID, src, dst string, move bool) error {
+	op := "copy"
+	if move {
+		op = "move"
+	}
 	s, d := fakePath(src), fakePath(dst)
 	if s == fakeDataRoot || d == fakeDataRoot {
-		return fmt.Errorf("fake: cannot move the data root")
+		return badPath("fake: cannot move the data root")
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return fileFailure(op, src, f.fileErr)
+	}
 	t := f.tree(serverID)
 	if _, ok := t[s]; !ok {
-		return fmt.Errorf("fake: %s: no such file or directory", src)
+		return fileFailure(op, src, fmt.Errorf("fake: %s: %w", src, fs.ErrNotExist))
 	}
 	moved := make(map[string]*fakeFile)
 	for k, ff := range t {
@@ -459,6 +581,9 @@ func (f *FakeRuntime) DeleteBackup(_ context.Context, serverID, _, id string) er
 func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return fileFailure("mkdir", p, f.fileErr)
+	}
 	f.putDir(f.tree(serverID), fakePath(p))
 	return nil
 }
@@ -466,10 +591,13 @@ func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) erro
 func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, content []byte) error {
 	fp := fakePath(p)
 	if fp == fakeDataRoot {
-		return fmt.Errorf("fake: cannot write the data root")
+		return badPath("fake: cannot write the data root")
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return fileFailure("write", p, f.fileErr)
+	}
 	f.putFile(f.tree(serverID), fp, append([]byte(nil), content...))
 	return nil
 }
@@ -479,6 +607,9 @@ func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, co
 func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return fileFailure("delete", strings.Join(paths, ", "), f.fileErr)
+	}
 	t := f.tree(serverID)
 	for _, p := range paths {
 		fp := fakePath(p)
@@ -486,7 +617,9 @@ func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []st
 			continue
 		}
 		if _, ok := t[fp]; !ok {
-			return fmt.Errorf("fake: delete %s: no such file or directory", p)
+			// Wrapped, not flattened: the gRPC boundary classifies it as a
+			// NotFound exactly as it does the real runtime's os error.
+			return fileFailure("delete", p, fmt.Errorf("fake: delete %s: %w", p, fs.ErrNotExist))
 		}
 		for k := range t {
 			if k == fp || strings.HasPrefix(k, fp+"/") {
@@ -505,7 +638,46 @@ func (f *FakeRuntime) InstallScripts(serverID string) []string {
 	return append([]string(nil), f.installScripts[serverID]...)
 }
 
+// HoldDataDir simulates a container that still has serverID's data dir
+// mounted, in the given Docker state ("running", "exited", "paused", …) — the
+// game container a pre-update stop did not account for (#351). It survives
+// power actions, the way an untracked container does. The next install pass
+// sees it exactly as the Docker runtime's guard would: a live holder refuses
+// the pass and no install container is run (no entry in InstallScripts); a
+// stopped one is removed, with a console line, and the pass proceeds.
+func (f *FakeRuntime) HoldDataDir(serverID, name, state string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.holders == nil {
+		f.holders = make(map[string][]dataDirHolder)
+	}
+	id := fmt.Sprintf("%064x", len(f.holders[serverID])+1)
+	f.holders[serverID] = append(f.holders[serverID], dataDirHolder{ID: id, Name: name, State: state})
+}
+
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
+	// The same gate as the Docker runtime: a START/RESTART arriving while the
+	// pass runs is refused (installgate.go).
+	// Released on the verdict, before Install returns, exactly as there.
+	leave := f.installs.enter(req.ServerId)
+	defer leave()
+	emit = releaseOnVerdict(emit, leave)
+
+	f.mu.Lock()
+	installName := containerName(req.ServerId) + "_install"
+	plan := planDataDirHolders(f.holders[req.ServerId], installName)
+	if len(plan.refuse) > 0 {
+		f.mu.Unlock()
+		return emit(untouchedFailure(dataDirRefusal(plan.refuse)))
+	}
+	delete(f.holders, req.ServerId)
+	f.mu.Unlock()
+	for _, h := range plan.remove {
+		if err := emit(logLine(dataDirRemovalNote(h, installName))); err != nil {
+			return err
+		}
+	}
+
 	f.mu.Lock()
 	if f.installScripts == nil {
 		f.installScripts = make(map[string][]string)
@@ -548,9 +720,18 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 }
 
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {
+	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		if err := f.installs.check(serverID); err != nil {
+			return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, err
+		}
+	}
 	f.mu.Lock()
 	reason, failing := f.powerErrs[action]
+	perr := f.powerFailures[action]
 	f.mu.Unlock()
+	if perr != nil {
+		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, perr
+	}
 	if failing {
 		return agentpb.ServerState_SERVER_STATE_UNSPECIFIED, grpcstatus.Error(codes.Unavailable, reason)
 	}

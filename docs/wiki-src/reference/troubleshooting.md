@@ -1,17 +1,16 @@
 ---
 title: Troubleshooting
-description: Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid.
+description: Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.
 section: reference
 order: 64
 ---
 
-Four failures that happened, each written the way you will meet it: the symptom
+Failures that happened, each written the way you will meet it: the symptom
 first, because that is all you have at the time.
 
-## Every install ends with `state is 0x6`
+## Every install ends with `state is 0x6` or `0x602`
 
-**Symptom.** The install log runs, SteamCMD reports progress, and the pass ends
-with
+**Symptom.** The pass ends with a line from the `state is 0x…` family
 
 ```text
 Error! App '4019830' state is 0x6 after update job.
@@ -22,20 +21,95 @@ failure: the Agent did not recognise the line, treated the pass as fine, and
 started the server on the **old** build, so the symptom was a server that
 refused to update and never said why.
 
-**Cause.** A stale download state from an earlier failed attempt. SteamCMD keeps
+There are two causes behind that one line, and they need different fixes. What
+tells them apart is the run of `Update state` lines just above it.
+
+**Cause 1 — a stale download state.** SteamCMD keeps
 `steamapps/appmanifest_<appid>.acf` and a `steamapps/downloading/` directory
 between runs, and when they disagree with what the depot now holds, every
-subsequent `app_update` gives up in the same place. Validating does not clear
-it, because validation trusts the manifest.
+subsequent `app_update` gives up in the same place. `0x6` is
+`StateUpdateRequired | StateFullyInstalled` — SteamCMD holding both beliefs at
+once and abandoning the job meant to settle them. Validating does not clear it,
+because validation trusts the manifest, which is also why the failure repeats
+exactly rather than intermittently.
 
-**Fix.** Delete both, then run the install again.
+You will usually see the whole exchange land inside a single second, having
+asked for no bytes at all:
+
+```text
+16:02:29 Connecting anonymously to Steam Public...OK
+16:02:29  Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
+16:02:29 Error! App '4019830' state is 0x6 after update job.
+```
+
+**Cause 2 — an update that downloaded but could not be committed.** Steam
+replaces a file by writing the new copy beside it as `<name>~RF<hex>.TMP` and
+then renaming that over the original. If the rename fails, the staged `.TMP`
+stays and **the original is already gone**. Every later pass re-stages the same
+file and fails the same rename, so this repeats exactly too.
+
+Here the verify runs to completion and there is no download state anywhere,
+because the content is already on disk:
+
+```text
+ Update state (0x3)  reconfiguring,      progress:  0.00 (0 / 0)
+ Update state (0x5)  verifying install,  progress: 80.32 (3972809953 / 4946331918)
+ Update state (0x81) verifying update,   progress: 97.47 (4821282414 / 4946331918)
+ Update state (0x0)  unknown,            progress:  0.00 (0 / 0)
+Error! App '4019830' state is 0x602 after update job.
+```
+
+`0x602` is `StateUpdateStarted | StateUpdatePaused | StateUpdateRequired`:
+started, stopped before finishing, still owed. A missing `0x61 downloading`
+state is the thing to notice — nothing needed fetching, so the failure is at the
+commit.
+
+**Which one you have.** Open the server's **Files** tab and look in the
+install tree for a file ending `~RF<hex>.TMP`.
+
+- No such file: cause 1.
+- A `.TMP` **and** the file it is named after: an ordinary in-flight artifact.
+- A `.TMP` with **no** matching file: cause 2, and the missing file is the one
+  the update was replacing. If it is the server binary, the server could not
+  have started either way.
+
+**Fix for cause 1.** Delete both, then run the install again.
 
 1. Open the server's **Files** tab, or connect over SFTP.
 2. Delete `steamapps/appmanifest_<appid>.acf`.
 3. Delete the `steamapps/downloading/` directory.
 4. Start the server, or reinstall if it is in `install_failed`.
 
-The saves are not in either of those; they are wherever the spec's backup globs
+**Fix for cause 2.** Delete the orphaned `.TMP` and reinstall — not start, since
+the file it was replacing is not there to run.
+
+If the delete itself fails — the Files tab says the file `is in use by another
+process`, or passes on the node's `Access is denied.` — that is the same lock
+that stopped the rename, still held. On a Windows node it is usually a game
+container that is still running: stop it, then delete the `.TMP` and reinstall.
+Before starting the server, check the Files tab again and confirm the real file
+is back with no `~RF…` suffix — the install reporting success is not the same
+thing.
+
+A running container on the data dir is how the tree got into this state in the
+first place, so the Agent now checks before every pass. It refuses to run the
+install while any container that carries the server's label, or binds its data
+dir (or a folder inside it, or a writable folder above it), is still running,
+and says so by name: the pass fails with
+`refused to run the install pass: container kraken_<id> (<short id>) is running…`
+in `last_error` and in the install console. Nothing on disk is touched, so the
+server is not marked `install_failed`: an update lands `offline` (its stop had
+already run), and a reinstall stays in the stopped state it started from. Stop that
+container — `docker ps` on the node shows it, and it may be one Kraken is not
+tracking — then run the install again. A container that has merely exited is
+removed for you, with a `[kraken]` line in the install console saying which.
+The one exception to the refusal is the server's own install container,
+`kraken_<id>_install`, left over from an earlier pass: it is removed in any
+state, running included, because the pass is about to replace it. While a pass
+runs, the Agent also refuses any start or restart of that server.
+
+The saves are not in any of these; they are wherever the spec's backup globs
 point. Since 0.50.1 the Agent treats the `state is 0x…` family as an install
 failure, so a repeat lands in `install_failed` with the line as `last_error`
 instead of quietly relaunching the old build.
@@ -76,6 +150,11 @@ table of who is allowed to reach what.
 
 ## `containers N running · 1 untracked` that will not clear
 
+Two different problems print this line. Hover the badge: it names the server id,
+and whether the Panel has a row for that id decides which one you have.
+
+### A row exists: the server reads `install_failed` or `offline`
+
 **Symptom.** A node's band reads one more running container than the Panel has
 `running` rows for, and it stays that way. The server in question shows
 `install_failed`, or `offline`, while players are still connected to it.
@@ -104,6 +183,38 @@ install leaves the server exactly where it was — `running`, with the reason in
 `last_error` — and a power action aimed at a node the Panel cannot reach is
 refused with a `503` naming the node instead of starting a pass that cannot run.
 
+### No row: a server you deleted is still running
+
+**Symptom.** The badge names a container whose server id matches nothing in the
+Panel. Players may still be connected to a server you deleted, the Agent log
+shows `watchdog: adopted running server <id>` after every Agent restart, and the
+container comes back after every crash. A new server can even appear to "have
+the old server's backups": it does not — the listing is keyed by id — you are
+looking at the old server, still alive on the node.
+
+**Cause.** The server was deleted while its node could not be told, on a Panel
+older than the fix for [#354](https://github.com/briggleman/kraken/issues/354).
+The delete sent the removal once, ignored whether it arrived, and deleted the
+row regardless. The node, built to be self-sufficient, then did exactly what it
+is meant to: its watchdog adopts running containers carrying the
+`kraken.server_id` label at startup, and its persisted spec gave it everything
+it needed to keep restarting one.
+
+**Fix.** Press **retire** beside the container's name on the node band (see
+[Retiring an untracked container](/wiki/operate/fleet/)). The node stops and
+removes the container, the Agent forgets its spec, and nothing of the server's
+data or backups is touched — clear those by hand, on the host and the backup
+target, if you no longer want them. From the API:
+
+```sh
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  https://panel.example.com/api/v1/nodes/<node-id>/containers/<server-id>
+```
+
+It is no longer produced either. A delete that cannot reach the node is now
+remembered on the node as a pending removal and finished when the node answers;
+the band reads `removals · N pending` in the meantime.
+
 :::note
 On an Agent older than 0.54.0, a transient `1 untracked` during an install or
 update pass is **normal**. The one-shot install container carries the same
@@ -114,6 +225,32 @@ the row it belongs to, so the badge no longer appears for a pass at all, and
 when it does appear its tooltip names the container. Either way it is only the
 badge that persists that means something.
 :::
+
+## `removals · N pending` that will not clear
+
+The node answers but its Agent keeps failing the removal. Hover the line: the
+last error is verbatim, and both kinds begin `docker: remove server <id>:`.
+One that contains **`delete its data`** means the containers are gone but the
+data directory could not be deleted, usually a file held open on a Windows
+host. Anything else means Docker would not remove the container — a daemon
+restarting underneath it, or on Windows a container still being torn down. The
+Panel keeps retrying either way, backing off to an hour apart, and logs a
+warning only when the reason changes; once the cause is gone, the next retry
+clears it.
+
+**A removal that will never land can be dismissed** — a node that is gone for
+good, or a container you already cleared on the host:
+
+```sh
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  https://panel.example.com/api/v1/nodes/<node-id>/removals/<server-id>
+```
+
+It needs `server.delete` and `node.manage`. Nothing is sent to the node, and the
+memory and ports the removal was holding are released — so if the container is
+in fact still running there, retire it or remove it on the host, or those ports
+can be handed to a new server while it still holds them. Deleting the node from
+the Panel drops its pending removals with the node record.
 
 ## Cloudflare returns 400 `The SSL certificate error`
 

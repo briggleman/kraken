@@ -26,6 +26,11 @@ func TestFreshlyProvisioned(t *testing.T) {
 		// "just installed".
 		{"exactly the window", at(freshInstallWindow), false},
 		{"left for days", at(72 * time.Hour), false},
+		// A stamp from the future says nothing about when the tree was
+		// installed (a clock that stepped back, a hand-edited row), so the pass
+		// runs rather than being skipped for as long as the clock catches up.
+		{"a second in the future", at(-time.Second), false},
+		{"an hour in the future", at(-time.Hour), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

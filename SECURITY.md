@@ -259,7 +259,8 @@ object-scope/IDOR, malformed input, security headers, WS cross-origin.
 - Path traversal on file endpoints (`../../../../etc/passwd`, `/etc/passwd`,
   `/data/../../../etc/passwd`, URL-encoded variants) → **rejected** by the Agent's
   `safePath` ("escapes /data"); no host file served. (The Panel surfaces the Agent's
-  refusal as `502`; the traversal is blocked either way.)
+  refusal as `400` with `code: bad_path` — a `502` before #352; the traversal is
+  blocked either way.)
 - Command injection via launch variables → **not exploitable**: the bundled specs
   expose no user-editable launch `variables` (settings render into config *files*,
   never the shell command), and `ValidateVarOverrides` rejects shell metacharacters on
@@ -575,8 +576,9 @@ cannot be turned into one. Concretely, each token is:
   (the server id) is clipped to 64 characters first: it is attacker-chosen, and
   a log file is not somewhere to let a stranger write 4 KiB. The redemption row carries the
   request's **outcome** status, not an assumed 200 — a redemption the node
-  could not serve is on the record as the 502 it was, rather than as a
-  download that never happened. It is written from a deferred call, so a
+  could not serve is on the record with the status it got (404 for a missing
+  file, 409 for a held one, 503 for an unreachable node — a 502 before #352),
+  rather than as a download that never happened. It is written from a deferred call, so a
   stream that aborts mid-way is recorded rather than unwound past, and the
   append runs on a `context.WithoutCancel` copy of the request context (with a
   deadline of its own): the rows most worth having are the ones where the
@@ -788,14 +790,20 @@ files, unbounded — so `handleUploadFiles` now wraps the body in
 **Agent errors name the logical path, never the host one.** The Agent's
 single-file operations share one `statLocal`, whose message is built from the
 `/data`-relative path the caller asked for. An `*os.PathError` carries the
-RESOLVED host path, and the Panel hands an Agent error to the client verbatim
-("agent error: …"), so returning it unchanged would teach anyone holding
-`server.files.read` where a node keeps its storage. What is kept is the
-distinction — `not found` and `permission denied` stay separate answers, and
-anything else is reported by its underlying syscall error rather than the
-`PathError` wrapper.
+RESOLVED host path, and the Panel hands an Agent error to the client verbatim,
+so returning it unchanged would teach anyone holding `server.files.read` where a
+node keeps its storage. What is kept is the distinction — `not found` and
+`permission denied` stay separate answers, and anything else is reported by its
+underlying syscall error rather than the `PathError` wrapper. Since #352 the
+mutating operations (mkdir, write, delete, move, copy, zip) and a restore render
+their failures the same way — they had passed the `PathError`/`LinkError`
+through, host path and all — while keeping the OS cause reachable underneath,
+so the Agent's gRPC interceptor can still tell a missing file (404) from a
+locked one (409).
 
-Covered by `TestStatErrorsDoNotLeakTheHostPath` (`internal/agent`),
+Covered by `TestStatErrorsDoNotLeakTheHostPath`,
+`TestMutatingFileOpErrorsDoNotLeakTheHostPath` and
+`TestScrubbedKeepsTheChainButNotTheHostPath` (`internal/agent`),
 `TestDownloadFileAnnouncesItsSizeOnTheFirstChunkOnly`,
 `TestDownloadFilesZipAnnouncesNoSize`, `TestDownloadFileTruncatesAFileThatGrew`
 and `TestDownloadFileFailsWhenTheFileShrank` (`internal/agent`), and

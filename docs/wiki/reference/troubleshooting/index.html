@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Troubleshooting — Kraken wiki</title>
-<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <link rel="canonical" href="https://krakenserver.io/wiki/reference/troubleshooting/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/reference/troubleshooting/" />
 <meta property="og:title" content="Troubleshooting — Kraken wiki" />
-<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Troubleshooting — Kraken wiki" />
-<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.54.0</span>
+      <span class="stamp mono">v0.55.0</span>
     </nav>
   </div>
 </header>
@@ -110,38 +110,100 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">Troubleshooting</span></nav>
     <h1>Troubleshooting</h1>
-    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid.</p>
+    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
-<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code></a>
+<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
+<a class="toc-link lvl-3" href="#no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running</a>
+<a class="toc-link lvl-2" href="#removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear</a>
 <a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
 <a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
 </div></details>
     <article class="prose">
-<p>Four failures that happened, each written the way you will meet it: the symptom
+<p>Failures that happened, each written the way you will meet it: the symptom
 first, because that is all you have at the time.</p>
-<h2 id="every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code> <a class="hlink" href="#every-install-ends-with-state-is-0x6" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p><strong>Symptom.</strong> The install log runs, SteamCMD reports progress, and the pass ends
-with</p>
+<h2 id="every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code> <a class="hlink" href="#every-install-ends-with-state-is-0x6-or-0x602" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> The pass ends with a line from the <code>state is 0x…</code> family</p>
 <div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>Error! App '4019830' state is 0x6 after update job.</code></pre></div>
 <p>on every attempt, including a reinstall. Before 0.50.1 this was worse than a
 failure: the Agent did not recognise the line, treated the pass as fine, and
 started the server on the <strong>old</strong> build, so the symptom was a server that
 refused to update and never said why.</p>
-<p><strong>Cause.</strong> A stale download state from an earlier failed attempt. SteamCMD keeps
+<p>There are two causes behind that one line, and they need different fixes. What
+tells them apart is the run of <code>Update state</code> lines just above it.</p>
+<p><strong>Cause 1 — a stale download state.</strong> SteamCMD keeps
 <code>steamapps/appmanifest_&lt;appid&gt;.acf</code> and a <code>steamapps/downloading/</code> directory
 between runs, and when they disagree with what the depot now holds, every
-subsequent <code>app_update</code> gives up in the same place. Validating does not clear
-it, because validation trusts the manifest.</p>
-<p><strong>Fix.</strong> Delete both, then run the install again.</p>
+subsequent <code>app_update</code> gives up in the same place. <code>0x6</code> is
+<code>StateUpdateRequired | StateFullyInstalled</code> — SteamCMD holding both beliefs at
+once and abandoning the job meant to settle them. Validating does not clear it,
+because validation trusts the manifest, which is also why the failure repeats
+exactly rather than intermittently.</p>
+<p>You will usually see the whole exchange land inside a single second, having
+asked for no bytes at all:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>16:02:29 Connecting anonymously to Steam Public...OK
+16:02:29  Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
+16:02:29 Error! App '4019830' state is 0x6 after update job.</code></pre></div>
+<p><strong>Cause 2 — an update that downloaded but could not be committed.</strong> Steam
+replaces a file by writing the new copy beside it as <code>&lt;name&gt;~RF&lt;hex&gt;.TMP</code> and
+then renaming that over the original. If the rename fails, the staged <code>.TMP</code>
+stays and <strong>the original is already gone</strong>. Every later pass re-stages the same
+file and fails the same rename, so this repeats exactly too.</p>
+<p>Here the verify runs to completion and there is no download state anywhere,
+because the content is already on disk:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code> Update state (0x3)  reconfiguring,      progress:  0.00 (0 / 0)
+ Update state (0x5)  verifying install,  progress: 80.32 (3972809953 / 4946331918)
+ Update state (0x81) verifying update,   progress: 97.47 (4821282414 / 4946331918)
+ Update state (0x0)  unknown,            progress:  0.00 (0 / 0)
+Error! App '4019830' state is 0x602 after update job.</code></pre></div>
+<p><code>0x602</code> is <code>StateUpdateStarted | StateUpdatePaused | StateUpdateRequired</code>:
+started, stopped before finishing, still owed. A missing <code>0x61 downloading</code>
+state is the thing to notice — nothing needed fetching, so the failure is at the
+commit.</p>
+<p><strong>Which one you have.</strong> Open the server&#39;s <strong>Files</strong> tab and look in the
+install tree for a file ending <code>~RF&lt;hex&gt;.TMP</code>.</p>
+<ul>
+<li>No such file: cause 1.</li>
+<li>A <code>.TMP</code> <strong>and</strong> the file it is named after: an ordinary in-flight artifact.</li>
+<li>A <code>.TMP</code> with <strong>no</strong> matching file: cause 2, and the missing file is the one
+the update was replacing. If it is the server binary, the server could not
+have started either way.</li>
+</ul>
+<p><strong>Fix for cause 1.</strong> Delete both, then run the install again.</p>
 <ol>
 <li>Open the server&#39;s <strong>Files</strong> tab, or connect over SFTP.</li>
 <li>Delete <code>steamapps/appmanifest_&lt;appid&gt;.acf</code>.</li>
 <li>Delete the <code>steamapps/downloading/</code> directory.</li>
 <li>Start the server, or reinstall if it is in <code>install_failed</code>.</li>
 </ol>
-<p>The saves are not in either of those; they are wherever the spec&#39;s backup globs
+<p><strong>Fix for cause 2.</strong> Delete the orphaned <code>.TMP</code> and reinstall — not start, since
+the file it was replacing is not there to run.</p>
+<p>If the delete itself fails — the Files tab says the file <code>is in use by another process</code>, or passes on the node&#39;s <code>Access is denied.</code> — that is the same lock
+that stopped the rename, still held. On a Windows node it is usually a game
+container that is still running: stop it, then delete the <code>.TMP</code> and reinstall.
+Before starting the server, check the Files tab again and confirm the real file
+is back with no <code>~RF…</code> suffix — the install reporting success is not the same
+thing.</p>
+<p>A running container on the data dir is how the tree got into this state in the
+first place, so the Agent now checks before every pass. It refuses to run the
+install while any container that carries the server&#39;s label, or binds its data
+dir (or a folder inside it, or a writable folder above it), is still running,
+and says so by name: the pass fails with
+<code>refused to run the install pass: container kraken_&lt;id&gt; (&lt;short id&gt;) is running…</code>
+in <code>last_error</code> and in the install console. Nothing on disk is touched, so the
+server is not marked <code>install_failed</code>: an update lands <code>offline</code> (its stop had
+already run), and a reinstall stays in the stopped state it started from. Stop that
+container — <code>docker ps</code> on the node shows it, and it may be one Kraken is not
+tracking — then run the install again. A container that has merely exited is
+removed for you, with a <code>[kraken]</code> line in the install console saying which.
+The one exception to the refusal is the server&#39;s own install container,
+<code>kraken_&lt;id&gt;_install</code>, left over from an earlier pass: it is removed in any
+state, running included, because the pass is about to replace it. While a pass
+runs, the Agent also refuses any start or restart of that server.</p>
+<p>The saves are not in any of these; they are wherever the spec&#39;s backup globs
 point. Since 0.50.1 the Agent treats the <code>state is 0x…</code> family as an install
 failure, so a repeat lands in <code>install_failed</code> with the line as <code>last_error</code>
 instead of quietly relaunching the old build.</p>
@@ -172,6 +234,9 @@ name.</li>
 re-enrollment step. <a href="/wiki/configure/network/">Ports and firewall</a> has the full
 table of who is allowed to reach what.</p>
 <h2 id="containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear <a class="hlink" href="#containers-n-running-1-untracked-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Two different problems print this line. Hover the badge: it names the server id,
+and whether the Panel has a row for that id decides which one you have.</p>
+<h3 id="a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code> <a class="hlink" href="#a-row-exists-the-server-reads-install_failed-or-offline" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <p><strong>Symptom.</strong> A node&#39;s band reads one more running container than the Panel has
 <code>running</code> rows for, and it stays that way. The server in question shows
 <code>install_failed</code>, or <code>offline</code>, while players are still connected to it.</p>
@@ -195,6 +260,30 @@ predates the fix, reinstall the server once the node is online.)</p>
 install leaves the server exactly where it was — <code>running</code>, with the reason in
 <code>last_error</code> — and a power action aimed at a node the Panel cannot reach is
 refused with a <code>503</code> naming the node instead of starting a pass that cannot run.</p>
+<h3 id="no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running <a class="hlink" href="#no-row-a-server-you-deleted-is-still-running" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><strong>Symptom.</strong> The badge names a container whose server id matches nothing in the
+Panel. Players may still be connected to a server you deleted, the Agent log
+shows <code>watchdog: adopted running server &lt;id&gt;</code> after every Agent restart, and the
+container comes back after every crash. A new server can even appear to &quot;have
+the old server&#39;s backups&quot;: it does not — the listing is keyed by id — you are
+looking at the old server, still alive on the node.</p>
+<p><strong>Cause.</strong> The server was deleted while its node could not be told, on a Panel
+older than the fix for <a href="https://github.com/briggleman/kraken/issues/354">#354</a>.
+The delete sent the removal once, ignored whether it arrived, and deleted the
+row regardless. The node, built to be self-sufficient, then did exactly what it
+is meant to: its watchdog adopts running containers carrying the
+<code>kraken.server_id</code> label at startup, and its persisted spec gave it everything
+it needed to keep restarting one.</p>
+<p><strong>Fix.</strong> Press <strong>retire</strong> beside the container&#39;s name on the node band (see
+<a href="/wiki/operate/fleet/">Retiring an untracked container</a>). The node stops and
+removes the container, the Agent forgets its spec, and nothing of the server&#39;s
+data or backups is touched — clear those by hand, on the host and the backup
+target, if you no longer want them. From the API:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -X DELETE -H &quot;Authorization: Bearer $TOKEN&quot; \
+  https://panel.example.com/api/v1/nodes/&lt;node-id&gt;/containers/&lt;server-id&gt;</code></pre></div>
+<p>It is no longer produced either. A delete that cannot reach the node is now
+remembered on the node as a pending removal and finished when the node answers;
+the band reads <code>removals · N pending</code> in the meantime.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
 <div class="callout-b"><p>On an Agent older than 0.54.0, a transient <code>1 untracked</code> during an install or
@@ -209,6 +298,25 @@ badge that persists that means something.</p>
 </aside>
 
 
+<h2 id="removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear <a class="hlink" href="#removals-n-pending-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The node answers but its Agent keeps failing the removal. Hover the line: the
+last error is verbatim, and both kinds begin <code>docker: remove server &lt;id&gt;:</code>.
+One that contains <strong><code>delete its data</code></strong> means the containers are gone but the
+data directory could not be deleted, usually a file held open on a Windows
+host. Anything else means Docker would not remove the container — a daemon
+restarting underneath it, or on Windows a container still being torn down. The
+Panel keeps retrying either way, backing off to an hour apart, and logs a
+warning only when the reason changes; once the cause is gone, the next retry
+clears it.</p>
+<p><strong>A removal that will never land can be dismissed</strong> — a node that is gone for
+good, or a container you already cleared on the host:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -X DELETE -H &quot;Authorization: Bearer $TOKEN&quot; \
+  https://panel.example.com/api/v1/nodes/&lt;node-id&gt;/removals/&lt;server-id&gt;</code></pre></div>
+<p>It needs <code>server.delete</code> and <code>node.manage</code>. Nothing is sent to the node, and the
+memory and ports the removal was holding are released — so if the container is
+in fact still running there, retire it or remove it on the host, or those ports
+can be handed to a new server while it still holds them. Deleting the node from
+the Panel drops its pending removals with the node record.</p>
 <h2 id="cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code> <a class="hlink" href="#cloudflare-returns-400-the-ssl-certificate-error" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> With Authenticated Origin Pulls enabled, every request through
 Cloudflare comes back <code>400</code> with a body reading <em>The SSL certificate error</em>. The
@@ -264,9 +372,12 @@ firing while your tab is out of date.</p>
   <aside class="rail" aria-label="on this page">
     <span class="rail-k">on this page</span>
     <div class="toc">
-<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6">Every install ends with <code>state is 0x6</code></a>
+<a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
+<a class="toc-link lvl-3" href="#no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running</a>
+<a class="toc-link lvl-2" href="#removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear</a>
 <a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
 <a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
     </div>
@@ -284,7 +395,7 @@ firing while your tab is out of date.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.54.0</span><span class="sep">·</span>
+      <span>documentation for v0.55.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

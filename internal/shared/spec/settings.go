@@ -52,7 +52,8 @@ type SettingField struct {
 	// field is empty, naming the fields, instead of launching it into a crash
 	// loop. Saving settings is never blocked by it, so an operator can fill a
 	// form in any order. It is for values required unconditionally; a value
-	// needed only when some other setting is on cannot be expressed with it.
+	// needed only when some other setting is on cannot be expressed with it,
+	// and a bool field cannot be required (off is a value, not a blank).
 	Required bool `json:"required,omitempty"`
 }
 
@@ -286,6 +287,13 @@ func (s *Spec) validateSettings() error {
 			// every server built from the spec. Neither is worth expressing.
 			if f.Required && f.ReadOnly {
 				return fmt.Errorf("spec %q: setting %q cannot be both required and read_only", s.Slug, f.Key)
+			}
+			// A bool is never "empty": off is an answer, not a missing value. A
+			// required bool would either block every start until someone ticked
+			// it (turning "off" into a value the spec forbids) or be satisfied by
+			// any default — and the Settings tab has no empty state to mark.
+			if f.Required && f.Type == FieldBool {
+				return fmt.Errorf("spec %q: setting %q: a bool cannot be required", s.Slug, f.Key)
 			}
 			if f.Default != "" {
 				if err := ValidateFieldValue(f, f.Default); err != nil {

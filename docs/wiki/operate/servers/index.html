@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Servers — Kraken wiki</title>
-<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
 <meta property="og:title" content="Servers — Kraken wiki" />
-<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Servers — Kraken wiki" />
-<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -43,7 +43,7 @@
     <nav class="top-nav">
       <a class="link" href="/">landing</a>
       <a class="link" href="https://github.com/briggleman/kraken">github</a>
-      <span class="stamp mono">v0.54.0</span>
+      <span class="stamp mono">v0.55.0</span>
     </nav>
   </div>
 </header>
@@ -110,7 +110,7 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
     <h1>Servers</h1>
-    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart.</p>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
 <a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
@@ -121,6 +121,7 @@
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
 </div></details>
     <article class="prose">
 <p>A server is one game instance, running on one node, from one Game Spec. The spec
@@ -203,18 +204,29 @@ install script before launching.</strong> For a SteamCMD title that is an
 <code>app_update … validate</code> pass, which is how a server picks up a game update at
 all. Before this, a healthy server stayed on the build SteamCMD pulled the day
 it was created, and the only way forward was delete and recreate.</p>
-<p>The sequence, once you press start:</p>
+<p>The sequence, once you press start and the pass runs:</p>
 <ol>
-<li>The Panel stops the container if anything is holding the data directory.</li>
+<li>The Panel stops the container if anything is holding the data directory,
+and the Agent confirms the container is really down before reporting the
+stop done.</li>
+<li>The Agent checks nothing else still has the data directory: an exited
+container bound to it is removed, and a running one refuses the pass by
+name, since SteamCMD writing under a live game corrupts the tree. Only the
+stop has happened at that point, so a refusal leaves the server <code>offline</code>,
+not <code>install_failed</code>, with the container named in <code>last_error</code>. Until the
+pass ends the Agent also refuses any start or restart of the server, the
+crash watchdog&#39;s included; stop and kill still work.</li>
 <li>It runs the install script. The server reads <code>installing</code>, the response is a
-<code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.</li>
+<code>202</code> carrying <code>updating: true</code>, and the install log streams to the console.
+A start that skips the pass (the opt-outs and the paths below) is the plain
+synchronous <code>200</code> instead.</li>
 <li>It re-renders the config files over the fresh tree. <strong>After</strong> the update, not
 before, because the pass can restore a file the depot owns and your settings
 have to win.</li>
 <li>It starts the game.</li>
 </ol>
 <p>Where a failed pass leaves the server depends on how far it got, because the
-three phases say different things about the install tree:</p>
+phases say different things about the install tree:</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -225,6 +237,10 @@ three phases say different things about the install tree:</p>
 <tbody><tr>
 <td>the stop before the update (or reaching the Agent at all)</td>
 <td><strong>back where it was</strong> — <code>running</code> if it was running — with <code>last_error</code> set. Nothing on the node was touched, so there is nothing to reinstall; press start again once the node is back.</td>
+</tr>
+<tr>
+<td>the Agent&#39;s check that nothing holds the data directory</td>
+<td><code>offline</code> — the stop before it ran, nothing else did — with the container that holds it named in <code>last_error</code>. Stop that container, then start again. A reinstall refused the same way stays in the stopped state it started from.</td>
 </tr>
 <tr>
 <td>the install script</td>
@@ -259,11 +275,29 @@ it. Setting it costs that game its updates, so I would treat it as a last
 resort rather than a convenience, and rewrite the script instead.</li>
 </ul>
 <h3 id="what-deliberately-does-not-update">What deliberately does not update <a class="hlink" href="#what-deliberately-does-not-update" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
-<p>Three paths start a server without re-running anything, and each is a decision
+<p>Four paths start a server without re-running anything, and each is a decision
 rather than an omission.</p>
 <ul>
+<li><strong>Any start within 30 minutes of an install.</strong> A create or reinstall that
+succeeds stamps the server&#39;s <code>provisioned_at</code>, and every start or restart
+inside that window skips the pass, which would only repeat an install that
+just ran. Starting does not clear the stamp, so a second start in the window
+skips it too. It
+covers the deploy form&#39;s &quot;start once the install finishes&quot; and an operator who
+stops to fill in settings first. It is a window rather than a &quot;never started&quot;
+flag so that a server created and left for days still updates on its first
+start. Editing a launch variable clears the stamp, because the install script
+may render it, even when the edit lands while the install is still running.
+A failed install clears it too. The settings response&#39;s
+<code>next_start_updates</code> says which way the next start will go.</li>
 <li><strong>Scheduled restarts.</strong> A cron restart drives the Agent directly. A nightly
-restart is not an invitation to validate a 30 GB tree nightly.</li>
+restart is not an invitation to validate a 30 GB tree nightly. It runs on a
+server that is <code>running</code>, <code>starting</code> or <code>crashed</code>, so it still revives a server
+the watchdog gave up on. It is skipped on an <code>offline</code> one, because the Agent&#39;s
+restart is a stop then a start and would start a server someone had stopped,
+and on <code>stopping</code>, <code>installing</code> and <code>install_failed</code>. It is also refused while
+a required setting is empty. Any skip is recorded as the schedule&#39;s last error,
+shown on its row.</li>
 <li><strong>The crash watchdog&#39;s restarts.</strong> The Agent restarts the container itself and
 never involves the Panel, so a crash loop cannot become a download loop.</li>
 <li><strong>A spec that needs a Steam login on a node with no stored credentials.</strong> The
@@ -357,6 +391,25 @@ only when one is actually needed: a running server, plus either a changed launch
 variable or a settings change on a spec that does not hot-reload.</p>
 <p>There is no per-setting &quot;requires restart&quot; flag. If you author specs, that is
 worth knowing before you go looking for one.</p>
+<h2 id="deleting-a-server">Deleting a server <a class="hlink" href="#deleting-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Delete is in the drill-in, behind the typed confirmation. It removes the
+server&#39;s containers and its data directory — the world and the rendered config —
+on its node, releases the memory and ports it reserved, and deletes the record
+together with its schedules.</p>
+<p><strong>Backups are kept.</strong> The archives are keyed by server id and stay wherever the
+node&#39;s backup target keeps them — the node, a share, a mirror; the confirmation
+says so. They are the part of a server most worth keeping, and a
+retire-and-revive model that makes use of them is tracked in
+<a href="https://github.com/briggleman/kraken/issues/360">#360</a>.</p>
+<p><strong>A node that is down does not block a delete.</strong> When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete still goes
+through and the removal is remembered on the node. Until it lands the node keeps
+the server&#39;s memory and ports allocated — the container may still be running and
+bound — and the band reads <code>removals · 1 pending</code>. The Panel&#39;s node reconciler
+retries it, backing off, until the node confirms; the allocation is released
+then. <a href="/wiki/operate/fleet/">The fleet page</a> has the details. If the Panel
+cannot record the removal at all (its database is failing), the delete is
+refused with a <code>500</code> and nothing is deleted.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -382,6 +435,7 @@ worth knowing before you go looking for one.</p>
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
     </div>
   </aside>
 </div>
@@ -397,7 +451,7 @@ worth knowing before you go looking for one.</p>
     </nav>
     <div class="signoff mono">
       <span>the deep is quiet</span><span class="sep">·</span>
-      <span>documentation for v0.54.0</span><span class="sep">·</span>
+      <span>documentation for v0.55.0</span><span class="sep">·</span>
       <span>generated from docs/wiki-src</span>
     </div>
   </div>

@@ -108,8 +108,18 @@ func TestSpecsSurviveRestart(t *testing.T) {
 		}
 	}
 
+	// A removal the daemon cannot confirm fails and keeps the spec: the
+	// container may still be there, and the Panel's retry will need it (#354).
+	if err := rt.Remove(context.Background(), "srv-1", false); err == nil {
+		t.Fatal("Remove against an unreachable daemon = nil, want the failure reported")
+	}
+	if _, err := os.Stat(rt.specFile("srv-1")); err != nil {
+		t.Errorf("persisted spec dropped by a removal that did not happen: %v", err)
+	}
+
 	// Removing the server drops the persisted copy, so a stale spec can't be
 	// adopted after the server is gone.
+	rt.containers = &fakeContainers{byName: map[string]string{}}
 	if err := rt.Remove(context.Background(), "srv-1", false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}

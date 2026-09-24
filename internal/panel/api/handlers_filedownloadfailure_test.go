@@ -40,8 +40,8 @@ func TestDownloadFailureDoesNotArriveAsAFile(t *testing.T) {
 	// Raw: a path the Agent has nothing for, so the first Recv is the failure.
 	raw := do(t, e.h, http.MethodGet,
 		"/api/v1/servers/"+e.server+"/files/raw?path=/data/no-such-file", e.token, nil)
-	if raw.Code != http.StatusBadGateway {
-		t.Fatalf("raw download of a missing file: got %d, want 502", raw.Code)
+	if raw.Code != http.StatusNotFound {
+		t.Fatalf("raw download of a missing file: got %d, want 404 (body %s)", raw.Code, raw.Body.String())
 	}
 	if cd := raw.Header().Get("Content-Disposition"); cd != "" {
 		t.Fatalf("a failed download carried Content-Disposition %q — the browser would save the error as the file", cd)
@@ -68,8 +68,8 @@ func TestDownloadFailureDoesNotArriveAsAFile(t *testing.T) {
 		t.Fatalf("update node: %v", err)
 	}
 	z := do(t, e.h, http.MethodGet, tok.URL, "", nil)
-	if z.Code != http.StatusBadGateway {
-		t.Fatalf("zip of a missing folder: got %d, want 502", z.Code)
+	if z.Code != http.StatusServiceUnavailable {
+		t.Fatalf("zip against an unreachable node: got %d, want 503 (body %s)", z.Code, z.Body.String())
 	}
 	if cd := z.Header().Get("Content-Disposition"); cd != "" {
 		t.Fatalf("a failed zip carried Content-Disposition %q", cd)
@@ -98,16 +98,16 @@ func TestDownloadTokenAuditsTheOutcomeNotTheIntent(t *testing.T) {
 		t.Fatalf("update node: %v", err)
 	}
 
-	if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusBadGateway {
-		t.Fatalf("redeem against an unreachable agent: got %d, want 502", rec.Code)
+	if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("redeem against an unreachable agent: got %d, want 503", rec.Code)
 	}
 	for _, ent := range auditEntries(t, e) {
 		if strings.Contains(ent.Action, "download token") && !strings.Contains(ent.Action, "mint") {
-			if ent.Status != http.StatusBadGateway {
-				t.Fatalf("the redemption audited as %d, want 502 — the row claims a download that never happened", ent.Status)
+			if ent.Status != http.StatusServiceUnavailable {
+				t.Fatalf("the redemption audited as %d, want 503 — the row claims a download that never happened", ent.Status)
 			}
 			// And it does not read as a download either: the verb comes from
-			// the outcome, so a 502 is "refused", not "redeemed".
+			// the outcome, so a 503 is "refused", not "redeemed".
 			if !strings.Contains(ent.Action, "refused") {
 				t.Fatalf("a failed redemption audited as %q", ent.Action)
 			}

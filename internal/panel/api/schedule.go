@@ -86,6 +86,16 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	if err != nil {
 		return fmt.Errorf("load server: %w", err)
 	}
+	// A restart is stop-then-start on the Agent, so it boots the game: it is
+	// asked the same questions as an operator's start (checkStartable), before
+	// the node is contacted. The refusal's sentence becomes the schedule's
+	// last_error, which is where an operator looks when a restart did not
+	// happen.
+	if task.Action == store.ScheduleRestart {
+		if err := s.checkScheduledRestart(ctx, sv); err != nil {
+			return err
+		}
+	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
 		return fmt.Errorf("load node: %w", err)
@@ -102,7 +112,9 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
 			s.rePushServerSpec(ctx, client, sv, sp)
 		}
-		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		// The same deadline as an operator's restart: the Agent's stop grace
+		// alone is longer than the 20s this used to allow.
+		cctx, cancel := context.WithTimeout(ctx, scheduledRestartTimeout)
 		defer cancel()
 		resp, err := client.PowerAction(cctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_RESTART})
 		if err != nil {
@@ -144,4 +156,32 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	default:
 		return fmt.Errorf("unknown action %q", task.Action)
 	}
+}
+
+// checkScheduledRestart reports why a scheduled restart of sv must not run, or
+// nil when it may. Beyond checkStartable, the server has to be in a state a
+// restart is for:
+//
+//   - running, the ordinary case;
+//   - starting, because a server stuck there (a ready line that never matches)
+//     is exactly what a nightly restart should cycle;
+//   - crashed, because reviving a server the watchdog gave up on is behaviour
+//     operators rely on.
+//
+// It is refused on an offline server — one someone stopped, which the Agent's
+// stop-then-start would quietly start again — and on every other state
+// (stopping, installing, install_failed, and any state added later), since an
+// allow-list cannot start something by default.
+func (s *Server) checkScheduledRestart(ctx context.Context, sv *store.Server) error {
+	switch sv.State {
+	case store.StateRunning, store.StateStarting, store.StateCrashed:
+	case store.StateOffline:
+		return fmt.Errorf("server is offline, so the scheduled restart was skipped — a restart would start a server someone had stopped")
+	default:
+		return fmt.Errorf("server is %s, so the scheduled restart was skipped", sv.State)
+	}
+	if refusal := s.checkStartable(ctx, sv, agentpb.PowerAction_POWER_ACTION_RESTART); refusal != nil {
+		return refusal
+	}
+	return nil
 }

@@ -2958,7 +2958,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <section class="side-block danger-block" aria-label="Delete server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world, backups and config. it cannot be undone.</p>
+          <p class="danger-note">deleting removes this server's world and config. its backups are kept. it cannot be undone.</p>
           <button class="ctl ctl-delete" id="deleteSrvBtn">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
             delete server
@@ -3531,10 +3531,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <div class="audit-row change f4"><span class="a-t">24 aug · 08:47:02</span><span class="a-who">ben</span><span class="a-act"><b class="a-verb">server.create</b><em class="a-route">POST /servers</em></span><span class="a-tgt">palworld-02 <em>· port 8211 already claimed on this node</em></span><span class="a-src">192.168.1.24</span><span class="a-res s4">409</span></div>
       <div class="audit-row "><span class="a-t">23 aug · 12:54:37</span><span class="a-who">node-config:8c370f76</span><span class="a-act"><b class="a-verb">node.config</b><em class="a-route">PUT /nodes/{id}/config</em></span><span class="a-tgt">behemoth <em>· agent applied the pushed config</em></span><span class="a-src">10.0.0.4</span><span class="a-res s2">200</span></div>
       <div class="audit-row change f4"><span class="a-t">23 aug · 12:53:52</span><span class="a-who">ben</span><span class="a-act"><b class="a-verb">agent.update</b><em class="a-route">POST /nodes/{id}/agent-update</em></span><span class="a-tgt">behemoth <em>· already on 0.25.0 — nothing to do</em></span><span class="a-src">192.168.1.24</span><span class="a-res s4">409</span></div>
-      <div class="audit-row f5"><span class="a-t">23 aug · 12:53:52</span><span class="a-who">node-agent-update:8c370f76</span><span class="a-act"><b class="a-verb">agent.update</b><em class="a-route">POST /nodes/{id}/agent-update</em></span><span class="a-tgt">behemoth <em>· agent unreachable through the tunnel</em></span><span class="a-src">10.0.0.4</span><span class="a-res s5">502</span></div>
+      <div class="audit-row f5"><span class="a-t">23 aug · 12:53:52</span><span class="a-who">node-agent-update:8c370f76</span><span class="a-act"><b class="a-verb">agent.update</b><em class="a-route">POST /nodes/{id}/agent-update</em></span><span class="a-tgt">behemoth <em>· agent unreachable through the tunnel</em></span><span class="a-src">10.0.0.4</span><span class="a-res s5">503</span></div>
       <div class="audit-row change"><span class="a-t">23 aug · 12:53:15</span><span class="a-who">enroll:behemoth</span><span class="a-act"><b class="a-verb">node.enroll</b><em class="a-route">POST /agents/enroll</em></span><span class="a-tgt">behemoth <em>· mtls certificate issued · debian 12</em></span><span class="a-src">10.0.0.4</span><span class="a-res s2">200</span></div>
       <div class="audit-row change"><span class="a-t">22 aug · 14:42:32</span><span class="a-who">settings</span><span class="a-act"><b class="a-verb">settings.update</b><em class="a-route">PUT /settings</em></span><span class="a-tgt">cloudflare dns <em>· api token replaced</em></span><span class="a-src">192.168.1.24</span><span class="a-res s2">200</span></div>
-      <div class="audit-row change f5"><span class="a-t">22 aug · 09:07:14</span><span class="a-who">ben</span><span class="a-act"><b class="a-verb">server.power</b><em class="a-route">POST /servers/{id}/power</em></span><span class="a-tgt">dragonwilds <em>· agent accepted, game process never exited</em></span><span class="a-src">192.168.1.24</span><span class="a-res s5">502</span></div>
+      <div class="audit-row change f5"><span class="a-t">22 aug · 09:07:14</span><span class="a-who">ben</span><span class="a-act"><b class="a-verb">server.power</b><em class="a-route">POST /servers/{id}/power</em></span><span class="a-tgt">dragonwilds <em>· agent accepted, game process never exited</em></span><span class="a-src">192.168.1.24</span><span class="a-res s5">503</span></div>
       <div class="audit-row f4"><span class="a-t">21 aug · 09:02:31</span><span class="a-who">setup-external-denied</span><span class="a-act"><b class="a-verb">setup.status</b><em class="a-route">GET /setup/status</em></span><span class="a-tgt">— <em>· first-run setup refused from a non-loopback address</em></span><span class="a-src">203.0.113.41</span><span class="a-res s4">403</span></div>
     </div>
 
@@ -3625,11 +3625,11 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-delete w">
           <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>{id}</em></span><span class="ep-r"><span class="ep-s">delete a server and its data</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p><p class="ep-line"><b>keep_data</b> <em>query · optional · leave the data directory in place</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world, backups and config</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; its backups are kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>{id}</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>request body</h5><p class="ep-line"><b>application/json</b> <em>· action: start | stop | restart | kill</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the agent is working on it</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already in that state</em></p><p class="ep-line"><b class="ep-code s5">502</b> <em>the agent took it and the process never moved</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>operator and up</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>request body</h5><p class="ep-line"><b>application/json</b> <em>· action: start | stop | restart | kill</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the agent is working on it</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already in that state</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the node could not be reached, or did not answer in time — a stop may still be finishing there</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>operator and up</em></p></div></div>
         </details>
         <details class="ep m-get">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/servers/<em>{id}</em>/settings</span><span class="ep-r"><span class="ep-s">grouped game settings + current values</span></span></summary>
@@ -3693,7 +3693,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/nodes/<em>{id}</em>/agent-update</span><span class="ep-r"><span class="ep-s">push this panel's embedded agent binary to the node</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the push runs in the background; poll the GET below</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already on this version, or a push is already in flight</em></p><p class="ep-line"><b class="ep-code s5">502</b> <em>the agent is not reachable through the tunnel</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the push runs in the background; poll the GET below</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already on this version, or a push is already in flight</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the agent is not reachable through the tunnel</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
         </details>
         <details class="ep">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/nodes/<em>{id}</em>/agent-update</span><span class="ep-r"><span class="ep-s">progress of the most recent agent push</span></span></summary>
@@ -3701,7 +3701,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-get">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/nodes/<em>{id}</em>/info</span><span class="ep-r"><span class="ep-s">live agent info — pings the node and brings it online</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>os, cpu, memory, disk, agent version</em></p><p class="ep-line"><b class="ep-code s5">504</b> <em>the node did not answer in time</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>os, cpu, memory, disk, agent version</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the node did not answer in time</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
         </details>
         </div>
       </section>
@@ -3719,7 +3719,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-get">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/servers/<em>{id}</em>/files/raw</span><span class="ep-r"><span class="ep-s">download a single file (raw bytes)</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p><p class="ep-line"><b>path</b> <em>query · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>the file as an octet stream</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such file</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p><p class="ep-line"><b>path</b> <em>query · required</em></p><p class="ep-line"><b>token</b> <em>query · optional · a one-time download token instead of the session header</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>the file as an octet stream</em></p><p class="ep-line"><b class="ep-code s4">401</b> <em>the token is spent, expired, or not for this path</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server or file — a JSON error, never a file</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>the file is in use, or the node refused — the reason is in the body</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the node is unreachable</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>operator and up</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>{id}</em>/files/download</span><span class="ep-r"><span class="ep-s">download selected paths as a zip</span></span></summary>
@@ -4239,7 +4239,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 8 1.5 L 15 14 H 1 Z M 8 6 V 9.5 M 8 11.5 V 11.6"/></svg>
       delete <b id="cdName">server</b>
     </h2>
-    <p class="confirm-body" id="cdBody">this removes the world, backups and config for this server. it cannot be undone.</p>
+    <p class="confirm-body" id="cdBody">this removes the world and config for this server. its backups are kept. it cannot be undone.</p>
     <label class="confirm-label" for="cdInput">type <b>delete</b> to confirm</label>
     <input class="confirm-input" id="cdInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="cdHint">
     <p class="confirm-hint" id="cdHint" role="status" aria-live="polite"></p>
@@ -4673,7 +4673,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       closeSheet($('specEdit'));
       return;
     }
-    logDepthLine('[Server] ' + name + ' deleted — world, backups and config removed', 'warn');
+    logDepthLine('[Server] ' + name + ' deleted — world and config removed, backups kept', 'warn');
     delete SERVERS[name];
     document.querySelectorAll('.srv').forEach(b => {
       const n = b.querySelector('.srv-name');

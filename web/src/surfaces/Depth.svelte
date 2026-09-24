@@ -36,6 +36,7 @@
   import { specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isMissing } from "@/lib/required";
+  import { lastRun } from "@/lib/schedules";
   import type { FileEntry, ScheduleAction } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
@@ -690,7 +691,8 @@
               <p class="cfg-help">
                 off (default): every start re-runs the game's install script first, so the
                 server picks up updates — on a large steam tree that validate pass adds time
-                to the start. on: this server stays on the build now on disk; use update in
+                to the start. within 30 minutes of an install the pass is skipped: the tree is
+                already current. on: this server stays on the build now on disk; use update in
                 the controls to move it deliberately.
               </p>
             {:else}
@@ -1042,8 +1044,9 @@
         <div class="side-body">
           <div class="side-body" id="schBody" use:istyle={"padding: 0; gap: 12px"}>
             {#each depth.schedules as t (t.id)}
+              {@const last = lastRun(t)}
               <div class="sch-row{t.enabled ? '' : ' paused'}" data-cron={t.cron}>
-                <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small></span>
+                <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small><small>{last.when}</small>{#if last.error}<small class="sch-err" role="status">{last.error}</small>{/if}</span>
                 <span class="sch-acts"><span class="sch-next">{schNext(t)}</span><button class="mini-act res sch-pause" onclick={() => void scheduleToggle(t)}>{t.enabled ? "pause" : "resume"}</button><button class="mini-act del" onclick={() => void scheduleDelete(t)}>delete</button></span>
               </div>
             {/each}
@@ -1084,7 +1087,7 @@
       <section class="side-block danger-block" aria-label="Delete server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world, backups and config. it cannot be undone.</p>
+          <p class="danger-note">deleting removes this server's world and config. its backups are kept. it cannot be undone.</p>
           <button
             class="ctl ctl-delete"
             id="deleteSrvBtn"
@@ -1138,5 +1141,14 @@
   }
   .cfg-req.is-missing {
     color: var(--caution);
+  }
+  /* A schedule whose last run did nothing — a restart skipped on a stopped
+     server, or refused for an empty required setting. Caution Violet, because
+     something was prevented (the One Light Rule); size and tracking stay the
+     row's own small type from house.css. It wraps, since the reason is a
+     sentence and the row is narrow. */
+  .sch-err {
+    color: var(--caution);
+    overflow-wrap: anywhere;
   }
 </style>

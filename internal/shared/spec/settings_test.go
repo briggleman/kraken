@@ -227,3 +227,20 @@ func TestValidateSettings_RejectsRequiredReadOnly(t *testing.T) {
 		t.Fatalf("expected required+read_only rejection, got %v", err)
 	}
 }
+
+func TestValidateSettings_RejectsRequiredBool(t *testing.T) {
+	s := validSpec()
+	s.Settings = Settings{Groups: []SettingGroup{{ID: "g", Fields: []SettingField{
+		{Key: "PvP", Type: FieldBool, Required: true},
+	}}}}
+	// Off is an answer, not a blank: the Settings tab has no empty state for a
+	// checkbox to mark, so the gate could never say what to fill in.
+	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "a bool cannot be required") {
+		t.Fatalf("expected required bool rejection, got %v", err)
+	}
+	// The same field unrequired is fine.
+	s.Settings.Groups[0].Fields[0].Required = false
+	if err := s.Validate(); err != nil {
+		t.Fatalf("an optional bool must validate: %v", err)
+	}
+}

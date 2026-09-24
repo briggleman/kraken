@@ -420,6 +420,18 @@ export interface AgentUpdateJob {
   finished_at?: string;
 }
 
+/** One removal a node owes (see Node.pending_removals). */
+export interface PendingRemoval {
+  server_id: string;
+  /** Whether the operator's delete also removes the world and config. */
+  delete_data: boolean;
+  requested_at: string;
+  /** Failed tries so far, the one made at delete time included. */
+  attempts: number;
+  /** The most recent failure, verbatim. */
+  last_error?: string;
+}
+
 export interface Node {
   id: string;
   name: string;
@@ -448,6 +460,11 @@ export interface Node {
    *  older than 0.54.0, which reports only the count, so an empty list means
    *  "this agent did not say", never "nothing is running" — see containerDrift(). */
   managed_containers?: { server_id: string; container_name: string }[];
+  /** Server removals this node owes: servers deleted in the panel whose removal
+   *  the node never confirmed (it was unreachable, or its agent failed it). The
+   *  panel's node reconciler replays each one every time the node answers and
+   *  drops it once the agent confirms — see pendingRemovalsNote(). */
+  pending_removals?: PendingRemoval[];
   /** Operator hold: excluded from new placements while its servers keep running. */
   cordoned?: boolean;
   /** Registered before its agent answered; name is a placeholder until first contact. */
@@ -533,6 +550,15 @@ export interface ServerSettings {
   /** False when the spec itself opted out of update-on-start, so the pin is
    *  moot and the toggle says so instead of promising updates. */
   updates_on_start?: boolean;
+  /** What the next operator start or restart through the Panel would do right
+   *  now: false when the spec opted out, the build is pinned, the server was
+   *  installed within the last 30 minutes, or its Steam-login install has no
+   *  stored credentials. Scheduled restarts and the node-scoped power endpoint
+   *  never run the pass, and it means nothing while installing or
+   *  install_failed, where a start is refused outright. */
+  next_start_updates?: boolean;
+  /** Why the next start skips the pass; absent when it runs. */
+  update_skip_reason?: "spec" | "pinned" | "fresh_install" | "steam_login";
 }
 
 export interface UpdateSettingsResult {

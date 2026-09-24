@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.55.0](https://github.com/briggleman/kraken/compare/v0.54.0...v0.55.0) (2026-09-23)
+
+
+### Features
+
+* required game settings, and a start gate that enforces them ([#357](https://github.com/briggleman/kraken/issues/357)) ([b059d82](https://github.com/briggleman/kraken/commit/b059d82746dd86825cd4b997b24fd2c8394e1f1c))
+
+
+### Bug Fixes
+
+* **agent:** wait for a removed container's name before recreating it ([#355](https://github.com/briggleman/kraken/issues/355)) ([0c07f38](https://github.com/briggleman/kraken/commit/0c07f3859a56793fa89eb29126ddc3f7e8303d34))
+* **panel:** skip the update pass on the first start after an install ([#356](https://github.com/briggleman/kraken/issues/356)) ([1d1a2f5](https://github.com/briggleman/kraken/commit/1d1a2f5619dfbe078e20d4b2c2092fd4b0f2c929))
+
 ## [0.54.0](https://github.com/briggleman/kraken/compare/v0.53.0...v0.54.0) (2026-09-17)
 
 

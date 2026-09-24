@@ -34,7 +34,9 @@ func startFakeAgentRuntime(t *testing.T, nodeID string, opts ...agent.FakeOption
 		t.Fatalf("listen: %v", err)
 	}
 	rt := agent.NewFakeRuntime(nodeID, "linux", true, "test", opts...)
-	srv := grpc.NewServer()
+	// The real Agent's server options, so its error classification is on the
+	// path every handler test exercises (#352).
+	srv := grpc.NewServer(agent.ServerOptions()...)
 	agentpb.RegisterNodeServiceServer(srv, agent.NewService(rt))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
@@ -160,7 +162,10 @@ func TestPanelToAgent_NodeInfoAndPower(t *testing.T) {
 
 	// The power endpoint is now object-level authorized, so the server must exist
 	// in the store. Seed it on the node (admin token has server.any → access ok).
-	if err := st.CreateServer(context.Background(), &store.Server{ID: "s1", Name: "s1", NodeID: nodeID, State: store.StateRunning, CreatedAt: time.Now()}); err != nil {
+	// It needs a real spec: a start is checked against the spec's required
+	// settings, and one whose spec cannot be loaded is refused.
+	specID := createSpec(t, h, token, "node-power")
+	if err := st.CreateServer(context.Background(), &store.Server{ID: "s1", Name: "s1", NodeID: nodeID, SpecID: specID, State: store.StateRunning, CreatedAt: time.Now()}); err != nil {
 		t.Fatalf("seed server: %v", err)
 	}
 
@@ -214,8 +219,20 @@ func TestPanelToAgent_UnreachableAgent(t *testing.T) {
 	nodeID := registerNode(t, h, token, "127.0.0.1:1")
 
 	rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil)
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502 for unreachable agent, got %d (body %s)", rec.Code, rec.Body.String())
+	// 503, not 502: an edge like Cloudflare replaces a 502 body with its own
+	// page, and this body is the operator's whole diagnosis (#352).
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for unreachable agent, got %d (body %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v (body %s)", err, rec.Body.String())
+	}
+	if body.Code != "node_unreachable" || body.Error == "" {
+		t.Fatalf("unreachable agent answered %+v, want code node_unreachable and a message", body)
 	}
 }
 

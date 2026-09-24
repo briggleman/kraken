@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -112,7 +113,35 @@ func (s *Server) handleUpdateSpec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteSpec(w http.ResponseWriter, r *http.Request) {
-	err := s.store.DeleteSpec(r.Context(), chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	// A server row keeps its spec's id for as long as it exists: its install,
+	// its start command and the start gate are all read from it. Deleting a spec
+	// out from under one would leave a server that can never start again, and a
+	// spec's id is a UUID, so re-adding the game cannot bring it back.
+	servers, err := s.store.ListServers(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not check whether the spec is in use")
+		return
+	}
+	inUse := 0
+	for _, sv := range servers {
+		if sv.SpecID == id {
+			inUse++
+		}
+	}
+	if inUse > 0 {
+		noun := "servers use"
+		if inUse == 1 {
+			noun = "server uses"
+		}
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":   fmt.Sprintf("%d %s this spec; delete them before deleting the spec", inUse, noun),
+			"code":    "spec_in_use",
+			"servers": inUse,
+		})
+		return
+	}
+	err = s.store.DeleteSpec(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "spec not found")
 		return

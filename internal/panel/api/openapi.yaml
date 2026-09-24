@@ -346,16 +346,22 @@ paths:
       description: >-
         Removes the server's containers and data directory on its node, releases
         its memory and ports, and deletes the record together with its schedules.
-        Backup archives are not removed; they stay on the node.
+        Backup archives are kept.
 
 
         A removal that cannot reach the node — the node is unreachable, or its
         Agent reports a failure — does not block the delete. It is recorded on the
-        node as a pending removal (see Node.pending_removals) and finished by the
-        Panel's node reconciler the next time the node answers.
+        node as a pending removal (see Node.pending_removals) that keeps the
+        server's memory and ports allocated, and the Panel's node reconciler
+        retries it with backoff until the node confirms; the allocation is
+        released then. A delete whose removal cannot be recorded is refused.
       responses:
         '204': { description: Deleted (the node-side removal may still be pending) }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500':
+          description: The server's node could not be read, or the removal could not be recorded on it; nothing was deleted.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
   /servers/{id}/power:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:
@@ -1048,7 +1054,7 @@ paths:
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '403':
-          description: Missing server.delete or node.manage
+          description: "Missing server.delete or node.manage (code: forbidden)"
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '404':
@@ -1056,15 +1062,51 @@ paths:
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '409':
-          description: "The Panel tracks a server with this id on this node — delete the server instead (code: server_tracked)"
+          description: >-
+            Refused, nothing sent to the node. `code: server_tracked` — the Panel
+            tracks a server with this id on this node; delete the server instead.
+            `code: removal_pending` — a removal is already owed for this id (it
+            may delete the data), so a retire that promised the data stays would
+            be undone by the next replay; let it finish, or dismiss it first.
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
-        '502':
-          description: "The Agent answered but could not remove the container; reason verbatim (code: agent_error)"
+        '500':
+          description: "The node answered but could not remove the container; its reason verbatim (code: node_error)"
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '503':
           description: "The node's Agent cannot be reached (code: node_unreachable)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+  /nodes/{id}/removals/{serverID}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - name: serverID
+        in: path
+        required: true
+        description: the server_id of an entry in the node's pending_removals
+        schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$' }
+    delete:
+      tags: [Nodes]
+      summary: Dismiss a pending removal without delivering it
+      description: >-
+        Forgets a removal the node owes — for a node that is gone for good, or a
+        container cleared by hand — and releases the memory and ports it was
+        holding. Nothing is sent to the node: if the container is in fact still
+        running, retire it or remove it on the host. Requires server.delete and
+        node.manage.
+      responses:
+        '204': { description: Dismissed; the record is gone and its allocation released }
+        '400':
+          description: "Malformed server id (code: invalid_server_id)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '403':
+          description: "Missing server.delete or node.manage (code: forbidden)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '404':
+          description: "Node not found (code: node_not_found), or no removal is pending for this id (code: removal_not_found)"
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
   /nodes/{id}/config:
@@ -1611,8 +1653,9 @@ components:
             Server removals owed to this node: servers deleted in the Panel whose
             removal the node never confirmed, because it was unreachable or its
             Agent reported a failure. The Panel's node reconciler replays each one
-            with the recorded delete_data intent every time the node answers, and
-            drops it once the Agent confirms. Absent when nothing is owed.
+            with the recorded delete_data intent, with backoff, while the node answers, and
+            drops it once the Agent confirms — releasing the memory and ports it
+            held. Absent when nothing is owed.
           items:
             type: object
             properties:
@@ -1621,6 +1664,12 @@ components:
               requested_at: { type: string, format: date-time }
               attempts: { type: integer, description: "failed tries so far, the one made at delete time included" }
               last_error: { type: string, description: "the most recent failure, verbatim" }
+              next_attempt:
+                type: string
+                format: date-time
+                description: when the reconciler may try again — 20s after the first failure, doubling after each, an hour apart at most
+              memory_mb: { type: integer, description: "the deleted server's memory, still allocated on this node until the removal lands" }
+              ports: { type: array, items: { type: integer }, description: "the deleted server's host ports, still allocated on this node until the removal lands" }
         address: { type: string }
         public_host: { type: string }
         external_ip: { type: string }

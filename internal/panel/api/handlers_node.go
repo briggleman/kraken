@@ -716,13 +716,17 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 }
 
 // saveProbedNode persists what a probe learned about a node. The probe works
-// on a copy read before it dialled, and a server delete can queue a pending
-// removal on the node meanwhile; writing the copy back as-is would erase that
-// record, and with it the only memory that the node still owes a removal. The
-// probe never changes the pending list, so the stored one is carried over.
+// on a copy read before it dialled, and meanwhile a delete can queue a pending
+// removal, a replay (which runs beside the pass) can finish one and release its
+// memory and ports, and a create can reserve some. Writing the copy back as-is
+// would undo each of those — erase the only record that a removal is owed, or
+// re-hold an allocation nothing owns any more. The probe changes none of the
+// three, so the stored ones are carried over.
 func (s *Server) saveProbedNode(ctx context.Context, n *cluster.Node) {
 	if fresh, err := s.store.GetNode(ctx, n.ID); err == nil {
 		n.PendingRemovals = fresh.PendingRemovals
+		n.Ports = fresh.Ports
+		n.AllocatedMemoryMB = fresh.AllocatedMemoryMB
 	}
 	_ = s.store.UpdateNode(ctx, n)
 }

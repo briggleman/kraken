@@ -576,8 +576,9 @@ cannot be turned into one. Concretely, each token is:
   (the server id) is clipped to 64 characters first: it is attacker-chosen, and
   a log file is not somewhere to let a stranger write 4 KiB. The redemption row carries the
   request's **outcome** status, not an assumed 200 — a redemption the node
-  could not serve is on the record as the 502 it was, rather than as a
-  download that never happened. It is written from a deferred call, so a
+  could not serve is on the record with the status it got (404 for a missing
+  file, 409 for a held one, 503 for an unreachable node — a 502 before #352),
+  rather than as a download that never happened. It is written from a deferred call, so a
   stream that aborts mid-way is recorded rather than unwound past, and the
   append runs on a `context.WithoutCancel` copy of the request context (with a
   deadline of its own): the rows most worth having are the ones where the

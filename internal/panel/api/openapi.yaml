@@ -429,9 +429,11 @@ paths:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '503':
           description: >
-            The panel has no live connection to the hosting node's agent, or the
-            agent did not answer (`code: node_unreachable`). Nothing was
-            attempted and the server's state is unchanged.
+            `code: node_unreachable`. Either the panel has no live connection to
+            the hosting node's agent — then nothing was attempted and the
+            server's state is unchanged — or the agent did not answer within the
+            time allowed, and the action may still be completing on the node (a
+            stop still inside its graceful-stop window, say): `error` says which.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
   /servers/{id}/reinstall:
@@ -537,6 +539,30 @@ paths:
                     ordinary settings save must not unpin a server.
       responses:
         '200': { description: Applied (with any validation errors) }
+        '400': { description: "The body is invalid, or a value is outside what the spec allows (a read-only setting, a variable that is not editable)" }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >
+            The settings were saved, but the node refused the rendered config
+            files: `code` is `file_in_use`, `node_refused` or `already_exists`,
+            and `error` begins "settings saved but config apply failed:".
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '500':
+          description: >
+            The settings could not be saved — or they were saved and applying
+            the config failed on the Panel (`code: config_apply_failed`, a
+            render error) or on the node (`code: node_error`). A saved-but-not-
+            applied failure's `error` begins "settings saved but config apply
+            failed:".
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '503':
+          description: >
+            The settings were saved, but the node's agent could not be reached
+            to apply them (`code: node_unreachable`).
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
 
   /servers/{id}/files:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
@@ -598,7 +624,7 @@ paths:
         - $ref: '#/components/parameters/DownloadToken'
       responses:
         '200': { description: Raw file stream }
-        '400': { description: No path was supplied on the session-authenticated form }
+        '400': { description: "No path was supplied on the session-authenticated form, or the path can never work — it escapes the server's data directory, or names a folder (`code: bad_path`)" }
         '401': { description: "Unknown, expired, already-used or wrong-server/wrong-path download token — or the session that minted it is gone" }
         '404': { description: "No such server, or one this user may not reach (existence is not revealed) — or no such file on the node (`code: not_found`); the body is a JSON error, never a file" }
         '409': { $ref: '#/components/responses/AgentConflict' }
@@ -1600,7 +1626,8 @@ components:
             client may want to branch on — branch on this, never on `error`.
             A failed Agent operation carries one of node_unreachable,
             not_found, bad_path, file_in_use, node_refused, already_exists or
-            node_error.
+            node_error; a settings save whose config could not be rendered
+            carries config_apply_failed.
     CodedError:
       type: object
       properties:

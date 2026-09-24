@@ -11,6 +11,7 @@
   import NodeAdd from "@/surfaces/NodeAdd.svelte";
   import NodeCfg from "@/surfaces/NodeCfg.svelte";
   import NsForm from "@/surfaces/NsForm.svelte";
+  import ReviveForm from "@/surfaces/ReviveForm.svelte";
   import AuditLog from "@/surfaces/AuditLog.svelte";
   import ApiDocs from "@/surfaces/ApiDocs.svelte";
   import Login from "@/surfaces/Login.svelte";
@@ -101,6 +102,7 @@
 <NodeAdd />
 <NodeCfg />
 <NsForm />
+<ReviveForm />
 <AuditLog />
 <ApiDocs />
 <Login />

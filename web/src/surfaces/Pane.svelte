@@ -3,7 +3,7 @@
   import NodeBand from "./NodeBand.svelte";
   import ServerCard from "./ServerCard.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
-  import { fleet, fleetHealth } from "@/lib/fleet.svelte";
+  import { fleet, fleetHealth, gridServers } from "@/lib/fleet.svelte";
   import { logout } from "@/lib/auth.svelte";
   import { fmtAge, fmtHm } from "@/lib/fmt";
 
@@ -116,7 +116,7 @@
     {/each}
 
     <div class="servers">
-      {#each fleet.servers as server (server.id)}
+      {#each gridServers(fleet.servers) as server (server.id)}
         <ServerCard {server} />
       {:else}
         {#if fleet.loaded}

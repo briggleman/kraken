@@ -610,10 +610,14 @@ export async function reinstall() {
   }
 }
 
-export async function deleteCurrentServer(): Promise<boolean> {
+/** The delete button on a live server retires it (#360): a final backup, then
+ *  the world goes and the row stays, retired and out of the grid, its backups
+ *  kept. The Panel answers once the retire has started; the fleet poll picks
+ *  up the rest. */
+export async function retireCurrentServer(): Promise<boolean> {
   if (!depth.serverId) return false;
   try {
-    await api.deleteServer(depth.serverId);
+    await api.retireServer(depth.serverId, true);
     await refreshFleet();
     return true;
   } catch (e) {

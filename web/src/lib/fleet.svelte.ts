@@ -58,6 +58,12 @@ export const fleet = $state({
   lastOkMs: 0,
 });
 
+/** The servers the fleet grid shows: every one but the retired (#360), which
+ *  are on no node and get a group of their own once it is designed. */
+export function gridServers(servers: readonly Server[]): Server[] {
+  return servers.filter((s) => s.state !== "retired");
+}
+
 export function specOf(server: Server): Spec | undefined {
   return fleet.specs.find((s) => s.id === server.spec_id);
 }

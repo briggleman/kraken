@@ -11,7 +11,10 @@ export type ServerState =
   | "stopping"
   | "crashed"
   /** A backup restore is swapping save files; start waits for it (#361). */
-  | "restoring";
+  | "restoring"
+  /** On no node (#360): its containers and world are gone, its row, config,
+   *  schedules (switched off) and backups are kept. Revive or delete it. */
+  | "retired";
 
 export type PlatformKind = "linux-native" | "linux-wine" | "windows-native";
 
@@ -278,7 +281,50 @@ export interface Server {
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;
+  /** Present only while a retire runs (#360); the state is unchanged until
+   *  the row flips to `retired`. */
+  retire?: RetireProgress;
+  /** When the server was retired — only on a retired server. */
+  retired_at?: string;
+  /** What the retire could not do (a final backup skipped or failed, a
+   *  removal queued for a node that did not answer), or why a retire was
+   *  abandoned. */
+  retire_note?: string;
+  /** The node a retired server left — where its archives are, and where a
+   *  revive places it by default. `node_id` is empty while it is retired. */
+  retired_from_node_id?: string;
+  /** The host ports a retired server held, which a revive asks for again. */
+  retired_ports?: Record<string, number>;
   created_at: string;
+}
+
+/** A retire in progress, as the server row records it (#360). */
+export interface RetireProgress {
+  phase: "stopping" | "backing_up" | "removing";
+  final_backup: boolean;
+  /** Server clock. */
+  started_at: string;
+}
+
+/** What POST /servers/{id}/revive accepts. Everything is optional: the old
+ *  node, the old memory, no restore, no start. */
+export interface ReviveInput {
+  node_id?: string;
+  memory_mb?: number;
+  /** A backup on the node the server lands on, restored after the install. */
+  restore_backup_id?: string;
+  /** Start once the install (and the restore) succeeded. */
+  start?: boolean;
+  steam_guard_code?: string;
+}
+
+/** What a permanent delete answers (#360). */
+export interface PermanentDeleteResult {
+  /** Anything the operator should know — archives a shared backup target
+   *  kept, or a node that is owed the delete. Empty when there is nothing. */
+  note: string;
+  /** The node could not be reached; it deletes the archives when it answers. */
+  removal_pending: boolean;
 }
 
 /** A running backup restore, as the Panel's restore job reports it. Progress
@@ -457,6 +503,9 @@ export interface PendingRemoval {
   server_id: string;
   /** Whether the operator's delete also removes the world and config. */
   delete_data: boolean;
+  /** A permanent delete (#360): the archives go too, where they are the
+   *  server's own. */
+  delete_backups?: boolean;
   requested_at: string;
   /** Failed tries so far, the one made at delete time included. */
   attempts: number;

@@ -6,7 +6,7 @@
 
 import { stepWalk, pushSample } from "./walk";
 import { allSyntheticTracks } from "./views.svelte";
-import { deleteCurrentServer, surface } from "./depth.svelte";
+import { retireCurrentServer, surface } from "./depth.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 import { api } from "@/api/client";
 
@@ -119,10 +119,12 @@ export function closeSheet(id: SheetId) {
 // Backups are named because they are NOT taken: they are kept (on the node, a
 // share or a mirror — wherever the target puts them), and a
 // warning that claimed otherwise (it did, until #354) is how a surviving archive
-// came to look like another server's.
+// came to look like another server's. The button retires the server now
+// (#360), and the retire takes a final backup before the world goes — which
+// the warning says first, because it is what makes the rest recoverable.
 export const CD_SERVER_BODY =
-  "this removes the world and config for this server. its backups are kept. " +
-  "it cannot be undone.";
+  "a final backup is taken first. then this removes the world and config for this server. " +
+  "its backups are kept. it cannot be undone.";
 
 // Retiring an untracked container: the one confirmation that destroys nothing,
 // which is why it is not typed. The container goes; everything it was using
@@ -225,7 +227,7 @@ export async function confirmGo() {
     }
     return;
   }
-  const ok = await deleteCurrentServer();
+  const ok = await retireCurrentServer();
   ui.confirm = null;
   if (ok) surface();
 }

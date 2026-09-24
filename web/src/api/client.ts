@@ -26,6 +26,8 @@ import type {
   Role,
   ScheduleAction,
   ScheduledTask,
+  PermanentDeleteResult,
+  ReviveInput,
   Server,
   ServerSettings,
   SftpStatus,
@@ -217,7 +219,20 @@ export const api = {
   reinstallServer(id: string, steamGuardCode?: string): Promise<{ state: string }> {
     return request("POST", `/servers/${id}/reinstall`, steamGuardCode ? { steam_guard_code: steamGuardCode } : {});
   },
-  deleteServer(id: string): Promise<void> {
+  /** Retires a server (#360): stop, a final backup unless declined, then its
+   *  containers and world go and the row stays, retired. Answers at once with
+   *  the server carrying its `retire` job; poll it until `retired`. */
+  retireServer(id: string, finalBackup = true): Promise<Server> {
+    return request("POST", `/servers/${id}/retire`, { final_backup: finalBackup });
+  },
+  /** Places a retired server on a node again and starts its install. */
+  reviveServer(id: string, input: ReviveInput = {}): Promise<Server> {
+    return request("POST", `/servers/${id}/revive`, input);
+  },
+  /** Deletes a RETIRED server permanently — its row, its schedules, and its
+   *  archives where they are its own. A live server answers 409
+   *  server_not_retired: retire it first. */
+  deleteServer(id: string): Promise<PermanentDeleteResult> {
     return request("DELETE", `/servers/${id}`);
   },
 

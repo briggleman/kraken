@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1307,14 +1308,20 @@ func toAgentSpec(server *store.Server, sp *spec.Spec) *agentpb.ServerSpec {
 			// roster from the join/leave lines. A log never states the cap, so
 			// it is the server's own setting where the operator picks it
 			// (Enshrouded's slotCount), else the spec's constant.
-			cap := q.MaxPlayers
+			// Parsed at 32 bits, so a setting too large for the wire's int32
+			// is refused (it falls back like any other unusable value) rather
+			// than wrapping into a negative cap; the spec's constant is clamped.
+			var cap int32
+			if q.MaxPlayers > 0 {
+				cap = int32(min(q.MaxPlayers, math.MaxInt32))
+			}
 			if q.MaxPlayersSetting != "" {
-				if v, err := strconv.Atoi(strings.TrimSpace(settings[q.MaxPlayersSetting])); err == nil && v > 0 {
-					cap = v
+				if v, err := strconv.ParseInt(strings.TrimSpace(settings[q.MaxPlayersSetting]), 10, 32); err == nil && v > 0 {
+					cap = int32(v)
 				}
 			}
 			agentSpec.PlayerQuery = &agentpb.PlayerQuery{
-				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: int32(cap),
+				Method: q.Method, JoinRegex: q.JoinRegex, LeaveRegex: q.LeaveRegex, MaxPlayers: cap,
 			}
 		}
 	}

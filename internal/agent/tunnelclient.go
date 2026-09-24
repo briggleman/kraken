@@ -107,7 +107,9 @@ func (t *TunnelClient) serveOnce(ctx context.Context) error {
 	}
 	t.logger.Info("tunnel: connected to Panel", "panel", t.addr)
 
-	grpcServer := grpc.NewServer()
+	// The same error classification as the direct listener (ServerOptions), so
+	// a tunnel-mode node answers a failed file op with the same status.
+	grpcServer := grpc.NewServer(ServerOptions()...)
 	agentpb.RegisterNodeServiceServer(grpcServer, t.service)
 	grpcStreams := newStreamListener(mux.Addr())
 

@@ -226,9 +226,9 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 			}
 			return nil
 		}
-		grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
+		grpcServer = grpc.NewServer(append(agent.ServerOptions(), grpc.Creds(credentials.NewTLS(tlsCfg)))...)
 	} else {
-		grpcServer = grpc.NewServer()
+		grpcServer = grpc.NewServer(agent.ServerOptions()...)
 	}
 	if updater != nil {
 		svcOpts = append(svcOpts, agent.WithSelfUpdater(updater))

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"sort"
 	"strings"
@@ -65,6 +66,9 @@ type FakeRuntime struct {
 	// removeGate, when set, holds every Remove until it is closed (see
 	// HoldRemovals) — a removal that hangs on the node.
 	removeGate chan struct{}
+	// fileErr, when set, is what every file operation that reads or changes the
+	// tree fails with (see WithFakeFileError).
+	fileErr error
 }
 
 // FakeOption customizes a FakeRuntime at construction time. It exists so the
@@ -111,6 +115,16 @@ func WithFakePowerFailure(action agentpb.PowerAction, reason string) FakeOption 
 // to it for the fake-live stack.
 func WithFakeInstallDelay(d time.Duration) FakeOption {
 	return func(f *FakeRuntime) { f.installDelay = d }
+}
+
+// WithFakeFileError makes every file operation that reads or changes the tree
+// (read, stat, download, mkdir, write, move, copy, delete) fail with err, the
+// way a real node's filesystem refuses one: a save file a running game holds
+// open, a directory the Agent may not write. It is how the Panel's mapping of
+// those failures to HTTP statuses is exercised through the real gRPC path —
+// the error crosses the same interceptor a real Agent's does.
+func WithFakeFileError(err error) FakeOption {
+	return func(f *FakeRuntime) { f.fileErr = err }
 }
 
 // NewFakeRuntime returns a fake runtime identifying as the given node.
@@ -390,9 +404,12 @@ func (f *FakeRuntime) ListFiles(_ context.Context, serverID string, p string) ([
 func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ int64) ([]byte, int64, bool, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return nil, 0, false, false, f.fileErr
+	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return nil, 0, false, false, fmt.Errorf("fake: %s: no such file", p)
+		return nil, 0, false, false, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist)
 	}
 	return ff.data, int64(len(ff.data)), false, false, nil
 }
@@ -402,9 +419,12 @@ func (f *FakeRuntime) ReadFile(_ context.Context, serverID string, p string, _ i
 func (f *FakeRuntime) StatFile(_ context.Context, serverID string, p string) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return 0, f.fileErr
+	}
 	ff, ok := f.tree(serverID)[fakePath(p)]
 	if !ok || ff.entry.IsDir {
-		return 0, fmt.Errorf("fake: %s: no such file", p)
+		return 0, fmt.Errorf("fake: %s: %w", p, fs.ErrNotExist)
 	}
 	return int64(len(ff.data)), nil
 }
@@ -430,13 +450,16 @@ func (f *FakeRuntime) CopyPath(_ context.Context, serverID string, src, dst stri
 func (f *FakeRuntime) transplant(serverID, src, dst string, move bool) error {
 	s, d := fakePath(src), fakePath(dst)
 	if s == fakeDataRoot || d == fakeDataRoot {
-		return fmt.Errorf("fake: cannot move the data root")
+		return badPath("fake: cannot move the data root")
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return f.fileErr
+	}
 	t := f.tree(serverID)
 	if _, ok := t[s]; !ok {
-		return fmt.Errorf("fake: %s: no such file or directory", src)
+		return fmt.Errorf("fake: %s: %w", src, fs.ErrNotExist)
 	}
 	moved := make(map[string]*fakeFile)
 	for k, ff := range t {
@@ -531,6 +554,9 @@ func (f *FakeRuntime) DeleteBackup(_ context.Context, serverID, _, id string) er
 func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return f.fileErr
+	}
 	f.putDir(f.tree(serverID), fakePath(p))
 	return nil
 }
@@ -538,10 +564,13 @@ func (f *FakeRuntime) MakeDir(_ context.Context, serverID string, p string) erro
 func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, content []byte) error {
 	fp := fakePath(p)
 	if fp == fakeDataRoot {
-		return fmt.Errorf("fake: cannot write the data root")
+		return badPath("fake: cannot write the data root")
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return f.fileErr
+	}
 	f.putFile(f.tree(serverID), fp, append([]byte(nil), content...))
 	return nil
 }
@@ -551,6 +580,9 @@ func (f *FakeRuntime) WriteFile(_ context.Context, serverID string, p string, co
 func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fileErr != nil {
+		return f.fileErr
+	}
 	t := f.tree(serverID)
 	for _, p := range paths {
 		fp := fakePath(p)
@@ -558,7 +590,9 @@ func (f *FakeRuntime) DeletePaths(_ context.Context, serverID string, paths []st
 			continue
 		}
 		if _, ok := t[fp]; !ok {
-			return fmt.Errorf("fake: delete %s: no such file or directory", p)
+			// Wrapped, not flattened: the gRPC boundary classifies it as a
+			// NotFound exactly as it does the real runtime's os error.
+			return fmt.Errorf("fake: delete %s: %w", p, fs.ErrNotExist)
 		}
 		for k := range t {
 			if k == fp || strings.HasPrefix(k, fp+"/") {

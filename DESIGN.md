@@ -320,31 +320,11 @@ the panel reasons from its own rows outward — `reconcileOnce` walks its record
 about each — so this is the one place the question runs the other way, and the only way an
 untracked container can ever be seen.
 
-It exists because that state was reachable: before #354, deleting a server while its node was
-unreachable removed the row and left the container running, and a node that carries one from then
-still does. Caution Violet is the right band for it by the closed-port test — the node is
+It exists because that state is reachable: deleting a server while its node is unreachable removes
+the row and leaves the container running, since the agent call is best-effort. Nothing else would
+ever notice. Caution Violet is the right band for it by the closed-port test — the node is
 perfectly healthy, but something on it is outside what the panel is guarding, and a surplus
 container is holding memory and ports the scheduler believes are free.
-
-**An untracked container can be retired from the line.** Each named one is followed by an `.nc-go`
-chip reading `retire` — the lock's chip, no sweep, because nothing is waiting on you; past the
-inline limit of three a single `retire all` takes them together, since chips with no names beside
-them would not say which is which. The chip appears only for a role holding both `server.delete`
-and `node.manage`. It opens the confirmation card untyped (see Destructive Control): the node stops
-and removes the container and forgets its spec, and the data stays. A refusal lands as its own
-condition line, `retire · <reason>`, on the band that offered the chip.
-
-**The id cell sizes to its content**, so nothing in a condition line may print at full length: a
-Panel-made container name is `kraken_` plus a 36-character id, and printed whole it pushed the
-band's five instruments into each other. Inline, a name prints as `kraken_<first 8 of the id>…`
-(`shortContainerLabel`) and a refusal is clipped at 42 characters (`clipLine`, the same measure as
-the agent-drift failure's 42ch) — the full text stays in the line's title and in every control's
-accessible label.
-
-**Pending removals** are the other half: a delete the node could not be told about is remembered
-and retried by the panel, and while it is owed the band carries `removals · N pending`, the count
-in `.nc-v.act` and the roll call (server id, what is owed, attempts, last error) in the title. It
-is a reading, never a control — the panel is already doing the only thing there is to do.
 
 A **deficit** reads the same way and is not an error either: containers stopped behind the panel's
 back. The line names whichever direction is true rather than assuming a surplus.
@@ -691,9 +671,7 @@ one fact or a sequence.
 ### Destructive Control
 Crisis Magenta, at one of three weights chosen by the control’s size, all off the same tokens. A **table-row pill** (`.mini-act.del`) carries the colour on its text and a 0.45 border with no ground — eight washed pills in a list would read as a warning about the table rather than about a row. A **full-size button** (`.cfg-btn.danger`) and a **drill-in control** (`.ctl-delete`) both take text, a 0.35 border and a 0.08 crisis ground. Those last two stay separate rules on purpose: the `.ctl-*` family hovers with `filter: brightness(1.3)` and `.cfg-btn` controls move their own values, so one shared selector would force one base’s idiom onto the other.
 
-Anything irreversible is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost, and keeps its confirm disabled until the word `delete` is typed — matched case-insensitively, so `DELETE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this removes the world and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through — which is why the server warning also says its backups **stay** on the node: it used to claim they were removed, and they never were.
-
-The one untyped member is **retire** (Container Drift below): it destroys nothing — the container goes, its world, config and backups stay — so the opener passes `typed: false` and the same card asks for a plain confirm with the verb on its button (`retire container`). With no word to type, focus starts on `cancel` and Enter does whatever the focused button does, so a stray keypress is the safe answer.
+Anything irreversible is gated by the typed confirmation, never by a second button alone: the dialog names the thing, states what is lost, and keeps its confirm disabled until the word `delete` is typed — matched case-insensitively, so `DELETE` works. The dialog takes its **noun** from whatever opened it (`[data-confirm-open]`), and so does its warning, because "this removes the world, backups and config" is true of a server and false of a spec. A confirmation that describes the wrong thing is worse than none: it teaches people to click through.
 
 **The Revealed Pill Rule.** The pills on a row in a list whose length the operator does not
 control — the drill-in's file listing (`.f-row .f-acts`), where a Steam install tree runs to

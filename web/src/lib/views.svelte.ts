@@ -213,7 +213,14 @@ export function containerDrift(
 
   const named = node.managed_containers;
   if (named) {
-    const known = new Set(rows.map((sv) => sv.id));
+    // A container whose server was deleted but whose removal the node still
+    // owes is not untracked: the panel knows exactly what it is and is already
+    // removing it (pendingRemovalsNote names it). Counting it as untracked
+    // would offer a retire whose "data untouched" the next replay undoes.
+    const known = new Set([
+      ...rows.map((sv) => sv.id),
+      ...(node.pending_removals ?? []).map((p) => p.server_id),
+    ]);
     const onNode = new Set(named.map((c) => c.server_id));
     const untracked = named
       .filter((c) => !known.has(c.server_id))
@@ -262,27 +269,30 @@ export function shortContainerLabel(label: string): string {
 }
 
 /**
- * A reason as a condition line prints it: at most `max` characters, the rest
- * in the line's title. The id column sizes to its content, so one verbose
- * gRPC error printed whole would squeeze every instrument on the band to
- * nothing — the house clips the agent-drift failure at 42ch for the same
- * reason.
- */
-export function clipLine(text: string, max = 42): string {
-  return text.length > max ? text.slice(0, max - 1) + "…" : text;
-}
-
-/**
  * The untracked containers the badge offers to retire, or [] when it offers
  * none. Only an untracked surplus has anything to retire — a missing container
  * is a row with nothing behind it — and only a named one: an agent that sends
  * only the count gives no server id to aim at. Permission is the caller's check.
+ *
+ * One entry per server: an orphan whose install container is still around
+ * reports two containers under one server id, and one retire removes both. The
+ * band keys its chips on this list, so a duplicate would not just repeat a chip
+ * — Svelte refuses duplicate keys and the band would not render at all. A
+ * container with no server id (a hand-made one carrying the managed label) is
+ * keyed by its name for the dedupe, and is not offered: the endpoint addresses
+ * a server id, and there is none to aim at.
  */
-export function retirable(
-  drift: ReturnType<typeof containerDrift>,
-): DriftItem[] {
+export function retirable(drift: ReturnType<typeof containerDrift>): DriftItem[] {
   if (!drift || drift.word !== "untracked") return [];
-  return drift.items;
+  const seen = new Set<string>();
+  const out: DriftItem[] = [];
+  for (const item of drift.items) {
+    const key = item.server_id || item.label;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (item.server_id) out.push(item);
+  }
+  return out;
 }
 
 /**
@@ -294,10 +304,15 @@ export function retirable(
 export function pendingRemovalsNote(node: Node): { count: number; title: string } | undefined {
   const owed = node.pending_removals ?? [];
   if (owed.length === 0) return undefined;
+  // A container the node still reports for an owed id is the removal not yet
+  // done, not an orphan (containerDrift leaves it out of the untracked count);
+  // it is said here instead, where the removal is.
+  const running = new Set((node.managed_containers ?? []).map((c) => c.server_id));
   const lines = owed.map((p) => {
     const tries = p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`;
     const what = p.delete_data ? "container and data" : "container";
-    return `${p.server_id} — ${what}, ${tries}` + (p.last_error ? `: ${p.last_error}` : "");
+    const still = running.has(p.server_id) ? " · container still running" : "";
+    return `${p.server_id} — ${what}, ${tries}${still}` + (p.last_error ? `: ${p.last_error}` : "");
   });
   return {
     count: owed.length,

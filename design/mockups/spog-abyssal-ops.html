@@ -2958,7 +2958,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <section class="side-block danger-block" aria-label="Delete server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">deleting removes this server's world and config. its backups stay on the node. it cannot be undone.</p>
+          <p class="danger-note">deleting removes this server's world and config. its backups are kept. it cannot be undone.</p>
           <button class="ctl ctl-delete" id="deleteSrvBtn">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>
             delete server
@@ -3625,7 +3625,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-delete w">
           <summary class="ep-sum"><span class="ep-m">DELETE</span><span class="ep-p">/servers/<em>{id}</em></span><span class="ep-r"><span class="ep-s">delete a server and its data</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p><p class="ep-line"><b>keep_data</b> <em>query · optional · leave the data directory in place</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; backups stay on the node</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">204</b> <em>gone — world and config; its backups are kept</em></p><p class="ep-line"><b class="ep-code s4">404</b> <em>no such server</em></p></div></div>
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>{id}</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>
@@ -4239,7 +4239,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 8 1.5 L 15 14 H 1 Z M 8 6 V 9.5 M 8 11.5 V 11.6"/></svg>
       delete <b id="cdName">server</b>
     </h2>
-    <p class="confirm-body" id="cdBody">this removes the world and config for this server. its backups stay on the node. it cannot be undone.</p>
+    <p class="confirm-body" id="cdBody">this removes the world and config for this server. its backups are kept. it cannot be undone.</p>
     <label class="confirm-label" for="cdInput">type <b>delete</b> to confirm</label>
     <input class="confirm-input" id="cdInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="cdHint">
     <p class="confirm-hint" id="cdHint" role="status" aria-live="polite"></p>

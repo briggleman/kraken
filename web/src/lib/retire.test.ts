@@ -1,8 +1,8 @@
 // The container-drift badge's retire action and the pending-removal line
 // (#354). The badge used to name an orphan and offer nothing; these pin the
 // wiring from a drift reading to the Panel call it now makes, the plain (not
-// typed) confirmation that gates it, what a refusal leaves on the band, and
-// the quiet count a node carries while it owes removals.
+// typed) confirmation that gates it, what a refusal leaves on the band and when
+// it goes, and the quiet count a node carries while it owes removals.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,12 +25,13 @@ vi.mock("./fleet.svelte", async (importOriginal) => {
 
 import { ApiError } from "@/api/client";
 import { fleet } from "./fleet.svelte";
-import { openRetire, openRetireAll, retire } from "./retire.svelte";
+import { openRetire, openRetireAll, pruneRetireError, retire } from "./retire.svelte";
 import { CD_CONTAINER_BODY, CD_SERVER_BODY, confirmGo, openConfirm, ui } from "./state.svelte";
-import { clipLine, containerDrift, pendingRemovalsNote, retirable, shortContainerLabel } from "./views.svelte";
+import { containerDrift, pendingRemovalsNote, retirable, shortContainerLabel } from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
+const UUID = "f4030778-08c8-47b7-abba-59bbd9cebd08";
 
 function node(extra: Partial<Node> = {}): Node {
   return { id: NODE_ID, name: "abyss-win", status: "online", agent_version: "0.55.0", ...extra } as Node;
@@ -73,6 +74,41 @@ describe("retirable", () => {
     expect(retirable(drift)).toEqual([{ server_id: "f4030778", label: "kraken_f4030778" }]);
   });
 
+  // An orphan whose install container survived reports two containers under
+  // one server id. The band keys its chips on this list and Svelte throws on a
+  // duplicate key, which took the whole band down; one retire removes both.
+  it("offers one entry per server even when its install container is still there", () => {
+    const drift = containerDrift(
+      node({
+        running_servers: 2,
+        managed_containers: [
+          { server_id: UUID, container_name: `kraken_${UUID}` },
+          { server_id: UUID, container_name: `kraken_${UUID}_install` },
+        ],
+      }),
+    );
+    expect(drift?.items).toHaveLength(2);
+    const items = retirable(drift);
+    expect(items).toHaveLength(1);
+    expect(items[0].server_id).toBe(UUID);
+    const keys = items.map((i) => i.server_id || i.label);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("does not offer a container with no server id — there is nothing to aim at", () => {
+    const drift = containerDrift(
+      node({
+        running_servers: 2,
+        managed_containers: [
+          { server_id: "", container_name: "by-hand-1" },
+          { server_id: "", container_name: "by-hand-2" },
+        ],
+      }),
+    );
+    expect(drift?.word).toBe("untracked");
+    expect(retirable(drift)).toEqual([]);
+  });
+
   it("offers nothing for a missing container — there is no container to retire", () => {
     fleet.servers = [server("a", "running"), server("b", "running")];
     const drift = containerDrift(
@@ -90,19 +126,37 @@ describe("retirable", () => {
   it("offers nothing when the accounts agree", () => {
     expect(retirable(undefined)).toEqual([]);
   });
+
+  // A server deleted while its removal failed keeps running and would read as
+  // untracked — and a retire of it promises the data stays while the next
+  // replay of the owed removal deletes it. It is a removal pending, not an
+  // orphan: no drift, no chip, and the pending roll call says it still runs.
+  it("treats a container with a removal pending as the removal, not an orphan", () => {
+    const n = node({
+      running_servers: 1,
+      managed_containers: [{ server_id: UUID, container_name: `kraken_${UUID}` }],
+      pending_removals: [{ server_id: UUID, delete_data: true, requested_at: "2026-09-23T10:00:00Z", attempts: 2, last_error: "docker down" }],
+    });
+    const drift = containerDrift(n);
+    expect(drift).toBeUndefined();
+    expect(retirable(drift)).toEqual([]);
+    expect(pendingRemovalsNote(n)?.title).toContain(`${UUID} — container and data, 2 attempts · container still running: docker down`);
+  });
 });
 
 describe("openRetire", () => {
-  it("asks a plain confirm that names the container and says the data stays", () => {
-    openRetire(NODE_ID, { server_id: ORPHAN.server_id, label: ORPHAN.container_name }, null);
+  it("asks a plain confirm: the short name in the title, the full id in the body", () => {
+    openRetire(NODE_ID, { server_id: UUID, label: `kraken_${UUID}` }, null);
     expect(ui.confirm).toMatchObject({
-      name: "kraken_f4030778",
+      name: "kraken_f4030778…",
       noun: "container",
       verb: "retire",
       typed: false,
-      body: CD_CONTAINER_BODY,
     });
-    expect(CD_CONTAINER_BODY).toMatch(/world, config and backups stay/);
+    expect(ui.confirm?.body).toContain(CD_CONTAINER_BODY);
+    expect(ui.confirm?.body).toContain(UUID);
+    expect(CD_CONTAINER_BODY).toMatch(/world and config stay on the node untouched/);
+    expect(CD_CONTAINER_BODY).toMatch(/backups are kept/);
     // Opening is not doing: nothing reaches the Panel until it is confirmed.
     expect(retireNodeContainer).not.toHaveBeenCalled();
   });
@@ -123,7 +177,7 @@ describe("openRetire", () => {
     retireNodeContainer.mockRejectedValue(new ApiError(503, "node abyss-win is unreachable: connection refused"));
     openRetire(NODE_ID, { server_id: ORPHAN.server_id, label: ORPHAN.container_name }, null);
     await confirmGo();
-    expect(retire.errors[NODE_ID]).toBe("node abyss-win is unreachable: connection refused");
+    expect(retire.errors[NODE_ID]).toEqual({ ids: ["f4030778"], msg: "node abyss-win is unreachable: connection refused" });
     expect(refreshFleet).toHaveBeenCalledTimes(1);
     expect(retire.busy).toEqual({});
   });
@@ -140,14 +194,30 @@ describe("openRetire", () => {
       [NODE_ID, "a"],
       [NODE_ID, "b"],
     ]);
-    expect(retire.errors[NODE_ID]).toBe("server is managed by the Panel");
+    expect(retire.errors[NODE_ID]?.msg).toBe("server is managed by the Panel");
+  });
+});
+
+describe("pruneRetireError", () => {
+  it("keeps a refusal while one of its containers is still on the band", () => {
+    retire.errors[NODE_ID] = { ids: ["a", "b"], msg: "node unreachable" };
+    pruneRetireError(NODE_ID, ["b", "z"]);
+    expect(retire.errors[NODE_ID]?.msg).toBe("node unreachable");
+  });
+
+  it("drops it once none of them is — the orphan went away by other means", () => {
+    retire.errors[NODE_ID] = { ids: ["a", "b"], msg: "node unreachable" };
+    pruneRetireError(NODE_ID, ["z"]);
+    expect(retire.errors[NODE_ID]).toBeUndefined();
+    pruneRetireError(NODE_ID, []); // and nothing to prune is not an error
   });
 });
 
 describe("the delete confirmation", () => {
-  it("no longer claims to remove backups", () => {
+  it("no longer claims to remove backups, nor where they live", () => {
     expect(CD_SERVER_BODY).not.toMatch(/world, backups/);
-    expect(CD_SERVER_BODY).toMatch(/backups stay on the node/);
+    expect(CD_SERVER_BODY).not.toMatch(/stay on the node/);
+    expect(CD_SERVER_BODY).toMatch(/its backups are kept/);
   });
 
   it("stays typed by default", () => {
@@ -158,22 +228,13 @@ describe("the delete confirmation", () => {
 
 describe("shortContainerLabel", () => {
   it("prints a Panel-made name by the first eight of its id", () => {
-    expect(shortContainerLabel("kraken_f4030778-08c8-47b7-abba-59bbd9cebd08")).toBe("kraken_f4030778…");
-    expect(shortContainerLabel("kraken_f4030778-08c8-47b7-abba-59bbd9cebd08_install")).toBe(
-      "kraken_f4030778…_install",
-    );
+    expect(shortContainerLabel(`kraken_${UUID}`)).toBe("kraken_f4030778…");
+    expect(shortContainerLabel(`kraken_${UUID}_install`)).toBe("kraken_f4030778…_install");
   });
 
   it("leaves a short name alone and clips a long one", () => {
     expect(shortContainerLabel("kraken_srv-a")).toBe("kraken_srv-a");
     expect(shortContainerLabel("a-container-someone-named-by-hand")).toBe("a-container-someone-nam…");
-  });
-
-  it("clipLine keeps a refusal to one readable line", () => {
-    const long = 'node local is unreachable: connection error: desc = "transport: Error while dialing"';
-    expect(clipLine(long)).toHaveLength(42);
-    expect(clipLine(long).endsWith("…")).toBe(true);
-    expect(clipLine("node local is unreachable")).toBe("node local is unreachable");
   });
 });
 

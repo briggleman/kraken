@@ -116,11 +116,12 @@ export function closeSheet(id: SheetId) {
 // ---------------------------------------------------------------------------
 // typed-confirmation dialog: the noun and warning come from whoever opened it
 
-// Backups are named because they are NOT taken: they stay on the node, and a
+// Backups are named because they are NOT taken: they are kept (on the node, a
+// share or a mirror — wherever the target puts them), and a
 // warning that claimed otherwise (it did, until #354) is how a surviving archive
 // came to look like another server's.
 export const CD_SERVER_BODY =
-  "this removes the world and config for this server. its backups stay on the node. " +
+  "this removes the world and config for this server. its backups are kept. " +
   "it cannot be undone.";
 
 // Retiring an untracked container: the one confirmation that destroys nothing,
@@ -128,7 +129,8 @@ export const CD_SERVER_BODY =
 // stays exactly where it is.
 export const CD_CONTAINER_BODY =
   "the node stops and removes this container and forgets it, so its watchdog never brings it " +
-  "back. the panel has no server for it. its world, config and backups stay on the node untouched.";
+  "back. the panel has no server for it. its world and config stay on the node untouched, and " +
+  "its backups are kept.";
 
 // Every word of this is true of a node and false of a server, which is the point:
 // DESIGN.md requires the warning to describe the noun that opened the dialog.

@@ -9,11 +9,10 @@
   import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
-  import { openRetire, openRetireAll, retire } from "@/lib/retire.svelte";
+  import { openRetire, openRetireAll, pruneRetireError, retire } from "@/lib/retire.svelte";
   import {
     DRIFT_INLINE_MAX,
     agentDrift,
-    clipLine,
     containerDrift,
     nodeMemLabel,
     pendingRemovalsNote,
@@ -93,7 +92,12 @@
   const mayRetire = $derived(hasPerm("server.delete") && hasPerm("node.manage"));
   const retireItems = $derived(mayRetire ? retirable(containers) : []);
   const retireInline = $derived(retireItems.length > 0 && retireItems.length <= DRIFT_INLINE_MAX);
-  const retireErr = $derived(retire.errors[node.id] ?? "");
+  const retireErr = $derived(retire.errors[node.id]?.msg ?? "");
+  // A refusal about containers that have since left the band (removed on the
+  // host, claimed by a row) has nothing left to explain.
+  $effect(() => {
+    pruneRetireError(node.id, (containers?.items ?? []).map((c) => c.server_id));
+  });
   // Removals this node owes: servers deleted while it could not be told. A
   // quiet count with the roll call in the title; the panel is already retrying.
   const pending = $derived(pendingRemovalsNote(node));
@@ -315,7 +319,7 @@
            operator can act on: up to three read inline, more stay in the title,
            and an agent too old to name them leaves both empty. -->
       <span class="node-meta node-cond container-drift" title={driftTitle}>
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id)}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{shortContainerLabel(item.label)}</b><button
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{shortContainerLabel(item.label)}</b><button
               class="nc-go"
               disabled={!!retire.busy[item.server_id]}
               title="stop and remove {item.label} on {node.name} — its data stays"
@@ -332,16 +336,19 @@
     {#if retireErr}
       <!-- A retire the panel refused says why on the band that offered it —
            otherwise the chip would look as if the click had done nothing. -->
-      <span class="node-meta node-cond" title={retireErr}>
-        <span class="nc-k">retire</span><b class="nc-v act">{clipLine(retireErr)}</b>
+      <!-- The agent-drift failure's structure, so the house's own clip applies
+           (.agent-drift .nc-fail: 42ch and an ellipsis); the full reason is the
+           title. -->
+      <span class="node-meta node-cond agent-drift">
+        <span class="nc-k">retire</span><b class="nc-v nc-fail" title={retireErr}>{retireErr}</b>
       </span>
     {/if}
     {#if pending}
       <!-- Deleted in the panel, not yet removed from the node: the panel is
-           retrying on every pass the node answers, so this is a count to watch,
-           not a control. The one value in the line takes the caution colour. -->
+           retrying, so this is a reading to watch, not a thing to act on — the
+           plain value, no caution colour. -->
       <span class="node-meta node-cond pending-removals" title={pending.title}>
-        <span class="nc-k">removals</span><b class="nc-v act">{pending.count} pending</b>
+        <span class="nc-k">removals</span><b class="nc-v">{pending.count} pending</b>
       </span>
     {/if}
     <span class="node-actions">

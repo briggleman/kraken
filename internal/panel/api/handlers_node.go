@@ -869,7 +869,7 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	// The same gate as POST /servers/{id}/power: this path reaches the same
 	// Agent, so it must not start a server that one would refuse.
 	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
-		if refusal := s.checkStartable(r.Context(), sv); refusal != nil {
+		if refusal := s.checkStartable(r.Context(), sv, action); refusal != nil {
 			refusal.write(w)
 			return
 		}

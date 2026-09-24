@@ -3,14 +3,22 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/briggleman/kraken/internal/agent"
+	"github.com/briggleman/kraken/internal/panel"
+	"github.com/briggleman/kraken/internal/panel/api"
+	"github.com/briggleman/kraken/internal/panel/config"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/panel/store/memory"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/spec"
 )
 
 // The start gate on every path that boots a server. #357 put it on
@@ -78,12 +86,13 @@ func TestSchedule_RestartRefusedWhileRequiredSettingEmpty(t *testing.T) {
 	}
 }
 
-// TestSchedule_RestartSkipsAServerThatIsNotRunning — a scheduled restart exists
-// to cycle a running game. On a server someone stopped, the Agent's
-// stop-then-start would quietly start it; the schedule records why it did not.
-func TestSchedule_RestartSkipsAServerThatIsNotRunning(t *testing.T) {
+// TestSchedule_RestartSkipsAServerThatIsNotUp — the Agent's restart is a stop
+// then a start, so on a server someone stopped it would quietly start it again.
+// Offline is refused for that reason, and every state a restart is not for is
+// refused with it; the schedule records why.
+func TestSchedule_RestartSkipsAServerThatIsNotUp(t *testing.T) {
 	for _, state := range []store.ServerState{
-		store.StateOffline, store.StateCrashed, store.StateInstalling, store.StateInstallFailed,
+		store.StateOffline, store.StateStopping, store.StateInstalling, store.StateInstallFailed,
 	} {
 		t.Run(string(state), func(t *testing.T) {
 			srv, st := newTestAPI(t)
@@ -103,8 +112,8 @@ func TestSchedule_RestartSkipsAServerThatIsNotRunning(t *testing.T) {
 			if err != nil {
 				t.Fatalf("get schedule: %v", err)
 			}
-			if !strings.Contains(task.LastError, "not running") || !strings.Contains(task.LastError, string(state)) {
-				t.Fatalf("last_error should say the server is %s, not running: %q", state, task.LastError)
+			if !strings.Contains(task.LastError, "skipped") || !strings.Contains(task.LastError, string(state)) {
+				t.Fatalf("last_error should say the restart was skipped on a %s server: %q", state, task.LastError)
 			}
 			if got := agentState(t, rt, sv.ID); got != agentpb.ServerState_SERVER_STATE_OFFLINE {
 				t.Fatalf("a scheduled restart started a %s server (agent state %v)", state, got)
@@ -115,6 +124,40 @@ func TestSchedule_RestartSkipsAServerThatIsNotRunning(t *testing.T) {
 			}
 			if stored.State != state {
 				t.Fatalf("stored state moved from %s to %s", state, stored.State)
+			}
+		})
+	}
+}
+
+// TestSchedule_RestartRevivesCrashedAndStuckServers — a nightly restart reviving
+// a server the watchdog gave up on is behaviour operators rely on, and a server
+// stuck in starting (a ready line that never matches) is exactly what it should
+// cycle. Neither is refused.
+func TestSchedule_RestartRevivesCrashedAndStuckServers(t *testing.T) {
+	for _, state := range []store.ServerState{store.StateCrashed, store.StateStarting} {
+		t.Run(string(state), func(t *testing.T) {
+			srv, st := newTestAPI(t)
+			h := srv.Handler()
+			token := login(t, h)
+			addr, rt := startFakeAgentRuntime(t, "node-x")
+			nodeID := registerNode(t, h, token, addr)
+			specID := createSpec(t, h, token, "sched-revive-"+string(state))
+			sv := seedOfflineServer(t, st, "sv-revive", nodeID, specID, func(s *store.Server) {
+				s.State = state
+			})
+			seedDueRestart(t, st, "sch-revive", sv.ID)
+
+			srv.RunDueSchedulesForTest(context.Background())
+
+			task, err := st.GetSchedule(context.Background(), "sch-revive")
+			if err != nil {
+				t.Fatalf("get schedule: %v", err)
+			}
+			if task.LastError != "" {
+				t.Fatalf("scheduled restart of a %s server refused: %q", state, task.LastError)
+			}
+			if got := agentState(t, rt, sv.ID); got != agentpb.ServerState_SERVER_STATE_RUNNING {
+				t.Fatalf("the Agent never restarted the %s server (agent state %v)", state, got)
 			}
 		})
 	}
@@ -190,10 +233,12 @@ func TestNodePower_StartRefusedWhileInstalling(t *testing.T) {
 	}
 }
 
-// TestPower_StartRefusedWhenSpecCannotBeLoaded — the gate is judged on the
-// spec, so a start whose spec cannot be read is refused rather than let
-// through unchecked. Stop and kill need no spec and still work.
-func TestPower_StartRefusedWhenSpecCannotBeLoaded(t *testing.T) {
+// TestPower_StartRefusedWhenSpecIsGone — the gate is judged on the spec, so a
+// start whose spec no longer exists is refused rather than let through
+// unchecked. It is a 409 naming the reason, not a 500: a spec's id is a UUID,
+// so this server can never start again, and retrying will not help. Stop and
+// kill need no spec and still work.
+func TestPower_StartRefusedWhenSpecIsGone(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)
 	addr, rt := startFakeAgentRuntime(t, "node-x")
@@ -206,24 +251,105 @@ func TestPower_StartRefusedWhenSpecCannotBeLoaded(t *testing.T) {
 	} {
 		for _, action := range []string{"start", "restart"} {
 			rec := do(t, h, http.MethodPost, path, token, map[string]string{"action": action})
-			if rec.Code != http.StatusInternalServerError {
-				t.Fatalf("%s %s without a loadable spec: got %d, want 500; body %s", path, action, rec.Code, rec.Body.String())
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("%s %s without its spec: got %d, want 409; body %s", path, action, rec.Code, rec.Body.String())
 			}
 			var body struct {
 				Error string `json:"error"`
+				Code  string `json:"code"`
 			}
 			_ = json.Unmarshal(rec.Body.Bytes(), &body)
-			if !strings.Contains(body.Error, "spec") {
-				t.Fatalf("the refusal should say the spec could not be loaded: %q", body.Error)
+			if body.Code != "spec_missing" || !strings.Contains(body.Error, "no longer exists") {
+				t.Fatalf("%s %s: want code spec_missing and a sentence saying the spec is gone, got %+v", path, action, body)
+			}
+			if want := "was not " + action + "ed"; !strings.Contains(body.Error, want) {
+				t.Fatalf("%s %s: the sentence should say it %s: %q", path, action, want, body.Error)
 			}
 		}
 		for _, action := range []string{"stop", "kill"} {
 			if rec := do(t, h, http.MethodPost, path, token, map[string]string{"action": action}); rec.Code != http.StatusOK {
-				t.Fatalf("%s %s without a loadable spec: got %d, want 200; body %s", path, action, rec.Code, rec.Body.String())
+				t.Fatalf("%s %s without its spec: got %d, want 200; body %s", path, action, rec.Code, rec.Body.String())
 			}
 		}
 	}
 	if got := agentState(t, rt, sv.ID); got != agentpb.ServerState_SERVER_STATE_OFFLINE {
 		t.Fatalf("an unchecked start reached the Agent (agent state %v)", got)
+	}
+}
+
+// specLookupFails is the memory store with a spec read that always errors, the
+// way a Postgres read does when the connection drops mid-request.
+type specLookupFails struct{ *memory.Store }
+
+func (specLookupFails) GetSpec(context.Context, string) (*spec.Spec, error) {
+	return nil, errors.New("connection reset by peer")
+}
+
+// TestPower_StartRefusedWhenSpecLookupErrors — a store error is not a missing
+// spec: it is a 500, and the start is still refused rather than let through
+// unchecked.
+func TestPower_StartRefusedWhenSpecLookupErrors(t *testing.T) {
+	st := memory.New()
+	cfg := &config.Config{
+		Env: "test", SessionTTL: time.Hour,
+		BootstrapAdminUser: testAdmin, BootstrapAdminPassword: testPass,
+		SetupAllowedCIDRs: []string{"192.0.2.0/24"},
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := panel.Seed(context.Background(), st, cfg, logger); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	clearMustChangePassword(t, st, testAdmin)
+	h := api.New(cfg, specLookupFails{st}, logger).Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	sv := seedOfflineServer(t, st, "sv-specerr", nodeID, "some-spec", nil)
+
+	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/power", token, map[string]string{"action": "start"})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("start with the spec read failing: got %d, want 500; body %s", rec.Code, rec.Body.String())
+	}
+	if got := agentState(t, rt, sv.ID); got != agentpb.ServerState_SERVER_STATE_OFFLINE {
+		t.Fatalf("an unchecked start reached the Agent (agent state %v)", got)
+	}
+}
+
+// TestDeleteSpec_RefusedWhileInUse — the hole spec_missing reports, closed at
+// its source: a spec cannot be deleted while any server is built from it.
+func TestDeleteSpec_RefusedWhileInUse(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	addr, _ := startFakeAgentRuntime(t, "node-x")
+	nodeID := registerNode(t, h, token, addr)
+	specID := createSpec(t, h, token, "in-use")
+	seedOfflineServer(t, st, "sv-a", nodeID, specID, nil)
+	seedOfflineServer(t, st, "sv-b", nodeID, specID, nil)
+
+	rec := do(t, h, http.MethodDelete, "/api/v1/specs/"+specID, token, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("delete a spec in use: got %d, want 409; body %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error   string `json:"error"`
+		Code    string `json:"code"`
+		Servers int    `json:"servers"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body.Code != "spec_in_use" || body.Servers != 2 || !strings.Contains(body.Error, "2 servers") {
+		t.Fatalf("want spec_in_use naming 2 servers, got %+v", body)
+	}
+	if _, err := st.GetSpec(context.Background(), specID); err != nil {
+		t.Fatalf("a refused delete removed the spec: %v", err)
+	}
+
+	// Once nothing uses it, it deletes as before.
+	for _, id := range []string{"sv-a", "sv-b"} {
+		if err := st.DeleteServer(context.Background(), id); err != nil {
+			t.Fatalf("delete server %s: %v", id, err)
+		}
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/specs/"+specID, token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete an unused spec: got %d, want 204; body %s", rec.Code, rec.Body.String())
 	}
 }

@@ -210,3 +210,45 @@ func TestReinstall_FailureClearsFreshInstallStamp(t *testing.T) {
 		t.Fatal("a failed reinstall recorded no last_error")
 	}
 }
+
+// TestPower_VariableEditDuringInstallRearmsUpdatePass — the install renders its
+// script from the variables as they were when it began. An edit made while it
+// runs clears the stamp, and the install finishing must not stamp over that
+// clear: the tree it produced was installed with the old values, so the next
+// start inside the window still runs the pass.
+func TestPower_VariableEditDuringInstallRearmsUpdatePass(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-slow", agent.WithFakeInstallDelay(250*time.Millisecond))
+	nodeID := registerNode(t, h, token, addr)
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	specID := createSpec(t, h, token, "fresh-midinstall")
+
+	rec := do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{"spec_id": specID, "name": "mid-01"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var created struct{ ID string }
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	if got := getServerState(t, h, token, created.ID); got != "installing" {
+		t.Fatalf("the edit has to land mid-install, but the server is already %q", got)
+	}
+	rec = do(t, h, http.MethodPut, "/api/v1/servers/"+created.ID+"/settings", token,
+		map[string]any{"values": map[string]string{}, "variables": map[string]string{"MAX_PLAYERS": "32"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit variable mid-install: %d %s", rec.Code, rec.Body.String())
+	}
+	waitForStateWithin(t, h, token, created.ID, "offline", 20*time.Second)
+
+	rec = do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/power", token,
+		map[string]string{"action": "start"})
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("start after a mid-install edit: got %d, want 202 (update pass); body: %s", rec.Code, rec.Body.String())
+	}
+	waitForStateWithin(t, h, token, created.ID, "running", 20*time.Second)
+	if n := len(rt.InstallScripts(created.ID)); n != 2 {
+		t.Fatalf("create + start ran %d install passes, want 2 — the create's and the update", n)
+	}
+}

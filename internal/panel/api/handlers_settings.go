@@ -36,11 +36,15 @@ type settingsResponse struct {
 	// has turned off. It is about the spec, not the next start: see
 	// NextStartUpdates for that.
 	UpdatesOnStart bool `json:"updates_on_start"`
-	// NextStartUpdates is the decision the next start or restart would make
-	// right now: false when the spec opted out, the build is pinned, the server
-	// was installed within the last 30 minutes, or its authenticated-Steam
-	// install has no stored credentials. UpdateSkipReason names which
-	// (spec | pinned | fresh_install | steam_login); empty when it updates.
+	// NextStartUpdates is the decision the next operator start or restart
+	// through the Panel would make right now: false when the spec opted out,
+	// the build is pinned, the server was installed within the last 30
+	// minutes, or its authenticated-Steam install has no stored credentials.
+	// UpdateSkipReason names which (spec | pinned | fresh_install |
+	// steam_login); empty when it updates. Scheduled restarts and the
+	// node-scoped power endpoint never run the pass, whatever this says, and it
+	// means nothing while the server is installing or install_failed, where a
+	// start is refused outright.
 	NextStartUpdates bool   `json:"next_start_updates"`
 	UpdateSkipReason string `json:"update_skip_reason,omitempty"`
 }

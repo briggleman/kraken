@@ -157,15 +157,28 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 }
 
 // checkScheduledRestart reports why a scheduled restart of sv must not run, or
-// nil when it may. Beyond checkStartable, the server must be running: a nightly
-// restart exists to cycle a running game, and on a server someone stopped (or
-// one that crashed, or never finished installing) the Agent's stop-then-start
-// would quietly start it.
+// nil when it may. Beyond checkStartable, the server has to be in a state a
+// restart is for:
+//
+//   - running, the ordinary case;
+//   - starting, because a server stuck there (a ready line that never matches)
+//     is exactly what a nightly restart should cycle;
+//   - crashed, because reviving a server the watchdog gave up on is behaviour
+//     operators rely on.
+//
+// It is refused on an offline server — one someone stopped, which the Agent's
+// stop-then-start would quietly start again — and on every other state
+// (stopping, installing, install_failed, and any state added later), since an
+// allow-list cannot start something by default.
 func (s *Server) checkScheduledRestart(ctx context.Context, sv *store.Server) error {
-	if sv.State != store.StateRunning {
-		return fmt.Errorf("server is %s, not running, so the scheduled restart was skipped — a restart would have started it", sv.State)
+	switch sv.State {
+	case store.StateRunning, store.StateStarting, store.StateCrashed:
+	case store.StateOffline:
+		return fmt.Errorf("server is offline, so the scheduled restart was skipped — a restart would start a server someone had stopped")
+	default:
+		return fmt.Errorf("server is %s, so the scheduled restart was skipped", sv.State)
 	}
-	if refusal := s.checkStartable(ctx, sv); refusal != nil {
+	if refusal := s.checkStartable(ctx, sv, agentpb.PowerAction_POWER_ACTION_RESTART); refusal != nil {
 		return refusal
 	}
 	return nil

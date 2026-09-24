@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -276,7 +277,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
-	s.markProvisioned(server.ID, time.Now().UTC())
+	s.markProvisioned(server.ID, server.Vars, time.Now().UTC())
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
 	// and once the state leaves `installing` the console has no container to
@@ -349,8 +350,16 @@ func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason st
 
 // markProvisioned records a successful create or reinstall: the server is
 // offline and ready to start, with no error, and its tree was installed at `at`
-// — which is what lets the first start after it skip a redundant update pass.
-func (s *Server) markProvisioned(id string, at time.Time) {
+// — which is what lets a start inside freshInstallWindow skip a redundant update
+// pass. installedVars is the variable snapshot the install script was rendered
+// from.
+//
+// The stamp vouches for a tree installed with those values, so it is withheld
+// when the row's variables no longer match them: an operator who edited one
+// while the install was running cleared the stamp (see the settings handler),
+// and stamping now would undo that and let the next start skip the pass the
+// edit needs.
+func (s *Server) markProvisioned(id string, installedVars map[string]string, at time.Time) {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
 		s.logger.Error("could not load server to mark it provisioned", "id", id, "err", err)
@@ -358,7 +367,13 @@ func (s *Server) markProvisioned(id string, at time.Time) {
 	}
 	sv.State = store.StateOffline
 	sv.LastError = ""
-	sv.ProvisionedAt = &at
+	if maps.Equal(sv.Vars, installedVars) {
+		sv.ProvisionedAt = &at
+	} else {
+		s.logger.Info("not stamping provisioned_at: variables were edited during the install, so the next start re-runs the pass",
+			"id", id)
+		sv.ProvisionedAt = nil
+	}
 	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
 		s.logger.Error("could not mark server provisioned", "id", id, "err", err)
 	}
@@ -423,11 +438,16 @@ func (e *startRefusal) write(w http.ResponseWriter) {
 //   - A server that never completed its install would boot against an empty
 //     /data and crash-loop, with misleading "exe not found" errors.
 //   - A server whose spec cannot be loaded cannot be checked, so it is not
-//     started on the strength of a check that never ran.
+//     started on the strength of a check that never ran: a spec that no longer
+//     exists is a 409 spec_missing, any other store error a 500.
 //   - A server with an empty required setting would boot into a crash its own
 //     spec predicts. Judged on the EFFECTIVE settings, so a field the spec
 //     added later counts its default.
-func (s *Server) checkStartable(ctx context.Context, sv *store.Server) *startRefusal {
+func (s *Server) checkStartable(ctx context.Context, sv *store.Server, action agentpb.PowerAction) *startRefusal {
+	verb := "started"
+	if action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		verb = "restarted"
+	}
 	switch sv.State {
 	case store.StateInstalling:
 		return &startRefusal{status: http.StatusConflict,
@@ -437,10 +457,16 @@ func (s *Server) checkStartable(ctx context.Context, sv *store.Server) *startRef
 			message: "server install failed; POST /api/v1/servers/{id}/reinstall to retry"}
 	}
 	sp, err := s.store.GetSpec(ctx, sv.SpecID)
+	if errors.Is(err, store.ErrNotFound) {
+		// Permanent: a spec's id is a UUID, so re-adding the game makes a new
+		// spec rather than bringing this one back.
+		return &startRefusal{status: http.StatusConflict, code: "spec_missing",
+			message: "the game spec this server was built from no longer exists, so it was not " + verb}
+	}
 	if err != nil {
 		s.logger.Error("start refused: could not load the server's spec", "server", sv.ID, "spec", sv.SpecID, "err", err)
 		return &startRefusal{status: http.StatusInternalServerError,
-			message: "could not load this server's game spec, so it was not started"}
+			message: "could not load this server's game spec, so it was not " + verb}
 	}
 	if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
 		keys := make([]string, 0, len(missing))
@@ -608,12 +634,13 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// Start and restart are refused on a server that has not finished its
-	// install, or whose required settings are empty (see checkStartable). Stop
+	// install, whose spec cannot be loaded, or whose required settings are
+	// empty (see checkStartable). Stop
 	// and kill are never refused: they're no-ops on a non-running container, let
 	// the operator clean up any lingering runtime state, and refusing to stop a
 	// server would be the opposite of safe.
 	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
-		if refusal := s.checkStartable(ctx, sv); refusal != nil {
+		if refusal := s.checkStartable(ctx, sv, action); refusal != nil {
 			refusal.write(w)
 			return
 		}

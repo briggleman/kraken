@@ -81,12 +81,33 @@ install tree for a file ending `~RF<hex>.TMP`.
 3. Delete the `steamapps/downloading/` directory.
 4. Start the server, or reinstall if it is in `install_failed`.
 
-**Fix for cause 2.** Delete the orphaned `.TMP` and reinstall — not start, since
-the file it was replacing is not there to run.
+**Fix for cause 2.** The Agent now does this itself. After a failure from the
+`state is 0x…` family it scans the data dir for `~RF<hex>.TMP` files, deletes
+every one whose target is missing, and runs the pass once more — provided the
+time left before the Panel's 30-minute deadline is at least as long as the first
+pass took. The install console names each file it removed and the file that was
+missing:
+
+```text
+[kraken] removed orphaned SteamCMD staging file RSDragonwilds/Binaries/Win64/RSDragonwildsServer-Win64-Shipping.exe~RF1561a.TMP — its target RSDragonwilds/Binaries/Win64/RSDragonwildsServer-Win64-Shipping.exe is missing, the mark of an update that could not be committed
+[kraken] retrying the install pass once, now that 1 orphaned staging file(s) are cleared
+```
+
+A `.TMP` whose target is present is reported as `in-flight … — not touched` and
+left alone. When there is nothing to remove, when the time left is too short, or
+when the retry fails too, the pass lands in `install_failed` and `last_error`
+says what was found, with the state decoded, e.g.
+`state is 0x602 (update started, paused before commit, update required)`. If the
+orphans were cleared but no time was left, reinstall and the next pass starts
+clean. `steamapps/appmanifest_<appid>.acf` is never touched automatically.
+
+On an Agent older than this, do it by hand: delete the orphaned `.TMP` and
+reinstall — not start, since the file it was replacing is not there to run.
 
 If the delete itself fails — the Files tab says the file `is in use by another
-process`, or passes on the node's `Access is denied.` — that is the same lock
-that stopped the rename, still held. On a Windows node it is usually a game
+process`, or passes on the node's `Access is denied.`, or the Agent's message
+says the file `is still locked — a container may be holding it` — that is the
+same lock that stopped the rename, still held. On a Windows node it is usually a game
 container that is still running: stop it, then delete the `.TMP` and reinstall.
 Before starting the server, check the Files tab again and confirm the real file
 is back with no `~RF…` suffix — the install reporting success is not the same

@@ -57,6 +57,9 @@ type FakeRuntime struct {
 	// failure path of an update pass (the server must land install_failed, not
 	// start over a half-written tree).
 	installErr string
+	// installOutcomes scripts the SteamCMD verdict of each install pass, per
+	// server, in order (see WithFakeInstallOutcomes).
+	installOutcomes []string
 	// powerErrs makes the named power actions fail instead of running (see
 	// WithFakePowerFailure). The recorded state is left alone, the way it is on
 	// a node the Panel cannot reach: the container goes on doing what it was.
@@ -103,6 +106,17 @@ func WithFakeBinarySHA(sha string) FakeOption {
 // are reachable without a container runtime.
 func WithFakeInstallFailure(reason string) FakeOption {
 	return func(f *FakeRuntime) { f.installErr = reason }
+}
+
+// WithFakeInstallOutcomes scripts what SteamCMD prints at the end of each
+// install pass, per server: pass n (counting every pass the fake has run for
+// that server, the automatic retry included) ends with lines[n] in place of the
+// success line. An empty entry, or a pass beyond the list, succeeds. Unlike
+// WithFakeInstallFailure this goes through the real verdict and recovery path,
+// so "Error! App '1' state is 0x602 after update job." with an orphaned
+// `…~RF<hex>.TMP` in the tree is cleared and retried exactly as on a node.
+func WithFakeInstallOutcomes(lines ...string) FakeOption {
+	return func(f *FakeRuntime) { f.installOutcomes = append([]string(nil), lines...) }
 }
 
 // WithFakePowerFailure makes the given power action fail with
@@ -655,6 +669,16 @@ func (f *FakeRuntime) HoldDataDir(serverID, name, state string) {
 	f.holders[serverID] = append(f.holders[serverID], dataDirHolder{ID: id, Name: name, State: state})
 }
 
+// errFakePassReported is how a fake pass says it already emitted its own
+// Failed event (a data-dir refusal, WithFakeInstallFailure). Install then ends
+// without a second one — the stream has said all there is to say.
+var errFakePassReported = errors.New("fake: install pass failure already reported")
+
+// Install runs through the same recovery as the Docker runtime
+// (runInstallWithRecovery): each pass is simulated by installPass, and the
+// staging-file scan and cleanup run over the fake's in-memory file tree — so a
+// test seeds an orphaned `…~RF<hex>.TMP` with WriteFile and scripts the passes'
+// SteamCMD verdicts with WithFakeInstallOutcomes.
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
 	// The same gate as the Docker runtime: a START/RESTART arriving while the
 	// pass runs is refused (installgate.go).
@@ -663,18 +687,49 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	defer leave()
 	emit = releaseOnVerdict(emit, leave)
 
+	passes := 0
+	failure, err := runInstallWithRecovery(ctx, func(ctx context.Context) (string, error) {
+		passes++
+		return f.installPass(ctx, req, passes == 1, emit)
+	}, fakeStagingTree{f: f, serverID: req.ServerId}, func(line string) { _ = emit(logLine(line)) }, time.Now)
+	switch {
+	case errors.Is(err, errFakePassReported):
+		return nil
+	case err != nil:
+		return err
+	}
+	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_OFFLINE)
+	if failure != "" {
+		return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: failure}})
+	}
+	return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Completed{Completed: true}})
+}
+
+// installPass simulates one install container: the data-dir guard, then the
+// SteamCMD output, ending in this pass's scripted verdict (see
+// WithFakeInstallOutcomes). The verdict is read out of the emitted lines by the
+// same steamInstallOutcome the Docker runtime uses.
+func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServerRequest, first bool, emit func(*agentpb.InstallEvent) error) (string, error) {
 	f.mu.Lock()
 	installName := containerName(req.ServerId) + "_install"
 	plan := planDataDirHolders(f.holders[req.ServerId], installName)
 	if len(plan.refuse) > 0 {
 		f.mu.Unlock()
-		return emit(untouchedFailure(dataDirRefusal(plan.refuse)))
+		// Untouched only before any pass has run, as on the Docker runtime.
+		ev := &agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: dataDirRefusal(plan.refuse)}}
+		if first {
+			ev = untouchedFailure(dataDirRefusal(plan.refuse))
+		}
+		if err := emit(ev); err != nil {
+			return "", err
+		}
+		return "", errFakePassReported
 	}
 	delete(f.holders, req.ServerId)
 	f.mu.Unlock()
 	for _, h := range plan.remove {
 		if err := emit(logLine(dataDirRemovalNote(h, installName))); err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -682,14 +737,22 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	if f.installScripts == nil {
 		f.installScripts = make(map[string][]string)
 	}
+	pass := len(f.installScripts[req.ServerId])
 	f.installScripts[req.ServerId] = append(f.installScripts[req.ServerId], req.InstallScript)
 	failure := f.installErr
 	delay := f.installDelay
+	verdict := ""
+	if pass < len(f.installOutcomes) {
+		verdict = f.installOutcomes[pass]
+	}
 	f.mu.Unlock()
 	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_INSTALLING)
 	if failure != "" {
 		f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_OFFLINE)
-		return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: failure}})
+		if err := emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Failed{Failed: failure}}); err != nil {
+			return "", err
+		}
+		return "", errFakePassReported
 	}
 	steps := []string{
 		"Redirecting stderr to console",
@@ -697,26 +760,70 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 		"[ 50%] Downloading update (depot)...",
 		"[100%] Install of " + req.ServerId + " complete",
 	}
+	if verdict != "" {
+		steps = append(steps[:len(steps)-1], verdict)
+	}
+	var steamErr string
 	for i, line := range steps {
 		if err := ctx.Err(); err != nil {
-			return err
+			return "", err
 		}
 		if delay > 0 {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return "", ctx.Err()
 			case <-time.After(delay):
 			}
 		}
+		steamErr = steamInstallOutcome(steamErr, line)
 		if err := emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_LogLine{LogLine: line}}); err != nil {
-			return err
+			return "", err
 		}
 		if err := emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: int32((i + 1) * 100 / len(steps))}}); err != nil {
-			return err
+			return "", err
 		}
 	}
-	f.setState(req.ServerId, agentpb.ServerState_SERVER_STATE_OFFLINE)
-	return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Completed{Completed: true}})
+	return steamErr, nil
+}
+
+// fakeStagingTree is the fake's in-memory file tree seen as a stagingTree, so
+// the orphan recovery runs over the files a test (or the Files tab on the
+// fake-live stack) put there.
+type fakeStagingTree struct {
+	f        *FakeRuntime
+	serverID string
+}
+
+func (t fakeStagingTree) scan() []stagingFile {
+	t.f.mu.Lock()
+	defer t.f.mu.Unlock()
+	tree := t.f.tree(t.serverID)
+	var out []stagingFile
+	for p, e := range tree {
+		if e.entry.IsDir {
+			continue
+		}
+		target, ok := stagingTarget(path.Base(p))
+		if !ok {
+			continue
+		}
+		targetPath := path.Join(path.Dir(p), target)
+		_, exists := tree[targetPath]
+		out = append(out, stagingFile{
+			Rel:          strings.TrimPrefix(p, fakeDataRoot+"/"),
+			Target:       strings.TrimPrefix(targetPath, fakeDataRoot+"/"),
+			TargetExists: exists,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Rel < out[j].Rel })
+	return out
+}
+
+func (t fakeStagingTree) remove(s stagingFile) error {
+	t.f.mu.Lock()
+	defer t.f.mu.Unlock()
+	delete(t.f.tree(t.serverID), fakeDataRoot+"/"+s.Rel)
+	return nil
 }
 
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {

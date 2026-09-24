@@ -105,6 +105,9 @@ type DockerRuntime struct {
 	// installGate). While a server is in it, nothing may start its game
 	// container: not a Power START/RESTART, not the crash watchdog.
 	installs installGate
+	// installCleanup tracks the background removals of finished install
+	// containers (removeInstallContainerLater), so a test can wait for them.
+	installCleanup sync.WaitGroup
 
 	// bjMu guards backupJobs: the live state of asynchronous backups, keyed by
 	// "<serverID>/<id>". Holds in-flight (PENDING) jobs and recently-finished ones
@@ -825,10 +828,10 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	//
 	// The gate is released the moment the verdict (Completed or Failed) is
 	// sent, not when Install returns: the Panel acts on the verdict at once —
-	// the START after an update, the deploy form's start-after-install — while
-	// the deferred removal of the exited install container can still be
-	// waiting up to 30s for its name. That container holds nothing, and the
-	// next pass's guard clears it if it lingers.
+	// the START after an update, the deploy form's start-after-install. The
+	// exited install container is removed in the background after that (see
+	// below); it holds nothing, and the next pass's guard clears it if it
+	// lingers.
 	leave := d.installs.enter(req.ServerId)
 	defer leave()
 	emit = releaseOnVerdict(emit, leave)
@@ -876,25 +879,95 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		host.Resources.Memory = req.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
+
+	// One pass, or two: a retryable SteamCMD failure that left orphaned staging
+	// files behind is cleaned up and run once more if the deadline allows. See
+	// steamrecovery.go.
+	//
+	// The exited install container of the LAST pass is removed only after the
+	// verdict is sent, off the RPC's path: its removal can wait up to 30s for
+	// the name on Windows, and the Panel moves on (applyConfig, START) the
+	// moment the stream ends. Between passes it is removed synchronously —
+	// the retry reuses the name.
+	note := func(line string) { _ = emit(logLine(line)) }
 	installName := installContainerName(req.ServerId)
+	passes := 0
+	pending := "" // the last pass's exited install container, not yet removed
+	failure, err := runInstallWithRecovery(ctx, func(ctx context.Context) (string, error) {
+		passes++
+		if pending != "" {
+			d.removeInstallContainer(pending, installName)
+			pending = ""
+		}
+		steamErr, id, err := d.runInstallContainer(ctx, req.ServerId, cfg, host, passes == 1, emit)
+		pending = id
+		return steamErr, err
+	}, hostStagingTree{root: d.localDir(req.ServerId)}, note, time.Now, noRetryReason(req))
+	defer d.removeInstallContainerLater(pending, installName)
+	if err != nil {
+		return err
+	}
+	if failure != "" {
+		// SteamCMD returned 0 but reported an app failure in its output — fail
+		// loudly. The Panel prefixes "install failed: " itself.
+		return d.fail(emit, failure)
+	}
+	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: 100}})
+	return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Completed{Completed: true}})
+}
+
+// removeInstallContainerLater removes a finished install container in the
+// background, so the install RPC can end — and the Panel act on its verdict —
+// without waiting for the name to come free. "" is a no-op. installCleanup
+// lets a test wait for it.
+func (d *DockerRuntime) removeInstallContainerLater(id, name string) {
+	if id == "" {
+		return
+	}
+	d.installCleanup.Add(1)
+	go func() {
+		defer d.installCleanup.Done()
+		d.removeInstallContainer(id, name)
+	}()
+}
+
+// runInstallContainer runs one install container to completion: guard the data
+// dir, create, start, stream the logs, wait for the exit. It returns the
+// SteamCMD failure line the output reported ("" for a clean pass). A failure of
+// the pass itself is reported through fail and returned as err; a cancelled
+// context is returned as is.
+//
+// Every pass goes through the guard, the retry included: it reuses the
+// `_install` name, and the guard is what waits for the previous container's
+// name to come free (#355).
+func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string, cfg *container.Config, host *container.HostConfig, first bool, emit func(*agentpb.InstallEvent) error) (steamErr, id string, err error) {
+	installName := installContainerName(serverID)
 	// Never run SteamCMD while anything else holds the data dir (#351). This
 	// also clears a previous pass's install container, waiting for its name
 	// the way ensureContainer does (#355) — the create below reuses it.
-	// A guard failure — a refusal, or the old install container's name never
-	// freeing — happens before anything touches the tree, and says so, so the
-	// Panel puts the server back where it was instead of install_failed.
-	if err := clearDataDir(ctx, d.containers, req.ServerId, d.bindSource(req.ServerId), installName, d.foldHostPaths(),
+	//
+	// On the first pass a guard failure — a refusal, or the old install
+	// container's name never freeing — happens before anything touches the
+	// tree, and says so, so the Panel does not mark it install_failed. On the
+	// retry the first pass has already written to the tree, so it is an
+	// ordinary failure.
+	if err := clearDataDir(ctx, d.containers, serverID, d.bindSource(serverID), installName, d.foldHostPaths(),
 		selfContainerID(), func(line string) { _ = emit(logLine(line)) }); err != nil {
-		return d.failUntouched(emit, err.Error())
+		if first {
+			return "", "", d.failUntouched(emit, err.Error())
+		}
+		return "", "", d.fail(emit, err.Error())
 	}
-	created, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, installName)
+	created, err := d.containers.ContainerCreate(ctx, cfg, host, nil, nil, installName)
 	if err != nil {
-		return d.fail(emit, "create install container: "+err.Error())
+		return "", "", d.fail(emit, "create install container: "+err.Error())
 	}
-	defer d.removeInstallContainer(created.ID, installName)
+	// Not removed here: the caller removes it — between passes at once, after
+	// the verdict for the last one (see Install).
+	id = created.ID
 
-	if err := d.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
-		return d.fail(emit, "start install container: "+err.Error())
+	if err := d.containers.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		return "", id, d.fail(emit, "start install container: "+err.Error())
 	}
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: 10}})
 
@@ -903,34 +976,28 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	// subscription", "Not for anonymous users", "Error! App '…' state is 0x6
 	// after update job."), so the exit code alone would let a broken install pass
 	// as success — leaving a silent, empty server, or relaunching a stale build.
-	var steamErr string
 	if err := d.streamLogs(ctx, created.ID, "all", func(_ string, text string) error {
 		steamErr = steamInstallOutcome(steamErr, text)
 		return emit(logLine(text))
 	}); err != nil && ctx.Err() == nil {
-		return d.fail(emit, "stream install logs: "+err.Error())
+		return "", id, d.fail(emit, "stream install logs: "+err.Error())
 	}
 
 	// Wait for exit and check the code.
-	statusCh, errCh := d.cli.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
+	statusCh, errCh := d.containers.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
 	select {
 	case werr := <-errCh:
 		if werr != nil {
-			return d.fail(emit, "wait install: "+werr.Error())
+			return "", id, d.fail(emit, "wait install: "+werr.Error())
 		}
 	case st := <-statusCh:
 		if st.StatusCode != 0 {
-			return d.fail(emit, fmt.Sprintf("install exited with code %d", st.StatusCode))
+			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d", st.StatusCode))
 		}
 	case <-ctx.Done():
-		return ctx.Err()
+		return "", id, ctx.Err()
 	}
-	// SteamCMD returned 0 but reported an app failure in its output — fail loudly.
-	if steamErr != "" {
-		return d.fail(emit, "install failed: "+steamErr)
-	}
-	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: 100}})
-	return emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Completed{Completed: true}})
+	return steamErr, id, nil
 }
 
 // steamInstallFailurePhrases are the SteamCMD output lines that mean an app
@@ -2247,7 +2314,7 @@ func untouchedFailure(msg string) *agentpb.InstallEvent {
 // streamLogs streams a container's logs to fn until the stream ends (used for
 // the bounded install phase). demux is used for the unbounded console stream.
 func (d *DockerRuntime) streamLogs(ctx context.Context, id, tail string, fn func(stream, text string) error) error {
-	reader, err := d.cli.ContainerLogs(ctx, id, container.LogsOptions{
+	reader, err := d.containers.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: true, Tail: tail,
 	})
 	if err != nil {

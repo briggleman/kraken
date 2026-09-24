@@ -270,8 +270,12 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 			// exists: the install container is removed when the phase ends.
 			s.installs.Append(server.ID, e.LogLine)
 		case *agentpb.InstallEvent_Failed:
+			// The Panel owns the "install failed: " prefix. Agents up to 0.55
+			// sent SteamCMD failures already prefixed, which read as "install
+			// failed: install failed: …" in last_error — strip it so the prefix
+			// appears once whichever Agent reported it.
 			return &installPassError{
-				msg:           "install failed: " + e.Failed,
+				msg:           "install failed: " + strings.TrimPrefix(e.Failed, "install failed: "),
 				treeUntouched: ev.GetTreeUntouched(),
 			}
 		}

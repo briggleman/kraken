@@ -9,7 +9,9 @@ export type ServerState =
   | "starting"
   | "running"
   | "stopping"
-  | "crashed";
+  | "crashed"
+  /** A backup restore is swapping save files; start waits for it (#361). */
+  | "restoring";
 
 export type PlatformKind = "linux-native" | "linux-wine" | "windows-native";
 
@@ -273,7 +275,23 @@ export interface Server {
    *  before every start or restart, so this server stays on the build now on
    *  disk. Reinstall is then the explicit "update now". */
   pin_build?: boolean;
+  /** Present only while a backup restore runs (state `restoring`, #361). */
+  restore?: RestoreProgress;
   created_at: string;
+}
+
+/** A running backup restore, as the Panel's restore job reports it. Progress
+ *  is compressed bytes read against the archive's size; `bytes_total` is 0 when
+ *  the size is unknown (an agent too old to report progress, or a target that
+ *  cannot size the archive) — progress unknown, never progress zero. */
+export interface RestoreProgress {
+  backup_id: string;
+  /** opening · extracting · applying · done, or `restoring` for an old agent
+   *  restoring without progress. */
+  phase: string;
+  bytes_done: number;
+  bytes_total: number;
+  started_at: string;
 }
 
 export interface SftpStatus {

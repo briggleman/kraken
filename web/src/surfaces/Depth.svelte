@@ -29,6 +29,8 @@
     consoleViewKey,
     emptyConsoleNote,
     restoreTop,
+    restoreActive,
+    restoreMeter,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY } from "@/lib/state.svelte";
@@ -66,9 +68,19 @@
   // reason instead of offering a click that comes back 409.
   const restoreBlocked = $derived.by(() => {
     const st = server?.state;
+    if (st === "restoring") return "a restore is in progress — wait for it to finish";
     if (st === "offline" || st === "crashed" || st === "install_failed") return "";
     return `stop the server before restoring (state: ${st ?? "unknown"})`;
   });
+  // A restore running, or being asked for (#361): every restore button goes
+  // quiet, and so does create — an archive taken mid-swap would capture a
+  // half-restored tree.
+  const restoring = $derived(restoreActive(server, depth.restoringBackup !== null));
+  const restoreJob = $derived(server?.restore);
+  const meter = $derived(restoreMeter(server?.restore));
+  const restoreRowMissing = $derived(
+    restoreJob !== undefined && !depth.backups.some((b) => b.id === restoreJob.backup_id),
+  );
   // The stored reason usually already opens with "install failed:", which the
   // notice's own heading says — strip it so the sentence reads once, and close
   // it so the pointer to the log that follows is a separate sentence.
@@ -863,6 +875,12 @@
           {/if}
         </p>
       {/if}
+      {#if server?.state === "restoring"}
+        <p class="depth-notice" role="status">
+          <b>restoring a backup — the archive is being put back on the node. start waits until it
+            lands; the backups ledger shows how far it has got.</b>
+        </p>
+      {/if}
       {#if server?.state === "install_failed"}
         <p class="depth-notice bad" role="alert">
           <b>install failed — the server never provisioned.{failReason
@@ -896,7 +914,7 @@
         {:else}
           <button
             class="ctl ctl-start"
-            disabled={depth.powerBusy || server?.state === "installing"}
+            disabled={depth.powerBusy || server?.state === "installing" || server?.state === "restoring"}
             onclick={() => void power("start")}>start</button
           >
           <!-- The same endpoint as the install_failed retry, under the name it
@@ -991,9 +1009,27 @@
       <section class="side-block" aria-label="Backups">
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
+          <!-- The restore meter (#361) takes the archive's own row while it runs.
+               Its fill is the agent's figure — compressed bytes read against the
+               archive's size — and an unsized restore (an old agent, or a target
+               that cannot size the archive) holds the fill at 0 and breathes the
+               ledger's in-flight dot instead of printing a number. -->
+          {#snippet restoreLive(label: string)}
+            <div class="bk-live" role="status" aria-label="restoring {label}: {meter.sized ? meter.pct + '%' : meter.label}">
+              <span>{label} · restoring…</span>{#if meter.sized}<span class="pct">{meter.label}</span>{:else}<span class="pct bk-state mirroring">{meter.label}</span>{/if}<span class="bk-progress" use:istyle={`--prog:${meter.pct}`}><i></i></span>
+            </div>
+          {/snippet}
+          {#if restoreJob && restoreRowMissing}
+            {@render restoreLive(restoreJob.backup_id)}
+          {/if}
           {#each depth.backups as b (b.id)}
-            {#if b.state === "pending"}
-              <div class="bk-live"><span>{b.name} · creating…</span><span class="pct"></span><span class="bk-progress" use:istyle={"--prog:60"}><i></i></span></div>
+            {#if restoreJob && restoreJob.backup_id === b.id}
+              {@render restoreLive(b.name)}
+            {:else if b.state === "pending"}
+              <!-- An archive being created has no measure the agent reports, so
+                   it gets the unsized reading: no fill, the in-flight dot. (This
+                   bar used to sit at a hard-wired 60 %.) -->
+              <div class="bk-live"><span>{b.name} · creating…</span><span class="pct bk-state mirroring" aria-hidden="true"></span><span class="bk-progress" use:istyle={"--prog:0"}><i></i></span></div>
             {:else}
               {@const s = bkState(b)}
               {@const mirror = bkMirror(b.replication, depth.backupMirror)}
@@ -1012,7 +1048,7 @@
                   </span>
                   <span class="bk-acts">
                     <span class="bk-state {s.cls}">{s.word}</span>
-                    <button class="mini-act res" disabled={depth.restoringBackup === b.id || s.failed || restoreBlocked !== ""} title={s.failed ? "nothing was captured — there is no archive to restore" : restoreBlocked || undefined} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
+                    <button class="mini-act res" disabled={restoring || s.failed || restoreBlocked !== ""} title={s.failed ? "nothing was captured — there is no archive to restore" : restoreBlocked || (restoring ? "a restore is in progress — wait for it to finish" : undefined)} onclick={() => void backupRestore(b)}>{depth.restoringBackup === b.id ? "restoring…" : "restore"}</button>
                     <button class="mini-act del" onclick={() => void backupDelete(b)}>delete</button>
                   </span>
                 </div>
@@ -1036,7 +1072,18 @@
               {#if replicationOn}<span>mirror <b>{depth.backupMirror}</b></span>{/if}
             </div>
           {/if}
-          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy} onclick={() => void backupCreate()}>create backup now</button>
+          {#if depth.restoreNote}
+            {@const note = depth.restoreNote}
+            <!-- How the restore ended. It never said so before: the button went
+                 back to "restore" and that was all. Landed is Status Gold; a
+                 failure is Caution — the restore was prevented, and the agent's
+                 reason says whether the files were rolled back. -->
+            <p class="bk-evict bk-note{note.kind === 'done' ? ' ok' : ''}" role={note.kind === "done" ? "status" : "alert"}>
+              <span>{#if note.kind === "done"}restored <b>{note.name}</b>{server?.state === "offline" ? " — start the server when ready" : ""}{:else}restore of <b>{note.name}</b> failed — {note.reason}{/if}</span>
+              <button class="mini-act" onclick={() => (depth.restoreNote = null)}>dismiss</button>
+            </p>
+          {/if}
+          <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring} onclick={() => void backupCreate()}>create backup now</button>
         </div>
       </section>
       <section class="side-block" aria-label="Schedules">
@@ -1150,5 +1197,24 @@
   .sch-err {
     color: var(--caution);
     overflow-wrap: anywhere;
+  }
+
+  /* How a restore ended (#361). It borrows the ledger's own caution line —
+     .bk-evict, the voice the ledger already spends on a consequence — so a
+     failure reads exactly like it, and a restore that landed is the same line
+     in Status Gold: nothing was prevented, the save is back. */
+  .bk-note {
+    align-items: center;
+  }
+  .bk-note > span {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .bk-note.ok {
+    color: var(--ok);
+  }
+  .bk-note.ok::before {
+    background: var(--ok);
   }
 </style>

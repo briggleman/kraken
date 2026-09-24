@@ -181,8 +181,8 @@ have started either way.</li>
 </ol>
 <p><strong>Fix for cause 2.</strong> Delete the orphaned <code>.TMP</code> and reinstall — not start, since
 the file it was replacing is not there to run.</p>
-<p>If the delete itself fails (the Files tab reports a <code>502</code>), that is the same
-lock that stopped the rename, still held. On a Windows node it is usually a game
+<p>If the delete itself fails — the Files tab says the file <code>is in use by another process</code>, or passes on the node&#39;s <code>Access is denied.</code> — that is the same lock
+that stopped the rename, still held. On a Windows node it is usually a game
 container that is still running: stop it, then delete the <code>.TMP</code> and reinstall.
 Before starting the server, check the Files tab again and confirm the real file
 is back with no <code>~RF…</code> suffix — the install reporting success is not the same

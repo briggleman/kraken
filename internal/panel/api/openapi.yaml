@@ -422,14 +422,18 @@ paths:
         '500':
           description: >
             The server's spec could not be read (a store error, not a missing
-            spec), so start and restart were refused rather than run unchecked.
-            Nothing was attempted.
+            spec), so start and restart were refused rather than run unchecked
+            and nothing was attempted — or the node reported a failure it did
+            not classify (`code: node_error`), with its message in `error`.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '503':
           description: >
-            The panel has no live connection to the hosting node's agent. Nothing
-            was attempted and the server's state is unchanged.
+            The panel has no live connection to the hosting node's agent, or the
+            agent did not answer (`code: node_unreachable`). Nothing was
+            attempted and the server's state is unchanged.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
   /servers/{id}/reinstall:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:
@@ -543,6 +547,11 @@ paths:
         - { name: path, in: query, schema: { type: string }, description: directory to list }
       responses:
         '200': { description: Directory listing }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/content:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -551,6 +560,11 @@ paths:
       parameters: [ { name: path, in: query, required: true, schema: { type: string } } ]
       responses:
         '200': { description: File content (capped) }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/raw:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -586,9 +600,11 @@ paths:
         '200': { description: Raw file stream }
         '400': { description: No path was supplied on the session-authenticated form }
         '401': { description: "Unknown, expired, already-used or wrong-server/wrong-path download token — or the session that minted it is gone" }
-        '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
+        '404': { description: "No such server, or one this user may not reach (existence is not revealed) — or no such file on the node (`code: not_found`); the body is a JSON error, never a file" }
+        '409': { $ref: '#/components/responses/AgentConflict' }
         '429': { description: "Too many token redemptions from this address; retry after the Retry-After header says" }
-        '502': { description: "The node could not serve the file — a missing file included; the body is a JSON error, never a file" }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/download:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -612,9 +628,11 @@ paths:
         '200': { description: Zip stream }
         '400': { description: No token was supplied }
         '401': { description: "Unknown, expired, already-used or wrong-server download token — or the session that minted it is gone" }
-        '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
+        '404': { description: "No such server, or one this user may not reach (existence is not revealed) — or a path that does not exist on the node (`code: not_found`); the body is a JSON error, never a file" }
+        '409': { $ref: '#/components/responses/AgentConflict' }
         '429': { description: "Too many token redemptions from this address; retry after the Retry-After header says" }
-        '502': { description: "The node could not serve the zip; the body is a JSON error, never a file" }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
     post:
       tags: [Files]
       summary: Download selected paths as a zip
@@ -626,7 +644,13 @@ paths:
               type: object
               properties:
                 paths: { type: array, items: { type: string } }
-      responses: { '200': { description: Zip stream } }
+      responses:
+        '200': { description: Zip stream }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/download-token:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:
@@ -677,16 +701,52 @@ paths:
         '404': { description: "No such server, or one this user may not reach (existence is not revealed)" }
   /servers/{id}/files/mkdir:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Create a directory, responses: { '200': { description: Created } } }
+    post:
+      tags: [Files]
+      summary: Create a directory
+      responses:
+        '201': { description: Created }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/move:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Move/rename a path, responses: { '200': { description: Moved } } }
+    post:
+      tags: [Files]
+      summary: Move/rename a path
+      responses:
+        '200': { description: Moved }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/copy:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Copy a path, responses: { '200': { description: Copied } } }
+    post:
+      tags: [Files]
+      summary: Copy a path
+      responses:
+        '200': { description: Copied }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/write:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Write/overwrite a file, responses: { '200': { description: Written } } }
+    post:
+      tags: [Files]
+      summary: Write/overwrite a file
+      responses:
+        '201': { description: Written }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/upload:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     post:
@@ -697,12 +757,25 @@ paths:
         framing; anything larger is refused outright rather than spooled to the
         Panel's disk.
       responses:
-        '200': { description: Uploaded }
-        '400': { description: "The body is not a valid multipart form, or names no files" }
+        '201': { description: Uploaded }
+        '400': { description: "The body is not a valid multipart form, names no files, or targets a path that can never work (`code: bad_path`)" }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
         '413': { description: The upload is larger than the Panel accepts }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/files/delete:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
-    post: { tags: [Files], summary: Delete paths, responses: { '200': { description: Deleted } } }
+    post:
+      tags: [Files]
+      summary: Delete paths
+      responses:
+        '200': { description: Deleted }
+        '400': { $ref: '#/components/responses/AgentBadPath' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
 
   /servers/{id}/backups:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
@@ -720,6 +793,10 @@ paths:
                   backups:
                     type: array
                     items: { $ref: '#/components/schemas/Backup' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
     post:
       tags: [Backups]
       summary: Create a backup
@@ -728,11 +805,15 @@ paths:
           application/json:
             schema: { type: object, properties: { name: { type: string } } }
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Archiving started; poll the list for the backup to reach ready
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Backup' }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/backups/{backupId}/restore:
     parameters:
       - { $ref: '#/components/parameters/ServerId' }
@@ -743,12 +824,30 @@ paths:
       description: Only valid while the server is stopped (state offline, crashed or install_failed).
       responses:
         '200': { description: Restored }
-        '409': { description: Server is not stopped }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409':
+          description: >
+            The server is not stopped — or the node refused the restore:
+            `code` is `file_in_use` (another process holds a file the restore
+            replaces), `node_refused` or `already_exists`, and `error` carries
+            the node's own words.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /servers/{id}/backups/{backupId}:
     parameters:
       - { $ref: '#/components/parameters/ServerId' }
       - { name: backupId, in: path, required: true, schema: { type: string } }
-    delete: { tags: [Backups], summary: Delete a backup, responses: { '204': { description: Deleted } } }
+    delete:
+      tags: [Backups]
+      summary: Delete a backup
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/AgentNotFound' }
+        '409': { $ref: '#/components/responses/AgentConflict' }
+        '500': { $ref: '#/components/responses/AgentError' }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
 
   /servers/{id}/schedules:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
@@ -978,8 +1077,7 @@ paths:
                   bytes: { type: integer }
                   restarting: { type: boolean }
         '409': { description: Agent already at the Panel's version }
-        '502': { description: "Agent unreachable, or it rejected the push (reason verbatim)" }
-        '503': { description: No embedded agent binary in this Panel build }
+        '503': { description: "Agent unreachable, or no embedded agent binary in this Panel build (reason verbatim)" }
   /nodes/{id}/info:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
     get:
@@ -987,7 +1085,7 @@ paths:
       summary: Live Agent info (pings the node over mTLS, brings it online)
       responses:
         '200': { description: Live node info }
-        '502': { description: Agent unreachable }
+        '503': { $ref: '#/components/responses/NodeUnreachable' }
   /nodes/{id}/servers/{serverID}/power:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -1026,10 +1124,19 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StartRefusal' }
         '500':
-          description: The server's spec could not be read; start and restart were refused.
+          description: >
+            The server's spec could not be read, so start and restart were
+            refused — or the node reported a failure it did not classify
+            (`code: node_error`), with its message in `error`.
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
-        '502': { description: Agent unreachable or the power action failed }
+        '503':
+          description: >
+            The panel could not reach the node's agent, or the agent did not
+            answer within the time allowed (`code: node_unreachable`). A timed-out
+            stop or restart may still be completing on the node.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
   /nodes/{id}/containers/{serverID}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string } }
@@ -1442,11 +1549,58 @@ components:
       description: Resource not found
       content:
         application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    # The answers to a failed Agent operation (#352). None is a 502 or 504:
+    # an edge proxy such as Cloudflare replaces those bodies with its own page,
+    # and the body here is the operator's diagnosis.
+    AgentBadPath:
+      description: >
+        The path can never work: it escapes the server's data directory, or
+        names the data root where a file or folder is required
+        (`code: bad_path`).
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    AgentNotFound:
+      description: >
+        No such server, or one this user may not reach (existence is not
+        revealed) — or the path or backup does not exist on the node
+        (`code: not_found`).
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    AgentConflict:
+      description: >
+        The node refused the operation, and `code` says why: `file_in_use`
+        (another process holds the file — usually the server's own game, still
+        running), `node_refused` (the node's filesystem denied it) or
+        `already_exists`. `error` carries the node's own words.
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    AgentError:
+      description: >
+        The node reported a failure it did not classify (`code: node_error`);
+        `error` carries its message.
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
+    NodeUnreachable:
+      description: >
+        The panel could not reach the node's agent, or it did not answer in
+        time (`code: node_unreachable`).
+      content:
+        application/json: { schema: { $ref: '#/components/schemas/Error' } }
   schemas:
     Error:
       type: object
       properties:
-        error: { type: string }
+        error:
+          type: string
+          description: The human-readable reason, as the UI shows it.
+        code:
+          type: string
+          description: >
+            A stable, machine-readable reason, present on the failures a
+            client may want to branch on — branch on this, never on `error`.
+            A failed Agent operation carries one of node_unreachable,
+            not_found, bad_path, file_in_use, node_refused, already_exists or
+            node_error.
     CodedError:
       type: object
       properties:

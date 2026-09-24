@@ -174,7 +174,7 @@ func waitBackupReady(t *testing.T, d *DockerRuntime, sid, id string) {
 }
 
 // A stat failure is reported against the LOGICAL path and nothing else.
-// Whatever these return reaches an API client verbatim as "agent error: …", and
+// Whatever these return reaches an API client verbatim, and
 // an *os.PathError carries the resolved host path — so returning it as-is would
 // hand anyone with server.files.read the node's storage layout. The distinction
 // between the failures survives; the filename that came with it does not.

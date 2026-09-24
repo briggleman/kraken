@@ -3629,7 +3629,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/servers/<em>{id}</em>/power</span><span class="ep-r"><span class="ep-s">power action (start / stop / restart / kill)</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>request body</h5><p class="ep-line"><b>application/json</b> <em>· action: start | stop | restart | kill</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the agent is working on it</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already in that state</em></p><p class="ep-line"><b class="ep-code s5">502</b> <em>the agent took it and the process never moved</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>operator and up</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>request body</h5><p class="ep-line"><b>application/json</b> <em>· action: start | stop | restart | kill</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the agent is working on it</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already in that state</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the node is unreachable — nothing was attempted</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>operator and up</em></p></div></div>
         </details>
         <details class="ep m-get">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/servers/<em>{id}</em>/settings</span><span class="ep-r"><span class="ep-s">grouped game settings + current values</span></span></summary>
@@ -3693,7 +3693,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-post w">
           <summary class="ep-sum"><span class="ep-m">POST</span><span class="ep-p">/nodes/<em>{id}</em>/agent-update</span><span class="ep-r"><span class="ep-s">push this panel's embedded agent binary to the node</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the push runs in the background; poll the GET below</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already on this version, or a push is already in flight</em></p><p class="ep-line"><b class="ep-code s5">502</b> <em>the agent is not reachable through the tunnel</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">202</b> <em>accepted — the push runs in the background; poll the GET below</em></p><p class="ep-line"><b class="ep-code s4">409</b> <em>already on this version, or a push is already in flight</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the agent is not reachable through the tunnel</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>owner only</em></p></div></div>
         </details>
         <details class="ep">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/nodes/<em>{id}</em>/agent-update</span><span class="ep-r"><span class="ep-s">progress of the most recent agent push</span></span></summary>
@@ -3701,7 +3701,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         </details>
         <details class="ep m-get">
           <summary class="ep-sum"><span class="ep-m">GET</span><span class="ep-p">/nodes/<em>{id}</em>/info</span><span class="ep-r"><span class="ep-s">live agent info — pings the node and brings it online</span></span></summary>
-          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>os, cpu, memory, disk, agent version</em></p><p class="ep-line"><b class="ep-code s5">504</b> <em>the node did not answer in time</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
+          <div class="ep-d"><div class="ep-grp"><h5>parameters</h5><p class="ep-line"><b>id</b> <em>path · required</em></p></div><div class="ep-grp"><h5>responses</h5><p class="ep-line"><b class="ep-code s2">200</b> <em>os, cpu, memory, disk, agent version</em></p><p class="ep-line"><b class="ep-code s5">503</b> <em>the node did not answer in time</em></p></div><div class="ep-grp"><h5>access</h5><p class="ep-line"><em>viewer and up</em></p></div></div>
         </details>
         </div>
       </section>

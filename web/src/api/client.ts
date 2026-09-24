@@ -90,23 +90,30 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (res.status === 401) {
     clearToken();
   }
-  if (!res.ok) {
-    // HTTP/2 has no reason phrase, so statusText is "" — and an edge proxy that
-    // swallowed the origin's JSON error (Cloudflare does this to 502/504 bodies)
-    // leaves nothing else. An ApiError must never have an empty message.
-    let msg = res.statusText || `HTTP ${res.status}`;
-    let code: string | undefined;
-    try {
-      const data = await res.json();
-      if (data?.error) msg = data.error;
-      if (data?.code) code = data.code;
-    } catch {
-      /* ignore parse errors */
-    }
-    throw new ApiError(res.status, msg, code);
-  }
+  if (!res.ok) throw await apiErrorFrom(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** The ApiError a failed response stands for: the Panel's own sentence and
+ *  machine code when its JSON envelope (`{error, code}`) arrived, and never an
+ *  empty message when it did not. Every fetch in this module reads failures
+ *  through here, so a raw-body or multipart call cannot fall back to a bare
+ *  statusText that was always going to be "" on HTTP/2. */
+export async function apiErrorFrom(res: Response): Promise<ApiError> {
+  // HTTP/2 has no reason phrase, so statusText is "" — and an edge proxy that
+  // swallowed the origin's JSON error (Cloudflare does this to 502/504 bodies)
+  // leaves nothing else. An ApiError must never have an empty message.
+  let msg = res.statusText || `HTTP ${res.status}`;
+  let code: string | undefined;
+  try {
+    const data = await res.json();
+    if (data?.error) msg = data.error;
+    if (data?.code) code = data.code;
+  } catch {
+    /* not JSON (an edge's HTML page, an empty body): the fallback stands */
+  }
+  return new ApiError(res.status, msg, code);
 }
 
 // requestRaw sends a raw (non-JSON) body — used for YAML/JSON spec uploads.
@@ -116,16 +123,7 @@ async function requestRaw<T>(method: string, path: string, body: string): Promis
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`/api/v1${path}`, { method, headers, body });
   if (res.status === 401) clearToken();
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const data = await res.json();
-      if (data?.error) msg = data.error;
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, msg);
-  }
+  if (!res.ok) throw await apiErrorFrom(res);
   return (await res.json()) as T;
 }
 
@@ -283,16 +281,8 @@ export const api = {
       headers, // browser sets multipart Content-Type with boundary
       body: fd,
     });
-    if (!res.ok) {
-      let msg = res.statusText;
-      try {
-        const d = await res.json();
-        if (d?.error) msg = d.error;
-      } catch {
-        /* ignore */
-      }
-      throw new ApiError(res.status, msg);
-    }
+    if (res.status === 401) clearToken();
+    if (!res.ok) throw await apiErrorFrom(res);
   },
   updateServerSettings(
     id: string,
@@ -359,7 +349,7 @@ export const api = {
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch("/api/v1/openapi.yaml", { headers });
     if (res.status === 401) clearToken();
-    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    if (!res.ok) throw await apiErrorFrom(res);
     return res.text();
   },
 

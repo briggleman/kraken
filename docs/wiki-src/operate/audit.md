@@ -57,7 +57,9 @@ A tokenised file download writes a **mint** row and a **redemption** row:
 The path **count**, not the paths. The token itself appears in no log line at
 all. A redemption that was refused reads `download token refused (…)`, because
 the row carries the request's real outcome rather than an assumed 200: a
-download the node could not serve is on the record as the 502 it was.
+download the node could not serve is on the record with the status it got — a
+404 for a file that is not there, a 409 for one another process holds, a 503
+when the node could not be reached.
 
 A redemption rejected before it got that far, an expired or forged token, is
 **not** an audit row. It is a `Debug` log line and a counter,

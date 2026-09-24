@@ -84,8 +84,9 @@ install tree for a file ending `~RF<hex>.TMP`.
 **Fix for cause 2.** Delete the orphaned `.TMP` and reinstall — not start, since
 the file it was replacing is not there to run.
 
-If the delete itself fails (the Files tab reports a `502`), that is the same
-lock that stopped the rename, still held. On a Windows node it is usually a game
+If the delete itself fails — the Files tab says the file `is in use by another
+process`, or passes on the node's `Access is denied.` — that is the same lock
+that stopped the rename, still held. On a Windows node it is usually a game
 container that is still running: stop it, then delete the `.TMP` and reinstall.
 Before starting the server, check the Files tab again and confirm the real file
 is back with no `~RF…` suffix — the install reporting success is not the same

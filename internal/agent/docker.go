@@ -1445,7 +1445,7 @@ func (d *DockerRuntime) ListFiles(_ context.Context, serverID, p string) ([]*age
 // identical.
 //
 // The message names the LOGICAL path only. Whatever this returns reaches an API
-// client verbatim ("agent error: …"), and an *os.PathError from os.Stat carries
+// client verbatim (see fileerrors.go), and an *os.PathError from os.Stat carries
 // the resolved HOST path — so returning it as-is would teach anyone with
 // server.files.read where the node keeps its storage. What is worth keeping is
 // the distinction between the failures, not the filename that came with it:

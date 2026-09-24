@@ -1002,7 +1002,13 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		if err := s.settleNodeAfterDelete(ctx, sv, node.ID, removeErr); err != nil {
 			s.logger.Error("server delete refused: could not record its removal on the node",
 				"server", sv.ID, "node", node.ID, "removal_err", removeErr, "err", err)
-			writeError(w, http.StatusInternalServerError, "could not record the removal on the server's node; the server was not deleted")
+			msg := "could not record the removal on the server's node; the server was not deleted"
+			if removeErr == nil {
+				// The node did its part: the containers and the data are gone.
+				// Only the Panel's books are behind, and a retry settles them.
+				msg = "the server's data was removed on the node but the delete could not be recorded; retry the delete"
+			}
+			writeError(w, http.StatusInternalServerError, msg)
 			return
 		}
 	}

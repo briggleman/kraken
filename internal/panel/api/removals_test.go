@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,10 +39,36 @@ import (
 // delete and a replay depend on, so "the store could not answer" is testable.
 type flakyStore struct {
 	*memory.Store
-	failGetNode, failUpdateNode, failGetServer atomic.Bool
+	failGetNode, failUpdateNode, failGetServer, failDeleteServer atomic.Bool
 }
 
 var errStoreDown = errors.New("store: connection reset")
+
+func (f *flakyStore) DeleteServer(ctx context.Context, id string) error {
+	if f.failDeleteServer.Load() {
+		return errStoreDown
+	}
+	return f.Store.DeleteServer(ctx, id)
+}
+
+// lockedBuffer is a log sink the replay goroutines can write while a test
+// reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
 
 func (f *flakyStore) GetNode(ctx context.Context, id string) (*cluster.Node, error) {
 	if f.failGetNode.Load() {
@@ -67,13 +94,20 @@ func (f *flakyStore) GetServer(ctx context.Context, id string) (*store.Server, e
 // newRemovalAPI is newTestAPI over a flakyStore.
 func newRemovalAPI(t *testing.T) (*api.Server, *flakyStore) {
 	t.Helper()
+	return newRemovalAPILogging(t, io.Discard)
+}
+
+// newRemovalAPILogging is newRemovalAPI with the Panel's log, debug and up,
+// written to w.
+func newRemovalAPILogging(t *testing.T, w io.Writer) (*api.Server, *flakyStore) {
+	t.Helper()
 	st := &flakyStore{Store: memory.New()}
 	cfg := &config.Config{
 		Env: "test", SessionTTL: time.Hour,
 		BootstrapAdminUser: testAdmin, BootstrapAdminPassword: testPass,
 		SetupAllowedCIDRs: []string{"192.0.2.0/24"},
 	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	if err := panel.Seed(context.Background(), st, cfg, logger); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -447,6 +481,133 @@ func TestPendingRemoval_SkippedWhenTheServerLookupFails(t *testing.T) {
 		t.Fatalf("pending = %+v, want it untouched", owed)
 	}
 
+	srv.ReconcileNodesOnceForTest(ctx)
+	if owed := pendingRemovals(t, st, nodeID); len(owed) != 0 {
+		t.Fatalf("once the store answers the replay should land: %+v", owed)
+	}
+}
+
+// A delete retried after an earlier attempt queued a removal and then failed
+// to delete the row: the retry's removal lands, and its success finishes the
+// queued record — one release — rather than releasing beside it and leaving
+// the record to release the same ports again later, out from under whatever
+// was placed on them in between.
+func TestDeleteServer_RetryAfterAFailedRowDeleteReleasesOnce(t *testing.T) {
+	ctx := context.Background()
+	srv, st := newRemovalAPI(t)
+	h := srv.Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-retry")
+	nodeID := liveNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "delete-retry", map[string]any{"script": "install.sh"})
+	sv := placedServer(t, st, "sv-retry", nodeID, specID)
+
+	// First attempt: the removal fails (queued) and the row delete fails too.
+	rt.SetRemoveFailure("docker daemon is restarting")
+	st.failDeleteServer.Store(true)
+	if rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first delete: %d %s, want 500", rec.Code, rec.Body.String())
+	}
+	st.failDeleteServer.Store(false)
+	rt.SetRemoveFailure("")
+	if owed := pendingRemovals(t, st, nodeID); len(owed) != 1 || !held(t, st, nodeID) {
+		t.Fatalf("setup: pending %+v, want one holding the allocation", owed)
+	}
+
+	// The retry succeeds end to end.
+	deleteServer(t, h, token, sv.ID)
+	if owed := pendingRemovals(t, st, nodeID); len(owed) != 0 {
+		t.Fatalf("after the successful retry: pending %+v, want the queued record finished", owed)
+	}
+	if held(t, st, nodeID) {
+		t.Fatal("allocation not released by the successful retry")
+	}
+
+	// Someone else is placed on the freed port; nothing may free it again.
+	n, err := st.Store.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.Reserve(1024, []cluster.PortRequest{{Name: "game", Preferred: 27015}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Store.UpdateNode(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	srv.ReconcileNodesOnceForTest(ctx)
+	if !held(t, st, nodeID) {
+		t.Fatal("the new server's port and memory were released by a stale pending record")
+	}
+}
+
+// When the node's removal landed but the outcome could not be written, the 500
+// says so truthfully: the data is gone on the node, and a retry settles it.
+func TestDeleteServer_UnrecordedSuccessSaysTheDataIsGone(t *testing.T) {
+	ctx := context.Background()
+	srv, st := newRemovalAPI(t)
+	h := srv.Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-unwritten")
+	nodeID := liveNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "delete-unwritten", map[string]any{"script": "install.sh"})
+	sv := placedServer(t, st, "sv-unwritten", nodeID, specID)
+
+	st.failUpdateNode.Store(true)
+	rec := do(t, h, http.MethodDelete, "/api/v1/servers/"+sv.ID, token, nil)
+	st.failUpdateNode.Store(false)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete: %d %s, want 500", rec.Code, rec.Body.String())
+	}
+	if msg := codedBody(t, rec.Body.Bytes()).Error; !strings.Contains(msg, "data was removed on the node") || !strings.Contains(msg, "retry the delete") {
+		t.Fatalf("500 says %q; it must not claim nothing happened when the node removed the data", msg)
+	}
+	if got := rt.Removals(); len(got) != 1 {
+		t.Fatalf("removals = %+v, want the one that landed", got)
+	}
+	if _, err := st.GetServer(ctx, sv.ID); err != nil {
+		t.Fatalf("the row went although the delete was not recorded: %v", err)
+	}
+	deleteServer(t, h, token, sv.ID) // and the retry settles it
+}
+
+// A store that keeps failing the lookup is warned about once, and again only
+// when its reason changes — not every pass.
+func TestPendingRemoval_LookupFailureWarnsOncePerReason(t *testing.T) {
+	ctx := context.Background()
+	logs := &lockedBuffer{}
+	srv, st := newRemovalAPILogging(t, logs)
+	h := srv.Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-noisy")
+	nodeID := liveNode(t, h, token, addr)
+	specID := createSpecWithInstall(t, h, token, "delete-noisy", map[string]any{"script": "install.sh"})
+	sv := placedServer(t, st, "sv-noisy", nodeID, specID)
+	rt.SetRemoveFailure("docker daemon is restarting")
+	deleteServer(t, h, token, sv.ID)
+	rt.SetRemoveFailure("")
+
+	warns := func() int {
+		n := 0
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "level=WARN") && strings.Contains(line, "could not check for a server") {
+				n++
+			}
+		}
+		return n
+	}
+	st.failGetServer.Store(true)
+	for range 3 {
+		dueNow(t, st, nodeID)
+		srv.ReconcileNodesOnceForTest(ctx)
+	}
+	st.failGetServer.Store(false)
+	if got := warns(); got != 1 {
+		t.Fatalf("%d warnings over three passes with the same lookup failure, want 1", got)
+	}
+	if !strings.Contains(logs.String(), "level=DEBUG") {
+		t.Fatal("the repeats were not logged at debug")
+	}
+	dueNow(t, st, nodeID)
 	srv.ReconcileNodesOnceForTest(ctx)
 	if owed := pendingRemovals(t, st, nodeID); len(owed) != 0 {
 		t.Fatalf("once the store answers the replay should land: %+v", owed)

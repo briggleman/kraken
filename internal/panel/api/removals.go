@@ -102,6 +102,32 @@ type removalReplays struct {
 	mu       sync.Mutex
 	inFlight map[string]bool
 	wg       sync.WaitGroup
+	// lookupErr is the last server-lookup failure reported per "node/server",
+	// so a store that keeps failing is logged loudly once, not every pass.
+	lookupErr map[string]string
+}
+
+// noteLookupFailure records a failed server lookup for a replay and reports
+// whether it is worth a warning: the first failure, or a different reason.
+func (r *removalReplays) noteLookupFailure(nodeID, serverID, reason string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := nodeID + "/" + serverID
+	if prev, ok := r.lookupErr[key]; ok && prev == reason {
+		return false
+	}
+	if r.lookupErr == nil {
+		r.lookupErr = map[string]string{}
+	}
+	r.lookupErr[key] = reason
+	return true
+}
+
+// clearLookupFailure forgets a lookup failure once the lookup answers again.
+func (r *removalReplays) clearLookupFailure(nodeID, serverID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.lookupErr, nodeID+"/"+serverID)
 }
 
 // startPendingRemovals hands each of nodes — the ones the pass just reached —
@@ -163,14 +189,21 @@ func (s *Server) finishNodeRemovals(ctx context.Context, nodeID string) {
 	done := map[string]bool{}
 	failed := map[string]string{}
 	for _, p := range due {
-		switch claimed, cerr := s.serverClaimsID(ctx, nodeID, p.ServerID); {
-		case cerr != nil:
+		claimed, cerr := s.serverClaimsID(ctx, nodeID, p.ServerID)
+		if cerr != nil {
 			// Not knowing is not "gone": only a store that says not-found may
-			// let a removal that can delete data go ahead.
-			s.logger.Warn("pending server removal skipped this pass: could not check for a server with its id",
+			// let a removal that can delete data go ahead. Loud the first time
+			// and whenever the reason changes, quiet on the passes between.
+			level := slog.LevelDebug
+			if s.replays.noteLookupFailure(nodeID, p.ServerID, cerr.Error()) {
+				level = slog.LevelWarn
+			}
+			s.logger.Log(ctx, level, "pending server removal skipped this pass: could not check for a server with its id",
 				"node", nodeID, "server", p.ServerID, "err", cerr)
 			continue
-		case claimed:
+		}
+		s.replays.clearLookupFailure(nodeID, p.ServerID)
+		if claimed {
 			// A server row on this node answers to the id again. Until the
 			// retire/revive model (#360) says what that means, the removal
 			// waits rather than destroy what may be a live server.
@@ -253,7 +286,14 @@ func (s *Server) settleNodeAfterDelete(ctx context.Context, sv *store.Server, no
 		ports = append(ports, p)
 	}
 	if removeErr == nil {
-		n.Release(sv.MemoryMB, ports)
+		// A retried delete can find a pending removal an earlier attempt
+		// recorded (its removal failed, then the row delete failed and the row
+		// stayed). That record holds this allocation; finishing it is the
+		// release, and releasing here as well would free the ports a second
+		// time — possibly out from under a server placed on them since.
+		if !n.FinishPendingRemoval(sv.ID) {
+			n.Release(sv.MemoryMB, ports)
+		}
 	} else {
 		now := time.Now().UTC()
 		n.AddPendingRemoval(cluster.PendingRemoval{

@@ -252,6 +252,10 @@ describe("restoreNoteText", () => {
     );
   });
 
+  it("leaves no dangling dash when the agent gave no reason", () => {
+    expect(restoreNoteText({ kind: "failed", name: "nightly", when, reason: "" }, true)).toBe(`restore of ${stamp} · nightly failed`);
+  });
+
   it("drops the date it does not have", () => {
     expect(restoreNoteText({ kind: "done", name: "1700__nightly", when: 0, reason: "" }, false)).toBe("restored 1700__nightly");
   });

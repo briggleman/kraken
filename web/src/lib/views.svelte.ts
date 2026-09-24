@@ -324,8 +324,15 @@ export function retirable(drift: ReturnType<typeof containerDrift>): DriftItem[]
  * entry by the server's name (its id once the row is gone) with what goes and
  * how the last try went, because "2 pending" alone does not say whether the
  * node is simply away or refusing. `retry in 40s` is the removal's own
- * next_attempt (failures back off), said only while it is in the future.
+ * next_attempt (failures back off), said only while it is ahead by at most an
+ * hour: next_attempt is the Panel's clock and `now` is this browser's, and
+ * the Panel exposes no clock to correct by — so the skew is inherited, and
+ * the clamp keeps a skewed reading from sticking or from promising a retry
+ * days out. The band calls this in a $derived over its node, so `now` is
+ * re-read on every poll that hands it a fresh node.
  */
+const RETRY_SHOWN_MAX_MS = 3_600_000;
+
 export function pendingRemovalsNote(node: Node, now: number = Date.now()): { count: number; title: string } | undefined {
   const owed = node.pending_removals ?? [];
   if (owed.length === 0) return undefined;
@@ -344,7 +351,8 @@ export function pendingRemovalsNote(node: Node, now: number = Date.now()): { cou
     ];
     if (running.has(p.server_id)) facts.push("container still running");
     const next = Date.parse(p.next_attempt ?? "");
-    if (Number.isFinite(next) && next > now) facts.push(`retry in ${fmtAge(next - now)}`);
+    const ahead = next - now;
+    if (Number.isFinite(ahead) && ahead > 0 && ahead <= RETRY_SHOWN_MAX_MS) facts.push(`retry in ${fmtAge(ahead)}`);
     if (p.last_error) facts.push(p.last_error);
     return `${name} (${facts.join(" · ")})`;
   });

@@ -286,6 +286,11 @@ describe("pendingRemovalsNote", () => {
       );
     expect(owed("2026-09-24T10:00:40Z")?.title).toContain("(deleted · container and data · 2 attempts · retry in 40s · could not reach the node's agent)");
     expect(owed("2026-09-24T09:59:00Z")?.title).not.toMatch(/retry in/);
+    // the clamp: a next try more than an hour ahead is clock skew, not a promise
+    expect(owed("2026-09-24T11:00:00Z")?.title).toMatch(/retry in 1h/);
+    expect(owed("2026-09-24T11:00:01Z")?.title).not.toMatch(/retry in/);
+    expect(owed("2026-09-26T10:00:00Z")?.title).not.toMatch(/retry in/);
+    expect(owed("not a time")?.title).not.toMatch(/retry in/);
   });
 
   it("names a removal by its server while the row is still in the fleet, by its id once it is gone", () => {

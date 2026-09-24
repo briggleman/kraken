@@ -1177,7 +1177,7 @@
           <h3 class="pane-label">danger</h3>
           <div class="side-body">
             <p class="danger-note">{retireNote(depth.retireFinalBackup)}</p>
-            <label class="tgl retire-final"><input type="checkbox" bind:checked={depth.retireFinalBackup} disabled={retiring} /><i></i>take a final backup first</label>
+            <label class="tgl retire-final"><input type="checkbox" id="retireFinalBackup" bind:checked={depth.retireFinalBackup} disabled={retiring} /><i></i>take a final backup first</label>
             <button
               class="ctl ctl-delete"
               id="deleteSrvBtn"
@@ -1249,10 +1249,4 @@
     overflow-wrap: anywhere;
   }
 
-  /* The restore's outcome note (.bk-note, house.css) carries the agent's reason
-     when it failed, and a reason can hold a long path: let it break rather than
-     push the ledger wider. Colour and dot are the house rule's own. */
-  .bk-note {
-    overflow-wrap: anywhere;
-  }
 </style>

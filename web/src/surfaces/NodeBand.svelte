@@ -279,6 +279,50 @@
     <!-- the agent version rides the address line while it is merely a fact; once the
          panel has outrun it, it moves to the drift line below rather than printing twice -->
     <span class="node-meta">{node.address || node.lan_host || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
+    {#if containers}
+      <!-- The one comparison that runs from the agent's own count inward. A
+           surplus is holding memory and ports the scheduler believes are free.
+           An agent that names its containers turns the count into something an
+           operator can act on: up to three read inline as .nc-name, each with
+           its own .nc-go chip (no sweep — a sweep says a build is waiting, which
+           is not true of a container nobody asked for); more stay in the title
+           behind one "retire all"; an agent too old to name them leaves both
+           empty. A refusal is the line's own .nc-fail — any condition may carry
+           one — so the answer lands where the eye already is.
+           Inherited (undesigned) states, not in the mock: a chip's "retiring…"
+           while its retire is in flight, the disabled "retire all" while any of
+           its containers is being retired, and the .nc-fail-only fallback line
+           below. -->
+      <span class="node-meta node-cond container-drift" title={driftTitle}>
+        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span><button
+              class="nc-go"
+              disabled={!!retire.busy[item.server_id]}
+              aria-label={retireChipLabel(item, node.name)}
+              onclick={(e) => openRetire(node.id, item, e.currentTarget)}>{retire.busy[item.server_id] ? "retiring…" : "retire"}</button
+            >{/each}{:else}{#each driftNames as item, i (i)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span>{/each}{#if retireItems.length > 0}<button
+              class="nc-go"
+              disabled={retireItems.some((it) => retire.busy[it.server_id])}
+              title="stop and remove all {retireItems.length} untracked containers on {node.name} — their data stays"
+              aria-label="Retire all {retireItems.length} untracked containers on {node.name}"
+              onclick={(e) => openRetireAll(node.id, retireItems, e.currentTarget)}>{retireItems.some((it) => retire.busy[it.server_id]) ? "retiring…" : "retire all"}</button
+            >{/if}{/if}{#if retireErr}<span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span>{/if}
+      </span>
+    {:else if retireErr}
+      <!-- Inherited (undesigned): the refusal outlived its line (the drift
+           reading went away between polls). It still says why on the band that
+           offered the chip, in the same clipped .nc-fail, on a plain condition
+           line. -->
+      <span class="node-meta node-cond"><span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span></span>
+    {/if}
+    {#if pending}
+      <!-- Retired or deleted in the panel, not yet removed from the node: the
+           panel is retrying, so this is a reading, never a control (the Pending
+           Is a Reading Rule) — the plain value ink, no chip, the roll call in
+           the value's title. -->
+      <span class="node-meta node-cond removals-owed">
+        <span class="nc-k">removals</span><b class="nc-v" title={pending.title}>{pending.count} pending</b>
+      </span>
+    {/if}
     {#if drift}
       <!-- the fill's width is read off this line, the way the mock's CSS reads it -->
       <span
@@ -313,46 +357,6 @@
            house's caution colour, the same one the drift line borrows. -->
       <span class="node-meta node-cond" title={node.listen_error}>
         <span class="nc-k">inbound</span><b class="nc-v act">{node.listen_error}</b>
-      </span>
-    {/if}
-    {#if containers}
-      <!-- The one comparison that runs from the agent's own count inward. A
-           surplus is holding memory and ports the scheduler believes are free.
-           An agent that names its containers turns the count into something an
-           operator can act on: up to three read inline as .nc-name, each with
-           its own .nc-go chip (no sweep — a sweep says a build is waiting, which
-           is not true of a container nobody asked for); more stay in the title
-           behind one "retire all"; an agent too old to name them leaves both
-           empty. A refusal is the line's own .nc-fail — any condition may carry
-           one — so the answer lands where the eye already is. -->
-      <span class="node-meta node-cond container-drift" title={driftTitle}>
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span><button
-              class="nc-go"
-              disabled={!!retire.busy[item.server_id]}
-              title="stop and remove {item.label} on {node.name} — its data stays"
-              aria-label={retireChipLabel(item, node.name)}
-              onclick={(e) => openRetire(node.id, item, e.currentTarget)}>{retire.busy[item.server_id] ? "retiring…" : "retire"}</button
-            >{/each}{:else}{#each driftNames as item, i (i)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span>{/each}{#if retireItems.length > 0}<button
-              class="nc-go"
-              disabled={retireItems.some((it) => retire.busy[it.server_id])}
-              title="stop and remove all {retireItems.length} untracked containers on {node.name} — their data stays"
-              aria-label="Retire all {retireItems.length} untracked containers on {node.name}"
-              onclick={(e) => openRetireAll(node.id, retireItems, e.currentTarget)}>{retireItems.some((it) => retire.busy[it.server_id]) ? "retiring…" : "retire all"}</button
-            >{/if}{/if}{#if retireErr}<span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span>{/if}
-      </span>
-    {:else if retireErr}
-      <!-- The refusal outlived its line (the drift reading went away between
-           polls): it still says why on the band that offered the chip, in the
-           same clipped .nc-fail, on a plain condition line. -->
-      <span class="node-meta node-cond"><span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span></span>
-    {/if}
-    {#if pending}
-      <!-- Retired or deleted in the panel, not yet removed from the node: the
-           panel is retrying, so this is a reading, never a control (the Pending
-           Is a Reading Rule) — the plain value ink, no chip, the roll call in
-           the value's title. -->
-      <span class="node-meta node-cond removals-owed">
-        <span class="nc-k">removals</span><b class="nc-v" title={pending.title}>{pending.count} pending</b>
       </span>
     {/if}
     <span class="node-actions">

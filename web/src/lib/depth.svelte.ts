@@ -902,7 +902,7 @@ export function restoreOutcome(
  *  is not one to start "when ready". */
 export function restoreNoteText(note: RestoreNote, stopped: boolean): string {
   const which = note.when ? `${fmtWhen(note.when)} · ${note.name}` : note.name;
-  if (note.kind === "failed") return `restore of ${which} failed — ${note.reason}`;
+  if (note.kind === "failed") return `restore of ${which} failed${note.reason ? " — " + note.reason : ""}`;
   return `restored ${which}${stopped ? " — start the server when ready" : ""}`;
 }
 

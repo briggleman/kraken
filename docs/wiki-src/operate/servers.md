@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.
+description: Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.
 section: operate
 order: 31
 ---
@@ -37,7 +37,7 @@ Ports come from the node's pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to `installing` and the install log streams into the console
 pane while SteamCMD works.
 
-## The eight states
+## The nine states
 
 | state | what is true |
 | --- | --- |
@@ -49,6 +49,7 @@ pane while SteamCMD works.
 | `stopping` | a graceful stop is in progress |
 | `crashed` | the process exited unexpectedly; the exit code is kept |
 | `restoring` | a backup restore is swapping save files on the node; start is refused until it ends ([Backups](/wiki/operate/backups/#restoring)) |
+| `retired` | on no node: its containers and world are gone, its record, settings, schedules and backups are kept ([below](#retiring-a-server)) |
 
 Four power actions drive it: `start`, `stop`, `restart` and `kill`. `kill` is
 the one that does not ask the game nicely, and a world that saves on shutdown
@@ -186,8 +187,8 @@ the record.
 - It keeps the last **500 lines** of the current attempt.
 - It is kept **after the install finishes, success included**, because an
   installer can exit 0 having produced a broken tree.
-- It is dropped when the server is deleted, and replaced when the next install
-  starts.
+- It is dropped when the server is retired or deleted, and replaced when the
+  next install starts.
 - **It does not survive a Panel restart.** The API answers `retained: false`
   when nothing is held, which is not the same as an install that printed
   nothing, and the UI says which it is rather than showing you an empty pane.
@@ -235,25 +236,111 @@ variable or a settings change on a spec that does not hot-reload.
 There is no per-setting "requires restart" flag. If you author specs, that is
 worth knowing before you go looking for one.
 
-## Deleting a server
+## Retiring a server
 
-Delete is in the drill-in, behind the typed confirmation. It removes the
-server's containers and its data directory — the world and the rendered config —
-on its node, releases the memory and ports it reserved, and deletes the record
-together with its schedules.
+Servers come back far more often than they go for good, so the delete in the
+drill-in **retires** the server. It is behind the typed confirmation, and the
+confirmation says what happens in order: a final backup first, then the world
+and config go, and the backups are kept.
 
-**Backups are kept.** The archives are keyed by server id and stay wherever the
-node's backup target keeps them — the node, a share, a mirror; the confirmation
-says so. They are the part of a server most worth keeping, and a
-retire-and-revive model that makes use of them is tracked in
-[#360](https://github.com/briggleman/kraken/issues/360).
+A retire, `POST /servers/{id}/retire`, runs in the background:
 
-**A node that is down does not block a delete.** When the Panel cannot reach the
-node, or its Agent reports that the removal failed, the delete still goes
-through and the removal is remembered on the node. Until it lands the node keeps
-the server's memory and ports allocated — the container may still be running and
+1. **Stop.** A server that may be running is stopped, so the backup does not
+   archive a world mid-save.
+2. **Final backup.** On by default (`final_backup: false` skips it). The Panel
+   waits for the archive to be ready, for at most 30 minutes. A backup that
+   fails does not stop the retire, and neither does one that is skipped because
+   the node cannot be reached or the server would not stop; the retired server
+   says which in `retire_note` ("final backup skipped: node unreachable").
+3. **Removal.** The node removes the server's containers and its data directory
+   — the world and the rendered config. It never touches an archive.
+4. **Clean-up.** The memory and ports it reserved are released, its DNS records
+   and port forwards are deleted, and **its schedules are switched off**, not
+   deleted. The record stays, in state `retired`.
+
+While it runs the server carries a `retire` block whose phase moves `stopping`,
+`backing_up`, `removing`, and the state stays what it was until the server
+becomes `retired`. Anything else that would change the server — a start, a
+restore, a reinstall, a settings save, a file write — is refused with `409
+server_busy` for the duration.
+
+**What a retired server keeps:** its id, name, spec, settings and launch
+variables, its schedules (switched off and flagged), its SFTP credentials, and
+its backups, on the node it left. `retired_from_node_id` names that node,
+`retired_ports` the ports it held, `retired_at` when. **What it loses:** its
+containers and world, its place on a node (`node_id` is empty), its memory and
+ports, its DNS records and forwards.
+
+A retired server answers every change with `409 server_retired` — power actions,
+reinstall, settings, file reads and writes, backup creation, deletion and
+restore — because it has no node to send them to. **Its backup list still
+answers**: keeping the archives listable is the point of retiring. The
+reconciler leaves it alone and a schedule switched back on by hand skips it with
+the reason in its last error.
+
+**A node that is down does not block a retire.** When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the server still retires and
+the removal is remembered on the node. Until it lands the node keeps the
+server's memory and ports allocated — the container may still be running and
 bound — and the band reads `removals · 1 pending`. The Panel's node reconciler
 retries it, backing off, until the node confirms; the allocation is released
 then. [The fleet page](/wiki/operate/fleet/) has the details. If the Panel
-cannot record the removal at all (its database is failing), the delete is
-refused with a `500` and nothing is deleted.
+cannot record the removal at all (its database is failing), the retire is
+abandoned: the server keeps its state and `retire_note` starts with `retire
+abandoned:`.
+
+A Panel that restarts mid-retire finishes the job on its next reconcile pass
+when the removal had begun (the removal is queued again, which is safe to
+repeat), and abandons it with a note when it had not.
+
+## Reviving a server
+
+`POST /servers/{id}/revive` puts a retired server back on a node, runs its
+install, and optionally restores a backup and starts it, in one motion:
+
+- **Node.** The one it was retired from, unless `node_id` names another. If that
+  node no longer exists, the scheduler finds room anywhere. The server keeps
+  the platform it ran on.
+- **Ports.** It asks for the ports it held. Where they are still free on that
+  node it gets them back, so the address players saved keeps working; a port
+  taken since falls back to the spec's default, then the lowest free port.
+- **Memory.** What it had, unless `memory_mb` says otherwise.
+- **Restore.** `restore_backup_id` names a backup to restore once the install
+  has landed. It has to be a ready archive on the node the server lands on,
+  which is checked before anything is reserved.
+- **Start.** `start: true` starts it once the install and the restore
+  succeeded, the way a start from the drill-in would. It falls inside the
+  30-minute fresh-install window, so it does not run the update pass again.
+
+The response is `202` with the server `installing`. From there each step only
+runs when the one before it landed: a failed install lands `install_failed` as a
+failed create does; a restore runs through the same job as any restore
+(`restoring`, then `offline` with `restore_result`); a start that is refused or
+fails lands `offline` with the reason in `last_error`. The schedules the retire
+switched off are switched back on — only those, never one you had switched off
+yourself.
+
+A revive is refused with `409 removal_pending` while the retire's removal is
+still owed to a node: the node would delete the revived world the moment it
+came back. Wait for the node to confirm, or dismiss the removal from the node's
+band if the node is gone for good.
+
+## Deleting a server permanently
+
+`DELETE /servers/{id}` is only for a retired server; a live one answers `409
+server_not_retired`. It asks the node the server was retired from to delete
+what is left of it and **its backup archives, where they are its own**, then
+deletes the record and its schedules.
+
+Which archives go depends on the node's backup target, and the rule is
+deliberately narrow. The zero-config node-local layout keeps each server's
+archives in a directory of its own, `<backup_dir>/<server id>/`, and those are
+deleted. Every other target — a configured backup directory (templated or not),
+a network share, SFTP, SMB, and the mirror — keeps every server's archives side
+by side, where an archive's name does not say whose it is. Those are kept, and
+the answer's `note` says where ("archives on a shared backup target were kept
+(the network share)"). Delete them by hand if you want them gone. An Agent too
+old to delete archives keeps them too, and the note says so.
+
+A node that cannot be reached is owed the delete, archives included, the same
+way a retire's removal is owed; the answer carries `removal_pending: true`.

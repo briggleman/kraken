@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Servers — Kraken wiki</title>
-<meta name="description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
 <meta property="og:title" content="Servers — Kraken wiki" />
-<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Servers — Kraken wiki" />
-<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,10 +110,10 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
     <h1>Servers</h1>
-    <p class="lede">Deploying a server from a spec and running it afterwards — the eight lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the nine lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
+<a class="toc-link lvl-2" href="#the-nine-states">The nine states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
@@ -121,7 +121,9 @@
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
-<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
+<a class="toc-link lvl-2" href="#retiring-a-server">Retiring a server</a>
+<a class="toc-link lvl-2" href="#reviving-a-server">Reviving a server</a>
+<a class="toc-link lvl-2" href="#deleting-a-server-permanently">Deleting a server permanently</a>
 </div></details>
     <article class="prose">
 <p>A server is one game instance, running on one node, from one Game Spec. The spec
@@ -154,7 +156,7 @@ Steam login. Used for that one install and never persisted.</li>
 <p>Ports come from the node&#39;s pool, 1:1 with the host. Deploying is asynchronous:
 the server goes to <code>installing</code> and the install log streams into the console
 pane while SteamCMD works.</p>
-<h2 id="the-eight-states">The eight states <a class="hlink" href="#the-eight-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<h2 id="the-nine-states">The nine states <a class="hlink" href="#the-nine-states" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -193,6 +195,10 @@ pane while SteamCMD works.</p>
 <tr>
 <td><code>restoring</code></td>
 <td>a backup restore is swapping save files on the node; start is refused until it ends (<a href="/wiki/operate/backups/#restoring">Backups</a>)</td>
+</tr>
+<tr>
+<td><code>retired</code></td>
+<td>on no node: its containers and world are gone, its record, settings, schedules and backups are kept (<a href="#retiring-a-server">below</a>)</td>
 </tr>
 </tbody></table>
 </div>
@@ -338,8 +344,8 @@ the record.</p>
 <li>It keeps the last <strong>500 lines</strong> of the current attempt.</li>
 <li>It is kept <strong>after the install finishes, success included</strong>, because an
 installer can exit 0 having produced a broken tree.</li>
-<li>It is dropped when the server is deleted, and replaced when the next install
-starts.</li>
+<li>It is dropped when the server is retired or deleted, and replaced when the
+next install starts.</li>
 <li><strong>It does not survive a Panel restart.</strong> The API answers <code>retained: false</code>
 when nothing is held, which is not the same as an install that printed
 nothing, and the UI says which it is rather than showing you an empty pane.</li>
@@ -395,25 +401,98 @@ only when one is actually needed: a running server, plus either a changed launch
 variable or a settings change on a spec that does not hot-reload.</p>
 <p>There is no per-setting &quot;requires restart&quot; flag. If you author specs, that is
 worth knowing before you go looking for one.</p>
-<h2 id="deleting-a-server">Deleting a server <a class="hlink" href="#deleting-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>Delete is in the drill-in, behind the typed confirmation. It removes the
-server&#39;s containers and its data directory — the world and the rendered config —
-on its node, releases the memory and ports it reserved, and deletes the record
-together with its schedules.</p>
-<p><strong>Backups are kept.</strong> The archives are keyed by server id and stay wherever the
-node&#39;s backup target keeps them — the node, a share, a mirror; the confirmation
-says so. They are the part of a server most worth keeping, and a
-retire-and-revive model that makes use of them is tracked in
-<a href="https://github.com/briggleman/kraken/issues/360">#360</a>.</p>
-<p><strong>A node that is down does not block a delete.</strong> When the Panel cannot reach the
-node, or its Agent reports that the removal failed, the delete still goes
-through and the removal is remembered on the node. Until it lands the node keeps
-the server&#39;s memory and ports allocated — the container may still be running and
+<h2 id="retiring-a-server">Retiring a server <a class="hlink" href="#retiring-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Servers come back far more often than they go for good, so the delete in the
+drill-in <strong>retires</strong> the server. It is behind the typed confirmation, and the
+confirmation says what happens in order: a final backup first, then the world
+and config go, and the backups are kept.</p>
+<p>A retire, <code>POST /servers/{id}/retire</code>, runs in the background:</p>
+<ol>
+<li><strong>Stop.</strong> A server that may be running is stopped, so the backup does not
+archive a world mid-save.</li>
+<li><strong>Final backup.</strong> On by default (<code>final_backup: false</code> skips it). The Panel
+waits for the archive to be ready, for at most 30 minutes. A backup that
+fails does not stop the retire, and neither does one that is skipped because
+the node cannot be reached or the server would not stop; the retired server
+says which in <code>retire_note</code> (&quot;final backup skipped: node unreachable&quot;).</li>
+<li><strong>Removal.</strong> The node removes the server&#39;s containers and its data directory
+— the world and the rendered config. It never touches an archive.</li>
+<li><strong>Clean-up.</strong> The memory and ports it reserved are released, its DNS records
+and port forwards are deleted, and <strong>its schedules are switched off</strong>, not
+deleted. The record stays, in state <code>retired</code>.</li>
+</ol>
+<p>While it runs the server carries a <code>retire</code> block whose phase moves <code>stopping</code>,
+<code>backing_up</code>, <code>removing</code>, and the state stays what it was until the server
+becomes <code>retired</code>. Anything else that would change the server — a start, a
+restore, a reinstall, a settings save, a file write — is refused with <code>409 server_busy</code> for the duration.</p>
+<p><strong>What a retired server keeps:</strong> its id, name, spec, settings and launch
+variables, its schedules (switched off and flagged), its SFTP credentials, and
+its backups, on the node it left. <code>retired_from_node_id</code> names that node,
+<code>retired_ports</code> the ports it held, <code>retired_at</code> when. <strong>What it loses:</strong> its
+containers and world, its place on a node (<code>node_id</code> is empty), its memory and
+ports, its DNS records and forwards.</p>
+<p>A retired server answers every change with <code>409 server_retired</code> — power actions,
+reinstall, settings, file reads and writes, backup creation, deletion and
+restore — because it has no node to send them to. <strong>Its backup list still
+answers</strong>: keeping the archives listable is the point of retiring. The
+reconciler leaves it alone and a schedule switched back on by hand skips it with
+the reason in its last error.</p>
+<p><strong>A node that is down does not block a retire.</strong> When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the server still retires and
+the removal is remembered on the node. Until it lands the node keeps the
+server&#39;s memory and ports allocated — the container may still be running and
 bound — and the band reads <code>removals · 1 pending</code>. The Panel&#39;s node reconciler
 retries it, backing off, until the node confirms; the allocation is released
 then. <a href="/wiki/operate/fleet/">The fleet page</a> has the details. If the Panel
-cannot record the removal at all (its database is failing), the delete is
-refused with a <code>500</code> and nothing is deleted.</p>
+cannot record the removal at all (its database is failing), the retire is
+abandoned: the server keeps its state and <code>retire_note</code> starts with <code>retire abandoned:</code>.</p>
+<p>A Panel that restarts mid-retire finishes the job on its next reconcile pass
+when the removal had begun (the removal is queued again, which is safe to
+repeat), and abandons it with a note when it had not.</p>
+<h2 id="reviving-a-server">Reviving a server <a class="hlink" href="#reviving-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>POST /servers/{id}/revive</code> puts a retired server back on a node, runs its
+install, and optionally restores a backup and starts it, in one motion:</p>
+<ul>
+<li><strong>Node.</strong> The one it was retired from, unless <code>node_id</code> names another. If that
+node no longer exists, the scheduler finds room anywhere. The server keeps
+the platform it ran on.</li>
+<li><strong>Ports.</strong> It asks for the ports it held. Where they are still free on that
+node it gets them back, so the address players saved keeps working; a port
+taken since falls back to the spec&#39;s default, then the lowest free port.</li>
+<li><strong>Memory.</strong> What it had, unless <code>memory_mb</code> says otherwise.</li>
+<li><strong>Restore.</strong> <code>restore_backup_id</code> names a backup to restore once the install
+has landed. It has to be a ready archive on the node the server lands on,
+which is checked before anything is reserved.</li>
+<li><strong>Start.</strong> <code>start: true</code> starts it once the install and the restore
+succeeded, the way a start from the drill-in would. It falls inside the
+30-minute fresh-install window, so it does not run the update pass again.</li>
+</ul>
+<p>The response is <code>202</code> with the server <code>installing</code>. From there each step only
+runs when the one before it landed: a failed install lands <code>install_failed</code> as a
+failed create does; a restore runs through the same job as any restore
+(<code>restoring</code>, then <code>offline</code> with <code>restore_result</code>); a start that is refused or
+fails lands <code>offline</code> with the reason in <code>last_error</code>. The schedules the retire
+switched off are switched back on — only those, never one you had switched off
+yourself.</p>
+<p>A revive is refused with <code>409 removal_pending</code> while the retire&#39;s removal is
+still owed to a node: the node would delete the revived world the moment it
+came back. Wait for the node to confirm, or dismiss the removal from the node&#39;s
+band if the node is gone for good.</p>
+<h2 id="deleting-a-server-permanently">Deleting a server permanently <a class="hlink" href="#deleting-a-server-permanently" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><code>DELETE /servers/{id}</code> is only for a retired server; a live one answers <code>409 server_not_retired</code>. It asks the node the server was retired from to delete
+what is left of it and <strong>its backup archives, where they are its own</strong>, then
+deletes the record and its schedules.</p>
+<p>Which archives go depends on the node&#39;s backup target, and the rule is
+deliberately narrow. The zero-config node-local layout keeps each server&#39;s
+archives in a directory of its own, <code>&lt;backup_dir&gt;/&lt;server id&gt;/</code>, and those are
+deleted. Every other target — a configured backup directory (templated or not),
+a network share, SFTP, SMB, and the mirror — keeps every server&#39;s archives side
+by side, where an archive&#39;s name does not say whose it is. Those are kept, and
+the answer&#39;s <code>note</code> says where (&quot;archives on a shared backup target were kept
+(the network share)&quot;). Delete them by hand if you want them gone. An Agent too
+old to delete archives keeps them too, and the note says so.</p>
+<p>A node that cannot be reached is owed the delete, archives included, the same
+way a retire&#39;s removal is owed; the answer carries <code>removal_pending: true</code>.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -431,7 +510,7 @@ refused with a <code>500</code> and nothing is deleted.</p>
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
-<a class="toc-link lvl-2" href="#the-eight-states">The eight states</a>
+<a class="toc-link lvl-2" href="#the-nine-states">The nine states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
@@ -439,7 +518,9 @@ refused with a <code>500</code> and nothing is deleted.</p>
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
-<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
+<a class="toc-link lvl-2" href="#retiring-a-server">Retiring a server</a>
+<a class="toc-link lvl-2" href="#reviving-a-server">Reviving a server</a>
+<a class="toc-link lvl-2" href="#deleting-a-server-permanently">Deleting a server permanently</a>
     </div>
   </aside>
 </div>

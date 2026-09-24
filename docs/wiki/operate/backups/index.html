@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Backups — Kraken wiki</title>
-<meta name="description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<meta name="description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, what a restore does to the tree it lands on, and what happens to the archives when a server is retired or deleted." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/backups/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/backups/" />
 <meta property="og:title" content="Backups — Kraken wiki" />
-<meta property="og:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<meta property="og:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, what a restore does to the tree it lands on, and what happens to the archives when a server is retired or deleted." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Backups — Kraken wiki" />
-<meta name="twitter:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on." />
+<meta name="twitter:description" content="What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, what a restore does to the tree it lands on, and what happens to the archives when a server is retired or deleted." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,7 +110,7 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Backups</span></nav>
     <h1>Backups</h1>
-    <p class="lede">What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, and what a restore does to the tree it lands on.</p>
+    <p class="lede">What a Kraken backup actually contains and why that is not the install tree — the four destinations, off-node mirroring, cron schedules, the fixed retention of five, what a restore does to the tree it lands on, and what happens to the archives when a server is retired or deleted.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#what-gets-captured">What gets captured</a>
 <a class="toc-link lvl-2" href="#where-it-goes">Where it goes</a>
@@ -118,6 +118,7 @@
 <a class="toc-link lvl-2" href="#schedules">Schedules</a>
 <a class="toc-link lvl-2" href="#retention-five-and-it-is-not-a-setting">Retention: five, and it is not a setting</a>
 <a class="toc-link lvl-2" href="#restoring">Restoring</a>
+<a class="toc-link lvl-2" href="#retired-servers-keep-their-archives">Retired servers keep their archives</a>
 </div></details>
     <article class="prose">
 <p><strong>A backup is the game&#39;s save data, not the reinstallable install tree.</strong> That
@@ -334,6 +335,25 @@ swap did not, and the displaced originals are then left beside the tree as
 <code>*.kraken-aside-*</code> directories. Check the server&#39;s files before starting it. An archive only ever contains what
 was included, so a restore cannot bring back a file the globs never captured,
 which is the other reason to check that <code>captured</code> line early.</p>
+<h2 id="retired-servers-keep-their-archives">Retired servers keep their archives <a class="hlink" href="#retired-servers-keep-their-archives" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Retiring a server (<a href="/wiki/operate/servers/#retiring-a-server">Servers</a>) takes a
+final backup, named <code>final-before-retire</code>, and then removes the world — but it
+never touches an archive. They stay where the node&#39;s target keeps them, keyed by
+the server&#39;s id, and the retired server&#39;s backup list still answers from the
+node it left. Retention does not run for a retired server, because nothing
+captures for it, so its last five archives stay.</p>
+<p>A revive can restore any of them after its install: the archive has to be on
+the node the server is revived onto, which by default is the node it left.</p>
+<p><strong>Deleting a retired server permanently</strong> deletes its archives only where they
+are provably its own: the zero-config node-local layout, where each server&#39;s
+archives live in <code>&lt;backup_dir&gt;/&lt;server id&gt;/</code>. A configured backup directory, a
+share, SFTP and SMB — and the mirror, which is always one of those — keep every
+server&#39;s archives side by side, and a file called
+<code>1726000000000__nightly.tar.gz</code> does not say whose it is. On those targets the
+archives are <strong>kept</strong>, and the delete&#39;s answer says which location kept them.
+If you use a shared target and want a deleted server&#39;s archives gone, delete
+them there by hand; <code>{{SLUG}}</code> in the path at least keeps each game&#39;s archives
+in a folder of its own.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -356,6 +376,7 @@ which is the other reason to check that <code>captured</code> line early.</p>
 <a class="toc-link lvl-2" href="#schedules">Schedules</a>
 <a class="toc-link lvl-2" href="#retention-five-and-it-is-not-a-setting">Retention: five, and it is not a setting</a>
 <a class="toc-link lvl-2" href="#restoring">Restoring</a>
+<a class="toc-link lvl-2" href="#retired-servers-keep-their-archives">Retired servers keep their archives</a>
     </div>
   </aside>
 </div>

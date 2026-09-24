@@ -342,24 +342,153 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Servers]
-      summary: Delete a server, its world and config, and its schedules
+      summary: Delete a retired server permanently
       description: >-
-        Removes the server's containers and data directory on its node, releases
-        its memory and ports, and deletes the record together with its schedules.
-        Backup archives are kept.
+        Only a retired server can be deleted: retire a live one first (POST
+        /servers/{id}/retire), which is what removes its containers and world.
+        The node the server was retired from is told to delete what is left of
+        it and its backup archives — but only where they are its own: the
+        zero-config node-local layout keeps each server's archives in
+        `<backup_dir>/<server_id>/`, and those are deleted. A configured backup
+        directory, a network share, SFTP and SMB keep every server's archives
+        side by side, where an archive cannot be attributed to one server;
+        those are kept, and `note` names where. An Agent too old to delete
+        archives keeps them too, and `note` says so. Then the record and its
+        schedules are deleted.
 
 
-        A removal that cannot reach the node — the node is unreachable, or its
-        Agent reports a failure — does not block the delete. It is recorded on the
-        node as a pending removal (see Node.pending_removals) that keeps the
-        server's memory and ports allocated, and the Panel's node reconciler
-        retries it with backoff until the node confirms; the allocation is
-        released then. A delete whose removal cannot be recorded is refused.
+        A node that cannot be reached does not block the delete: the removal,
+        delete_backups included, is recorded on the node as a pending removal
+        (see Node.pending_removals) and the node reconciler finishes it when
+        the node answers; `removal_pending` is then true. A delete whose removal
+        cannot be recorded is refused. Requires server.delete.
       responses:
-        '204': { description: Deleted (the node-side removal may still be pending) }
+        '200':
+          description: Deleted (the node-side removal may still be pending)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PermanentDeleteResult' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `code: server_not_retired` — the server is not retired (or a retire
+            or revive holds it); retire it first. `code: server_restoring` or
+            `server_busy` while a restore or a retire holds a live server.
+            Nothing was sent to the node.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
         '500':
-          description: The server's node could not be read, or the removal could not be recorded on it; nothing was deleted.
+          description: The node the server was retired from could not be read, or the removal could not be recorded on it; nothing was deleted.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+  /servers/{id}/retire:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Servers]
+      summary: Retire a server — keep its id, config, schedules and backups; remove its containers and world
+      description: >-
+        What the delete button does. Runs in the background and answers at
+        once: 202 with the server, its state unchanged and a `retire` block
+        whose phase moves stopping → backing_up → removing; poll GET
+        /servers/{id} until the state is `retired`. The retire stops the
+        server, takes a final backup unless `final_backup` is false and waits
+        for it to be ready (at most 30 minutes), then has the node remove the
+        server's containers and data directory — never its archives — releases
+        its memory and ports, deletes its DNS records and port forwards, and
+        switches its schedules off (they are kept, flagged, and a revive
+        switches back on exactly those). The retired server is on no node:
+        `node_id` is empty, `retired_from_node_id` names where its archives
+        are, and `retired_ports` the ports it held.
+
+
+        A final backup that is skipped (the node is unreachable, or the server
+        could not be stopped) or fails does not stop the retire; `retire_note`
+        says what happened. A node that cannot be reached does not stop it
+        either: the removal is queued as a pending removal holding the
+        allocation (see Node.pending_removals), and `retire_note` says so. A
+        retire whose removal cannot be recorded is abandoned: the server keeps
+        its state and `retire_note` starts with "retire abandoned:". Requires
+        server.delete.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                final_backup: { type: boolean, default: true, description: take a backup after the stop and before the removal }
+      responses:
+        '202':
+          description: The retire started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Server' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            Nothing was started. `code: server_retired` — already retired.
+            `code: server_busy` — installing, or a start, restart, reinstall,
+            retire or revive holds the server. `code: server_restoring` — a
+            backup restore is running.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+  /servers/{id}/revive:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Servers]
+      summary: Revive a retired server — place it, install it, optionally restore a backup and start it
+      description: >-
+        Places a retired server on a node again — `node_id`, else the node it
+        was retired from, else (that node being gone) wherever the scheduler
+        finds room — on the platform it ran on, with its old memory unless
+        `memory_mb` says otherwise. Its old ports are asked for first and kept
+        where they are free on that node; a port taken since falls back to the
+        spec's default, then the lowest free one. Answers 202 with the server
+        `installing`; the install pass then runs as a create's does (a failure
+        lands `install_failed`). When it lands, the backup `restore_backup_id`
+        is restored through the same job as POST
+        /servers/{id}/backups/{backupId}/restore (`restoring`, then `offline`
+        with `restore_result`), and — when `start` is true and the restore (if
+        any) succeeded — the server is started as an operator start would
+        start it; a start that is refused or fails lands `offline` with
+        `last_error`. The schedules the retire switched off are switched back
+        on. Requires server.create.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                node_id: { type: string, description: place it on this node; default the node it was retired from }
+                memory_mb: { type: integer, description: default its old memory; must clear the spec's minimum }
+                restore_backup_id: { type: string, description: a ready backup of this server on the node it lands on }
+                start: { type: boolean, default: false, description: start it once the install (and the restore) succeeded }
+                steam_guard_code: { type: string, description: one-time 2FA code for an authenticated Steam install }
+      responses:
+        '202':
+          description: Placed; the install is running
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Server' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            Nothing was changed. `code: server_not_retired` — only a retired
+            server can be revived. `code: removal_pending` — the retire's
+            removal of the old containers and world is still owed to a node,
+            and would delete the revived world when it landed; revive once it
+            has, or dismiss it. `code: backup_not_found` / `backup_not_ready` —
+            the backup to restore is not a ready archive on that node.
+            `code: spec_missing` / `platform_missing` — the spec, or the
+            platform the server ran on, is gone. `code: server_busy` — another
+            revive holds it. No code — no node can host it (the scheduler's
+            reason, per node).
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+        '503':
+          description: "`code: node_unreachable` — the backup to restore could not be checked on the node."
           content:
             application/json: { schema: { $ref: '#/components/schemas/Error' } }
   /servers/{id}/power:
@@ -410,7 +539,10 @@ paths:
         '409':
           description: >
             Start or restart refused: the server is installing, its install
-            failed (reinstall first), a backup restore is running (`code:
+            failed (reinstall first), it is retired (`code: server_retired`,
+            for every action, stop and kill included — it is on no node), a
+            retire or revive holds it (`code: server_busy`), a backup restore is
+            running (`code:
             server_restoring` — stop and kill still reach the agent, and the
             state stays `restoring` until the restore ends), the game spec it
             was built from no longer
@@ -1712,7 +1844,12 @@ components:
             server_restoring (a restore holds the server's files, so the
             write, start or delete was refused), restore_in_progress (a second
             restore) or server_busy (a start, restart or reinstall still holds
-            the server).
+            the server). The retire model (#360) adds server_retired (the
+            server is retired: nothing boots it, writes its files or backs it
+            up — revive it first), server_not_retired (revive and permanent
+            delete are only for a retired server), removal_pending (a removal
+            for the server is still owed to a node) and server_busy for a retire
+            or revive in progress.
     CodedError:
       type: object
       properties:
@@ -1813,6 +1950,25 @@ components:
         restore_result:
           allOf: [ { $ref: '#/components/schemas/RestoreResult' } ]
           description: How the most recent backup restore ended.
+        retire:
+          type: object
+          description: >-
+            Present only while a retire runs. The state is unchanged until the
+            server becomes `retired`.
+          properties:
+            phase: { type: string, enum: [stopping, backing_up, removing] }
+            final_backup: { type: boolean }
+            started_at: { type: string, format: date-time, description: "server clock" }
+        retired_at: { type: string, format: date-time, description: "when the server was retired; only on a retired server" }
+        retire_note:
+          type: string
+          description: >-
+            What the retire could not do — a final backup skipped ("final
+            backup skipped: node unreachable") or failed, a removal queued for
+            a node that did not answer — or, starting "retire abandoned:", why a
+            retire did not happen. Cleared by the next retire and by a revive.
+        retired_from_node_id: { type: string, description: "the node a retired server left: where its archives are, and where a revive places it by default. node_id is empty while it is retired" }
+        retired_ports: { type: object, additionalProperties: { type: integer }, description: "the host ports a retired server held (spec port name → port), asked for again by a revive" }
         provisioned_at:
           type: string
           format: date-time
@@ -1821,6 +1977,17 @@ components:
             start within 30 minutes of it skips the update pass, which would
             only repeat an install that just ran.
         created_at: { type: string, format: date-time }
+    PermanentDeleteResult:
+      type: object
+      properties:
+        note:
+          type: string
+          description: >-
+            Empty when everything went. Otherwise: archives a shared backup
+            target kept ("archives on a shared backup target were kept (the
+            network share): …"), an Agent too old to delete archives, or a node
+            that is owed the delete.
+        removal_pending: { type: boolean, description: "the node could not be reached; it deletes what is left, archives included, when it answers" }
     ServerDNS:
       type: object
       nullable: true
@@ -1949,9 +2116,11 @@ components:
         pending_removals:
           type: array
           description: >-
-            Server removals owed to this node: servers deleted in the Panel whose
-            removal the node never confirmed, because it was unreachable or its
-            Agent reported a failure. The Panel's node reconciler replays each one
+            Server removals owed to this node: servers retired or deleted in the
+            Panel whose removal the node never confirmed, because it was
+            unreachable or its Agent reported a failure. A retired server's own
+            removal is replayed; one for an id a live server row holds on this
+            node waits. The Panel's node reconciler replays each one
             with the recorded delete_data intent, with backoff, while the node answers, and
             drops it once the Agent confirms — releasing the memory and ports it
             held. Absent when nothing is owed.
@@ -1960,6 +2129,7 @@ components:
             properties:
               server_id: { type: string }
               delete_data: { type: boolean, description: whether the operator's delete also removes the world and config }
+              delete_backups: { type: boolean, description: "a permanent delete of a retired server: the node also deletes the server's archives, where they are its own" }
               requested_at: { type: string, format: date-time }
               attempts: { type: integer, description: "failed tries so far, the one made at delete time included" }
               last_error: { type: string, description: "the most recent failure, verbatim" }
@@ -2070,7 +2240,7 @@ components:
       type: object
       properties:
         error: { type: string, description: the sentence to show the operator }
-        code: { type: string, enum: [required_settings_missing, spec_missing, install_running, server_restoring], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there; server_restoring while a backup restore holds the server" }
+        code: { type: string, enum: [required_settings_missing, spec_missing, install_running, server_restoring, server_retired, server_busy], description: "absent for the install-state refusals; install_running when the node's agent refused because an install pass is running there; server_restoring while a backup restore holds the server; server_retired on a retired server (revive it first); server_busy while a retire or revive holds it" }
         missing_settings: { type: array, items: { type: string }, description: "required_settings_missing only: the empty fields' keys" }
     ServerSettings:
       type: object

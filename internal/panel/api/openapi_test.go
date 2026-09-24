@@ -32,6 +32,7 @@ func TestOpenAPISpecValid(t *testing.T) {
 	}
 	want := []string{
 		"/auth/login", "/servers", "/servers/{id}", "/servers/{id}/power",
+		"/servers/{id}/retire", "/servers/{id}/revive",
 		"/servers/{id}/schedules", "/specs", "/nodes", "/agents/enroll",
 		"/agents/bootstrap-tokens", "/audit",
 	}

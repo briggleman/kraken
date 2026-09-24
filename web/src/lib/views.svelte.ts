@@ -268,6 +268,23 @@ export function shortContainerLabel(label: string): string {
   return label.length > 24 ? label.slice(0, 23) + "…" : label;
 }
 
+/** The title a name printed on the drift line carries: the whole name and
+ *  the server id it belongs to (`kraken_f4030778-… (f4030778-…)`), so it can
+ *  be matched to a row or to `docker ps` without guessing which half is which.
+ *  An item with no id, or one whose label already is its id, says it once. */
+export function containerTitle(item: DriftItem): string {
+  return item.server_id && item.server_id !== item.label ? `${item.label} (${item.server_id})` : item.label;
+}
+
+/** What a retire chip says to assistive tech: which container, where, and
+ *  what the act does — the chip itself reads only `retire`. */
+export function retireChipLabel(item: DriftItem, nodeName: string): string {
+  return (
+    `Retire the untracked container ${shortContainerLabel(item.label)} on ${nodeName}` +
+    " — it is stopped and removed, its data untouched"
+  );
+}
+
 /**
  * The untracked containers the badge offers to retire, or [] when it offers
  * none. Only an untracked surplus has anything to retire — a missing container
@@ -296,10 +313,14 @@ export function retirable(drift: ReturnType<typeof containerDrift>): DriftItem[]
 }
 
 /**
- * The quiet line a node band carries while the node owes removals: servers
- * deleted in the panel whose removal has not reached the node yet. The count is
- * the reading; the title names each one with how it last went, because "2
- * pending" alone does not say whether the node is simply away or refusing.
+ * The quiet line a node band carries while the node owes removals (DESIGN.md,
+ * Removals Owed): servers retired or deleted in the panel whose removal has not
+ * reached the node yet. The count is the reading — the plain value ink, no chip,
+ * because the Panel is already retrying — and the title is the roll call, each
+ * entry by the server's name (its id once the row is gone) with what goes and
+ * how the last try went, because "2 pending" alone does not say whether the
+ * node is simply away or refusing. There is no "retry in 40s": the Panel
+ * retries whenever the node answers, and reports no schedule to print.
  */
 export function pendingRemovalsNote(node: Node): { count: number; title: string } | undefined {
   const owed = node.pending_removals ?? [];
@@ -309,25 +330,35 @@ export function pendingRemovalsNote(node: Node): { count: number; title: string 
   // it is said here instead, where the removal is.
   const running = new Set((node.managed_containers ?? []).map((c) => c.server_id));
   const lines = owed.map((p) => {
-    const tries = p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`;
-    const what = p.delete_data ? "container and data" : "container";
-    const still = running.has(p.server_id) ? " · container still running" : "";
-    return `${p.server_id} — ${removalKind(p)}: ${what}, ${tries}${still}` + (p.last_error ? `: ${p.last_error}` : "");
+    // A retired row is still in the fleet and has a name; a deleted one is not.
+    const name = fleet.servers.find((s) => s.id === p.server_id)?.name ?? p.server_id;
+    const facts = [
+      removalKind(p),
+      // delete_backups is a permanent delete's (#360): its own archives go too.
+      p.delete_backups ? "container, data and archives" : p.delete_data ? "container and data" : "container",
+      p.attempts === 1 ? "1 attempt" : `${p.attempts} attempts`,
+    ];
+    if (running.has(p.server_id)) facts.push("container still running");
+    if (p.last_error) facts.push(p.last_error);
+    return `${name} (${facts.join(" · ")})`;
   });
   return {
     count: owed.length,
-    title: "removals the panel asked for that have not reached this node yet — retried each time the node answers\n" + lines.join("\n"),
+    title:
+      "retired or deleted in the panel, not yet removed from this node — retried each time the node answers\n" +
+      lines.join("\n"),
   };
 }
 
-/** What a pending removal is the tail of (#360): a retire whose node did not
- *  answer (the server is still in the panel, retired), a permanent delete that
- *  also takes the archives, or a plain delete from before retiring existed. */
-export function removalKind(p: PendingRemoval): string {
-  if (p.delete_backups) return "deleted for good in the panel; its own archives go too";
+/** What a pending removal is the tail of (#360), as the first fact on its
+ *  line: a retire whose node did not answer (the row is still in the panel,
+ *  retired), a permanent delete (its own archives go too), or a plain delete
+ *  from before retiring existed. */
+export function removalKind(p: PendingRemoval): "retired" | "deleted for good" | "deleted" {
+  if (p.delete_backups) return "deleted for good";
   const row = fleet.servers.find((s) => s.id === p.server_id);
-  if (row?.state === "retired") return "retired in the panel, not yet removed from this node";
-  return "deleted in the panel, not yet removed from this node";
+  if (row?.state === "retired") return "retired";
+  return "deleted";
 }
 
 /** The dead-note under a stopped card — real facts only. */

@@ -27,7 +27,14 @@ import { ApiError } from "@/api/client";
 import { fleet } from "./fleet.svelte";
 import { openRetire, openRetireAll, pruneRetireError, retire } from "./retire.svelte";
 import { CD_CONTAINER_BODY, CD_SERVER_BODY, confirmGo, openConfirm, ui } from "./state.svelte";
-import { containerDrift, pendingRemovalsNote, retirable, shortContainerLabel } from "./views.svelte";
+import {
+  containerDrift,
+  containerTitle,
+  pendingRemovalsNote,
+  retirable,
+  retireChipLabel,
+  shortContainerLabel,
+} from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
@@ -140,7 +147,7 @@ describe("retirable", () => {
     const drift = containerDrift(n);
     expect(drift).toBeUndefined();
     expect(retirable(drift)).toEqual([]);
-    expect(pendingRemovalsNote(n)?.title).toContain(`${UUID} — deleted in the panel, not yet removed from this node: container and data, 2 attempts · container still running: docker down`);
+    expect(pendingRemovalsNote(n)?.title).toContain(`${UUID} (deleted · container and data · 2 attempts · container still running · docker down)`);
   });
 });
 
@@ -256,7 +263,55 @@ describe("pendingRemovalsNote", () => {
     );
     // Shown for an offline node too: an unreachable node is the usual reason.
     expect(note?.count).toBe(2);
-    expect(note?.title).toContain("f4030778 — deleted in the panel, not yet removed from this node: container and data, 3 attempts: node unreachable");
-    expect(note?.title).toContain("8f8d725c — deleted in the panel, not yet removed from this node: container, 1 attempt");
+    expect(note?.title).toContain("f4030778 (deleted · container and data · 3 attempts · node unreachable)");
+    expect(note?.title).toContain("8f8d725c (deleted · container · 1 attempt)");
+    // The header is right for a retire and a delete alike.
+    expect(note?.title.split("\n")[0]).toBe(
+      "retired or deleted in the panel, not yet removed from this node — retried each time the node answers",
+    );
+    // No invented schedule: the Panel retries when the node answers.
+    expect(note?.title).not.toMatch(/retry in/);
+  });
+
+  it("names a removal by its server while the row is still in the fleet, by its id once it is gone", () => {
+    // A retired server keeps its row; a deleted one does not.
+    fleet.servers = [{ ...server(UUID, "retired"), name: "dragonwilds-02" }];
+    const note = pendingRemovalsNote(
+      node({
+        pending_removals: [
+          { server_id: UUID, delete_data: true, requested_at: "2026-09-23T10:00:00Z", attempts: 2, last_error: "could not reach the node's agent" },
+          { server_id: "8f8d725c", delete_data: false, requested_at: "2026-09-23T10:05:00Z", attempts: 1 },
+        ],
+      }),
+    );
+    expect(note?.title).toContain("dragonwilds-02 (retired · container and data · 2 attempts · could not reach the node's agent)");
+    expect(note?.title).not.toContain(UUID);
+    expect(note?.title).toContain("8f8d725c (deleted · container · 1 attempt)");
+  });
+
+  it("says the archives go too for a permanent delete", () => {
+    const note = pendingRemovalsNote(
+      node({
+        pending_removals: [
+          { server_id: "f4030778", delete_data: true, delete_backups: true, requested_at: "2026-09-23T10:00:00Z", attempts: 1 },
+        ],
+      }),
+    );
+    expect(note?.title).toContain("f4030778 (deleted for good · container, data and archives · 1 attempt)");
+  });
+});
+
+describe("the drift line's names and chips", () => {
+  it("titles a printed name with its whole name and server id", () => {
+    expect(containerTitle({ server_id: UUID, label: `kraken_${UUID}` })).toBe(`kraken_${UUID} (${UUID})`);
+    // said once when there is no second half
+    expect(containerTitle({ server_id: "", label: "by-hand" })).toBe("by-hand");
+    expect(containerTitle({ server_id: UUID, label: UUID })).toBe(UUID);
+  });
+
+  it("tells assistive tech which container, where, and what the retire does", () => {
+    expect(retireChipLabel({ server_id: UUID, label: `kraken_${UUID}` }, "behemoth")).toBe(
+      "Retire the untracked container kraken_f4030778… on behemoth — it is stopped and removed, its data untouched",
+    );
   });
 });

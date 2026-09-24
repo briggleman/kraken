@@ -112,16 +112,17 @@ describe("a pending removal's hover text", () => {
 
   it("names a retire's, a permanent delete's and a plain delete's apart", () => {
     fleet.servers = [server("sv-x", "retired")];
-    expect(removalKind(owed({}))).toBe("retired in the panel, not yet removed from this node");
-    expect(removalKind(owed({ delete_backups: true }))).toMatch(/deleted for good.*archives go too/);
+    expect(removalKind(owed({}))).toBe("retired");
+    expect(removalKind(owed({ delete_backups: true }))).toBe("deleted for good");
     fleet.servers = [];
-    expect(removalKind(owed({}))).toBe("deleted in the panel, not yet removed from this node");
+    expect(removalKind(owed({}))).toBe("deleted");
   });
 
-  it("carries the kind on each line", () => {
+  it("carries the kind on each line, first among its facts", () => {
     fleet.servers = [server("sv-x", "retired")];
     const note = pendingRemovalsNote({ id: "n", pending_removals: [owed({})] } as Node);
-    expect(note?.title).toMatch(/sv-x — retired in the panel/);
+    // the retired row keeps its name, so the line is named by it
+    expect(note?.title).toMatch(/\(retired · container and data · 1 attempt\)/);
   });
 });
 

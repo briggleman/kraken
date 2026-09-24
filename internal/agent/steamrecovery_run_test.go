@@ -398,10 +398,15 @@ func TestDockerInstall_RetriesThroughTheGuard(t *testing.T) {
 				failed = e.Failed
 			case *agentpb.InstallEvent_Completed:
 				completed = true
-				// The Panel starts the server on Completed, while the deferred
-				// install-container removal may still be running.
+				// The Panel starts the server on Completed: the gate must be
+				// open, and the verdict must not wait on the last pass's
+				// container removal — only the first pass's (removed
+				// synchronously before the retry) is gone at this point.
 				if err := d.installs.check(guardServer); err != nil {
 					t.Errorf("the install gate was still shut when Completed went out: %v", err)
+				}
+				if len(ops.removed) != 1 || ops.removed[0] != "install-1" {
+					t.Errorf("at Completed, want only the first pass's container removed; removed %v", ops.removed)
 				}
 			case *agentpb.InstallEvent_LogLine:
 				lines = append(lines, e.LogLine)
@@ -419,8 +424,9 @@ func TestDockerInstall_RetriesThroughTheGuard(t *testing.T) {
 	if ops.lists != 2 {
 		t.Errorf("the guard should run before each pass: %d container listings", ops.lists)
 	}
-	if len(ops.removed) != 2 {
-		t.Errorf("each install container should be removed after its pass: %v", ops.removed)
+	d.installCleanup.Wait() // the last pass's container goes in the background
+	if len(ops.removed) != 2 || ops.removed[1] != "install-2" {
+		t.Errorf("each install container should be removed, the last after the verdict: %v", ops.removed)
 	}
 	if _, err := os.Stat(filepath.Join(d.localDir(guardServer), filepath.FromSlash(liveOrphanRel))); !os.IsNotExist(err) {
 		t.Errorf("the orphan is still on disk: %v", err)

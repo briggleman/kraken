@@ -231,7 +231,19 @@ func (s *Service) RemoveServer(ctx context.Context, req *agentpb.RemoveServerReq
 	if err := s.rt.Remove(ctx, req.ServerId, req.DeleteData); err != nil {
 		return nil, err
 	}
-	return &agentpb.RemoveServerResponse{}, nil
+	resp := &agentpb.RemoveServerResponse{}
+	if req.DeleteBackups {
+		// After the containers and the world are gone, never before: a purge
+		// that fails leaves the removal to be retried whole, and Remove is
+		// idempotent, so the retry lands here again.
+		kept, err := s.rt.PurgeBackups(ctx, req.ServerId)
+		if err != nil {
+			return nil, err
+		}
+		resp.BackupsHandled = true
+		resp.BackupsKept = kept
+	}
+	return resp, nil
 }
 
 func (s *Service) ListFiles(ctx context.Context, req *agentpb.ListFilesRequest) (*agentpb.ListFilesResponse, error) {

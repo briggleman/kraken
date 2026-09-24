@@ -238,6 +238,56 @@ func (t *localBackupTarget) Delete(_ context.Context, serverID, id string) error
 	return nil
 }
 
+// purgeServer deletes every archive of serverID and reports true — but only on
+// the zero-config layout, where <dir>/<serverID>/ holds that server's archives
+// and nothing else. A flat target (an operator-configured path, including a
+// templated one) keeps every server's archives side by side under one
+// directory, and an archive's name does not say whose it is, so it reports
+// false and deletes nothing. The share target embeds this with flat set, so it
+// always keeps.
+func (t *localBackupTarget) purgeServer(serverID string) (bool, error) {
+	if t.flat || strings.TrimSpace(t.dir) == "" {
+		return false, nil
+	}
+	dir := t.serverDir(serverID)
+	// The id arrives validated (validRemoveID); this is the second lock on the
+	// door, because the call below deletes a tree.
+	if filepath.Dir(dir) != filepath.Clean(t.dir) || filepath.Base(dir) != serverID {
+		return false, fmt.Errorf("backup: invalid server id %q", serverID)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return false, fmt.Errorf("backup: delete archives: %w", err)
+	}
+	return true, nil
+}
+
+// serverPurger is a backup target that can delete one server's archives as a
+// set (see localBackupTarget.purgeServer). SFTP and SMB targets are flat by
+// construction and do not implement it.
+type serverPurger interface {
+	purgeServer(serverID string) (bool, error)
+}
+
+// keptLabel names a backup location whose archives a purge kept, for the
+// operator: what kind of place it is, never a path or a credential.
+func keptLabel(t backupTarget, mirror bool) string {
+	var where string
+	switch t.Kind() {
+	case "share":
+		where = "the network share"
+	case "sftp":
+		where = "the SFTP target"
+	case "smb":
+		where = "the SMB target"
+	default:
+		where = "the configured backup directory"
+	}
+	if mirror {
+		where += " (mirror)"
+	}
+	return where
+}
+
 // ---- network-share target (a mounted SMB/NFS path) ----
 
 // shareBackupTarget stores archives on a network share the operator has mounted

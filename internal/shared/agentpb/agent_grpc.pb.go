@@ -82,7 +82,8 @@ type NodeServiceClient interface {
 	// CreateServer records a server's runtime spec on the node and provisions its
 	// data volume, without starting it. Must precede InstallServer/PowerAction.
 	CreateServer(ctx context.Context, in *CreateServerRequest, opts ...grpc.CallOption) (*CreateServerResponse, error)
-	// RemoveServer stops and removes a server's container (and optionally its data).
+	// RemoveServer stops and removes a server's container (and optionally its
+	// data, and optionally its backup archives where they are its own).
 	RemoveServer(ctx context.Context, in *RemoveServerRequest, opts ...grpc.CallOption) (*RemoveServerResponse, error)
 	// ApplyConfig writes rendered game-config files into the server's data volume.
 	// The Panel renders the content from the server's settings; the Agent just
@@ -547,7 +548,8 @@ type NodeServiceServer interface {
 	// CreateServer records a server's runtime spec on the node and provisions its
 	// data volume, without starting it. Must precede InstallServer/PowerAction.
 	CreateServer(context.Context, *CreateServerRequest) (*CreateServerResponse, error)
-	// RemoveServer stops and removes a server's container (and optionally its data).
+	// RemoveServer stops and removes a server's container (and optionally its
+	// data, and optionally its backup archives where they are its own).
 	RemoveServer(context.Context, *RemoveServerRequest) (*RemoveServerResponse, error)
 	// ApplyConfig writes rendered game-config files into the server's data volume.
 	// The Panel renders the content from the server's settings; the Agent just

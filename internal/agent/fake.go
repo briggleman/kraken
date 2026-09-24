@@ -83,6 +83,14 @@ type FakeRuntime struct {
 	// removeGate, when set, holds every Remove until it is closed (see
 	// HoldRemovals) — a removal that hangs on the node.
 	removeGate chan struct{}
+	// purges records every PurgeBackups, and sharedBackups makes the fake a
+	// node whose archives sit on a shared target, which a purge keeps (see
+	// SetSharedBackupTarget).
+	purges        []string
+	sharedBackups string
+	// backupErr, when set, makes every backup land FAILED with this reason
+	// (see SetBackupFailure).
+	backupErr string
 	// fileErr, when set, is what every file operation that reads or changes the
 	// tree fails with (see WithFakeFileError).
 	fileErr error
@@ -379,6 +387,49 @@ func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bo
 	return nil
 }
 
+// SetSharedBackupTarget makes later purges keep the archives and report kept as
+// the location they were kept on, the way a node whose backups go to a share
+// or a configured directory does; "" makes the fake a zero-config node again.
+func (f *FakeRuntime) SetSharedBackupTarget(kept string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sharedBackups = kept
+}
+
+// Purges returns the server ids every PurgeBackups was asked for, in order.
+func (f *FakeRuntime) Purges() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.purges...)
+}
+
+// PurgeBackups deletes the server's archives, or keeps them on a shared target.
+func (f *FakeRuntime) PurgeBackups(_ context.Context, serverID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.purges = append(f.purges, serverID)
+	if f.sharedBackups != "" {
+		return f.sharedBackups, nil
+	}
+	delete(f.backups, serverID)
+	return "", nil
+}
+
+// SetBackupFailure makes every later backup land FAILED with reason, the way
+// an archive the node could not write does; "" makes them succeed again.
+func (f *FakeRuntime) SetBackupFailure(reason string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.backupErr = reason
+}
+
+// Backups returns the archives the fake holds for serverID.
+func (f *FakeRuntime) Backups(serverID string) []*agentpb.BackupInfo {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]*agentpb.BackupInfo(nil), f.backups[serverID]...)
+}
+
 // ApplyConfig records the rendered files in memory (no real volume in the fake)
 // and writes them into the fake data dir so they show up in the file listing.
 func (f *FakeRuntime) ApplyConfig(_ context.Context, serverID string, files map[string]string) error {
@@ -603,6 +654,9 @@ func (f *FakeRuntime) CreateBackup(_ context.Context, serverID, _, name string, 
 		name = "backup"
 	}
 	b := &agentpb.BackupInfo{Id: fmt.Sprintf("%d__%s", nowMs(), name), Name: name, Size: 1024, CreatedUnixMs: nowMs()}
+	if f.backupErr != "" {
+		b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupErr
+	}
 	f.backups[serverID] = append(f.backups[serverID], b)
 	return b, nil
 }

@@ -25,6 +25,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -736,6 +738,12 @@ func (d *DockerRuntime) Create(ctx context.Context, spec *agentpb.ServerSpec) er
 // A container that will not go stops the removal before the data and the spec
 // are touched: the server is still there, and a retry must find it whole.
 func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData bool) error {
+	// The id becomes a path under the data root and the spec dir. An empty one
+	// is the data root itself, so it is checked before anything is touched —
+	// the caller is a Panel, and not necessarily this version of it.
+	if err := validRemoveID(serverID); err != nil {
+		return err
+	}
 	d.stopMonitor(serverID)
 	// The install container too: an install interrupted by an Agent restart or a
 	// daemon hiccup can leave kraken_<id>_install behind, bind-mounted onto the
@@ -764,6 +772,17 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 	d.forgetSpec(serverID)
 	d.forgetServerBackupJobs(serverID)
 	return dataErr
+}
+
+// validRemoveID refuses a server id that could not name a single directory
+// under the data root: empty, containing a path separator of either OS, or a
+// dot-dot. InvalidArgument, because it is the request that is wrong.
+func validRemoveID(serverID string) error {
+	if serverID == "" || serverID == "." || strings.Contains(serverID, "..") ||
+		strings.ContainsAny(serverID, `/\:`) {
+		return grpcstatus.Errorf(codes.InvalidArgument, "remove: invalid server id %q", serverID)
+	}
+	return nil
 }
 
 // installContainerName is the one-shot install container's name for a server.

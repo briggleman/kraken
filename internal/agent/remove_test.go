@@ -14,6 +14,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -260,5 +262,26 @@ func TestRemoveAgainstDockerLeavesNothingToAdopt(t *testing.T) {
 	}
 	if _, watched := restarted.monitorState(serverID); watched {
 		t.Error("a restarted Agent adopted the removed server")
+	}
+}
+
+// An id that is not one directory name is refused before anything is touched:
+// RemoveAll(localDir("")) is the whole data root, and the caller is a Panel
+// that may be older, newer or not ours.
+func TestRemoveRefusesAnIDThatIsNotOneDirectory(t *testing.T) {
+	d := newRemoveRuntime(t, "srv-1", &fakeContainers{byName: map[string]string{containerName("srv-1"): "c-run"}})
+	removed := 0
+	d.removeAll = func(string) error { removed++; return nil }
+	for _, id := range []string{"", ".", "..", "../srv-1", "a/b", `a\b`, "C:x"} {
+		err := d.Remove(context.Background(), id, true)
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("Remove(%q) = %v, want InvalidArgument", id, err)
+		}
+	}
+	if removed != 0 {
+		t.Errorf("RemoveAll ran %d times for refused ids", removed)
+	}
+	if _, err := os.Stat(filepath.Join(d.localDir("srv-1"), "world", "level.sav")); err != nil {
+		t.Errorf("another server's data was touched: %v", err)
 	}
 }

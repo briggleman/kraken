@@ -86,6 +86,16 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	if err != nil {
 		return fmt.Errorf("load server: %w", err)
 	}
+	// A restart is stop-then-start on the Agent, so it boots the game: it is
+	// asked the same questions as an operator's start (checkStartable), before
+	// the node is contacted. The refusal's sentence becomes the schedule's
+	// last_error, which is where an operator looks when a restart did not
+	// happen.
+	if task.Action == store.ScheduleRestart {
+		if err := s.checkScheduledRestart(ctx, sv); err != nil {
+			return err
+		}
+	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)
 	if err != nil {
 		return fmt.Errorf("load node: %w", err)
@@ -144,4 +154,19 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 	default:
 		return fmt.Errorf("unknown action %q", task.Action)
 	}
+}
+
+// checkScheduledRestart reports why a scheduled restart of sv must not run, or
+// nil when it may. Beyond checkStartable, the server must be running: a nightly
+// restart exists to cycle a running game, and on a server someone stopped (or
+// one that crashed, or never finished installing) the Agent's stop-then-start
+// would quietly start it.
+func (s *Server) checkScheduledRestart(ctx context.Context, sv *store.Server) error {
+	if sv.State != store.StateRunning {
+		return fmt.Errorf("server is %s, not running, so the scheduled restart was skipped — a restart would have started it", sv.State)
+	}
+	if refusal := s.checkStartable(ctx, sv); refusal != nil {
+		return refusal
+	}
+	return nil
 }

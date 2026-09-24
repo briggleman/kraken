@@ -866,6 +866,14 @@ func (s *Server) handleServerPower(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return
 	}
+	// The same gate as POST /servers/{id}/power: this path reaches the same
+	// Agent, so it must not start a server that one would refuse.
+	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
+		if refusal := s.checkStartable(r.Context(), sv); refusal != nil {
+			refusal.write(w)
+			return
+		}
+	}
 	client, err := s.nodes.Client(n.DialTarget())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "could not connect to agent: "+err.Error())

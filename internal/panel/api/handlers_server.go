@@ -373,6 +373,70 @@ func requiredSettingsMessage(missing []spec.SettingField) string {
 	return list + " " + verb + " required before this server can start — set " + pronoun + " on the Settings tab"
 }
 
+// startRefusal is a start or restart the Panel will not send to the Agent: the
+// status and body a power endpoint answers with, and — as an error — the
+// sentence a scheduled restart records in its last_error.
+type startRefusal struct {
+	status  int
+	message string
+	code    string   // machine-readable reason; empty for a plain error body
+	missing []string // the empty required settings' keys, for required_settings_missing
+}
+
+func (e *startRefusal) Error() string { return e.message }
+
+// write answers a power request with the refusal.
+func (e *startRefusal) write(w http.ResponseWriter) {
+	if e.code == "" {
+		writeError(w, e.status, e.message)
+		return
+	}
+	writeJSON(w, e.status, map[string]any{
+		"error":            e.message,
+		"code":             e.code,
+		"missing_settings": e.missing,
+	})
+}
+
+// checkStartable reports why sv must not be started or restarted, or nil when
+// it may be. It is asked before the node is contacted and before any update
+// pass, so a refusal changes nothing — no install container, no state change.
+// Every path that boots a server asks it: both power endpoints and scheduled
+// restarts, so none of them starts a server another would refuse.
+//
+//   - A server that never completed its install would boot against an empty
+//     /data and crash-loop, with misleading "exe not found" errors.
+//   - A server whose spec cannot be loaded cannot be checked, so it is not
+//     started on the strength of a check that never ran.
+//   - A server with an empty required setting would boot into a crash its own
+//     spec predicts. Judged on the EFFECTIVE settings, so a field the spec
+//     added later counts its default.
+func (s *Server) checkStartable(ctx context.Context, sv *store.Server) *startRefusal {
+	switch sv.State {
+	case store.StateInstalling:
+		return &startRefusal{status: http.StatusConflict,
+			message: "server is still installing; wait for the install to finish before starting"}
+	case store.StateInstallFailed:
+		return &startRefusal{status: http.StatusConflict,
+			message: "server install failed; POST /api/v1/servers/{id}/reinstall to retry"}
+	}
+	sp, err := s.store.GetSpec(ctx, sv.SpecID)
+	if err != nil {
+		s.logger.Error("start refused: could not load the server's spec", "server", sv.ID, "spec", sv.SpecID, "err", err)
+		return &startRefusal{status: http.StatusInternalServerError,
+			message: "could not load this server's game spec, so it was not started"}
+	}
+	if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
+		keys := make([]string, 0, len(missing))
+		for _, f := range missing {
+			keys = append(keys, f.Key)
+		}
+		return &startRefusal{status: http.StatusConflict, message: requiredSettingsMessage(missing),
+			code: "required_settings_missing", missing: keys}
+	}
+	return nil
+}
+
 // setServerState reloads the server and updates only its state (plus the
 // provisioning error that travels with it), so a concurrent settings edit
 // during async install isn't clobbered by a stale write. lastError replaces
@@ -527,37 +591,15 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 	if !s.authorizeServer(w, ctx, sv) {
 		return
 	}
-	// Reject start/restart on a server that never completed its install phase.
-	// The runtime container would boot against empty /data and crash-loop
-	// immediately, producing misleading "exe not found" errors and locking the
-	// server. Stop/kill are allowed through — they're no-ops on a non-running
-	// container and let the operator clean up any lingering runtime state.
+	// Start and restart are refused on a server that has not finished its
+	// install, or whose required settings are empty (see checkStartable). Stop
+	// and kill are never refused: they're no-ops on a non-running container, let
+	// the operator clean up any lingering runtime state, and refusing to stop a
+	// server would be the opposite of safe.
 	if action == agentpb.PowerAction_POWER_ACTION_START || action == agentpb.PowerAction_POWER_ACTION_RESTART {
-		switch sv.State {
-		case store.StateInstalling:
-			writeError(w, http.StatusConflict, "server is still installing; wait for the install to finish before starting")
+		if refusal := s.checkStartable(ctx, sv); refusal != nil {
+			refusal.write(w)
 			return
-		case store.StateInstallFailed:
-			writeError(w, http.StatusConflict, "server install failed; POST /api/v1/servers/{id}/reinstall to retry")
-			return
-		}
-		// Refuse to boot a server into a crash its own spec predicts. Checked
-		// before the node is contacted and before any update pass, so a refusal
-		// changes nothing — no install container, no state change. Judged on the
-		// EFFECTIVE settings, so a field the spec added later counts its default.
-		if sp, serr := s.store.GetSpec(ctx, sv.SpecID); serr == nil {
-			if missing := sp.MissingRequiredSettings(sp.ResolveSettings(sv.Settings)); len(missing) > 0 {
-				keys := make([]string, 0, len(missing))
-				for _, f := range missing {
-					keys = append(keys, f.Key)
-				}
-				writeJSON(w, http.StatusConflict, map[string]any{
-					"error":            requiredSettingsMessage(missing),
-					"code":             "required_settings_missing",
-					"missing_settings": keys,
-				})
-				return
-			}
 		}
 	}
 	node, err := s.store.GetNode(ctx, sv.NodeID)

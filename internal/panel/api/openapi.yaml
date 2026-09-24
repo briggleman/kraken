@@ -1218,11 +1218,18 @@ paths:
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '500':
-          description: "The node answered but could not remove the container; its reason verbatim (code: node_error)"
+          description: >-
+            The node answered but could not remove the container, its reason
+            verbatim — a container engine the Agent cannot reach included
+            ("docker: cannot connect to the daemon: …") — `code: node_error`;
+            or the Panel could not read its own records (`code: internal`).
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '503':
-          description: "The node's Agent cannot be reached (code: node_unreachable)"
+          description: >-
+            `code: node_unreachable`. The node's Agent could not be reached —
+            nothing was sent — or it did not answer within the time allowed, in
+            which case the removal may still be completing on the node.
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
   /nodes/{id}/removals/{serverID}:
@@ -1254,6 +1261,10 @@ paths:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '404':
           description: "Node not found (code: node_not_found), or no removal is pending for this id (code: removal_not_found)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '500':
+          description: "The Panel could not read or update the node record (code: internal). Nothing is sent to the node, so no Agent status applies."
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
   /nodes/{id}/config:

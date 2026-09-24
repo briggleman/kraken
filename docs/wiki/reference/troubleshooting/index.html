@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Troubleshooting — Kraken wiki</title>
-<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <link rel="canonical" href="https://krakenserver.io/wiki/reference/troubleshooting/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/reference/troubleshooting/" />
 <meta property="og:title" content="Troubleshooting — Kraken wiki" />
-<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Troubleshooting — Kraken wiki" />
-<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,16 +110,19 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">Troubleshooting</span></nav>
     <h1>Troubleshooting</h1>
-    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, and the Cloudflare 400 that is not about a certificate being invalid.</p>
+    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
+<a class="toc-link lvl-3" href="#no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running</a>
+<a class="toc-link lvl-2" href="#removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear</a>
 <a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
 <a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
 </div></details>
     <article class="prose">
-<p>Four failures that happened, each written the way you will meet it: the symptom
+<p>Failures that happened, each written the way you will meet it: the symptom
 first, because that is all you have at the time.</p>
 <h2 id="every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code> <a class="hlink" href="#every-install-ends-with-state-is-0x6-or-0x602" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> The pass ends with a line from the <code>state is 0x…</code> family</p>
@@ -215,6 +218,9 @@ name.</li>
 re-enrollment step. <a href="/wiki/configure/network/">Ports and firewall</a> has the full
 table of who is allowed to reach what.</p>
 <h2 id="containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear <a class="hlink" href="#containers-n-running-1-untracked-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Two different problems print this line. Hover the badge: it names the server id,
+and whether the Panel has a row for that id decides which one you have.</p>
+<h3 id="a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code> <a class="hlink" href="#a-row-exists-the-server-reads-install_failed-or-offline" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <p><strong>Symptom.</strong> A node&#39;s band reads one more running container than the Panel has
 <code>running</code> rows for, and it stays that way. The server in question shows
 <code>install_failed</code>, or <code>offline</code>, while players are still connected to it.</p>
@@ -238,6 +244,30 @@ predates the fix, reinstall the server once the node is online.)</p>
 install leaves the server exactly where it was — <code>running</code>, with the reason in
 <code>last_error</code> — and a power action aimed at a node the Panel cannot reach is
 refused with a <code>503</code> naming the node instead of starting a pass that cannot run.</p>
+<h3 id="no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running <a class="hlink" href="#no-row-a-server-you-deleted-is-still-running" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><strong>Symptom.</strong> The badge names a container whose server id matches nothing in the
+Panel. Players may still be connected to a server you deleted, the Agent log
+shows <code>watchdog: adopted running server &lt;id&gt;</code> after every Agent restart, and the
+container comes back after every crash. A new server can even appear to &quot;have
+the old server&#39;s backups&quot;: it does not — the listing is keyed by id — you are
+looking at the old server, still alive on the node.</p>
+<p><strong>Cause.</strong> The server was deleted while its node could not be told, on a Panel
+older than the fix for <a href="https://github.com/briggleman/kraken/issues/354">#354</a>.
+The delete sent the removal once, ignored whether it arrived, and deleted the
+row regardless. The node, built to be self-sufficient, then did exactly what it
+is meant to: its watchdog adopts running containers carrying the
+<code>kraken.server_id</code> label at startup, and its persisted spec gave it everything
+it needed to keep restarting one.</p>
+<p><strong>Fix.</strong> Press <strong>retire</strong> beside the container&#39;s name on the node band (see
+<a href="/wiki/operate/fleet/">Retiring an untracked container</a>). The node stops and
+removes the container, the Agent forgets its spec, and nothing of the server&#39;s
+data or backups is touched — clear those by hand on the host if you no longer
+want them. From the API:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -X DELETE -H &quot;Authorization: Bearer $TOKEN&quot; \
+  https://panel.example.com/api/v1/nodes/&lt;node-id&gt;/containers/&lt;server-id&gt;</code></pre></div>
+<p>It is no longer produced either. A delete that cannot reach the node is now
+remembered on the node as a pending removal and finished when the node answers;
+the band reads <code>removals · N pending</code> in the meantime.</p>
 <aside class="callout is-note">
 <span class="callout-k">note</span>
 <div class="callout-b"><p>On an Agent older than 0.54.0, a transient <code>1 untracked</code> during an install or
@@ -252,6 +282,17 @@ badge that persists that means something.</p>
 </aside>
 
 
+<h2 id="removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear <a class="hlink" href="#removals-n-pending-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The node answers but its Agent keeps failing the removal. Hover the line: the
+last error is verbatim. <code>docker: remove server …</code> means Docker would not remove
+the container (a daemon restarting underneath it, or on Windows a container
+still being torn down); <code>delete its data: …</code> means the containers are gone but
+the data directory could not be deleted, usually a file held open on a Windows
+host. The Panel keeps retrying either way; once the cause is gone, the next pass
+clears it.</p>
+<p>A node that is gone for good never answers, so its removals stay pending.
+Deleting the node from the Panel drops them with the node record; whatever is
+left on that host is then yours to clear by hand.</p>
 <h2 id="cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code> <a class="hlink" href="#cloudflare-returns-400-the-ssl-certificate-error" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> With Authenticated Origin Pulls enabled, every request through
 Cloudflare comes back <code>400</code> with a body reading <em>The SSL certificate error</em>. The
@@ -310,6 +351,9 @@ firing while your tab is out of date.</p>
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
+<a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
+<a class="toc-link lvl-3" href="#no-row-a-server-you-deleted-is-still-running">No row: a server you deleted is still running</a>
+<a class="toc-link lvl-2" href="#removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear</a>
 <a class="toc-link lvl-2" href="#cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code></a>
 <a class="toc-link lvl-2" href="#when-it-is-none-of-these">When it is none of these</a>
     </div>

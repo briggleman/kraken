@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart.
+description: Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.
 section: operate
 order: 31
 ---
@@ -222,3 +222,22 @@ variable or a settings change on a spec that does not hot-reload.
 
 There is no per-setting "requires restart" flag. If you author specs, that is
 worth knowing before you go looking for one.
+
+## Deleting a server
+
+Delete is in the drill-in, behind the typed confirmation. It removes the
+server's containers and its data directory — the world and the rendered config —
+on its node, releases the memory and ports it reserved, and deletes the record
+together with its schedules.
+
+**Backups are not deleted.** The archives under the node's backup directory are
+keyed by server id and stay where they are; the confirmation says so. They are
+the part of a server most worth keeping, and a retire-and-revive model that makes
+use of them is tracked in [#360](https://github.com/briggleman/kraken/issues/360).
+
+**A node that is down does not block a delete.** When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete still goes
+through and the removal is remembered on the node. The node band reads
+`removals · 1 pending` until the Panel's node reconciler, which retries on every
+pass the node answers, has delivered it. [The fleet page](/wiki/operate/fleet/)
+has the details.

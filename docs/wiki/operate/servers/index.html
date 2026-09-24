@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Servers — Kraken wiki</title>
-<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
 <meta property="og:title" content="Servers — Kraken wiki" />
-<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Servers — Kraken wiki" />
-<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart." />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,7 +110,7 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
     <h1>Servers</h1>
-    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, and which settings wait for a restart.</p>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the seven lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what a delete removes.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
 <a class="toc-link lvl-2" href="#the-seven-states">The seven states</a>
@@ -121,6 +121,7 @@
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
 </div></details>
     <article class="prose">
 <p>A server is one game instance, running on one node, from one Game Spec. The spec
@@ -377,6 +378,21 @@ only when one is actually needed: a running server, plus either a changed launch
 variable or a settings change on a spec that does not hot-reload.</p>
 <p>There is no per-setting &quot;requires restart&quot; flag. If you author specs, that is
 worth knowing before you go looking for one.</p>
+<h2 id="deleting-a-server">Deleting a server <a class="hlink" href="#deleting-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Delete is in the drill-in, behind the typed confirmation. It removes the
+server&#39;s containers and its data directory — the world and the rendered config —
+on its node, releases the memory and ports it reserved, and deletes the record
+together with its schedules.</p>
+<p><strong>Backups are not deleted.</strong> The archives under the node&#39;s backup directory are
+keyed by server id and stay where they are; the confirmation says so. They are
+the part of a server most worth keeping, and a retire-and-revive model that makes
+use of them is tracked in <a href="https://github.com/briggleman/kraken/issues/360">#360</a>.</p>
+<p><strong>A node that is down does not block a delete.</strong> When the Panel cannot reach the
+node, or its Agent reports that the removal failed, the delete still goes
+through and the removal is remembered on the node. The node band reads
+<code>removals · 1 pending</code> until the Panel&#39;s node reconciler, which retries on every
+pass the node answers, has delivered it. <a href="/wiki/operate/fleet/">The fleet page</a>
+has the details.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -402,6 +418,7 @@ worth knowing before you go looking for one.</p>
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
 <a class="toc-link lvl-2" href="#settings-that-wait-for-a-restart">Settings that wait for a restart</a>
+<a class="toc-link lvl-2" href="#deleting-a-server">Deleting a server</a>
     </div>
   </aside>
 </div>

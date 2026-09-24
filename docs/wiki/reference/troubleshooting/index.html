@@ -261,8 +261,8 @@ it needed to keep restarting one.</p>
 <p><strong>Fix.</strong> Press <strong>retire</strong> beside the container&#39;s name on the node band (see
 <a href="/wiki/operate/fleet/">Retiring an untracked container</a>). The node stops and
 removes the container, the Agent forgets its spec, and nothing of the server&#39;s
-data or backups is touched — clear those by hand on the host if you no longer
-want them. From the API:</p>
+data or backups is touched — clear those by hand, on the host and the backup
+target, if you no longer want them. From the API:</p>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -X DELETE -H &quot;Authorization: Bearer $TOKEN&quot; \
   https://panel.example.com/api/v1/nodes/&lt;node-id&gt;/containers/&lt;server-id&gt;</code></pre></div>
 <p>It is no longer produced either. A delete that cannot reach the node is now
@@ -284,15 +284,23 @@ badge that persists that means something.</p>
 
 <h2 id="removals-n-pending-that-will-not-clear"><code>removals · N pending</code> that will not clear <a class="hlink" href="#removals-n-pending-that-will-not-clear" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The node answers but its Agent keeps failing the removal. Hover the line: the
-last error is verbatim. <code>docker: remove server …</code> means Docker would not remove
-the container (a daemon restarting underneath it, or on Windows a container
-still being torn down); <code>delete its data: …</code> means the containers are gone but
-the data directory could not be deleted, usually a file held open on a Windows
-host. The Panel keeps retrying either way; once the cause is gone, the next pass
+last error is verbatim, and both kinds begin <code>docker: remove server &lt;id&gt;:</code>.
+One that contains <strong><code>delete its data</code></strong> means the containers are gone but the
+data directory could not be deleted, usually a file held open on a Windows
+host. Anything else means Docker would not remove the container — a daemon
+restarting underneath it, or on Windows a container still being torn down. The
+Panel keeps retrying either way, backing off to an hour apart, and logs a
+warning only when the reason changes; once the cause is gone, the next retry
 clears it.</p>
-<p>A node that is gone for good never answers, so its removals stay pending.
-Deleting the node from the Panel drops them with the node record; whatever is
-left on that host is then yours to clear by hand.</p>
+<p><strong>A removal that will never land can be dismissed</strong> — a node that is gone for
+good, or a container you already cleared on the host:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>curl -X DELETE -H &quot;Authorization: Bearer $TOKEN&quot; \
+  https://panel.example.com/api/v1/nodes/&lt;node-id&gt;/removals/&lt;server-id&gt;</code></pre></div>
+<p>It needs <code>server.delete</code> and <code>node.manage</code>. Nothing is sent to the node, and the
+memory and ports the removal was holding are released — so if the container is
+in fact still running there, retire it or remove it on the host, or those ports
+can be handed to a new server while it still holds them. Deleting the node from
+the Panel drops its pending removals with the node record.</p>
 <h2 id="cloudflare-returns-400-the-ssl-certificate-error">Cloudflare returns 400 <code>The SSL certificate error</code> <a class="hlink" href="#cloudflare-returns-400-the-ssl-certificate-error" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> With Authenticated Origin Pulls enabled, every request through
 Cloudflare comes back <code>400</code> with a body reading <em>The SSL certificate error</em>. The

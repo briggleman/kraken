@@ -124,11 +124,17 @@ rather than the typed one, because it destroys nothing:
   was left behind;
 - the Agent forgets the server's persisted spec, so its watchdog never adopts
   the container again after an Agent restart;
-- the server's data directory and its backups stay exactly where they are.
+- the server's data directory stays exactly where it is, and its backups are
+  kept.
 
-It is refused with `409` if the Panel does have a server with that id on that
-node — use the server's own delete for that — and with `503 node_unreachable`
-if the node is not answering. A refusal lands on the band as `retire · <reason>`.
+It is refused with `409 server_tracked` if the Panel does have a server with
+that id on that node — use the server's own delete for that — and with
+`409 removal_pending` if a removal is already owed for that id (see below: that
+removal may delete the data, so a retire promising otherwise would be undone by
+the next retry). A node that is not answering is `503 node_unreachable`; one
+that answers but cannot remove the container is `500 node_error` with its
+reason. A refusal lands on the band as `retire · <reason>` and clears once the
+container is gone.
 
 The API is `DELETE /api/v1/nodes/{id}/containers/{serverID}`.
 
@@ -136,14 +142,21 @@ The API is `DELETE /api/v1/nodes/{id}/containers/{serverID}`.
 
 A delete no longer needs the node to be there. When the Panel cannot reach the
 node, or its Agent reports that the removal failed, the delete goes through
-anyway — row, schedules, reserved memory and ports — and the removal is
-remembered on the node together with what you asked for (container and data).
+anyway — row and schedules — and the removal is remembered on the node together
+with what you asked for (container and data). The server's **memory and ports
+stay allocated** on the node until the removal lands, because the container may
+still be running and bound; they are released when the node confirms.
 
-While it is owed, the band reads `removals · 1 pending`. Hover it for the server
-id, how many tries it has had and the last failure. The Panel's node reconciler
-retries every pending removal each time the node answers (every 20 seconds), and
-the line goes away when the Agent confirms. There is nothing to click: the Panel
-is already doing the only thing there is to do.
+While it is owed, the band reads `removals · 1 pending`, and the container, if
+it is still running, is counted there rather than as untracked. Hover it for the
+server id, how many tries it has had and the last failure. The Panel's node
+reconciler retries each pending removal while the node answers, backing off
+after each failure — 20 seconds, then 40, doubling up to an hour apart — and the
+line goes away when the Agent confirms. It never holds up the node health pass:
+a node whose removals hang does not delay any other node's status.
+
+If the Panel cannot record the removal at all (its database is failing), the
+delete is refused with a `500` and nothing is deleted.
 
 This is your delete, carried out late. The Agent never decides on its own that
 a container it finds should go: it adopts what it finds running, as it always

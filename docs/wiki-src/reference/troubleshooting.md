@@ -185,8 +185,8 @@ it needed to keep restarting one.
 **Fix.** Press **retire** beside the container's name on the node band (see
 [Retiring an untracked container](/wiki/operate/fleet/)). The node stops and
 removes the container, the Agent forgets its spec, and nothing of the server's
-data or backups is touched — clear those by hand on the host if you no longer
-want them. From the API:
+data or backups is touched — clear those by hand, on the host and the backup
+target, if you no longer want them. From the API:
 
 ```sh
 curl -X DELETE -H "Authorization: Bearer $TOKEN" \
@@ -211,16 +211,28 @@ badge that persists that means something.
 ## `removals · N pending` that will not clear
 
 The node answers but its Agent keeps failing the removal. Hover the line: the
-last error is verbatim. `docker: remove server …` means Docker would not remove
-the container (a daemon restarting underneath it, or on Windows a container
-still being torn down); `delete its data: …` means the containers are gone but
-the data directory could not be deleted, usually a file held open on a Windows
-host. The Panel keeps retrying either way; once the cause is gone, the next pass
+last error is verbatim, and both kinds begin `docker: remove server <id>:`.
+One that contains **`delete its data`** means the containers are gone but the
+data directory could not be deleted, usually a file held open on a Windows
+host. Anything else means Docker would not remove the container — a daemon
+restarting underneath it, or on Windows a container still being torn down. The
+Panel keeps retrying either way, backing off to an hour apart, and logs a
+warning only when the reason changes; once the cause is gone, the next retry
 clears it.
 
-A node that is gone for good never answers, so its removals stay pending.
-Deleting the node from the Panel drops them with the node record; whatever is
-left on that host is then yours to clear by hand.
+**A removal that will never land can be dismissed** — a node that is gone for
+good, or a container you already cleared on the host:
+
+```sh
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  https://panel.example.com/api/v1/nodes/<node-id>/removals/<server-id>
+```
+
+It needs `server.delete` and `node.manage`. Nothing is sent to the node, and the
+memory and ports the removal was holding are released — so if the container is
+in fact still running there, retire it or remove it on the host, or those ports
+can be handed to a new server while it still holds them. Deleting the node from
+the Panel drops its pending removals with the node record.
 
 ## Cloudflare returns 400 `The SSL certificate error`
 

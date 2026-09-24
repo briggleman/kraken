@@ -230,14 +230,18 @@ server's containers and its data directory — the world and the rendered config
 on its node, releases the memory and ports it reserved, and deletes the record
 together with its schedules.
 
-**Backups are not deleted.** The archives under the node's backup directory are
-keyed by server id and stay where they are; the confirmation says so. They are
-the part of a server most worth keeping, and a retire-and-revive model that makes
-use of them is tracked in [#360](https://github.com/briggleman/kraken/issues/360).
+**Backups are kept.** The archives are keyed by server id and stay wherever the
+node's backup target keeps them — the node, a share, a mirror; the confirmation
+says so. They are the part of a server most worth keeping, and a
+retire-and-revive model that makes use of them is tracked in
+[#360](https://github.com/briggleman/kraken/issues/360).
 
 **A node that is down does not block a delete.** When the Panel cannot reach the
 node, or its Agent reports that the removal failed, the delete still goes
-through and the removal is remembered on the node. The node band reads
-`removals · 1 pending` until the Panel's node reconciler, which retries on every
-pass the node answers, has delivered it. [The fleet page](/wiki/operate/fleet/)
-has the details.
+through and the removal is remembered on the node. Until it lands the node keeps
+the server's memory and ports allocated — the container may still be running and
+bound — and the band reads `removals · 1 pending`. The Panel's node reconciler
+retries it, backing off, until the node confirms; the allocation is released
+then. [The fleet page](/wiki/operate/fleet/) has the details. If the Panel
+cannot record the removal at all (its database is failing), the delete is
+refused with a `500` and nothing is deleted.

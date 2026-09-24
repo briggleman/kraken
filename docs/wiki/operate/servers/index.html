@@ -383,16 +383,20 @@ worth knowing before you go looking for one.</p>
 server&#39;s containers and its data directory — the world and the rendered config —
 on its node, releases the memory and ports it reserved, and deletes the record
 together with its schedules.</p>
-<p><strong>Backups are not deleted.</strong> The archives under the node&#39;s backup directory are
-keyed by server id and stay where they are; the confirmation says so. They are
-the part of a server most worth keeping, and a retire-and-revive model that makes
-use of them is tracked in <a href="https://github.com/briggleman/kraken/issues/360">#360</a>.</p>
+<p><strong>Backups are kept.</strong> The archives are keyed by server id and stay wherever the
+node&#39;s backup target keeps them — the node, a share, a mirror; the confirmation
+says so. They are the part of a server most worth keeping, and a
+retire-and-revive model that makes use of them is tracked in
+<a href="https://github.com/briggleman/kraken/issues/360">#360</a>.</p>
 <p><strong>A node that is down does not block a delete.</strong> When the Panel cannot reach the
 node, or its Agent reports that the removal failed, the delete still goes
-through and the removal is remembered on the node. The node band reads
-<code>removals · 1 pending</code> until the Panel&#39;s node reconciler, which retries on every
-pass the node answers, has delivered it. <a href="/wiki/operate/fleet/">The fleet page</a>
-has the details.</p>
+through and the removal is remembered on the node. Until it lands the node keeps
+the server&#39;s memory and ports allocated — the container may still be running and
+bound — and the band reads <code>removals · 1 pending</code>. The Panel&#39;s node reconciler
+retries it, backing off, until the node confirms; the allocation is released
+then. <a href="/wiki/operate/fleet/">The fleet page</a> has the details. If the Panel
+cannot record the removal at all (its database is failing), the delete is
+refused with a <code>500</code> and nothing is deleted.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">

@@ -372,6 +372,11 @@ export async function bootDeepLinks() {
 async function refreshDetail() {
   const id = depth.serverId;
   if (!id) return;
+  // The notice as it stood when the reads went out. The reads are slow (the
+  // file listing reaches the node) and a power refusal is fast (no node
+  // contact), so an action taken while they are in flight can put up its own
+  // notice first — and that one must survive this refresh finishing.
+  const noticeAtStart = depth.error;
   const results = await Promise.allSettled([
     api.getServer(id),
     api.listBackups(id),
@@ -409,7 +414,11 @@ async function refreshDetail() {
   const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
     | undefined;
-  depth.error = firstErr ? String(firstErr.reason?.message ?? firstErr.reason) : null;
+  // Only this refresh's own verdict is written, and only over the notice it
+  // started with: anything set since belongs to a later action.
+  if (depth.error === noticeAtStart) {
+    depth.error = firstErr ? String(firstErr.reason?.message ?? firstErr.reason) : null;
+  }
 }
 
 /** The fleet poll keeps the drilled server's state in sync (chip, controls,

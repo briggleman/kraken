@@ -1,8 +1,9 @@
 package api_test
 
 import (
-	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func TestPower_UpdatePassRecoversFromAFailedSteamCommit(t *testing.T) {
 			name:     "0x602 twice runs two and reports the second",
 			outcomes: []string{live0x602, "Error! App '4019830' state is 0x606 after update job."}, orphan: true,
 			passes: 2, state: "install_failed",
-			lastError: []string{"state is 0x606 (update started, paused before commit, fully installed, update required)", "one retry"},
+			lastError: []string{"state is 0x606 (update started, update paused, fully installed, update required)", "second pass after removing 1 orphaned staging file(s)"},
 		},
 		{
 			name:     "No subscription runs one",
@@ -50,19 +51,26 @@ func TestPower_UpdatePassRecoversFromAFailedSteamCommit(t *testing.T) {
 			name:     "0x602 with no orphans runs one",
 			outcomes: []string{live0x602},
 			passes:   1, state: "install_failed",
-			lastError: []string{"(update started, paused before commit, update required)", "no SteamCMD staging files"},
+			lastError: []string{"(update started, update paused, update required)", "no SteamCMD staging files"},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h, st := newTestServerStore(t)
 			token := login(t, h)
-			addr, rt := startFakeAgentRuntime(t, "node-x", agent.WithFakeInstallOutcomes(tc.outcomes...))
+			addr, rt := startFakeAgentRuntime(t, "node-x",
+				agent.WithFakeInstallOutcomes(tc.outcomes...), agent.WithFakeDataDir(t.TempDir()))
 			nodeID := registerNode(t, h, token, addr)
 			specID := createSpecWithInstall(t, h, token, "update-rf", map[string]any{"script": "steamcmd +app_update 4019830 validate +quit"})
 			sv := seedOfflineServer(t, st, "sv-rf", nodeID, specID, nil)
+			// The orphan goes on real disk: the fake runs the Agent's real
+			// scanner over its data dir.
+			orphan := filepath.Join(rt.DataDir(sv.ID), filepath.FromSlash(orphanPath))
 			if tc.orphan {
-				if err := rt.WriteFile(context.Background(), sv.ID, orphanPath, []byte("staged")); err != nil {
+				if err := os.MkdirAll(filepath.Dir(orphan), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(orphan, []byte("staged"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -77,9 +85,14 @@ func TestPower_UpdatePassRecoversFromAFailedSteamCommit(t *testing.T) {
 			if got := len(rt.InstallScripts(sv.ID)); got != tc.passes {
 				t.Errorf("install containers run: got %d, want %d", got, tc.passes)
 			}
-			if tc.orphan && tc.passes == 2 {
-				if _, err := rt.StatFile(context.Background(), sv.ID, orphanPath); err == nil {
+			if tc.orphan {
+				_, err := os.Stat(orphan)
+				switch {
+				case tc.passes == 2 && err == nil:
 					t.Error("the orphaned staging file is still in the tree")
+				case tc.passes == 1 && err != nil:
+					// A non-retryable failure never scans or deletes.
+					t.Errorf("the staging file was touched by a pass that must not scan: %v", err)
 				}
 			}
 			_, lastErr := serverRecord(t, h, token, sv.ID)

@@ -1,15 +1,20 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/pkg/stdcopy"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -38,10 +43,39 @@ type fakeOps struct {
 	waits     int
 
 	pending map[string]int // name → inspects left before it frees
+
+	lists    int        // ContainerList calls — one per guard run
+	creates  []string   // names passed to ContainerCreate, in order
+	passLogs [][]string // the output of each created container, in order
 }
 
 func (f *fakeOps) ContainerList(_ context.Context, _ container.ListOptions) ([]container.Summary, error) {
+	f.lists++
 	return f.list, f.listErr
+}
+
+// ContainerCreate records the name and hands out install-<n> ids; the n-th
+// created container's logs are passLogs[n-1].
+func (f *fakeOps) ContainerCreate(_ context.Context, _ *container.Config, _ *container.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, name string) (container.CreateResponse, error) {
+	f.creates = append(f.creates, name)
+	return container.CreateResponse{ID: fmt.Sprintf("install-%d", len(f.creates))}, nil
+}
+
+func (f *fakeOps) ContainerStart(context.Context, string, container.StartOptions) error { return nil }
+
+// ContainerLogs replays the pass's scripted output in Docker's multiplexed
+// stdout format, the way the daemon streams it.
+func (f *fakeOps) ContainerLogs(_ context.Context, id string, _ container.LogsOptions) (io.ReadCloser, error) {
+	var n int
+	_, _ = fmt.Sscanf(id, "install-%d", &n)
+	var buf bytes.Buffer
+	w := stdcopy.NewStdWriter(&buf, stdcopy.Stdout)
+	if n >= 1 && n <= len(f.passLogs) {
+		for _, line := range f.passLogs[n-1] {
+			_, _ = w.Write([]byte(line + "\n"))
+		}
+	}
+	return io.NopCloser(&buf), nil
 }
 
 func (f *fakeOps) ContainerInspect(_ context.Context, name string) (container.InspectResponse, error) {

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // A SteamCMD update that downloads fine can still fail at the very end. Steam
@@ -47,10 +49,15 @@ import (
 var steamStateRE = regexp.MustCompile(`(?i)state is (?:is )?(0x[0-9a-f]+) after update job`)
 
 // steamFailureRetryable reports whether a SteamCMD failure line is one a second
-// pass can fix once the tree is cleaned up: the "state is 0x… after update job"
-// family. The rest — No subscription, Not for anonymous, a failed branch
-// password, an invalid platform, a full disk — fail identically on a retry, and
-// a retry there only doubles the install time.
+// pass could fix once the tree is cleaned up: the "state is 0x… after update
+// job" family. The rest — No subscription, Not for anonymous, a failed branch
+// password, an invalid platform, the phrase-form "Disk write failure" — fail
+// identically on a retry.
+//
+// Retryable by phrase is not the same as retried. A state line also covers the
+// disk-space and disk-write shapes (0x202, 0x606), where a second pass would
+// fail the same way; what stops a wasted retry there is the orphan gate — the
+// pass reruns only when an orphaned staging file was actually removed.
 func steamFailureRetryable(line string) bool {
 	return steamStateRE.MatchString(line)
 }
@@ -73,7 +80,7 @@ var steamStateBits = []struct {
 	{0x1000, "backup running"},
 	{0x800, "uninstalling"},
 	{0x400, "update started"},
-	{0x200, "paused before commit"},
+	{0x200, "update paused"},
 	{0x100, "update running"},
 	{0x80, "files corrupt"},
 	{0x40, "app running"},
@@ -86,7 +93,7 @@ var steamStateBits = []struct {
 }
 
 // decodeSteamState renders an EAppState value in English, e.g. 0x602 →
-// "update started, paused before commit, update required". Bits Steam does not
+// "update started, update paused, update required". Bits Steam does not
 // document are rendered together as hex rather than dropped, so nothing the
 // operator might need to search for disappears.
 func decodeSteamState(s uint32) string {
@@ -107,21 +114,60 @@ func decodeSteamState(s uint32) string {
 	return strings.Join(parts, ", ")
 }
 
+// steamState extracts the hex state and its value from a failure line.
+func steamState(line string) (hex string, v uint32, ok bool) {
+	m := steamStateRE.FindStringSubmatch(line)
+	if m == nil {
+		return "", 0, false
+	}
+	n, err := strconv.ParseUint(m[1][2:], 16, 32)
+	if err != nil {
+		return "", 0, false
+	}
+	return m[1], uint32(n), true
+}
+
 // describeSteamFailure returns the SteamCMD failure line with its state decoded
-// in place, e.g. "Error! App '4019830' state is 0x602 (update started, paused
-// before commit, update required) after update job." A line without a state is
+// in place, e.g. "Error! App '4019830' state is 0x602 (update started, update
+// paused, update required) after update job." A line without a state is
 // returned unchanged.
 func describeSteamFailure(line string) string {
 	loc := steamStateRE.FindStringSubmatchIndex(line)
 	if loc == nil {
 		return line
 	}
-	hex := line[loc[2]:loc[3]]
-	v, err := strconv.ParseUint(hex[2:], 16, 32)
-	if err != nil {
+	_, v, ok := steamState(line)
+	if !ok {
 		return line
 	}
-	return line[:loc[3]] + " (" + decodeSteamState(uint32(v)) + ")" + line[loc[3]:]
+	return line[:loc[3]] + " (" + decodeSteamState(v) + ")" + line[loc[3]:]
+}
+
+// stateSummary is a failure line's state in short, for the retry's message:
+// "state 0x602 = update started, update paused, update required".
+func stateSummary(line string) string {
+	hex, v, ok := steamState(line)
+	if !ok {
+		return sentence(line)
+	}
+	return "state " + hex + " = " + decodeSteamState(v)
+}
+
+// sentence trims the trailing period SteamCMD ends its lines with, so the
+// failure message can be joined into one sentence.
+func sentence(s string) string {
+	return strings.TrimRight(strings.TrimSpace(s), ".")
+}
+
+// joinClauses joins the non-empty parts of a failure message with "; ".
+func joinClauses(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 // stagingNameRE matches a SteamCMD staging file name. The prefix is greedy, so
@@ -157,10 +203,25 @@ func (s stagingFile) orphan() bool { return !s.TargetExists }
 // it, with whether its target exists. It never goes through a container, and
 // it is error-tolerant: an unreadable directory is skipped, not fatal — a scan
 // that finds less is still worth reporting.
+//
+// A target counts as missing only when the filesystem says it does not exist.
+// A permission or I/O error on it is not proof of absence, and deleting a
+// `.TMP` whose target is merely unreadable could throw away the only good copy.
+// The Agent's own restore scratch (`.kraken-restore-*`, `*.kraken-aside-*`) is
+// skipped, as the backup walk skips it.
 func scanStagingFiles(root string) []stagingFile {
 	var out []stagingFile
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
+		if err != nil {
+			return nil
+		}
+		if p != root && isRestoreScratch(d.Name()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
 			return nil
 		}
 		target, ok := stagingTarget(d.Name())
@@ -175,25 +236,29 @@ func scanStagingFiles(root string) []stagingFile {
 		out = append(out, stagingFile{
 			Rel:          filepath.ToSlash(rel),
 			Target:       path.Join(path.Dir(filepath.ToSlash(rel)), target),
-			TargetExists: terr == nil,
+			TargetExists: !errors.Is(terr, fs.ErrNotExist),
 		})
 		return nil
 	})
 	return out
 }
 
-// stagingTree is where the recovery finds and clears staging files: the host
-// data dir for the Docker runtime, the in-memory tree for the fake.
+// stagingTree is where the recovery finds and clears staging files.
 type stagingTree interface {
 	scan() []stagingFile
 	remove(stagingFile) error
 }
 
 // hostStagingTree is a server's data dir as the Agent sees it (localDir — never
-// the daemon's bindSource view).
+// the daemon's bindSource view). The fake runtime uses it too, over a temp dir.
 type hostStagingTree struct{ root string }
 
-func (h hostStagingTree) scan() []stagingFile { return scanStagingFiles(h.root) }
+func (h hostStagingTree) scan() []stagingFile {
+	if h.root == "" {
+		return nil
+	}
+	return scanStagingFiles(h.root)
+}
 
 func (h hostStagingTree) remove(s stagingFile) error {
 	return os.Remove(filepath.Join(h.root, filepath.FromSlash(s.Rel)))
@@ -224,8 +289,14 @@ func isFileLocked(err error) bool {
 type orphanCleanup struct {
 	removed  []stagingFile
 	locked   []stagingFile
-	failed   []string // "<file>: <error>" for a removal that failed for another reason
+	failed   []orphanFailure
 	inFlight []stagingFile
+}
+
+// orphanFailure is an orphan whose removal failed for a reason other than a lock.
+type orphanFailure struct {
+	file stagingFile
+	err  error
 }
 
 // clearOrphans deletes every orphaned staging file and leaves the rest alone.
@@ -242,24 +313,25 @@ func clearOrphans(found []stagingFile, remove func(stagingFile) error) orphanCle
 		case isFileLocked(err):
 			c.locked = append(c.locked, s)
 		default:
-			c.failed = append(c.failed, fmt.Sprintf("could not remove orphaned staging file %s (target %s missing): %v", s.Rel, s.Target, err))
+			c.failed = append(c.failed, orphanFailure{file: s, err: err})
 		}
 	}
 	return c
 }
 
-// maxNamedStagingFiles caps how many staging files one message names; a big
-// update can leave many, and last_error is read in a table cell.
+// maxNamedStagingFiles caps how many staging files one message names per
+// category; a big update can leave many, and last_error is read in a table
+// cell.
 const maxNamedStagingFiles = 5
 
-func nameStaging(files []stagingFile, each func(stagingFile) string) []string {
+func nameCapped[T any](items []T, each func(T) string) []string {
 	var out []string
-	for i, s := range files {
+	for i, it := range items {
 		if i == maxNamedStagingFiles {
-			out = append(out, fmt.Sprintf("and %d more", len(files)-i))
+			out = append(out, fmt.Sprintf("and %d more", len(items)-i))
 			break
 		}
-		out = append(out, each(s))
+		out = append(out, each(it))
 	}
 	return out
 }
@@ -267,13 +339,15 @@ func nameStaging(files []stagingFile, each func(stagingFile) string) []string {
 // describe renders the cleanup for the failure message.
 func (c orphanCleanup) describe() string {
 	var parts []string
-	parts = append(parts, nameStaging(c.removed, func(s stagingFile) string {
+	parts = append(parts, nameCapped(c.removed, func(s stagingFile) string {
 		return "removed orphaned staging file " + s.Rel + " (its target " + s.Target + " was missing)"
 	})...)
-	parts = append(parts, nameStaging(c.locked, func(s stagingFile) string {
+	parts = append(parts, nameCapped(c.locked, func(s stagingFile) string {
 		return "orphaned staging file " + s.Rel + " (target " + s.Target + " missing) is still locked — a container may be holding it"
 	})...)
-	parts = append(parts, c.failed...)
+	parts = append(parts, nameCapped(c.failed, func(f orphanFailure) string {
+		return fmt.Sprintf("could not remove orphaned staging file %s (target %s missing): %v", f.file.Rel, f.file.Target, f.err)
+	})...)
 	parts = append(parts, describeInFlight(c.inFlight)...)
 	if len(parts) == 0 {
 		return "no SteamCMD staging files (*~RF*.TMP) in the data dir"
@@ -282,35 +356,75 @@ func (c orphanCleanup) describe() string {
 }
 
 func describeInFlight(files []stagingFile) []string {
-	return nameStaging(files, func(s stagingFile) string {
+	return nameCapped(files, func(s stagingFile) string {
 		return "in-flight staging file " + s.Rel + " (target present) — not touched"
 	})
 }
 
 // describeLeftovers renders a report-only scan taken after the retry failed.
-func describeLeftovers(found []stagingFile) string {
-	var orphans, inFlight []stagingFile
+// An orphan the first cleanup had removed that is there again came back on the
+// second pass — the commit failed the same way, so something still holds the
+// data dir. Any other orphan is new, and is only reported.
+func describeLeftovers(found []stagingFile, removed []stagingFile) string {
+	cleared := make(map[string]bool, len(removed))
+	for _, s := range removed {
+		cleared[s.Rel] = true
+	}
+	var back, fresh, inFlight []stagingFile
 	for _, s := range found {
-		if s.orphan() {
-			orphans = append(orphans, s)
-		} else {
+		switch {
+		case !s.orphan():
 			inFlight = append(inFlight, s)
+		case cleared[s.Rel]:
+			back = append(back, s)
+		default:
+			fresh = append(fresh, s)
 		}
 	}
-	parts := nameStaging(orphans, func(s stagingFile) string {
-		return "orphaned staging file " + s.Rel + " (target " + s.Target + " missing) is back after the retry — something still holds the data dir"
+	parts := nameCapped(back, func(s stagingFile) string {
+		return "orphaned staging file " + s.Rel + " came back on the second pass — something still holds the data dir"
 	})
+	parts = append(parts, nameCapped(fresh, func(s stagingFile) string {
+		return "orphaned staging file " + s.Rel + " (target " + s.Target + " missing) — left in place"
+	})...)
 	parts = append(parts, describeInFlight(inFlight)...)
 	return strings.Join(parts, "; ")
 }
 
-// retryFits is the budget gate for the one retry. The second pass runs only
-// when the caller set a deadline and the time left before it is at least as
-// long as the first pass took — on a 30 GB tree a retry that cannot finish
-// turns a recoverable failure into "install stream interrupted", which is
-// worse. No deadline means no way to know, and no retry.
-func retryFits(deadline time.Time, hasDeadline bool, now time.Time, firstPass time.Duration) bool {
-	return hasDeadline && deadline.Sub(now) >= firstPass
+// The budget gate's headroom. After the install stream ends the Panel still
+// re-renders the config and starts the server on the same 30-minute context,
+// so a retry must leave room for that as well as for a second pass that may
+// run a little slower than the first.
+const (
+	// retryPassFactorPct is the second pass's expected length as a percentage
+	// of the first's.
+	retryPassFactorPct = 125
+	// retryReserve is what is kept back for the Panel's config apply and start
+	// after the install stream.
+	retryReserve = 2 * time.Minute
+)
+
+// retryFits is the budget gate for the one retry: the second pass runs only
+// when the caller set a deadline and the time left before it covers
+// firstPass × 1.25 plus retryReserve. On a 30 GB tree a retry that cannot
+// finish turns a recoverable failure into "install stream interrupted", which
+// is worse than not retrying.
+func retryFits(deadline time.Time, now time.Time, firstPass time.Duration) bool {
+	need := firstPass*retryPassFactorPct/100 + retryReserve
+	return deadline.Sub(now) >= need
+}
+
+// steamGuardEnv is the install env var the Panel sets to a one-time Steam
+// Guard code (steamInstallEnv in the Panel's handlers_server.go).
+const steamGuardEnv = "STEAM_GUARD"
+
+// noRetryReason says why an install request must never be retried
+// automatically, or "" when it may be.
+func noRetryReason(req *agentpb.InstallServerRequest) string {
+	if req.GetEnv()[steamGuardEnv] != "" {
+		return "this install used a one-time Steam Guard code, which a second pass cannot replay"
+	}
+	return ""
 }
 
 // installPass runs one install container to completion. steamErr is the
@@ -324,17 +438,22 @@ type installPass func(ctx context.Context) (steamErr string, err error)
 // orphaned staging files from tree and runs it once more if the budget allows.
 // It returns the failure message to report ("" for success); err passes a
 // pass's own failure straight through. note receives the install-console lines.
-func runInstallWithRecovery(ctx context.Context, pass installPass, tree stagingTree, note func(string), now func() time.Time) (failure string, err error) {
+//
+// noRetry, when set, is why a second pass must not run at all — an install
+// that authenticated with a one-time Steam Guard code cannot replay it, and a
+// second pass would fail on the login and bury the first pass's report. The
+// orphans are still cleared, so the next install starts clean.
+func runInstallWithRecovery(ctx context.Context, pass installPass, tree stagingTree, note func(string), now func() time.Time, noRetry string) (failure string, err error) {
 	started := now()
 	steamErr, err := pass(ctx)
 	if err != nil || steamErr == "" {
 		return "", err
 	}
 	firstPass := now().Sub(started)
-	msg := describeSteamFailure(steamErr)
 	if !steamFailureRetryable(steamErr) {
-		return msg, nil
+		return describeSteamFailure(steamErr), nil
 	}
+	msg := sentence(describeSteamFailure(steamErr))
 
 	cleanup := clearOrphans(tree.scan(), tree.remove)
 	for _, s := range cleanup.removed {
@@ -344,34 +463,41 @@ func runInstallWithRecovery(ctx context.Context, pass installPass, tree stagingT
 		note("[kraken] orphaned SteamCMD staging file " + s.Rel + " is still locked and could not be removed — a container may be holding the data dir")
 	}
 	report := cleanup.describe()
-	if len(cleanup.removed) == 0 {
+	deadline, hasDeadline := ctx.Deadline()
+	switch {
+	case len(cleanup.removed) == 0:
 		// Nothing changed on disk, so a second pass would be byte-identical to
 		// the first. Report what was found instead.
-		return msg + "; " + report, nil
-	}
-	deadline, hasDeadline := ctx.Deadline()
-	if !retryFits(deadline, hasDeadline, now(), firstPass) {
-		return msg + "; " + report + fmt.Sprintf("; not enough time left for a second pass (the first took %s) — run the install again", firstPass.Round(time.Second)), nil
+		return joinClauses(msg, report), nil
+	case len(cleanup.locked) > 0:
+		// A lock means something still holds the data dir: the retry would
+		// fail the same way, at twice the cost.
+		return joinClauses(msg, report, "no automatic retry while a staging file is locked — stop whatever holds the data dir, then run the install again"), nil
+	case noRetry != "":
+		return joinClauses(msg, report, noRetry+", so no automatic retry — run the install again"), nil
+	case !hasDeadline:
+		return joinClauses(msg, report, "no deadline on this install, so no automatic retry — run the install again"), nil
+	case !retryFits(deadline, now(), firstPass):
+		return joinClauses(msg, report, fmt.Sprintf("not enough time left for a second pass (the first took %s) — run the install again", firstPass.Round(time.Second))), nil
 	}
 
 	note(fmt.Sprintf("[kraken] retrying the install pass once, now that %d orphaned staging file(s) are cleared", len(cleanup.removed)))
 	first := steamErr
 	steamErr, err = pass(ctx)
-	if err != nil || steamErr == "" {
+	if err != nil {
 		return "", err
 	}
-	out := describeSteamFailure(steamErr) + "; this was the one retry — the first pass failed with " + steamStateOnly(first) + ", then " + report
-	if left := describeLeftovers(tree.scan()); left != "" {
-		out += "; " + left
+	names := strings.Join(nameCapped(cleanup.removed, func(s stagingFile) string { return s.Rel }), ", ")
+	if steamErr == "" {
+		// The only other record of what was removed is the line before the
+		// second pass, which a long pass can scroll out of the install buffer.
+		// Say it again, last.
+		note(fmt.Sprintf("[kraken] recovered: removed %d orphaned staging file(s) before this pass: %s", len(cleanup.removed), names))
+		return "", nil
 	}
-	return out, nil
-}
-
-// steamStateOnly shortens a first-pass failure line to its "state is 0x…"
-// phrase for the retry's message, which already carries the full second line.
-func steamStateOnly(line string) string {
-	if m := steamStateRE.FindString(line); m != "" {
-		return strings.TrimSuffix(m, " after update job")
-	}
-	return line
+	return joinClauses(
+		sentence(describeSteamFailure(steamErr)),
+		fmt.Sprintf("second pass after removing %d orphaned staging file(s) (first pass: %s): %s", len(cleanup.removed), stateSummary(first), names),
+		describeLeftovers(tree.scan(), cleanup.removed),
+	), nil
 }

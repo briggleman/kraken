@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -60,6 +61,9 @@ type FakeRuntime struct {
 	// installOutcomes scripts the SteamCMD verdict of each install pass, per
 	// server, in order (see WithFakeInstallOutcomes).
 	installOutcomes []string
+	// dataDir, when set, is a real directory holding a subdirectory per
+	// server that the orphan recovery scans (see WithFakeDataDir).
+	dataDir string
 	// powerErrs makes the named power actions fail instead of running (see
 	// WithFakePowerFailure). The recorded state is left alone, the way it is on
 	// a node the Panel cannot reach: the container goes on doing what it was.
@@ -117,6 +121,13 @@ func WithFakeInstallFailure(reason string) FakeOption {
 // `…~RF<hex>.TMP` in the tree is cleared and retried exactly as on a node.
 func WithFakeInstallOutcomes(lines ...string) FakeOption {
 	return func(f *FakeRuntime) { f.installOutcomes = append([]string(nil), lines...) }
+}
+
+// WithFakeDataDir gives the fake a real directory — a test's t.TempDir() — to
+// run the orphan recovery's scanner over: server id's data is dir/<id> (see
+// DataDir). The in-memory Files tree is separate and unaffected.
+func WithFakeDataDir(dir string) FakeOption {
+	return func(f *FakeRuntime) { f.dataDir = dir }
 }
 
 // WithFakePowerFailure makes the given power action fail with
@@ -676,9 +687,10 @@ var errFakePassReported = errors.New("fake: install pass failure already reporte
 
 // Install runs through the same recovery as the Docker runtime
 // (runInstallWithRecovery): each pass is simulated by installPass, and the
-// staging-file scan and cleanup run over the fake's in-memory file tree — so a
-// test seeds an orphaned `…~RF<hex>.TMP` with WriteFile and scripts the passes'
-// SteamCMD verdicts with WithFakeInstallOutcomes.
+// real staging-file scanner and cleanup run over the fake's on-disk data dir
+// (WithFakeDataDir) — so a test seeds an orphaned `…~RF<hex>.TMP` under
+// DataDir(id) and scripts the passes' SteamCMD verdicts with
+// WithFakeInstallOutcomes. Without a data dir there is nothing to scan.
 func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerRequest, emit func(*agentpb.InstallEvent) error) error {
 	// The same gate as the Docker runtime: a START/RESTART arriving while the
 	// pass runs is refused (installgate.go).
@@ -691,7 +703,7 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	failure, err := runInstallWithRecovery(ctx, func(ctx context.Context) (string, error) {
 		passes++
 		return f.installPass(ctx, req, passes == 1, emit)
-	}, fakeStagingTree{f: f, serverID: req.ServerId}, func(line string) { _ = emit(logLine(line)) }, time.Now)
+	}, hostStagingTree{root: f.DataDir(req.ServerId)}, func(line string) { _ = emit(logLine(line)) }, time.Now, noRetryReason(req))
 	switch {
 	case errors.Is(err, errFakePassReported):
 		return nil
@@ -786,44 +798,14 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 	return steamErr, nil
 }
 
-// fakeStagingTree is the fake's in-memory file tree seen as a stagingTree, so
-// the orphan recovery runs over the files a test (or the Files tab on the
-// fake-live stack) put there.
-type fakeStagingTree struct {
-	f        *FakeRuntime
-	serverID string
-}
-
-func (t fakeStagingTree) scan() []stagingFile {
-	t.f.mu.Lock()
-	defer t.f.mu.Unlock()
-	tree := t.f.tree(t.serverID)
-	var out []stagingFile
-	for p, e := range tree {
-		if e.entry.IsDir {
-			continue
-		}
-		target, ok := stagingTarget(path.Base(p))
-		if !ok {
-			continue
-		}
-		targetPath := path.Join(path.Dir(p), target)
-		_, exists := tree[targetPath]
-		out = append(out, stagingFile{
-			Rel:          strings.TrimPrefix(p, fakeDataRoot+"/"),
-			Target:       strings.TrimPrefix(targetPath, fakeDataRoot+"/"),
-			TargetExists: exists,
-		})
+// DataDir is the real on-disk directory the orphan recovery scans for
+// serverID, when the fake was built WithFakeDataDir ("" otherwise). A test
+// seeds staging files there; the fake runs the real scanner over it.
+func (f *FakeRuntime) DataDir(serverID string) string {
+	if f.dataDir == "" {
+		return ""
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Rel < out[j].Rel })
-	return out
-}
-
-func (t fakeStagingTree) remove(s stagingFile) error {
-	t.f.mu.Lock()
-	defer t.f.mu.Unlock()
-	delete(t.f.tree(t.serverID), fakeDataRoot+"/"+s.Rel)
-	return nil
+	return filepath.Join(f.dataDir, serverID)
 }
 
 func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.PowerAction) (agentpb.ServerState, error) {

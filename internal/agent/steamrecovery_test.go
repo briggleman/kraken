@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 )
 
 // The live line (dragonwilds-01, 2026-09-15..18).
@@ -53,8 +51,8 @@ func TestDecodeSteamState(t *testing.T) {
 	cases := map[uint32]string{
 		0x0:    "invalid",
 		0x6:    "fully installed, update required",
-		0x602:  "update started, paused before commit, update required",
-		0x606:  "update started, paused before commit, fully installed, update required",
+		0x602:  "update started, update paused, update required",
+		0x606:  "update started, update paused, fully installed, update required",
 		0x4:    "fully installed",
 		0x2000: "unknown bits 0x2000",
 		0x2002: "update required, unknown bits 0x2000",
@@ -69,7 +67,7 @@ func TestDecodeSteamState(t *testing.T) {
 
 func TestDescribeSteamFailure(t *testing.T) {
 	cases := map[string]string{
-		live0x602: "Error! App '4019830' state is 0x602 (update started, paused before commit, update required) after update job.",
+		live0x602: "Error! App '4019830' state is 0x602 (update started, update paused, update required) after update job.",
 		"Error! App '4019830' state is is 0x6 after update job.": "Error! App '4019830' state is is 0x6 (fully installed, update required) after update job.",
 		"ERROR! Failed to install app '740' (No subscription)":   "ERROR! Failed to install app '740' (No subscription)",
 	}
@@ -232,218 +230,5 @@ func TestHostStagingTree_LockedFileIsReportedLocked(t *testing.T) {
 	c := clearOrphans([]stagingFile{{Rel: rel, Target: "x.exe"}}, hostStagingTree{root: root}.remove)
 	if len(c.locked) != 1 {
 		t.Fatalf("a held file should be reported locked; got %+v", c)
-	}
-}
-
-func TestRetryFits(t *testing.T) {
-	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	cases := []struct {
-		name        string
-		deadline    time.Time
-		hasDeadline bool
-		first       time.Duration
-		want        bool
-	}{
-		{"no deadline", time.Time{}, false, time.Minute, false},
-		{"plenty left", now.Add(28 * time.Minute), true, 2 * time.Minute, true},
-		{"exactly enough", now.Add(10 * time.Minute), true, 10 * time.Minute, true},
-		{"not enough", now.Add(9 * time.Minute), true, 10 * time.Minute, false},
-		{"already past", now.Add(-time.Minute), true, time.Second, false},
-	}
-	for _, tc := range cases {
-		if got := retryFits(tc.deadline, tc.hasDeadline, now, tc.first); got != tc.want {
-			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-// memTree is a stagingTree in memory.
-type memTree struct {
-	files     []stagingFile
-	lockedRel map[string]bool
-	scans     int
-}
-
-func (m *memTree) scan() []stagingFile {
-	m.scans++
-	return append([]stagingFile(nil), m.files...)
-}
-
-func (m *memTree) remove(s stagingFile) error {
-	if m.lockedRel[s.Rel] {
-		return lockedErr()
-	}
-	for i, f := range m.files {
-		if f.Rel == s.Rel {
-			m.files = append(m.files[:i], m.files[i+1:]...)
-			break
-		}
-	}
-	return nil
-}
-
-// recoveryRun drives runInstallWithRecovery with scripted passes. Each pass
-// takes passTook on a fake clock that runs alongside the real one, so a real
-// context deadline can be measured against it.
-type recoveryRun struct {
-	verdicts []string
-	passes   int
-	passTook time.Duration
-	offset   time.Duration
-	notes    []string
-}
-
-func (r *recoveryRun) now() time.Time { return time.Now().Add(r.offset) }
-
-func (r *recoveryRun) pass(context.Context) (string, error) {
-	i := r.passes
-	r.passes++
-	r.offset += r.passTook
-	if i < len(r.verdicts) {
-		return r.verdicts[i], nil
-	}
-	return "", nil
-}
-
-func (r *recoveryRun) run(ctx context.Context, tree stagingTree) (string, error) {
-	return runInstallWithRecovery(ctx, r.pass, tree, func(s string) { r.notes = append(r.notes, s) }, r.now)
-}
-
-func deadlineCtx(t *testing.T, d time.Duration) context.Context {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), d)
-	t.Cleanup(cancel)
-	return ctx
-}
-
-func liveOrphan() *memTree {
-	return &memTree{files: []stagingFile{{
-		Rel:    "RSDragonwilds/Binaries/Win64/RSDragonwildsServer-Win64-Shipping.exe~RF1561a.TMP",
-		Target: "RSDragonwilds/Binaries/Win64/RSDragonwildsServer-Win64-Shipping.exe",
-	}}}
-}
-
-func TestRecovery_OrphanClearedThenRetrySucceeds(t *testing.T) {
-	r := &recoveryRun{verdicts: []string{live0x602}, passTook: time.Minute}
-	tree := liveOrphan()
-	failure, err := r.run(deadlineCtx(t, 30*time.Minute), tree)
-	if err != nil || failure != "" {
-		t.Fatalf("want success after the retry, got failure=%q err=%v", failure, err)
-	}
-	if r.passes != 2 {
-		t.Fatalf("want exactly two passes, got %d", r.passes)
-	}
-	if len(tree.files) != 0 {
-		t.Error("the orphan was not deleted")
-	}
-	joined := strings.Join(r.notes, "\n")
-	for _, want := range []string{"[kraken] removed orphaned SteamCMD staging file", "RSDragonwildsServer-Win64-Shipping.exe~RF1561a.TMP", "retrying the install pass once"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("console should say %q; got\n%s", want, joined)
-		}
-	}
-}
-
-func TestRecovery_RetryFailsTooReportsTheSecondPass(t *testing.T) {
-	second := "Error! App '4019830' state is 0x606 after update job."
-	r := &recoveryRun{verdicts: []string{live0x602, second}, passTook: time.Minute}
-	failure, err := r.run(deadlineCtx(t, 30*time.Minute), liveOrphan())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.passes != 2 {
-		t.Fatalf("want exactly two passes, got %d", r.passes)
-	}
-	if !strings.HasPrefix(failure, describeSteamFailure(second)) {
-		t.Errorf("the message should lead with the second pass's decoded line; got %q", failure)
-	}
-	if !strings.Contains(failure, "one retry") || !strings.Contains(failure, "state is 0x602") || !strings.Contains(failure, "removed orphaned staging file") {
-		t.Errorf("the message should say it retried, after what; got %q", failure)
-	}
-}
-
-func TestRecovery_NonRetryableRunsOnce(t *testing.T) {
-	line := "ERROR! Failed to install app '740' (No subscription)"
-	r := &recoveryRun{verdicts: []string{line}}
-	tree := liveOrphan()
-	failure, err := r.run(deadlineCtx(t, 30*time.Minute), tree)
-	if err != nil || failure != line {
-		t.Fatalf("want the line unchanged, got %q (err %v)", failure, err)
-	}
-	if r.passes != 1 || tree.scans != 0 || len(tree.files) != 1 {
-		t.Errorf("a non-retryable failure must not scan, delete or retry: passes=%d scans=%d", r.passes, tree.scans)
-	}
-}
-
-func TestRecovery_NoOrphansRunsOnce(t *testing.T) {
-	r := &recoveryRun{verdicts: []string{live0x602}}
-	failure, err := r.run(deadlineCtx(t, 30*time.Minute), &memTree{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.passes != 1 {
-		t.Fatalf("nothing changed on disk, so no retry; got %d passes", r.passes)
-	}
-	if !strings.Contains(failure, "(update started, paused before commit, update required)") || !strings.Contains(failure, "no SteamCMD staging files") {
-		t.Errorf("want the decoded state and the empty scan; got %q", failure)
-	}
-}
-
-func TestRecovery_InFlightOnlyIsReportedNotTouched(t *testing.T) {
-	r := &recoveryRun{verdicts: []string{live0x602}}
-	tree := &memTree{files: []stagingFile{{Rel: "a.pak~RF1.TMP", Target: "a.pak", TargetExists: true}}}
-	failure, _ := r.run(deadlineCtx(t, 30*time.Minute), tree)
-	if r.passes != 1 || len(tree.files) != 1 {
-		t.Fatalf("an in-flight file is not an orphan: passes=%d files=%v", r.passes, tree.files)
-	}
-	if !strings.Contains(failure, "in-flight staging file a.pak~RF1.TMP (target present) — not touched") {
-		t.Errorf("got %q", failure)
-	}
-}
-
-func TestRecovery_LockedOrphanIsReportedAndNotRetried(t *testing.T) {
-	r := &recoveryRun{verdicts: []string{live0x602}}
-	tree := liveOrphan()
-	tree.lockedRel = map[string]bool{tree.files[0].Rel: true}
-	failure, _ := r.run(deadlineCtx(t, 30*time.Minute), tree)
-	if r.passes != 1 {
-		t.Fatalf("nothing was removed, so no retry; got %d passes", r.passes)
-	}
-	if !strings.Contains(failure, "is still locked — a container may be holding it") {
-		t.Errorf("got %q", failure)
-	}
-}
-
-func TestRecovery_NoBudgetClearsButDoesNotRetry(t *testing.T) {
-	// The first pass took 20 minutes of a 30-minute deadline: a second would
-	// not finish, and would turn this into "install stream interrupted".
-	r := &recoveryRun{verdicts: []string{live0x602}, passTook: 20 * time.Minute}
-	tree := liveOrphan()
-	failure, _ := r.run(deadlineCtx(t, 30*time.Minute), tree)
-	if r.passes != 1 {
-		t.Fatalf("no budget for a retry; got %d passes", r.passes)
-	}
-	if len(tree.files) != 0 {
-		t.Error("the orphan should still be cleared, so the next install can succeed")
-	}
-	if !strings.Contains(failure, "removed orphaned staging file") || !strings.Contains(failure, "run the install again") {
-		t.Errorf("got %q", failure)
-	}
-}
-
-func TestRecovery_NoDeadlineDoesNotRetry(t *testing.T) {
-	r := &recoveryRun{verdicts: []string{live0x602}}
-	failure, _ := r.run(context.Background(), liveOrphan())
-	if r.passes != 1 || !strings.Contains(failure, "run the install again") {
-		t.Fatalf("no deadline, no retry: passes=%d failure=%q", r.passes, failure)
-	}
-}
-
-func TestRecovery_PassErrorPassesThrough(t *testing.T) {
-	boom := errors.New("install exited with code 1")
-	tree := &memTree{}
-	failure, err := runInstallWithRecovery(context.Background(), func(context.Context) (string, error) { return "", boom }, tree, func(string) {}, time.Now)
-	if !errors.Is(err, boom) || failure != "" || tree.scans != 0 {
-		t.Fatalf("got failure=%q err=%v scans=%d", failure, err, tree.scans)
 	}
 }

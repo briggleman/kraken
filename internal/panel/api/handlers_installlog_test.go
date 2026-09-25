@@ -258,7 +258,7 @@ func TestInstallLog_PreviousAttemptSurvivesAReinstall(t *testing.T) {
 		t.Errorf("current attempt started %d, before the previous finished %d", second.StartedMs, first.FinishedMs)
 	}
 	if got := completionLine(second.Lines); !strings.HasSuffix(got, "; no container exists until you start it") {
-		t.Errorf("a reinstall's completion line must say the node has no container until START; got %q", got)
+		t.Errorf("a reinstall's completion line must say no container exists until you start it; got %q", got)
 	}
 }
 

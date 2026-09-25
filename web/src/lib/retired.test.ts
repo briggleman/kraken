@@ -382,6 +382,40 @@ describe("the group's head note", () => {
     expect(retired.noteFailed).toBe(false);
   });
 
+  it("does not let a late answer from the last session let go of this session's delete", async () => {
+    fleet.servers = [server("a")];
+    let oldAnswer: (v: unknown) => void = () => {};
+    deleteServer.mockReturnValueOnce(new Promise((r) => (oldAnswer = r)));
+    const old = purge("a");
+    resetRetired(); // a logout, and the next operator's login
+    let newAnswer: (v: unknown) => void = () => {};
+    deleteServer.mockReturnValueOnce(new Promise((r) => (newAnswer = r)));
+    const current = purge("a");
+    expect(retired.busy.a).toBe(true);
+    oldAnswer({ note: "", removal_pending: false });
+    await old;
+    expect(retired.busy.a).toBe(true); // this session's delete is still out
+    newAnswer({ note: "", removal_pending: false });
+    await current;
+    expect(retired.busy.a).toBeUndefined();
+  });
+
+  it("is not wiped by an older delete that answers after a newer one", async () => {
+    fleet.servers = [server("a"), server("b"), server("c")];
+    let answerA: (v: unknown) => void = () => {};
+    let answerB: (v: unknown) => void = () => {};
+    deleteServer.mockReturnValueOnce(new Promise((r) => (answerA = r)));
+    deleteServer.mockReturnValueOnce(new Promise((r) => (answerB = r)));
+    const a = purge("a");
+    const b = purge("b");
+    answerB({ note: "an archive on the shared target was kept", removal_pending: false });
+    await b;
+    expect(retired.note).toBe("an archive on the shared target was kept");
+    answerA({ note: "", removal_pending: false });
+    await a;
+    expect(retired.note).toBe("an archive on the shared target was kept");
+  });
+
   it("is not cleared by a poll that was already out when the delete committed", async () => {
     fleet.servers = [server("a"), server("b")];
     const before = fleetIssued(); // a poll started before the delete answered

@@ -101,6 +101,12 @@ let inFlight = 0;
 // row, and must not be read as the set changing under the note.
 let noteGen = 0;
 
+// Delete-for-good answers in the order the deletes were sent. Two deletes can
+// be out at once, and an older one answering last must not undo what a newer
+// one said: `noteSeq` is the delete whose answer is the note on screen.
+let purgeSeq = 0;
+let noteSeq = 0;
+
 /** Everything the group holds for a session. Run on login and logout (and by
  *  the tests between cases). */
 export function resetRetired() {
@@ -112,6 +118,7 @@ export function resetRetired() {
   retired.noteFailed = false;
   retired.noteFor = null;
   noteGen = 0;
+  noteSeq = 0;
   // The slots go with the session: a read still out from the last one gives
   // nothing back when it settles (pump's done() checks the generation), so
   // without this its slot would stay taken in the next.
@@ -375,19 +382,28 @@ export async function purge(id: string): Promise<void> {
   retired.busy[id] = true;
   clearRetiredNote();
   // An answer that arrives after a logout (or a logout and a new login) is the
-  // last session's, and is not spoken in this one.
+  // last session's: it is not spoken in this one, and it touches none of this
+  // one's state (a new delete of the same row may be out by then).
   const gen = keepGen;
+  const seq = ++purgeSeq;
+  // An answer from an older delete than the one whose answer is on screen is
+  // not spoken; only an answer with words takes the head.
+  const answer = (note: string, failed: boolean) => {
+    if (gen !== keepGen || seq < noteSeq) return;
+    if (note) noteSeq = seq;
+    speak(note, failed);
+  };
   try {
     const res = await api.deleteServer(id);
     // The set the note stands for is taken from the first fleet read started
     // after this answer (syncRetired), so the read that takes the row away
     // does not also take the answer away.
-    if (gen === keepGen) speak(res?.note ?? "", false);
-    delete retired.keep[id];
+    answer(res?.note ?? "", false);
+    if (gen === keepGen) delete retired.keep[id];
   } catch (e) {
-    if (gen === keepGen) speak(errMsg(e) || "the panel refused without a reason — check the audit log", true);
+    answer(errMsg(e) || "the panel refused without a reason — check the audit log", true);
   } finally {
-    delete retired.busy[id];
+    if (gen === keepGen) delete retired.busy[id];
   }
   await refreshFleet().catch(() => {});
 }

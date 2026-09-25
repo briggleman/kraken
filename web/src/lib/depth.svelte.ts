@@ -399,7 +399,11 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.settings = null;
   depth.files = null;
   depth.filesDir = ".";
+  // A read left over from an earlier open of this same server (its refresh
+  // waits on the file listing) holds a log from before this open; it must not
+  // land over this one's.
   setInstallLog(null);
+  retireInstallLogReads();
   depth.installLogOpen = false;
   // A fresh server, and a fresh socket: nothing is latched until this server's
   // own state and console say so.
@@ -596,12 +600,15 @@ export function syncDepthFromFleet() {
     // it is dropped at once (the header goes with it) and only the re-read puts
     // one back. A re-read that fails leaves it dropped: no header beats a
     // header naming the wrong attempt. Every read already out predates the
-    // press too, so none of them may land after the drop either.
+    // press too, so none of them may land after the drop either. Likewise when
+    // an install ends: a read already out may hold a mid-install snapshot, cut
+    // off before the failure lines, and must not land over the verdict.
     if (was !== s.state && s.state === "installing") {
       setInstallLog(null);
-      installLogFloor = installLogReads;
+      retireInstallLogReads();
       void refreshInstallLog();
     } else if (was !== s.state && (was === "installing" || was === "install_failed")) {
+      retireInstallLogReads();
       void refreshInstallLog();
     }
   }
@@ -618,23 +625,29 @@ function setInstallLog(log: InstallLog | null) {
 
 /** Install-log reads started so far; each read is numbered by it. */
 let installLogReads = 0;
-/** The number of the newest read whose answer has been applied. */
+/** The high-water mark: no read numbered at or below it may apply. It moves up
+ *  when a read's answer is applied, and when the held log is deliberately
+ *  reset (see retireInstallLogReads). */
 let installLogApplied = 0;
-/** Reads numbered at or below this were started before the latest install
- *  began: they hold the log as it was before the button press, and landing
- *  after the drop would put the previous attempt's header back on the wrong
- *  attempt (#381). */
-let installLogFloor = 0;
 
 /** Whether a read that SUCCEEDED may apply its answer, and if so, record that
  *  it did. Only successful reads ask: a failed one claims nothing, so a newer
  *  read that fails leaves an older one still in flight free to land (#387). A
  *  success applies unless a newer read has already succeeded, or it was
- *  started before the latest install began. */
+ *  started before the last reset. */
 function claimInstallLog(read: number): boolean {
-  if (read <= installLogFloor || read <= installLogApplied) return false;
+  if (read <= installLogApplied) return false;
   installLogApplied = read;
   return true;
+}
+
+/** Rule out every install-log read already out. Called wherever the held log
+ *  is deliberately reset — a (re)open, an install that begins, an install that
+ *  ends — because each of those reads holds the log as it was before that
+ *  moment: a pre-press log whose `previous` names the wrong attempt (#381), or
+ *  a mid-install snapshot cut off before the verdict. */
+function retireInstallLogReads() {
+  installLogApplied = installLogReads;
 }
 
 /** Re-read the retained install log (after an install ends, or on demand). */

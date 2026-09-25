@@ -55,11 +55,11 @@ func (r *containerListingRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeIn
 	r.mu.Lock()
 	info.ManagedContainers = r.containers
 	info.ContainersReported = r.reported
-	// The count is the running subset, as the Docker runtime builds it; an entry
+	// The count is the live subset (agentpb.ContainerStateLive), as the Docker runtime builds it; an entry
 	// with no state is an older Agent's, and those were all running.
 	info.RunningServers = 0
 	for _, c := range r.containers {
-		if c.GetState() == "" || c.GetState() == "running" {
+		if agentpb.ContainerStateLive(c.GetState()) {
 			info.RunningServers++
 		}
 	}

@@ -2171,15 +2171,17 @@ components:
             The AGENT's own count of the `kraken.managed` containers it had
             running on last contact. Compared against the server rows the Panel
             placed on this node it is what surfaces a container the Panel has
-            lost track of; it is not derived from those rows. Always the running
-            count, whatever managed_containers carries.
+            lost track of; it is not derived from those rows. Always the count
+            of LIVE containers (running, paused or restarting — see
+            managed_containers[].state), whatever managed_containers carries.
         managed_containers:
           type: array
           description: >-
-            Every `kraken.managed` container the Agent reported, named, with
-            Docker's state for each. When containers_reported is true the list
-            includes stopped containers, so a reader that means "running" must
-            filter on state == running. From an 0.54–0.58 Agent
+            Every `kraken.managed` game container the Agent reported, named,
+            with Docker's state for each (the one-shot `_install` container is
+            never listed). When containers_reported is true the list includes
+            stopped containers, so a reader that means "running" must keep only
+            the live ones by the rule on state. From an 0.54–0.58 Agent
             (containers_reported false) it holds only running containers and no
             state. Absent from an Agent older than 0.54.0, which reports only
             the count, and absent when empty — so without containers_reported a
@@ -2195,8 +2197,10 @@ components:
                 description: >-
                   Docker's state word as the Agent read it, lowercase and passed
                   through: running, exited, created, dead, paused, restarting,
-                  removing. Empty from an Agent that predates the field, which
-                  reported running containers only.
+                  removing. Read it by one rule — LIVE (holds memory and ports)
+                  = running, paused, restarting; NOT LIVE = created, exited,
+                  dead, removing; EMPTY = live (from an Agent that predates the
+                  field, which reported live containers only).
         containers_reported:
           type: boolean
           description: >-

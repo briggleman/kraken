@@ -2812,13 +2812,16 @@ type NodeInfo struct {
 	// Panel over its reverse tunnel and therefore survives a failed bind, so
 	// without this the conflict is invisible outside the node's own agent.log.
 	ListenError string `protobuf:"bytes,17,opt,name=listen_error,json=listenError,proto3" json:"listen_error,omitempty"`
-	// Every `kraken.managed` container the Agent currently sees, in any state,
-	// named and with its state. Up to 0.58 this held only the running ones; from
-	// the Agent that sets `containers_reported` below it holds all of them, and
-	// `running_servers` above is the count of those whose state is `running` —
-	// the same number an older Panel has always read there. The list is what lets
-	// the Panel say *which* container it has lost track of instead of only how
-	// many, and whether an offline server has a container at all.
+	// Every `kraken.managed` game container the Agent currently sees, in any
+	// state, named and with its state (the one-shot install container is left
+	// out; see ManagedContainer). Up to 0.58 this held only the containers
+	// `docker ps` lists; from the Agent that sets `containers_reported` below it
+	// holds stopped ones too, and `running_servers` above is the count of the
+	// LIVE ones by the rule on ManagedContainer.state — running, paused or
+	// restarting, which is the set `docker ps` without `-a` lists and so what
+	// an older Panel has always read there. The list is what lets the Panel say
+	// *which* container it has lost track of instead of only how many, and
+	// whether an offline server has a container at all.
 	ManagedContainers []*ManagedContainer `protobuf:"bytes,18,rep,name=managed_containers,json=managedContainers,proto3" json:"managed_containers,omitempty"`
 	// True from an Agent that reports every managed container in
 	// `managed_containers`, stopped ones included, with their state — set even
@@ -2993,18 +2996,25 @@ func (x *NodeInfo) GetContainersReported() bool {
 	return false
 }
 
-// ManagedContainer is one `kraken.managed` container as the Agent sees it: the
-// server id from the container's own label, the container name, and Docker's
-// state word for it. The id is what the Panel matches against its rows, the
-// name is what an operator types into `docker`, and the state is what separates
-// a running container from a stopped one left behind for the next start.
+// ManagedContainer is one `kraken.managed` game container as the Agent sees
+// it: the server id from the container's own label, the container name, and
+// Docker's state word for it. The id is what the Panel matches against its
+// rows, the name is what an operator types into `docker`, and the state is what
+// separates a live container from a stopped one left behind for the next start.
+// The server's one-shot install container (`kraken_<id>_install`) carries the
+// same labels but is never reported: an exited one would read as the server's
+// stopped game container.
 type ManagedContainer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	ContainerName string                 `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
 	// Docker's state word, lowercase and passed through as reported: running,
-	// exited, created, dead, paused, restarting, removing. Empty from an Agent
-	// that predates the field (which reported running containers only).
+	// exited, created, dead, paused, restarting, removing. The rule for reading
+	// it, defined once per side (agentpb.ContainerStateLive in Go, containerLive
+	// in the web): LIVE = running | paused | restarting — it holds memory and
+	// ports; NOT LIVE = created | exited | dead | removing; EMPTY = live — an
+	// Agent that predates the field only ever listed running containers, and one
+	// that sets containers_reported always fills it.
 	State         string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

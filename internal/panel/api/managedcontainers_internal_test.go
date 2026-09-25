@@ -33,12 +33,17 @@ func TestManagedContainersCarriesState(t *testing.T) {
 	}
 }
 
-// Running is what every "running" reader filters on: an explicit running state,
-// or no state at all from an Agent that only ever reported running containers.
-func TestManagedContainerRunning(t *testing.T) {
-	for state, want := range map[string]bool{"running": true, "": true, "exited": false, "created": false, "dead": false, "paused": false} {
-		if got := (cluster.ManagedContainer{State: state}).Running(); got != want {
-			t.Errorf("Running() with state %q = %v, want %v", state, got, want)
+// Live is what every "running" reader filters on, by the one rule
+// agentpb.ContainerStateLive defines: running, paused and restarting hold memory
+// and ports; created, exited, dead and removing do not; an empty state is an
+// Agent that only ever reported live containers.
+func TestManagedContainerLive(t *testing.T) {
+	for state, want := range map[string]bool{
+		"running": true, "paused": true, "restarting": true, "": true,
+		"created": false, "exited": false, "dead": false, "removing": false,
+	} {
+		if got := (cluster.ManagedContainer{State: state}).Live(); got != want {
+			t.Errorf("Live() with state %q = %v, want %v", state, got, want)
 		}
 	}
 }

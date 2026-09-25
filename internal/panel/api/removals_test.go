@@ -728,6 +728,45 @@ func TestRetireNodeContainer_RemovesTheOrphanAndKeepsItsData(t *testing.T) {
 	}
 }
 
+// Retiring an orphan whose container is stopped takes it off the roll call
+// without touching the running count: the list carries stopped containers too
+// (#385), and only live ones were ever in the Agent's count.
+func TestRetireNodeContainer_StoppedOrphanLeavesTheRunningCount(t *testing.T) {
+	ctx := context.Background()
+	srv, st := newRemovalAPI(t)
+	h := srv.Handler()
+	token := login(t, h)
+	addr, rt := startFakeAgentRuntime(t, "node-husk")
+	const live, husk = "a1b2c3d4-0000-4000-8000-000000000001", "a1b2c3d4-0000-4000-8000-000000000002"
+	for _, id := range []string{live, husk} {
+		if err := rt.Create(ctx, &agentpb.ServerSpec{ServerId: id}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rt.Power(ctx, id, agentpb.PowerAction_POWER_ACTION_START); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := rt.Power(ctx, husk, agentpb.PowerAction_POWER_ACTION_STOP); err != nil {
+		t.Fatal(err)
+	}
+	nodeID := liveNode(t, h, token, addr)
+	if n, _ := st.Store.GetNode(ctx, nodeID); len(n.ManagedContainers) != 2 || n.RunningServers != 1 {
+		t.Fatalf("setup: node reports %+v (running %d), want one live and one exited", n.ManagedContainers, n.RunningServers)
+	}
+
+	rec := do(t, h, http.MethodDelete, "/api/v1/nodes/"+nodeID+"/containers/"+husk, token, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retire: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	n, _ := st.Store.GetNode(ctx, nodeID)
+	if len(n.ManagedContainers) != 1 || n.ManagedContainers[0].ServerID != live {
+		t.Fatalf("after retiring the exited orphan: %+v, want only the live one", n.ManagedContainers)
+	}
+	if n.RunningServers != 1 {
+		t.Errorf("running_servers = %d after retiring an exited container, want 1 — it was never counted", n.RunningServers)
+	}
+}
+
 // Retire is for what the Panel does not own. A server with a row on this node
 // is refused (409 server_tracked) and the Agent is never asked.
 func TestRetireNodeContainer_RefusesATrackedServer(t *testing.T) {

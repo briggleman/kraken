@@ -698,39 +698,62 @@ func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error)
 	if info, err := d.cli.Info(ctx); err == nil {
 		out.TotalMemoryMb = info.MemTotal / (1024 * 1024)
 	}
-	managed, err := d.cli.ContainerList(ctx, container.ListOptions{
+	out.ManagedContainers, out.RunningServers, out.ContainersReported = reportManagedContainers(ctx, d.containers)
+	return out, nil
+}
+
+// reportManagedContainers is NodeInfo's container roll call: every managed game
+// container, stopped ones included, each with Docker's own state word, plus the
+// count of the live ones and whether the listing succeeded at all (#385).
+//
+// The count is the live subset of that same listing (agentpb.ContainerStateLive:
+// running, paused, restarting — what `docker ps` without `-a` lists), so the two
+// can never disagree: the count is what an older Panel reads, the list is what
+// lets a current one name the container it has no row for, and tell an offline
+// server whose container is merely stopped from one that has no container until
+// it starts. The server id comes from the label the runtime writes at create
+// time rather than from the name, so a container renamed by hand still
+// identifies itself. Docker reports the same state words for Windows
+// containers, so nothing here is OS-specific.
+//
+// A failed listing reports nothing and reported=false: saying "reported" over
+// an empty list would tell the Panel this node has no containers at all, where
+// the truth is that we do not know. The Panel then falls back to the count,
+// which is zero, as it always was when the listing failed.
+func reportManagedContainers(ctx context.Context, ops containerOps) (list []*agentpb.ManagedContainer, live int32, reported bool) {
+	managed, err := ops.ContainerList(ctx, container.ListOptions{
 		All:     true,
 		Filters: filters.NewArgs(filters.Arg("label", labelManaged+"=true")),
 	})
 	if err != nil {
-		// No list to report, and saying "reported" over an empty one would tell
-		// the Panel this node has no containers at all. Leave the marker unset:
-		// the Panel then falls back to the count, which is zero here as it always
-		// was when the listing failed.
-		return out, nil
+		return nil, 0, false
 	}
-	// Every managed container, stopped ones included, each with Docker's own state
-	// word — and the count is the running subset of that same listing, so the two
-	// can never disagree: the count is what an older Panel reads (it always meant
-	// running), the list is what lets a current one name the container it has no
-	// row for, and tell an offline server whose container is merely stopped from
-	// one that has no container until it starts. The server id comes from the
-	// label the runtime writes at create time rather than from the name, so a
-	// container renamed by hand still identifies itself. Docker reports the same
-	// state words for Windows containers, so nothing here is OS-specific.
-	out.ContainersReported = true
 	for _, c := range managed {
-		state := strings.ToLower(string(c.State))
-		if state == "running" {
-			out.RunningServers++
+		serverID := c.Labels[labelServerID]
+		name := containerDisplayName(c.Names)
+		// The one-shot install container carries the same managed label and
+		// server id as the game container, deliberately (the adoption scan and the
+		// cleanup both find it). Reported, an exited one left after a pass would
+		// read as the server's stopped game container — the drill-in would say
+		// "dark" and the band "1 stopped" over a server that has no game container,
+		// the very case #385 exists to state. Left out in every state: a running
+		// one during a pass holds no slot the Panel could misplace (the install
+		// gate refuses starts until the pass ends), and its row is `installing`,
+		// which is never missing.
+		if serverID != "" && name == installContainerName(serverID) {
+			continue
 		}
-		out.ManagedContainers = append(out.ManagedContainers, &agentpb.ManagedContainer{
-			ServerId:      c.Labels[labelServerID],
-			ContainerName: containerDisplayName(c.Names),
+		state := strings.ToLower(string(c.State))
+		if agentpb.ContainerStateLive(state) {
+			live++
+		}
+		list = append(list, &agentpb.ManagedContainer{
+			ServerId:      serverID,
+			ContainerName: name,
 			State:         state,
 		})
 	}
-	return out, nil
+	return list, live, true
 }
 
 // containerDisplayName is the name Docker would print for a container: the first

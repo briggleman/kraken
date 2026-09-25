@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { fleet } from "./fleet.svelte";
-import { containerDrift, pendingRemovalsNote, stoppedContainers, stoppedLabel } from "./views.svelte";
+import { containerDrift, containerLive, pendingRemovalsNote, retirable, stoppedContainers, stoppedLabel } from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
@@ -225,6 +225,39 @@ describe("containerDrift with container states", () => {
   });
 });
 
+describe("containerLive", () => {
+  // The one rule, shared with agentpb.ContainerStateLive on the Go side.
+  it("holds running, paused, restarting and an empty state live", () => {
+    const live = (state?: string) => containerLive({ server_id: "a", container_name: "kraken_a", state });
+    for (const s of ["running", "paused", "restarting", "", undefined]) expect(live(s)).toBe(true);
+    for (const s of ["created", "exited", "dead", "removing"]) expect(live(s)).toBe(false);
+  });
+
+  it("offers a paused orphan to retire and leaves it out of the stopped count", () => {
+    // A paused container holds memory and ports the scheduler believes free.
+    fleet.servers = [];
+    const n = node({
+      containers_reported: true,
+      running_servers: 1,
+      managed_containers: [{ server_id: "ghost", container_name: "kraken_ghost", state: "paused" }],
+    });
+    const drift = containerDrift(n);
+    expect(drift?.word).toBe("untracked");
+    expect(retirable(drift).map((i) => i.server_id)).toEqual(["ghost"]);
+    expect(stoppedContainers(n)).toBe(0);
+  });
+
+  it("does not call a running row with a restarting container missing", () => {
+    fleet.servers = [server("a", "running")];
+    const n = node({
+      containers_reported: true,
+      running_servers: 1,
+      managed_containers: [{ server_id: "a", container_name: "kraken_a", state: "restarting" }],
+    });
+    expect(containerDrift(n)).toBeUndefined();
+  });
+});
+
 describe("stoppedLabel", () => {
   it("says how many containers are stopped, only when there are some", () => {
     const n = node({
@@ -243,10 +276,10 @@ describe("stoppedLabel", () => {
     expect(stoppedLabel(node({ containers_reported: true }))).toBeUndefined();
   });
 
-  it("counts every state that is not running", () => {
+  it("counts every state that is not live", () => {
     const n = node({
       containers_reported: true,
-      managed_containers: ["exited", "created", "dead", "paused"].map((state, i) => ({
+      managed_containers: ["exited", "created", "dead", "removing", "paused"].map((state, i) => ({
         server_id: "s" + i,
         container_name: "kraken_s" + i,
         state,

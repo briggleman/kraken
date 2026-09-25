@@ -584,8 +584,11 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.RunningServers = int(info.RunningServers)
 		changed = true
 	}
-	// The same set, named — this is what lets the UI say *which* container the
-	// Panel has no row for instead of only how many. Compared as a set: Docker
+	// The containers themselves, named and with their states — stopped ones
+	// too from an Agent that sets containers_reported, so this is a superset of
+	// what the count above counts. It is what lets the UI say *which* container
+	// the Panel has no row for instead of only how many, and whether an offline
+	// server has a container at all. Compared as a set: Docker
 	// lists containers in whatever order it pleases, and rewriting the node record
 	// every reconcile over a reshuffle is churn with no fact behind it. An Agent
 	// too old to report the list sends none, which clears the stored one rather
@@ -844,8 +847,9 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		"panel_version":   version.Version,
 		"total_memory_mb": info.TotalMemoryMb,
 		"running_servers": info.RunningServers,
-		// The same containers named, so this endpoint answers "which one?" and not
-		// just "how many?". Absent from an Agent that predates the field.
+		// The containers named, with their states (stopped ones included from an
+		// Agent that sets containers_reported), so this endpoint answers "which
+		// one?" and not just "how many?". Absent from an Agent that predates it.
 		"managed_containers": managedContainers(info.GetManagedContainers()),
 		// True when that list is every managed container with its state, even
 		// empty; false from an Agent that reports running containers only.

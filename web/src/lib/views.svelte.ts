@@ -203,13 +203,13 @@ export interface DriftItem {
  * An older agent sends no list, and the count comparison stands in unchanged.
  *
  * An agent that sets containers_reported (#385) lists stopped containers too,
- * each with its state, so both sides filter on it: untracked is a RUNNING
- * container no row claims, missing is a `running` row with no RUNNING container.
- * A stopped container is neither — it is what an offline server keeps for its
- * next start, and an orphan that is not running holds no memory or ports. The
- * band says how many there are beside the count instead (stoppedLabel). A
- * reported empty list is a real "none", where an older agent's missing list is
- * only silence.
+ * each with its state, so both sides filter on it (containerLive): untracked is
+ * a LIVE container no row claims, missing is a `running` row with no LIVE
+ * container. A stopped container is neither — it is what an offline server
+ * keeps for its next start, and an orphan that is not live holds no memory or
+ * ports. The band says how many there are beside the count instead
+ * (stoppedLabel). A reported empty list is a real "none", where an older
+ * agent's missing list is only silence.
  *
  * Skipped for a node that has never been contacted (no reported count to trust)
  * and for one that is offline, where a stale count would invent a discrepancy.
@@ -234,7 +234,7 @@ export function containerDrift(
       ...rows.map((sv) => sv.id),
       ...(node.pending_removals ?? []).map((p) => p.server_id),
     ]);
-    const live = named.filter((c) => containerRunning(node, c));
+    const live = named.filter(containerLive);
     const onNode = new Set(live.map((c) => c.server_id));
     const untracked = live
       .filter((c) => !known.has(c.server_id))
@@ -272,21 +272,29 @@ function reportedContainers(node: Node): ManagedContainer[] | undefined {
   return node.managed_containers ?? (node.containers_reported ? [] : undefined);
 }
 
-/** Whether a reported container counts as running. An agent that reports
- *  states is taken at its word; one that does not (0.54–0.58) only ever
- *  listed running containers. */
-function containerRunning(node: Node, c: ManagedContainer): boolean {
-  return node.containers_reported ? c.state === "running" : true;
+const LIVE_STATES = new Set(["running", "paused", "restarting"]);
+
+/** Whether a reported container is live — holding memory and ports on the
+ *  node — by the one rule the web reads (#385). Its Go twin is
+ *  agentpb.ContainerStateLive (internal/shared/agentpb/containerstate.go), and
+ *  the proto comment on ManagedContainer.state states it too; the three must
+ *  agree. LIVE = running | paused | restarting; NOT LIVE = created | exited |
+ *  dead | removing; an EMPTY state is live, marker or not — an 0.54–0.58 agent
+ *  only ever listed live containers, and one that sets containers_reported
+ *  always fills the state. The agent's running_servers counts the same set;
+ *  untracked, missing, the retire chip and the stopped count all read this. */
+export function containerLive(c: ManagedContainer): boolean {
+  return !c.state || LIVE_STATES.has(c.state);
 }
 
-/** How many of the node's containers are not running — the exited container
- *  an offline server keeps for its next start, one created and never run —
- *  from an agent that reports them (#385). 0 when the agent does not, and for a
- *  node that is offline or never contacted, the same cases containerDrift
- *  skips: a stale list would invent the count. */
+/** How many of the node's containers are not live — the exited container an
+ *  offline server keeps for its next start, one created and never run — from
+ *  an agent that reports them (#385). 0 when the agent does not, and for a node
+ *  that is offline or never contacted, the same cases containerDrift skips: a
+ *  stale list would invent the count. */
 export function stoppedContainers(node: Node): number {
   if (node.status === "offline" || !node.agent_version || !node.containers_reported) return 0;
-  return (node.managed_containers ?? []).filter((c) => c.state !== "running").length;
+  return (node.managed_containers ?? []).filter((c) => !containerLive(c)).length;
 }
 
 /** The stopped half of the band's container line (`1 stopped`), or undefined
@@ -383,7 +391,7 @@ export function pendingRemovalsNote(node: Node, now: number = Date.now()): { cou
   // done, not an orphan (containerDrift leaves it out of the untracked count);
   // it is said here instead, where the removal is.
   const running = new Set(
-    (node.managed_containers ?? []).filter((c) => containerRunning(node, c)).map((c) => c.server_id),
+    (node.managed_containers ?? []).filter(containerLive).map((c) => c.server_id),
   );
   const lines = owed.map((p) => {
     // A retired row is still in the fleet and has a name; a deleted one is not.

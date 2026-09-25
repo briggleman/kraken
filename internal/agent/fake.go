@@ -301,12 +301,16 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 	// for the same reason they come from one container list there: a count that
 	// disagrees with its own list would show up as drift the Panel invented. A
 	// server that has never started has no container, as on a real host.
+	// Like the Docker runtime, the fake never reports an install container: its
+	// install pass has none to report.
 	var managed []*agentpb.ManagedContainer
 	var running int32
 	for id := range f.containers {
 		state := "exited"
 		if f.states[id] == agentpb.ServerState_SERVER_STATE_RUNNING {
 			state = "running"
+		}
+		if agentpb.ContainerStateLive(state) {
 			running++
 		}
 		managed = append(managed, &agentpb.ManagedContainer{ServerId: id, ContainerName: "kraken_" + id, State: state})
@@ -1037,7 +1041,11 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 	delete(f.holders, req.ServerId)
 	// The Docker runtime's guard removes the server's stopped game container
 	// before the pass (#362), so after a reinstall or update pass the node has no
-	// container for the server until the next start creates one.
+	// container for the server until the next start creates one. The fake models
+	// only that half: where the real guard refuses a pass over a live game
+	// container, the fake installs anyway and leaves a running server's
+	// container in place (it goes `exited` on the next stop). A test that needs
+	// the refusal holds the dir explicitly with HoldDataDir.
 	if f.states[req.ServerId] != agentpb.ServerState_SERVER_STATE_RUNNING {
 		delete(f.containers, req.ServerId)
 	}

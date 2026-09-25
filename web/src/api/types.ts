@@ -535,7 +535,9 @@ export interface ManagedContainer {
   server_id: string;
   container_name: string;
   /** Docker's state word — running, exited, created, dead, paused, restarting,
-   *  removing. Empty from an agent that reported running containers only. */
+   *  removing. Empty from an agent that reported running containers only.
+   *  Read it through containerLive() (views.svelte.ts), never by comparing to
+   *  "running": paused and restarting containers are live too. */
   state?: string;
 }
 

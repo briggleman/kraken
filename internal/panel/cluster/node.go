@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/spec"
 	"github.com/briggleman/kraken/internal/shared/tunnel"
 )
@@ -100,15 +101,15 @@ type Node struct {
 	// Zero is indistinguishable from "never contacted"; pair it with Status.
 	RunningServers int `json:"running_servers,omitempty"`
 
-	// ManagedContainers is every `kraken.managed` container the Agent reported
-	// on last contact, named, with Docker's state word for each. It is what
-	// turns "1 untracked" into the id and container name an operator can act
-	// on, and what says whether an offline server has a container at all. From
-	// an Agent that sets ContainersReported it holds stopped containers too, so
-	// anything that means "running" must filter on State; from an Agent before
-	// that (0.54–0.58) it holds only running ones with no State; from one older
-	// still it is absent — so the count remains the thing to fall back on,
-	// never derived from this list.
+	// ManagedContainers is every `kraken.managed` game container the Agent
+	// reported on last contact, named, with Docker's state word for each. It is
+	// what turns "1 untracked" into the id and container name an operator can
+	// act on, and what says whether an offline server has a container at all.
+	// From an Agent that sets ContainersReported it holds stopped containers
+	// too, so anything that means "running" must filter with
+	// ManagedContainer.Live; from an Agent before that (0.54–0.58) it holds only
+	// running ones with no State; from one older still it is absent — so the
+	// count remains the thing to fall back on, never derived from this list.
 	ManagedContainers []ManagedContainer `json:"managed_containers,omitempty"`
 
 	// ContainersReported is true when the Agent's last NodeInfo carried every
@@ -202,11 +203,12 @@ type ManagedContainer struct {
 	State         string `json:"state"`
 }
 
-// Running reports whether the container counts as running: its state says so,
-// or it came from an Agent that predates the state field — such an Agent only
-// ever reported running containers.
-func (c ManagedContainer) Running() bool {
-	return c.State == "" || c.State == "running"
+// Live reports whether the container holds memory and ports on the node, by
+// the one rule agentpb.ContainerStateLive defines (running, paused, restarting,
+// or an empty state — an Agent that predates the field only ever reported live
+// containers). Every Panel reader that means "running" filters with this.
+func (c ManagedContainer) Live() bool {
+	return agentpb.ContainerStateLive(c.State)
 }
 
 // PendingRemoval is one server removal owed to a node (see Node.PendingRemovals).

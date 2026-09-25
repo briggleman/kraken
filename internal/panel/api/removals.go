@@ -461,9 +461,9 @@ func (s *Server) handleRetireNodeContainer(w http.ResponseWriter, r *http.Reques
 		for _, c := range fresh.ManagedContainers {
 			if c.ServerID != serverID {
 				kept = append(kept, c)
-			} else if c.Running() {
-				// The list carries stopped containers too (#385); only the running
-				// ones were ever in the Agent's count.
+			} else if c.Live() {
+				// The list carries stopped containers too (#385); only the live
+				// ones are in the Agent's count (agentpb.ContainerStateLive).
 				wasRunning++
 			}
 		}

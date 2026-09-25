@@ -910,7 +910,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     overflow-y: auto; min-height: 0;
     scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent;
   }
-  .node-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  /* The two doors keep their labels on one line; on a band too narrow for both
+     side by side they stack, rather than breaking "node settings" over two. */
+  .node-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; }
+  .node-actions .prefs-open { white-space: nowrap; }
   .opt-set { display: grid; gap: 10px; }
   .opt {
     display: grid; gap: 3px; padding: 12px 14px;
@@ -1086,19 +1089,56 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .pb-split .cfg-desc { max-width: 70ch; }
 
   /* ---------- node band ---------- */
+  /* Identity column, then five equal instruments. The identity track is capped:
+     `auto` let a long condition line (an untracked container named with its
+     refusal) stretch it to half the band and crush the gauges to a third of
+     their width on that node only. fit-content keeps a short identity tight,
+     lets a long one wrap inside the cap, and every band's instruments come out
+     the same size — the gauges are the reading, and readings line up. The
+     floor is 280px: at the old 240px each action button broke its label over
+     two lines. Where the column is still narrower than the pair side by side,
+     the pair stacks (.node-actions wraps) and every label stays on one line. */
   .node-band {
-    display: grid; grid-template-columns: minmax(0, auto) repeat(5, minmax(0, 1fr));
+    display: grid; grid-template-columns: fit-content(clamp(280px, 19vw, 400px)) repeat(5, minmax(0, 1fr));
     gap: clamp(14px, 1.6vw, 34px); align-items: stretch;
     background: linear-gradient(180deg, var(--d2), var(--d1));
     border: 1px solid var(--edge); border-radius: 6px;
     padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 30px);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07);
   }
-  .node-id { display: grid; align-content: center; gap: 4px; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
+  /* Capping the band's track is not enough on its own: .node-id is a grid too,
+     and its implicit column is `auto`, so a nowrap child (a refusal, a long
+     name) sized that inner column past the cap and painted over the cpu meter.
+     minmax(0, 1fr) makes the inner column the cap's width exactly, and
+     everything inside has to wrap to fit it. */
+  .node-id { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; min-width: 0; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
+  .node-cond { overflow-wrap: anywhere; }
+  /* The instruments as one rail (mock round 2026-09-25, accepted from live).
+     Gutters between the five meters become hairline dividers, each meter is
+     1.35x the band's own base height (clamp(30px, 4.5vh, 62px) — a server
+     card's is clamp(26px, 4vh, 54px), so ~1.55x that), the numerals step up one size, and the
+     rail sits on the band's centre line beside the identity column. The
+     meter's left-fade mask is dropped: a rail reads as one continuous
+     instrument, and a fade at every divider would cut it into five. Server
+     cards keep their own meter sizing (.srv-chart). */
+  .node-band { column-gap: 0; align-items: center; }
+  .node-band > .node-id { margin-right: clamp(14px, 1.6vw, 34px); }
+  .node-band > .metric {
+    align-self: center; gap: 5px; padding: 0 clamp(10px, 1vw, 18px);
+    border-left: 1px solid rgba(var(--lumen-rgb), 0.12);
+  }
+  .node-band > .metric:nth-child(2) { border-left-color: transparent; padding-left: 0; }
+  .node-band > .metric:last-child { padding-right: 0; }
+  .node-band .metric-val { font-size: clamp(22px, 1.8vw, 42px); }
+  .node-band .seg-track, .node-band .chan, .node-band .metric canvas { height: calc(clamp(30px, 4.5vh, 62px) * 1.35); }
+  .node-band .seg-track { --cell: 6.5px; --dot: 2.6px; mask-image: none; -webkit-mask-image: none; }
+  /* A node name can run to 64 characters; inside the capped identity column it
+     wraps rather than pushing past the cap into the instruments. */
   .node-name {
     font-weight: 700; font-size: clamp(26px, 2.2vw, 46px); letter-spacing: 0.1em;
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
     filter: drop-shadow(0 0 12px rgba(var(--lumen-rgb), 0.45));
+    overflow-wrap: anywhere; min-width: 0;
   }
   /* A locked node's mark, on the one element the eye already lands on. An
      indicator, never a control: its whole job is that a node you cordoned three
@@ -1129,7 +1169,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   }
   .node-cond .nc-v { font-weight: 300; color: var(--ink-3); }
   .node-cond .nc-sep { color: var(--ink-3); }
-  /* exactly one value in the line carries the colour: the one you would act on.
+  /* at most one value in the line carries the colour: the one you would act on.
      The version you are moving TO, the containers nobody is tracking — the rest
      is context, and colouring context spends the semantic for nothing. */
   .node-cond .nc-v.act { color: var(--caution); }
@@ -1231,16 +1271,21 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .agent-drift.st-failed .nc-v.act { color: var(--ink-3); }
   /* Any condition may carry a refusal, not only the agent drift: the retire of
      an untracked container is refused the same way an update push is. One rule,
-     one measure - the same 42ch the ticker family clips at. */
+     one measure - the same 42ch the ticker family uses. It wraps rather than
+     clips: the message is the reason for the refusal, and an ellipsis cut the
+     reason off; nowrap also forced the capped identity column wider and laid
+     the line over the cpu meter. The title still carries the whole sentence. */
   .node-cond .nc-fail {
     color: var(--caution);
-    max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 42ch; white-space: normal; overflow-wrap: anywhere;
   }
   /* Untracked containers are named on the line, each with its own retire chip:
      a .nc-go with no sweep (the sweep says "a build is waiting for you", which
      is not true of a container nobody asked for). Names print as the Panel
-     makes them - kraken_ plus the id's first eight - because the id column sizes
-     to its content and a whole UUID pushed the instruments into each other.
+     makes them - kraken_ plus the id's first eight. The id column used to size
+     to its content, and a whole UUID pushed the instruments into each other; it
+     is capped now, and the short name keeps the line from wrapping around a
+     string nobody reads whole.
      Past three names the line carries one "retire all" chip instead of a row of
      them; the roll call stays in the title. The count keeps the line's one act
      colour; the names are context. */
@@ -1466,7 +1511,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      do not compete with instruments - and the instruments wrap as a rail with a
      real floor, so a narrow desk gets fewer per row instead of five broken ones. */
   @media (max-width: 1100px) {
-    .node-band { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .node-band { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); column-gap: clamp(14px, 1.6vw, 34px); }
+    /* A wrapped rail is rows of meters again: gutters, no dividers. */
+    .node-band > .metric { padding: 0; border-left: none; }
+    .node-band > .node-id { margin-right: 0; }
     .node-id {
       grid-column: 1 / -1; padding-right: 0; padding-bottom: clamp(10px, 1.2vh, 16px);
       border-right: none; border-bottom: 1px solid var(--edge);
@@ -2533,7 +2581,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-meta">node 01 · 16c/32t · up 27d 06h</span>
       <span class="node-meta">10.0.0.4 · debian 12</span>
       <span class="node-meta node-cond container-drift">
-        <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
+        <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v">1 stopped</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
         <span class="nc-sep" aria-hidden="true">&middot;</span><span class="nc-name" title="kraken_f4030778-08c8-47b7-abba-59bbd9cebd08 (f4030778-08c8-47b7-abba-59bbd9cebd08)">kraken_f4030778…</span>
         <button class="nc-go" aria-label="Retire the untracked container kraken_f4030778… on BEHEMOTH — it is stopped and removed, its data untouched">retire</button>
         <span class="nc-fail" title="retire · node behemoth did not answer within the time allowed — the action may still be completing on the node">retire · node did not answer within the time allowed — the action may still be completing</span>
@@ -2593,6 +2641,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-name">TITAN</span>
       <span class="node-meta">node 02 &middot; 8c/16t &middot; up 6d 11h</span>
       <span class="node-meta">10.0.0.7 &middot; debian 12</span>
+      <!-- Containers with nothing wrong: the line stands on its own once a
+           stopped container exists, so an empty `docker ps` is explained where
+           the operator first looks. Plain value ink throughout — a stopped
+           container is a condition, not a fault (the Verb-Risk Rule: nothing
+           here lifts into the light). Which server has no container is the
+           drill-in's answer, not this line's. -->
+      <span class="node-meta node-cond containers-plain">
+        <span class="nc-k">containers</span><b class="nc-v">2 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v">1 stopped</b>
+      </span>
       <span class="node-meta node-cond removals-owed">
         <span class="nc-k">removals</span><b class="nc-v" title="dragonwilds-02 (retry in 40s · could not reach the node's agent)">1 pending</b>
       </span>
@@ -3055,7 +3112,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <section class="side-block danger-block" aria-label="Retire server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
-          <p class="danger-note">retiring stops this server, takes a final backup, then removes its world and config from the node. its backups are kept, and it can be revived later from any of them.</p>
+          <p class="danger-note">final backup, then the world and config leave the node. the backups stay and any of them can bring it back.</p>
           <label class="tgl retire-final"><input type="checkbox" checked id="retireFinalBackup"><i></i>take a final backup first</label>
           <button class="ctl ctl-delete" id="deleteSrvBtn">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 4 H 11.5 M 5.5 4 V 2.5 H 8.5 V 4 M 3.75 4 L 4.25 11.5 H 9.75 L 10.25 4 M 6 6.25 V 9.5 M 8 6.25 V 9.5"/></svg>

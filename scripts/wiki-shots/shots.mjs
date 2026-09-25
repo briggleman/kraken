@@ -33,7 +33,10 @@ async function stripDrift(page) {
   // matches the Panel's embedded dist binary by hash. A real version skew stays.
   const keep = !!opt("keepdrift", "");
   await page.evaluate((keep) => {
-    document.querySelectorAll(".container-drift").forEach((el) => el.remove());
+    // The containers line is .containers-plain when it carries only a stopped
+    // count (no drift); it was .container-drift until the 2026-09-25 mock
+    // round, so both go, as the one class did before.
+    document.querySelectorAll(".container-drift, .containers-plain").forEach((el) => el.remove());
     document.querySelectorAll(".agent-drift").forEach((el) => {
       const v = [...el.querySelectorAll(".nc-v")].map((b) => b.textContent.trim());
       if (!keep || v.length < 2 || v[0] === v[1]) el.remove();

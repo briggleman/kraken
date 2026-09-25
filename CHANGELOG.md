@@ -5,6 +5,7 @@
 
 ### Features
 
+* **web:** node band instruments as a rail, the stopped count designed, and a shorter retire note — the mock round ported ([#391](https://github.com/briggleman/kraken/issues/391)) ([84712c3](https://github.com/briggleman/kraken/commit/84712c3f8d99f3b67f43a52bd7576beaba7211ab))
 * **specs:** palworld runs windows-native on a windows node ([#390](https://github.com/briggleman/kraken/issues/390)) ([25901b2](https://github.com/briggleman/kraken/commit/25901b2a308d73264a744bb4b8991e434a7e95cb))
 * the agent reports every managed container with its state, so the panel can say when a server has none ([#389](https://github.com/briggleman/kraken/issues/389)) ([f833995](https://github.com/briggleman/kraken/commit/f8339956b37a9c2649192bf511db4b2d6d61d2f7))
 

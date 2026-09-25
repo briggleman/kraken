@@ -151,11 +151,92 @@ describe("the install log re-read when an install begins", () => {
     expect(depth.installLog?.previous).toEqual(fresh);
   });
 
+  // The same guard for an older read when the newer one fails: the drop at
+  // install start stands, rather than the pre-press read putting it back.
+  it("ignores an older read that lands after the install began, even when the newer read fails", async () => {
+    let answerOld!: (v: unknown) => void;
+    getInstallLog.mockReturnValueOnce(new Promise((r) => (answerOld = r)));
+    getInstallLog.mockRejectedValueOnce(new Error("panel unreachable"));
+    const older = refreshInstallLog();
+    depth.server = server("offline");
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    await flush();
+    answerOld({ server_id: "srv-1", lines: [], done: true, retained: true, previous: stale });
+    await older;
+    expect(depth.installLog).toBeNull();
+  });
+
   it("does not re-read while nothing changed", () => {
     depth.server = server("offline");
     fleet.servers = [server("offline")];
     syncDepthFromFleet();
     expect(getInstallLog).not.toHaveBeenCalled();
+  });
+
+  // #387: the fleet poll keeps delivering the row while an install runs. Only
+  // the transition into `installing` re-reads; every poll after it, with the
+  // row still `installing`, must leave the log alone.
+  it("does not re-read on the polls that follow while the row stays installing", async () => {
+    getInstallLog.mockResolvedValue({ server_id: "srv-1", lines: [], done: false, retained: true, previous: fresh });
+    depth.server = server("offline");
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    await flush();
+    expect(getInstallLog).toHaveBeenCalledTimes(1);
+
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    await flush();
+    expect(getInstallLog).toHaveBeenCalledTimes(1);
+    expect(depth.installLog?.previous).toEqual(fresh);
+  });
+});
+
+describe("install-log reads outside an install start", () => {
+  const older = attempt({ started_ms: today(7, 0), finished_ms: today(7, 4) });
+  const newer = attempt();
+
+  beforeEach(() => {
+    getInstallLog.mockReset();
+    depth.open = true;
+    depth.serverId = "srv-1";
+    depth.server = server("offline");
+    fleet.servers = [server("offline")];
+    depth.installLog = null;
+  });
+
+  // #387: a newer read that fails used to discard an older one still in
+  // flight, so a Panel blip at the wrong moment blanked a log that had been
+  // read fine. A failed read claims nothing; the older success applies.
+  it("applies an older read that succeeds after a newer read failed", async () => {
+    let answerOld!: (v: unknown) => void;
+    getInstallLog.mockReturnValueOnce(new Promise((r) => (answerOld = r)));
+    getInstallLog.mockRejectedValueOnce(new Error("panel unreachable"));
+    const first = refreshInstallLog();
+    await refreshInstallLog(); // the newer read, which fails
+    expect(depth.installLog).toBeNull();
+
+    answerOld({ server_id: "srv-1", lines: [], done: true, retained: true, previous: older });
+    await first;
+    expect(depth.installLog?.previous).toEqual(older);
+  });
+
+  // Newest success still wins: once a newer read has landed, an older one that
+  // lands after it is stale and is dropped.
+  it("ignores an older read that succeeds after a newer read succeeded", async () => {
+    let answerOld!: (v: unknown) => void;
+    getInstallLog.mockReturnValueOnce(new Promise((r) => (answerOld = r)));
+    getInstallLog.mockResolvedValueOnce({ server_id: "srv-1", lines: [], done: true, retained: true, previous: newer });
+    const first = refreshInstallLog();
+    await refreshInstallLog();
+    expect(depth.installLog?.previous).toEqual(newer);
+
+    answerOld({ server_id: "srv-1", lines: [], done: true, retained: true, previous: older });
+    await first;
+    expect(depth.installLog?.previous).toEqual(newer);
   });
 });
 

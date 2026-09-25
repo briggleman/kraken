@@ -640,12 +640,14 @@ paths:
         it in memory: there is no container left to tail once the phase ends. The
         buffer is kept after the install finishes — success included, since an
         installer can exit 0 having produced a broken tree — until the server is
-        retired or deleted. A new attempt (a reinstall, or the update pass before a start)
-        does not discard the one it replaces: that attempt is answered as
-        `previous`, exactly one back, so a reinstall retrying a failed pass keeps
-        the output that says why it failed. It does NOT survive a Panel restart;
-        `retained` is false when nothing is held, which is not the same as an
-        install that printed nothing.
+        retired or deleted. A new attempt (a reinstall, or the update pass before
+        a start) does not discard the one it replaces: that attempt is answered
+        as `previous`, exactly one back, so a reinstall retrying a failed pass
+        keeps the output that says why it failed. The new attempt is opened
+        before the request that starts it is answered, so a read made once the
+        server shows `installing` already returns that attempt. It does NOT
+        survive a Panel restart; `retained` is false when nothing is held, which
+        is not the same as an install that printed nothing.
       responses:
         '200':
           description: Buffered install output

@@ -378,3 +378,78 @@ func TestInstallLog_DropForgetsThePreviousToo(t *testing.T) {
 		t.Fatal("a Start after Drop resurrected the dropped attempt")
 	}
 }
+
+// #387: handlers rotate the log before the store write that makes the row
+// `installing`. When that write fails nothing changed, so undo must leave the
+// log exactly as it was — the replaced attempt current again, with its own
+// previous and its done flag.
+func TestInstallLog_UndoPutsTheReplacedAttemptBack(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "attempt one")
+	l.Finish("s1")
+	l.Start("s1")
+	l.Append("s1", "attempt two, cut off") // never finished
+	before := l.Snapshot("s1")
+
+	undo := l.Start("s1")
+	undo()
+	after := l.Snapshot("s1")
+	if len(after.Lines) != 1 || after.Lines[0].Text != "attempt two, cut off" {
+		t.Fatalf("current after undo = %+v, want attempt two back", after.Lines)
+	}
+	if after.Done != before.Done || after.Done {
+		t.Errorf("done after undo = %v, want %v (attempt two never finished)", after.Done, before.Done)
+	}
+	if !after.StartedAt.Equal(before.StartedAt) {
+		t.Errorf("started after undo = %v, want %v", after.StartedAt, before.StartedAt)
+	}
+	if after.Previous == nil || len(after.Previous.Lines) != 1 || after.Previous.Lines[0].Text != "attempt one" {
+		t.Fatalf("previous after undo = %+v, want attempt one back", after.Previous)
+	}
+}
+
+// Undoing a server's first Start leaves no buffer at all, the way the server
+// was before — and, for a create whose row was never written, no buffer for
+// an id that does not exist.
+func TestInstallLog_UndoOfAFirstStartForgetsTheServer(t *testing.T) {
+	l := newInstallLog()
+	undo := l.Start("s1")
+	undo()
+	if l.Snapshot("s1").Retained {
+		t.Fatal("undo of a first Start left a buffer behind")
+	}
+}
+
+// undo is only for the write right after Start. Once the attempt has output,
+// has finished, or a later Start has replaced it, the attempt is real and undo
+// leaves it be.
+func TestInstallLog_UndoIsANoOpOnceTheAttemptIsUnderway(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "old")
+	l.Finish("s1")
+
+	undo := l.Start("s1")
+	l.Append("s1", "new")
+	undo()
+	if snap := l.Snapshot("s1"); len(snap.Lines) != 1 || snap.Lines[0].Text != "new" {
+		t.Fatalf("undo after a line rolled the attempt back; current = %+v", snap.Lines)
+	}
+
+	undo = l.Start("s1")
+	l.Finish("s1") // no line, but a verdict
+	undo()
+	if snap := l.Snapshot("s1"); !snap.Done || len(snap.Lines) != 0 || snap.Previous == nil ||
+		len(snap.Previous.Lines) != 1 || snap.Previous.Lines[0].Text != "new" {
+		t.Fatalf("undo after a Finish rolled the attempt back; got %+v", snap)
+	}
+
+	undo = l.Start("s1")
+	l.Start("s1")
+	undo()
+	snap := l.Snapshot("s1")
+	if len(snap.Lines) != 0 || snap.Previous == nil || len(snap.Previous.Lines) != 0 {
+		t.Fatalf("undo after a later Start changed the log; got %+v", snap)
+	}
+}

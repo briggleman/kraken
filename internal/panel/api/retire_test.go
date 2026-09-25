@@ -238,6 +238,9 @@ func TestRetire_FinalBackupFailureAbandonsTheRetire(t *testing.T) {
 	if !strings.Contains(v.LastError, "the final backup failed: no space left on device") {
 		t.Fatalf("last_error = %q, want the backup's failure", v.LastError)
 	}
+	if strings.Contains(v.LastError, "final_backup: false") {
+		t.Fatalf("last_error = %q: the retire-without-a-backup hint is for a refused stop only", v.LastError)
+	}
 	if got := rt.Removals(); len(got) != 0 {
 		t.Fatalf("removals = %+v: the world went without the final backup", got)
 	}

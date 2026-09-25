@@ -44,6 +44,20 @@ import (
 type flakyStore struct {
 	*memory.Store
 	failGetNode, failUpdateNode, failGetServer, failDeleteServer atomic.Bool
+	// onUpdateServer, when set, runs after every successful UpdateServer with
+	// the row as written — the moment a test changes something else "while" a
+	// background job moves the row along.
+	onUpdateServer atomic.Pointer[func(*store.Server)]
+}
+
+func (f *flakyStore) UpdateServer(ctx context.Context, sv *store.Server) error {
+	if err := f.Store.UpdateServer(ctx, sv); err != nil {
+		return err
+	}
+	if hook := f.onUpdateServer.Load(); hook != nil {
+		(*hook)(sv)
+	}
+	return nil
 }
 
 var errStoreDown = errors.New("store: connection reset")

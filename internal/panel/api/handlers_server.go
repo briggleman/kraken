@@ -315,6 +315,10 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
 	s.markProvisioned(server.ID, server.Vars, time.Now().UTC())
+	// A revived server's schedules come back on with its first install that
+	// lands — the revive's own, or the reinstall after a revive whose install
+	// failed. A no-op for a server whose retire switched none off.
+	s.enableRetireDisabledSchedules(ctx, server.ID)
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
 	// and once the state leaves `installing` the console has no container to

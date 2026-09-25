@@ -64,6 +64,12 @@ const (
 	finalBackupName = "final-before-retire"
 )
 
+// stopRefusalHint ends the reason a retire is abandoned with when the node
+// answered but refused the stop the final backup needs. Without a final backup
+// the stop is not needed — the removal takes the container down regardless —
+// so that is the way through, and the operator is told so.
+const stopRefusalHint = " — to retire it without a final backup, retire again with the final backup unchecked (final_backup: false)"
+
 // finalBackupPollInterval is how often the retire asks the node whether the
 // final backup has finished, and finalBackupTimeout bounds it, as an install
 // pass is bounded. Variables so a test can shorten them.
@@ -250,31 +256,41 @@ func (s *Server) runRetire(serverID string) {
 			return
 		}
 		outcome = s.attemptFinalBackup(ctx, client, live, stopped, stopWhy, sv, node)
-		if outcome.status == store.FinalBackupSkipped && node != nil && s.nodeAnswers(ctx, node) {
-			// It could not be tried, but the node answers now: it is tried
-			// again, and nothing is removed from a node that answers without
-			// it. Anything short of READY this time abandons the retire.
-			retry := s.retireClient(ctx, node)
-			if retry == nil {
-				s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
-				return
+		if outcome.status == store.FinalBackupSkipped && node != nil {
+			fresh, answers := s.nodeAnswers(ctx, node.ID)
+			if fresh != nil {
+				node = fresh // the copy read before the stop is minutes old now
 			}
-			if !stopped {
-				var reachable bool
-				stopped, reachable, stopWhy = retireStop(ctx, retry, sv.ID)
-				if !stopped {
-					why := stopWhy
-					if !reachable {
-						why = "the node stopped answering (" + stopWhy + ")"
-					}
-					s.abandonRetire(ctx, serverID, "the server could not be stopped for its final backup: "+why+"; nothing was removed", false)
+			if answers {
+				// It could not be tried, but the node answers now: it is tried
+				// again, and nothing is removed from a node that answers
+				// without it. Anything short of READY this time abandons the
+				// retire.
+				retry := s.retireClient(ctx, node)
+				if retry == nil {
+					s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
 					return
 				}
-			}
-			outcome = s.attemptFinalBackup(ctx, retry, true, true, "", sv, node)
-			if outcome.status != store.FinalBackupReady {
-				s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
-				return
+				if !stopped {
+					var reachable bool
+					stopped, reachable, stopWhy = retireStop(ctx, retry, sv.ID)
+					if !stopped {
+						// A stop the node refused (rather than one it never
+						// got) would refuse the next retire the same way, so
+						// the reason says how to go ahead without it.
+						reason := "the server could not be stopped for its final backup: " + stopWhy + "; nothing was removed" + stopRefusalHint
+						if !reachable {
+							reason = "the server could not be stopped for its final backup: the node stopped answering (" + stopWhy + "); nothing was removed"
+						}
+						s.abandonRetire(ctx, serverID, reason, false)
+						return
+					}
+				}
+				outcome = s.attemptFinalBackup(ctx, retry, true, true, "", sv, node)
+				if outcome.status != store.FinalBackupReady {
+					s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
+					return
+				}
 			}
 		}
 		if err := s.recordFinalBackup(ctx, serverID, outcome); err != nil {
@@ -292,6 +308,12 @@ func (s *Server) runRetire(serverID string) {
 		return
 	}
 	if node != nil {
+		// The removal may probe the node too (removeOnNode), and a probe
+		// writes back the copy it works on: a fresh one, so a cordon or any
+		// other edit made during the stop and the backup is not undone.
+		if fresh, err := s.store.GetNode(ctx, node.ID); err == nil {
+			node = fresh
+		}
 		var removeErr error
 		if outcome.status == store.FinalBackupSkipped {
 			// The node did not answer the probe above: it is not told to delete
@@ -343,9 +365,19 @@ func (s *Server) retireClient(ctx context.Context, node *cluster.Node) agentpb.N
 
 // nodeAnswers probes the node for real — not the stored status, which a node
 // that just went away still reads as online — and records what it finds.
-func (s *Server) nodeAnswers(ctx context.Context, node *cluster.Node) bool {
-	_, err := s.reconcileNode(ctx, node)
-	return err == nil
+//
+// The probe runs on a copy of the node read now, not on the retire's own: the
+// probe writes back the copy it works on, and the retire's is as old as the
+// retire, so a cordon or any other edit made during a long stop would be
+// undone (#377). fresh is that copy, for the steps after the probe, or nil
+// when it could not be read — and then nothing is probed or written.
+func (s *Server) nodeAnswers(ctx context.Context, nodeID string) (fresh *cluster.Node, answers bool) {
+	fresh, err := s.store.GetNode(ctx, nodeID)
+	if err != nil {
+		return nil, false
+	}
+	_, err = s.reconcileNode(ctx, fresh)
+	return fresh, err == nil
 }
 
 // attemptFinalBackup tries the final backup, or says why it could not be
@@ -542,12 +574,17 @@ func (s *Server) disableSchedulesForRetire(ctx context.Context, serverID string)
 	}
 }
 
-// enableSchedulesAfterRevive switches back on the schedules a retire switched
-// off. The scheduler arms each one's next run on its next pass.
-func (s *Server) enableSchedulesAfterRevive(ctx context.Context, serverID string) {
+// enableRetireDisabledSchedules switches back on the schedules a retire
+// switched off, and only those. provision calls it on every install that
+// lands, so a revive whose install failed gets them back on the reinstall
+// that succeeds (#377); a server that was never retired has none flagged, and
+// a second call finds none left, so it is safe to call on any successful
+// install. The scheduler arms each one's next run on its next pass.
+func (s *Server) enableRetireDisabledSchedules(ctx context.Context, serverID string) {
 	tasks, err := s.store.ListSchedulesByServer(ctx, serverID)
 	if err != nil {
-		s.logger.Warn("revive: could not list the server's schedules; switch them on by hand", "server", serverID, "err", err)
+		s.logger.Warn("could not list the server's schedules to switch back on the ones its retire switched off; switch them on by hand",
+			"server", serverID, "err", err)
 		return
 	}
 	for _, t := range tasks {
@@ -556,8 +593,10 @@ func (s *Server) enableSchedulesAfterRevive(ctx context.Context, serverID string
 		}
 		t.Enabled, t.DisabledByRetire, t.NextRunAt = true, false, nil
 		if err := s.store.UpdateSchedule(ctx, t); err != nil {
-			s.logger.Warn("revive: could not switch a schedule back on", "server", serverID, "schedule", t.ID, "err", err)
+			s.logger.Warn("could not switch back on a schedule the retire switched off", "server", serverID, "schedule", t.ID, "err", err)
+			continue
 		}
+		s.logger.Info("switched back on a schedule the retire switched off", "server", serverID, "schedule", t.ID)
 	}
 }
 
@@ -920,9 +959,9 @@ func (s *Server) checkRevivalBackup(ctx context.Context, node *cluster.Node, sv 
 // the one before it landed:
 //
 //   - the install pass (provision): a failure lands install_failed, as a
-//     failed create does, and the schedules stay off;
-//   - the schedules the retire switched off, switched back on once the
-//     install has landed;
+//     failed create does, and the schedules stay off; once an install lands —
+//     this one, or a later reinstall — provision switches back on the
+//     schedules the retire switched off;
 //   - the restore, when one was asked for: through the same job an operator's
 //     restore runs (restoring → offline, the outcome in restore_result);
 //   - the start, when asked: the checks and the update decision an operator's
@@ -935,7 +974,6 @@ func (s *Server) runRevive(sv *store.Server, sp *spec.Spec, node *cluster.Node, 
 	if err != nil || after.State != store.StateOffline {
 		return // the install did not land; provision said why on the row
 	}
-	s.enableSchedulesAfterRevive(ctx, sv.ID)
 	if backupID != "" {
 		if !s.reviveRestore(ctx, sv.ID, backupID, node) {
 			return

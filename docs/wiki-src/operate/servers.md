@@ -271,10 +271,11 @@ unreachable").
 
 A node that answers but refuses the stop (the Agent reports an error, rather
 than not answering) abandons the retire the same way, and would refuse the next
-one too. The reason says the way through: retire again with the final backup
-unchecked (`final_backup: false`). Without a final backup the stop is not
-needed — the removal takes the container down regardless — but the world goes
-without a backup, so take one by hand first if you can.
+one too. The reason says the way through: retire again with "take a final
+backup first" unchecked (`final_backup: false` in the API). A retire without a
+final backup still sends the stop but does not wait on it: a refusal does not
+hold it up, and the removal force-removes the container. The world goes without
+a backup, though, so take one by hand first if you can.
 
 While it runs the server reads `retiring`, and carries a `retire` block with
 the state it came from, the phase (`stopping`, `backing_up`, `removing`) and the

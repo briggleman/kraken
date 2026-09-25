@@ -403,8 +403,9 @@ type ScheduledTask struct {
 	NextRunAt *time.Time     `json:"next_run_at,omitempty"`
 	LastError string         `json:"last_error,omitempty"`
 	// DisabledByRetire marks a schedule the retire of its server switched off
-	// (#360), so a revive switches back on exactly those — never one the
-	// operator had disabled themselves.
+	// (#360), so the first install that lands after the retire (the revive's,
+	// or a reinstall after a revive whose install failed) switches back on
+	// exactly those — never one the operator had disabled themselves.
 	DisabledByRetire bool      `json:"disabled_by_retire,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }

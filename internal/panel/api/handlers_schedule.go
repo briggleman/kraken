@@ -141,9 +141,9 @@ func (s *Server) handleUpdateSchedule(w http.ResponseWriter, r *http.Request) {
 	t.Command = req.Command
 	if req.Enabled != nil {
 		t.Enabled = *req.Enabled
-		// The operator has now said what this schedule should be; a revive
-		// must not overrule that by switching back on what a retire switched
-		// off (#360).
+		// The operator has now said what this schedule should be; the install
+		// that lands after a retire must not overrule that by switching back
+		// on what the retire switched off (#360).
 		t.DisabledByRetire = false
 	}
 	if t.Enabled && !next.IsZero() {

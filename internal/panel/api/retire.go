@@ -38,8 +38,10 @@ import (
 //     a pending removal (#354) exactly as a delete's was, holding the
 //     allocation until it lands.
 //   - Revive: place the server again (its old node by default, its old ports
-//     where they are free), run the install pass, optionally restore a backup,
-//     switch back on the schedules the retire switched off, optionally start.
+//     where they are free), run the install pass — whose landing switches back
+//     on the schedules the retire switched off, as the first install that lands
+//     after a retire always does (a reinstall after a revive whose install
+//     failed, too) — optionally restore a backup, optionally start.
 //   - Permanent delete: only for a retired server. The node deletes the world
 //     that is left and the server's archives where they are its own, and the
 //     row goes with its schedules.
@@ -65,10 +67,12 @@ const (
 )
 
 // stopRefusalHint ends the reason a retire is abandoned with when the node
-// answered but refused the stop the final backup needs. Without a final backup
-// the stop is not needed — the removal takes the container down regardless —
-// so that is the way through, and the operator is told so.
-const stopRefusalHint = " — to retire it without a final backup, retire again with the final backup unchecked (final_backup: false)"
+// answered but refused the stop the final backup needs. A retire without a
+// final backup still sends the stop but does not wait on it: a refusal does
+// not hold it up, and the removal force-removes the container. So that is the
+// way through, and the operator is told so, in the words of the drill-in's
+// checkbox.
+const stopRefusalHint = ` — to retire it without a final backup, retire again with "take a final backup first" unchecked (final_backup: false in the API)`
 
 // finalBackupPollInterval is how often the retire asks the node whether the
 // final backup has finished, and finalBackupTimeout bounds it, as an install
@@ -257,7 +261,14 @@ func (s *Server) runRetire(serverID string) {
 		}
 		outcome = s.attemptFinalBackup(ctx, client, live, stopped, stopWhy, sv, node)
 		if outcome.status == store.FinalBackupSkipped && node != nil {
-			fresh, answers := s.nodeAnswers(ctx, node.ID)
+			fresh, answers, err := s.nodeAnswers(ctx, node.ID)
+			if err != nil {
+				// Not knowing the node is not knowing whether it answers, and
+				// taking it for "does not answer" would queue its removal
+				// without the final backup.
+				s.abandonRetire(ctx, serverID, "could not load the server's node ("+err.Error()+"); nothing was removed", stopped)
+				return
+			}
 			if fresh != nil {
 				node = fresh // the copy read before the stop is minutes old now
 			}
@@ -310,10 +321,15 @@ func (s *Server) runRetire(serverID string) {
 	if node != nil {
 		// The removal may probe the node too (removeOnNode), and a probe
 		// writes back the copy it works on: a fresh one, so a cordon or any
-		// other edit made during the stop and the backup is not undone.
-		if fresh, err := s.store.GetNode(ctx, node.ID); err == nil {
-			node = fresh
+		// other edit made during the stop and the backup is not undone. One
+		// that cannot be read abandons the retire rather than carry on with
+		// the old copy — the removal could not be recorded either.
+		fresh, err := s.store.GetNode(ctx, node.ID)
+		if err != nil {
+			s.abandonRetire(ctx, serverID, "could not load the server's node ("+err.Error()+"); nothing was removed", stopped)
+			return
 		}
+		node = fresh
 		var removeErr error
 		if outcome.status == store.FinalBackupSkipped {
 			// The node did not answer the probe above: it is not told to delete
@@ -369,15 +385,25 @@ func (s *Server) retireClient(ctx context.Context, node *cluster.Node) agentpb.N
 // The probe runs on a copy of the node read now, not on the retire's own: the
 // probe writes back the copy it works on, and the retire's is as old as the
 // retire, so a cordon or any other edit made during a long stop would be
-// undone (#377). fresh is that copy, for the steps after the probe, or nil
-// when it could not be read — and then nothing is probed or written.
-func (s *Server) nodeAnswers(ctx context.Context, nodeID string) (fresh *cluster.Node, answers bool) {
-	fresh, err := s.store.GetNode(ctx, nodeID)
-	if err != nil {
-		return nil, false
+// undone (#377). fresh is that copy, for the steps after the probe.
+//
+// Nothing is probed or written when the node cannot be read. A failed read is
+// returned as err, and the caller abandons the retire: it says nothing about
+// whether the node answers, and reading it as "does not answer" would queue a
+// removal, world and all, without the final backup, on a node that may be
+// answering. A node the store no longer has comes back as nil with no error —
+// it does not answer — and the caller keeps its own copy, whose removal then
+// cannot be recorded, which abandons the retire too.
+func (s *Server) nodeAnswers(ctx context.Context, nodeID string) (fresh *cluster.Node, answers bool, err error) {
+	fresh, err = s.store.GetNode(ctx, nodeID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, false, nil
+	case err != nil:
+		return nil, false, err
 	}
-	_, err = s.reconcileNode(ctx, fresh)
-	return fresh, err == nil
+	_, perr := s.reconcileNode(ctx, fresh)
+	return fresh, perr == nil, nil
 }
 
 // attemptFinalBackup tries the final backup, or says why it could not be
@@ -556,7 +582,9 @@ func (s *Server) completeRetire(ctx context.Context, sv *store.Server, notes []s
 }
 
 // disableSchedulesForRetire switches off every enabled schedule of the server
-// and flags it, so a revive switches back on exactly these.
+// and flags it, so the first install that lands after the retire (the
+// revive's, or a reinstall after a revive whose install failed) switches back
+// on exactly these.
 func (s *Server) disableSchedulesForRetire(ctx context.Context, serverID string) {
 	tasks, err := s.store.ListSchedulesByServer(ctx, serverID)
 	if err != nil {

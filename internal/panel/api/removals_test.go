@@ -44,6 +44,8 @@ import (
 type flakyStore struct {
 	*memory.Store
 	failGetNode, failUpdateNode, failGetServer, failDeleteServer atomic.Bool
+	// failNextGetNode fails only the next GetNode — a store that blinked once.
+	failNextGetNode atomic.Bool
 	// onUpdateServer, when set, runs after every successful UpdateServer with
 	// the row as written — the moment a test changes something else "while" a
 	// background job moves the row along.
@@ -89,7 +91,7 @@ func (l *lockedBuffer) String() string {
 }
 
 func (f *flakyStore) GetNode(ctx context.Context, id string) (*cluster.Node, error) {
-	if f.failGetNode.Load() {
+	if f.failGetNode.Load() || f.failNextGetNode.CompareAndSwap(true, false) {
 		return nil, errStoreDown
 	}
 	return f.Store.GetNode(ctx, id)

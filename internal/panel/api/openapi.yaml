@@ -397,8 +397,10 @@ paths:
         for it to be ready (at most 30 minutes), then has the node remove the
         server's containers and data directory — never its archives — releases
         its memory and ports, deletes its DNS records and port forwards, and
-        switches its schedules off (they are kept, flagged, and a revive
-        switches back on exactly those). The retired server is on no node:
+        switches its schedules off (they are kept, flagged, and the first
+        install that lands after the retire — the revive's, or a reinstall
+        after a revive whose install failed — switches back on exactly those).
+        The retired server is on no node:
         `node_id` is empty, `retired_from_node_id` names where its archives
         are, and `retired_ports` the ports it held.
 
@@ -414,6 +416,9 @@ paths:
         that moment gets its removal queued without a backup — as a pending
         removal holding the allocation (see Node.pending_removals) — and
         `retire_note` says so ("final backup skipped: node unreachable"). A
+        stop the node answers with a refusal abandons the retire as well, and
+        the reason says the way through: retire again with `final_backup`
+        false, which does not wait on the stop. A
         retire whose removal cannot be recorded is abandoned too. While it
         runs, every writer answers 409 `server_busy`. Requires server.delete.
       requestBody:
@@ -460,7 +465,8 @@ paths:
         any) succeeded — the server is started as an operator start would
         start it; a start that is refused or fails lands `offline` with
         `last_error`. The schedules the retire switched off are switched back
-        on. Requires server.create.
+        on once the install lands — by this install, or by a later reinstall
+        when this one fails. Requires server.create.
       requestBody:
         required: false
         content:
@@ -2341,7 +2347,7 @@ components:
             last_run_at: { type: string, format: date-time }
             next_run_at: { type: string, format: date-time }
             last_error: { type: string }
-            disabled_by_retire: { type: boolean, description: "switched off by its server's retire; a revive switches it back on once its install lands. An operator's own enable or disable clears it" }
+            disabled_by_retire: { type: boolean, description: "switched off by its server's retire; the first install that lands after the retire (the revive's, or a reinstall after a revive whose install failed) switches it back on. An operator's own enable or disable clears it" }
             created_at: { type: string, format: date-time }
     AuditEntry:
       type: object

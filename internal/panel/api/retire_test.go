@@ -366,6 +366,8 @@ func TestRevive_DefaultNodeAndOldPorts(t *testing.T) {
 	if n, err := st.Store.GetNode(ctx, nodeID); err != nil || n.Ports.IsFree(27050) || n.AllocatedMemoryMB != 1024 {
 		t.Fatalf("node after revive = %+v (%v), want port 27050 and 1024 MB reserved again", n, err)
 	}
+	// Switched back on just after the row reads offline, so waited for.
+	waitScheduleEnabled(t, st, sv.ID, "sched-on")
 	scheds := schedulesOf(t, st, sv.ID)
 	if on := scheds["sched-on"]; !on.Enabled || on.DisabledByRetire {
 		t.Fatalf("schedule the retire switched off = %+v, want back on and unflagged", on)

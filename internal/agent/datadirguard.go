@@ -261,11 +261,22 @@ func dataDirRefusal(refuse []dataDirHolder) string {
 }
 
 // dataDirRemovalNote is the install-console line for a holder the guard removed.
-func dataDirRemovalNote(h dataDirHolder, installName string) string {
+//
+// The server's own game container gets a clause saying it comes back: nothing
+// recreates it until START, so after a reinstall (or any pass that does not go
+// on to start) the node has no container for the server at all, which reads as
+// "the container got deleted" on `docker ps` unless the console said it was
+// expected (#381). Untracked and foreign containers keep the plain wording —
+// nothing recreates those.
+func dataDirRemovalNote(h dataDirHolder, serverID, installName string) string {
 	if h.Name == installName {
 		return "[kraken] removed the previous install container " + h.String() + " before this pass"
 	}
-	return "[kraken] removed " + h.State + " container " + h.String() + " that still had this server's data dir mounted"
+	note := "[kraken] removed " + h.State + " container " + h.String() + " that still had this server's data dir mounted"
+	if h.Name == containerName(serverID) {
+		note += " — start recreates it after this pass"
+	}
+	return note
 }
 
 // clearDataDir is the guard itself: list every container on the node, find the
@@ -288,7 +299,7 @@ func clearDataDir(ctx context.Context, c containerOps, serverID, bindSource, ins
 		if err := removeAndAwait(ctx, c, h.ID, h.Name); err != nil {
 			return fmt.Errorf("clear %s from the data dir: %w", h, err)
 		}
-		note(dataDirRemovalNote(h, installName))
+		note(dataDirRemovalNote(h, serverID, installName))
 	}
 	return nil
 }

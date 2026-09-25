@@ -6,6 +6,7 @@ import type {
   Backup,
   FileEntry,
   FileListing,
+  InstallAttempt,
   InstallLog,
   PowerActionName,
   RestoreProgress,
@@ -338,6 +339,22 @@ export function emptyConsoleNote(opts: { installing: boolean; hasRetained: boole
     : "no install output kept — the panel restarted since this attempt";
 }
 
+/** The one-line header the install console carries above the current output
+ *  when the attempt before it is kept (#381):
+ *  `previous attempt · started 08:02 · failed 08:06`. The verdict is read from
+ *  the lines, because the Panel writes every failure — install_failed, a pass
+ *  refused before it touched the tree, a start after an update that did not
+ *  come up — on the `error` stream, and nothing else writes there. An attempt
+ *  with no finish time was superseded before it reached a verdict. */
+export function previousAttemptHeader(prev: InstallAttempt): string {
+  const at = (ms: number | undefined) => (ms ? fmtWhen(ms).replace("today ", "") : "—");
+  const failed = prev.lines.some((l) => l.stream === "error");
+  const end = prev.finished_ms
+    ? `${failed ? "failed" : "finished"} ${at(prev.finished_ms)}`
+    : "did not finish";
+  return `previous attempt · started ${at(prev.started_ms)} · ${end}`;
+}
+
 /** Whether the INSTALL LOG chip has anything to offer.
  *
  *  It needs a retained log to show, and it must not be offered while the
@@ -478,6 +495,7 @@ async function refreshDetail() {
   // moment, and any write of depth.server made while the other reads are still
   // out is newer than it (#368).
   const genAtStart = serverGen;
+  const logRead = ++installLogReads;
   const results = await Promise.allSettled([
     api.getServer(id),
     api.listBackups(id),
@@ -516,7 +534,9 @@ async function refreshDetail() {
     sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
   // Same reasoning for the install log: it is a look back at a finished phase,
   // and failing to read it must not take the drill-in's error line hostage.
-  setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
+  if (logRead === installLogReads) {
+    setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
+  }
   // The two optional reads are excluded from the drill-in's error line.
   const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
@@ -569,7 +589,16 @@ export function syncDepthFromFleet() {
     // An install that just ended leaves a retained log the open drill-in has
     // never read — and this is exactly the moment it matters, because the
     // console's socket is about to switch to a container that may not start.
-    if (was !== s.state && (was === "installing" || was === "install_failed")) {
+    // An install that just began is the other moment: the attempt it replaced
+    // is now the log's `previous` (#381). The snapshot in hand predates the
+    // button press, so its `previous` names the attempt before the wrong one —
+    // it is dropped at once (the header goes with it) and only the re-read puts
+    // one back. A re-read that fails leaves it dropped: no header beats a
+    // header naming the wrong attempt.
+    if (was !== s.state && s.state === "installing") {
+      setInstallLog(null);
+      void refreshInstallLog();
+    } else if (was !== s.state && (was === "installing" || was === "install_failed")) {
       void refreshInstallLog();
     }
   }
@@ -584,13 +613,20 @@ function setInstallLog(log: InstallLog | null) {
   depth.installLogSeq++;
 }
 
+/** Install-log reads started so far. Only the newest read's answer is applied:
+ *  an older one still in flight when an install begins holds the log as it was
+ *  before the button press, and landing after the newer read would put the
+ *  previous attempt's header back on the wrong attempt (#381). */
+let installLogReads = 0;
+
 /** Re-read the retained install log (after an install ends, or on demand). */
 export async function refreshInstallLog() {
   const id = depth.serverId;
   if (!id) return;
+  const mine = ++installLogReads;
   try {
     const log = await api.getInstallLog(id);
-    if (depth.serverId === id) setInstallLog(log);
+    if (depth.serverId === id && mine === installLogReads) setInstallLog(log);
   } catch {
     // Optional surface: a failed read leaves the last value rather than
     // claiming the log is gone.

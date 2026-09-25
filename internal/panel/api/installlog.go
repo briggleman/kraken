@@ -18,8 +18,11 @@ import (
 // Buffers live only in memory, one per server, capped at maxInstallLines. They
 // survive the install — success as well as failure — so the account of what the
 // installer actually did stays readable afterwards, and are dropped when the
-// server is deleted or a reinstall starts. Retention is therefore bounded by
-// the server count, which the node's memory and port reservations already bound.
+// server is retired or deleted. A new attempt demotes the current one to `previous` rather
+// than discarding it, and exactly one attempt back is kept: pressing REINSTALL
+// on a failed pass used to erase the very output that said why it failed
+// (#381). Retention is therefore bounded at two tails per server, and the
+// server count is bounded by the node's memory and port reservations.
 //
 // Keeping a *successful* install's output is the fix for #280: an installer can
 // exit 0 having produced a broken tree (a SteamCMD self-update race downloads
@@ -58,6 +61,11 @@ type installEntry struct {
 	startedAt  time.Time
 	finishedAt time.Time
 	subs       map[chan installLine]struct{}
+	// previous is the attempt this one replaced, kept read-only so a reinstall
+	// does not erase the output of the pass it is retrying (#381). Only Start
+	// writes it, and only ever one back: the entry it points at has its own
+	// previous dropped, so the chain never grows past two tails.
+	previous *installEntry
 }
 
 func newInstallLog() *installLog {
@@ -74,17 +82,28 @@ func (l *installLog) entry(id string) *installEntry {
 	return e
 }
 
-// Start opens a fresh buffer for an install attempt, discarding any previous
-// attempt's output. Live subscribers are closed: what they were tailing is over.
+// Start opens a fresh buffer for an install attempt. The attempt it replaces is
+// kept as the new entry's previous (with that one's own previous dropped — one
+// back is the bound), so the output of a failed pass survives the reinstall
+// that retries it. Live subscribers of the old entry are closed: what they
+// were tailing is over.
 func (l *installLog) Start(id string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	e := &installEntry{startedAt: time.Now(), subs: map[chan installLine]struct{}{}}
 	if old := l.entries[id]; old != nil {
 		for ch := range old.subs {
 			close(ch)
 		}
+		old.subs = map[chan installLine]struct{}{}
+		// Superseded is over, whether or not it reached a verdict first; its
+		// finishedAt stays as it was, so a pass that was cut off still reads
+		// as never having finished.
+		old.done = true
+		old.previous = nil
+		e.previous = old
 	}
-	l.entries[id] = &installEntry{startedAt: time.Now(), subs: map[chan installLine]struct{}{}}
+	l.entries[id] = e
 }
 
 // Append records a line of ordinary installer output.
@@ -146,6 +165,10 @@ type installSnapshot struct {
 	Retained   bool
 	StartedAt  time.Time
 	FinishedAt time.Time
+	// Previous is the attempt the current one replaced, or nil when there is
+	// none. A previous attempt is over by definition; Snapshot never fills its
+	// Previous or its Retained.
+	Previous *installSnapshot
 }
 
 // Snapshot returns the buffered lines without subscribing to later ones.
@@ -156,15 +179,29 @@ func (l *installLog) Snapshot(id string) installSnapshot {
 	if e == nil {
 		return installSnapshot{Done: true}
 	}
+	snap := e.snapshot()
+	snap.Retained = true
+	if e.previous != nil {
+		prev := e.previous.snapshot()
+		snap.Previous = &prev
+	}
+	return snap
+}
+
+// snapshot copies one entry's lines and bracket, without its previous and
+// without Retained, which is a fact about the server's buffer as a whole and
+// is set by Snapshot on the current attempt only. Caller holds mu.
+func (e *installEntry) snapshot() installSnapshot {
 	lines := make([]installLine, len(e.lines))
 	copy(lines, e.lines)
 	return installSnapshot{
-		Lines: lines, Done: e.done, Retained: true,
+		Lines: lines, Done: e.done,
 		StartedAt: e.startedAt, FinishedAt: e.finishedAt,
 	}
 }
 
-// Drop forgets a server's install output entirely (server deleted).
+// Drop forgets a server's install output entirely (server retired or deleted)
+// — the current attempt and the previous one with it.
 func (l *installLog) Drop(id string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

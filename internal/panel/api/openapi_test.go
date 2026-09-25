@@ -220,3 +220,67 @@ func TestOpenAPIServerStateEnumMatchesStore(t *testing.T) {
 		t.Errorf("ServerState enum = %v, want store.ServerStates() = %v", got, want)
 	}
 }
+
+// The install log's `previous` (#381) is null when there is no earlier attempt,
+// and never absent. Under OpenAPI 3.0.3 `nullable` only means something beside
+// a `type`, so a `nullable` next to a bare `allOf` declares nothing — which a
+// generated client reads as "never null" and then fails on the first server
+// with one attempt. The two schemas it points at must also exist.
+func TestOpenAPIInstallLogDeclaresPreviousNullable(t *testing.T) {
+	type schema struct {
+		Type       string            `json:"type"`
+		Nullable   bool              `json:"nullable"`
+		Required   []string          `json:"required"`
+		Ref        string            `json:"$ref"`
+		AllOf      []schema          `json:"allOf"`
+		Items      *schema           `json:"items"`
+		Properties map[string]schema `json:"properties"`
+	}
+	var doc struct {
+		Paths map[string]struct {
+			Get struct {
+				Responses map[string]struct {
+					Content map[string]struct {
+						Schema schema `json:"schema"`
+					} `json:"content"`
+				} `json:"responses"`
+			} `json:"get"`
+		} `json:"paths"`
+		Comp struct {
+			Schemas map[string]schema `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	resolves := func(ref string) bool {
+		name, ok := strings.CutPrefix(ref, "#/components/schemas/")
+		if !ok {
+			return false
+		}
+		_, ok = doc.Comp.Schemas[name]
+		return ok
+	}
+	body := doc.Paths["/servers/{id}/install-log"].Get.Responses["200"].Content["application/json"].Schema
+	prev, ok := body.Properties["previous"]
+	if !ok {
+		t.Fatal("the install-log response does not declare previous")
+	}
+	if !prev.Nullable || prev.Type != "object" {
+		t.Errorf("previous: type %q nullable %v, want type object and nullable (3.0.3 ignores nullable without a type)",
+			prev.Type, prev.Nullable)
+	}
+	if !slices.Contains(body.Required, "previous") {
+		t.Errorf("previous is never absent, so it belongs in required; required = %v", body.Required)
+	}
+	if len(prev.AllOf) != 1 || !resolves(prev.AllOf[0].Ref) {
+		t.Errorf("previous must point at a schema that exists; allOf = %+v", prev.AllOf)
+	}
+	if lines := body.Properties["lines"]; lines.Items == nil || !resolves(lines.Items.Ref) {
+		t.Errorf("lines must be an array of a schema that exists; got %+v", lines)
+	}
+	if attempt := doc.Comp.Schemas["InstallAttempt"]; attempt.Properties["lines"].Items == nil ||
+		!resolves(attempt.Properties["lines"].Items.Ref) {
+		t.Errorf("InstallAttempt.lines must be an array of a schema that exists; got %+v", attempt.Properties["lines"])
+	}
+}

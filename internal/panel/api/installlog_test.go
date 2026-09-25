@@ -96,7 +96,9 @@ func TestInstallLog_UnknownServerReadsAsDone(t *testing.T) {
 	}
 }
 
-func TestInstallLog_StartDiscardsThePreviousAttempt(t *testing.T) {
+// The live tail is the new attempt only: the previous one is kept for the REST
+// read (#381), never merged into what a subscriber is following.
+func TestInstallLog_StartClosesThePreviousAttemptsTail(t *testing.T) {
 	l := newInstallLog()
 	l.Start("s1")
 	l.Append("s1", "old attempt")
@@ -221,8 +223,9 @@ func TestInstallLog_SnapshotOfAnUnknownServerIsNotRetained(t *testing.T) {
 	}
 }
 
-// A reinstall replaces the retained attempt rather than adding to it: an
-// operator reading the log after a retry must see the retry, not a merge.
+// A reinstall replaces the current attempt rather than adding to it: an
+// operator reading the log after a retry must see the retry, not a merge. (The
+// replaced attempt is kept apart, as Previous — see below.)
 func TestInstallLog_SnapshotAfterAReinstallShowsOnlyTheNewAttempt(t *testing.T) {
 	l := newInstallLog()
 	l.Start("s1")
@@ -237,5 +240,141 @@ func TestInstallLog_SnapshotAfterAReinstallShowsOnlyTheNewAttempt(t *testing.T) 
 	}
 	if len(snap.Lines) != 1 || snap.Lines[0].Text != "second attempt" {
 		t.Fatalf("lines = %+v, want only the second attempt", snap.Lines)
+	}
+}
+
+// #381: pressing REINSTALL on a failed pass used to throw away the output of
+// the pass it was retrying — the only record of why it failed. Start keeps it,
+// read-only, as Previous.
+func TestInstallLog_StartKeepsThePreviousAttempt(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "downloading")
+	l.AppendError("s1", "[panel] install failed: state is 0x6")
+	l.Finish("s1")
+	first := l.Snapshot("s1")
+
+	l.Start("s1")
+	snap := l.Snapshot("s1")
+	if len(snap.Lines) != 0 {
+		t.Fatalf("current lines = %+v, want the new attempt empty", snap.Lines)
+	}
+	if snap.Previous == nil {
+		t.Fatal("the attempt a reinstall replaced must be kept as Previous")
+	}
+	p := snap.Previous
+	if len(p.Lines) != 2 || p.Lines[0].Text != "downloading" || p.Lines[1].Stream != "error" {
+		t.Fatalf("previous lines = %+v, want the failed attempt's two lines, error stream kept", p.Lines)
+	}
+	if !p.Done {
+		t.Error("a previous attempt is over, so it must read as done")
+	}
+	if !p.StartedAt.Equal(first.StartedAt) || !p.FinishedAt.Equal(first.FinishedAt) {
+		t.Errorf("previous bracket %v–%v, want the first attempt's %v–%v",
+			p.StartedAt, p.FinishedAt, first.StartedAt, first.FinishedAt)
+	}
+	l.mu.Lock()
+	chained := l.entries["s1"].previous.previous
+	l.mu.Unlock()
+	if chained != nil {
+		t.Error("a previous attempt must carry no previous of its own")
+	}
+}
+
+// One back is the bound: a third attempt keeps the second and drops the first.
+func TestInstallLog_ASecondStartDropsTheOlderAttempt(t *testing.T) {
+	l := newInstallLog()
+	for _, txt := range []string{"attempt one", "attempt two"} {
+		l.Start("s1")
+		l.Append("s1", txt)
+		l.Finish("s1")
+	}
+	l.Start("s1")
+	snap := l.Snapshot("s1")
+	if snap.Previous == nil || len(snap.Previous.Lines) != 1 || snap.Previous.Lines[0].Text != "attempt two" {
+		t.Fatalf("previous = %+v, want attempt two only", snap.Previous)
+	}
+	l.mu.Lock()
+	chained := l.entries["s1"].previous.previous
+	l.mu.Unlock()
+	if chained != nil {
+		t.Fatal("the entry kept a pointer two back; memory is no longer bounded at two tails")
+	}
+}
+
+// Append and Finish address the current attempt. Neither may reach into the
+// previous one — it is a read-only record of a pass that is over.
+func TestInstallLog_AppendAndFinishLeaveThePreviousAlone(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "old")
+	l.Finish("s1")
+	before := l.Snapshot("s1")
+
+	l.Start("s1")
+	l.Append("s1", "new")
+	l.AppendError("s1", "[panel] new failure")
+	mid := l.Snapshot("s1")
+	if mid.Done {
+		t.Error("the running reinstall must not read as done because its previous is")
+	}
+	l.Finish("s1")
+	after := l.Snapshot("s1")
+
+	for _, snap := range []installSnapshot{mid, after} {
+		p := snap.Previous
+		if p == nil || len(p.Lines) != 1 || p.Lines[0].Text != "old" {
+			t.Fatalf("previous = %+v, want only the old attempt's line", p)
+		}
+		if !p.FinishedAt.Equal(before.FinishedAt) {
+			t.Errorf("previous finished %v, want it untouched at %v", p.FinishedAt, before.FinishedAt)
+		}
+	}
+	if len(after.Lines) != 2 || after.Lines[0].Text != "new" {
+		t.Fatalf("current lines = %+v, want the reinstall's own two", after.Lines)
+	}
+}
+
+// A pass superseded before it reached a verdict (never the normal path — the
+// reinstall handler refuses while installing — but Start must not leave a
+// half-open entry behind) reads as done, with no finish time: it was cut off.
+func TestInstallLog_ASupersededRunningAttemptReadsAsDoneWithoutAFinish(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "half way")
+	l.Start("s1")
+	p := l.Snapshot("s1").Previous
+	if p == nil || !p.Done {
+		t.Fatalf("previous = %+v, want a done attempt", p)
+	}
+	if !p.FinishedAt.IsZero() {
+		t.Errorf("previous finished %v, want zero — it never reached a verdict", p.FinishedAt)
+	}
+}
+
+func TestInstallLog_FirstAttemptHasNoPrevious(t *testing.T) {
+	l := newInstallLog()
+	if l.Snapshot("nobody").Previous != nil {
+		t.Error("an unknown server has no previous attempt")
+	}
+	l.Start("s1")
+	if l.Snapshot("s1").Previous != nil {
+		t.Error("a first attempt has no previous attempt")
+	}
+}
+
+func TestInstallLog_DropForgetsThePreviousToo(t *testing.T) {
+	l := newInstallLog()
+	l.Start("s1")
+	l.Append("s1", "old")
+	l.Start("s1")
+	l.Drop("s1")
+	snap := l.Snapshot("s1")
+	if snap.Retained || snap.Previous != nil {
+		t.Fatalf("snapshot after Drop = %+v, want nothing retained and no previous", snap)
+	}
+	l.Start("s1") // a new server that reuses nothing
+	if l.Snapshot("s1").Previous != nil {
+		t.Fatal("a Start after Drop resurrected the dropped attempt")
 	}
 }

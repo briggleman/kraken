@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { fleet } from "./fleet.svelte";
-import { containerDrift } from "./views.svelte";
+import { containerDrift, pendingRemovalsNote } from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
@@ -93,6 +93,37 @@ describe("containerDrift", () => {
       }),
     );
     expect(drift).toBeUndefined();
+  });
+
+  // #381: after a reinstall the Agent's data-dir guard has removed the exited
+  // game container and the install container is gone with the verdict, so the
+  // node reports nothing for an offline row until START recreates it. That is
+  // the expected shape, not an anomaly: neither untracked (there is no
+  // container to be untracked) nor missing (the row never claimed running),
+  // and nothing is owed a removal.
+  it("leaves an offline row with no container alone", () => {
+    fleet.servers = [server("a", "running"), server("b", "offline")];
+    // A removal owed for some OTHER server, so the removals line is live and
+    // the question is whether the offline row joins it.
+    const named = node({
+      running_servers: 1,
+      managed_containers: [{ server_id: "a", container_name: "kraken_a" }],
+      pending_removals: [
+        { server_id: "gone", delete_data: false, requested_at: "2026-09-25T08:00:00Z", attempts: 1 },
+      ],
+    });
+    expect(containerDrift(named)).toBeUndefined();
+    const owed = pendingRemovalsNote(named);
+    expect(owed?.count).toBe(1);
+    expect(owed?.title).toContain("gone (");
+    expect(owed?.title).not.toContain("b-name");
+    expect(owed?.title).not.toContain("b (");
+    // An agent that reports only the count reads the same: one running row,
+    // one running container.
+    expect(containerDrift(node({ running_servers: 1 }))).toBeUndefined();
+    // And with nothing at all on the node — the reinstalled server alone.
+    fleet.servers = [server("b", "offline")];
+    expect(containerDrift(node({ running_servers: 0, managed_containers: [] }))).toBeUndefined();
   });
 
   it("says nothing about a node that is offline or never contacted", () => {

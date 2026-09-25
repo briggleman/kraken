@@ -10,16 +10,29 @@ import (
 
 // installLogBody is the shape of GET /servers/{id}/install-log.
 type installLogBody struct {
-	ServerID string `json:"server_id"`
-	Done     bool   `json:"done"`
-	Retained bool   `json:"retained"`
-	Lines    []struct {
-		Ts     int64  `json:"ts"`
-		Stream string `json:"stream"`
-		Text   string `json:"text"`
-	} `json:"lines"`
-	StartedMs  int64 `json:"started_ms"`
-	FinishedMs int64 `json:"finished_ms"`
+	ServerID   string              `json:"server_id"`
+	Done       bool                `json:"done"`
+	Retained   bool                `json:"retained"`
+	Lines      []installLineBody   `json:"lines"`
+	StartedMs  int64               `json:"started_ms"`
+	FinishedMs int64               `json:"finished_ms"`
+	Previous   *installAttemptBody `json:"previous"`
+}
+
+// installLineBody is one line of install output as the endpoint answers it.
+type installLineBody struct {
+	Ts     int64  `json:"ts"`
+	Stream string `json:"stream"`
+	Text   string `json:"text"`
+}
+
+// installAttemptBody is the shape of the endpoint's `previous` (#381): the
+// current attempt's shape without the server-level fields.
+type installAttemptBody struct {
+	Done       bool              `json:"done"`
+	Lines      []installLineBody `json:"lines"`
+	StartedMs  int64             `json:"started_ms"`
+	FinishedMs int64             `json:"finished_ms"`
 }
 
 func getInstallLog(t *testing.T, h http.Handler, token, id string) installLogBody {
@@ -167,4 +180,94 @@ func TestInstallLog_RequiresASession(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status %d, want 401; body %s", rec.Code, rec.Body.String())
 	}
+}
+
+// #381: a reinstall used to erase the output of the attempt it replaced, which
+// on 2026-09-25 was the only record of why an update pass broke the tree. The
+// endpoint now answers `previous` — null before any second attempt, and the
+// replaced attempt in the current attempt's shape after one. The completion
+// line also says, on a reinstall only, that the node has no container for the
+// server until START.
+func TestInstallLog_PreviousAttemptSurvivesAReinstall(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	nodeID := registerNode(t, h, token, startFakeAgent(t, "node-install-prev"))
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	specID := createSpec(t, h, token, "install-log-previous")
+	rec := do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{
+		"spec_id": specID, "name": "prev-01",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var created struct{ ID string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created: %v", err)
+	}
+	waitInstalled := func(wantPrevious bool) installLogBody {
+		t.Helper()
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			if getServerState(t, h, token, created.ID) == "offline" {
+				body := getInstallLog(t, h, token, created.ID)
+				if body.Done && (body.Previous != nil) == wantPrevious {
+					return body
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("install never settled (state %q)", getServerState(t, h, token, created.ID))
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	first := waitInstalled(false)
+	// null, not absent: the console surface reads the key directly.
+	raw := do(t, h, http.MethodGet, "/api/v1/servers/"+created.ID+"/install-log", token, nil)
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(raw.Body.Bytes(), &generic); err != nil {
+		t.Fatalf("decode raw install-log: %v", err)
+	}
+	if p, ok := generic["previous"]; !ok || string(p) != "null" {
+		t.Fatalf("first attempt: previous = %s (present %v), want null", p, ok)
+	}
+	firstComplete := completionLine(first.Lines)
+	if firstComplete == "" || strings.Contains(firstComplete, "no container") {
+		t.Errorf("a first provision's completion line must keep its wording; got %q", firstComplete)
+	}
+
+	if rec := do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/reinstall", token, nil); rec.Code != http.StatusAccepted {
+		t.Fatalf("reinstall: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	second := waitInstalled(true)
+
+	p := second.Previous
+	if !p.Done {
+		t.Error("a previous attempt is over, so it must read as done")
+	}
+	if p.StartedMs != first.StartedMs || p.FinishedMs != first.FinishedMs {
+		t.Errorf("previous bracket %d–%d, want the first attempt's %d–%d",
+			p.StartedMs, p.FinishedMs, first.StartedMs, first.FinishedMs)
+	}
+	if len(p.Lines) != len(first.Lines) || completionLine(p.Lines) != firstComplete {
+		t.Errorf("previous lines = %+v, want the first attempt's %+v", p.Lines, first.Lines)
+	}
+	if second.StartedMs < first.FinishedMs {
+		t.Errorf("current attempt started %d, before the previous finished %d", second.StartedMs, first.FinishedMs)
+	}
+	if got := completionLine(second.Lines); !strings.HasSuffix(got, "; no container exists until you start it") {
+		t.Errorf("a reinstall's completion line must say no container exists until you start it; got %q", got)
+	}
+}
+
+// completionLine finds the Panel's "install complete" line in an attempt.
+func completionLine(lines []installLineBody) string {
+	for _, l := range lines {
+		if strings.Contains(l.Text, "install complete") {
+			return l.Text
+		}
+	}
+	return ""
 }

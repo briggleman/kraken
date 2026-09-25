@@ -142,6 +142,27 @@ point. Since 0.50.1 the Agent treats the `state is 0x…` family as an install
 failure, so a repeat lands in `install_failed` with the line as `last_error`
 instead of quietly relaunching the old build.
 
+### After a reinstall or update the node shows no container for the server
+
+This is expected, not a second fault. Before a pass the Agent removes the
+server's stopped game container (the check above), and the one-shot install
+container is removed once the pass reports its verdict. A **reinstall** — and
+the drill-in's **update**, which runs the same pass — stops at `offline`
+rather than going on to start, so until you press **start** the node has no
+container for that server at all: `docker ps -a` lists nothing under
+`kraken_<id>`, and the node band does not count it as untracked or as a
+removal owed. The install console says so in the closing line,
+`[panel] install complete — <name> is ready to start; no container exists until you start it`,
+and in the Agent's removal line when there was a container to remove,
+`[kraken] removed exited container kraken_<id> (<short id>) … — start recreates it after this pass`.
+**start** creates the container fresh from the current image.
+
+The pass before the reinstall is not lost either. The install log keeps one
+attempt back: the console shows a `previous attempt` row above the current
+output, with when it started and how it ended, and `show` opens its lines in
+place. That is where a failed update's cause is, when the reinstall is what
+cleared it.
+
 ## Every node goes offline at once
 
 **Symptom.** The whole fleet reads `offline` at the same moment, which is not

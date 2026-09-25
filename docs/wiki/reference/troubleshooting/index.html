@@ -113,6 +113,7 @@
     <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
+<a class="toc-link lvl-3" href="#after-a-reinstall-or-update-the-node-shows-no-container-for-the-server">After a reinstall or update the node shows no container for the server</a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
 <a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
@@ -230,6 +231,24 @@ runs, the Agent also refuses any start or restart of that server.</p>
 point. Since 0.50.1 the Agent treats the <code>state is 0x…</code> family as an install
 failure, so a repeat lands in <code>install_failed</code> with the line as <code>last_error</code>
 instead of quietly relaunching the old build.</p>
+<h3 id="after-a-reinstall-or-update-the-node-shows-no-container-for-the-server">After a reinstall or update the node shows no container for the server <a class="hlink" href="#after-a-reinstall-or-update-the-node-shows-no-container-for-the-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>This is expected, not a second fault. Before a pass the Agent removes the
+server&#39;s stopped game container (the check above), and the one-shot install
+container is removed once the pass reports its verdict. A <strong>reinstall</strong> — and
+the drill-in&#39;s <strong>update</strong>, which runs the same pass — stops at <code>offline</code>
+rather than going on to start, so until you press <strong>start</strong> the node has no
+container for that server at all: <code>docker ps -a</code> lists nothing under
+<code>kraken_&lt;id&gt;</code>, and the node band does not count it as untracked or as a
+removal owed. The install console says so in the closing line,
+<code>[panel] install complete — &lt;name&gt; is ready to start; no container exists until you start it</code>,
+and in the Agent&#39;s removal line when there was a container to remove,
+<code>[kraken] removed exited container kraken_&lt;id&gt; (&lt;short id&gt;) … — start recreates it after this pass</code>.
+<strong>start</strong> creates the container fresh from the current image.</p>
+<p>The pass before the reinstall is not lost either. The install log keeps one
+attempt back: the console shows a <code>previous attempt</code> row above the current
+output, with when it started and how it ended, and <code>show</code> opens its lines in
+place. That is where a failed update&#39;s cause is, when the reinstall is what
+cleared it.</p>
 <h2 id="every-node-goes-offline-at-once">Every node goes offline at once <a class="hlink" href="#every-node-goes-offline-at-once" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> The whole fleet reads <code>offline</code> at the same moment, which is not
 how real outages usually arrive. The Panel is up and serving the UI. A node&#39;s
@@ -396,6 +415,7 @@ firing while your tab is out of date.</p>
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
+<a class="toc-link lvl-3" href="#after-a-reinstall-or-update-the-node-shows-no-container-for-the-server">After a reinstall or update the node shows no container for the server</a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
 <a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>

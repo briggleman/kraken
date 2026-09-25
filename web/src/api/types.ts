@@ -707,6 +707,20 @@ export interface InstallLog {
   retained: boolean;
   started_ms?: number;
   finished_ms?: number;
+  /** The attempt this one replaced (#381), or null when there is none — a
+   *  reinstall retrying a failed pass keeps the output that says why it
+   *  failed. One back only. Optional because an older Panel does not send it. */
+  previous?: InstallAttempt | null;
+}
+
+/** An earlier install attempt: the current attempt's shape without the
+ *  server-level fields. `done` is always true — it is over — and `finished_ms`
+ *  is absent when it was superseded before it reached a verdict. */
+export interface InstallAttempt {
+  lines: InstallLogLine[];
+  done: boolean;
+  started_ms?: number;
+  finished_ms?: number;
 }
 
 export interface FileContent {

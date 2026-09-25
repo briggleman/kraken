@@ -68,10 +68,10 @@ const (
 
 // stopRefusalHint ends the reason a retire is abandoned with when the node
 // answered but refused the stop the final backup needs. A retire without a
-// final backup still sends the stop but does not wait on it: a refusal does
-// not hold it up, and the removal force-removes the container. So that is the
-// way through, and the operator is told so, in the words of the drill-in's
-// checkbox.
+// final backup still sends the stop but does not depend on the stop's result:
+// a refusal does not hold it up, and the removal force-removes the container.
+// So that is the way through, and the operator is told so, in the words of the
+// drill-in's checkbox.
 const stopRefusalHint = ` — to retire it without a final backup, retire again with "take a final backup first" unchecked (final_backup: false in the API)`
 
 // finalBackupPollInterval is how often the retire asks the node whether the
@@ -392,8 +392,9 @@ func (s *Server) retireClient(ctx context.Context, node *cluster.Node) agentpb.N
 // whether the node answers, and reading it as "does not answer" would queue a
 // removal, world and all, without the final backup, on a node that may be
 // answering. A node the store no longer has comes back as nil with no error —
-// it does not answer — and the caller keeps its own copy, whose removal then
-// cannot be recorded, which abandons the retire too.
+// it does not answer — and the caller keeps its own copy; the read of the node
+// before the removal then fails the same way, and that abandons the retire
+// ("could not load the server's node (…); nothing was removed").
 func (s *Server) nodeAnswers(ctx context.Context, nodeID string) (fresh *cluster.Node, answers bool, err error) {
 	fresh, err = s.store.GetNode(ctx, nodeID)
 	switch {

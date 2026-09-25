@@ -418,7 +418,8 @@ paths:
         `retire_note` says so ("final backup skipped: node unreachable"). A
         stop the node answers with a refusal abandons the retire as well, and
         the reason says the way through: retire again with `final_backup`
-        false, which does not wait on the stop. A
+        false, which does not depend on the stop's result: a refusal does
+        not hold it up, and the removal force-removes the container. A
         retire whose removal cannot be recorded is abandoned too. While it
         runs, every writer answers 409 `server_busy`. Requires server.delete.
       requestBody:

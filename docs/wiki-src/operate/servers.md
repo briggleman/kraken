@@ -273,8 +273,9 @@ A node that answers but refuses the stop (the Agent reports an error, rather
 than not answering) abandons the retire the same way, and would refuse the next
 one too. The reason says the way through: retire again with "take a final
 backup first" unchecked (`final_backup: false` in the API). A retire without a
-final backup still sends the stop but does not wait on it: a refusal does not
-hold it up, and the removal force-removes the container. The world goes without
+final backup still sends the stop but does not depend on the stop's result: a
+refusal does not hold it up, and the removal force-removes the container. The
+world goes without
 a backup, though, so take one by hand first if you can.
 
 While it runs the server reads `retiring`, and carries a `retire` block with

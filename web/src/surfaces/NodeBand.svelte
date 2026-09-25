@@ -80,8 +80,9 @@
   // The node's stopped containers (`1 stopped`), from an agent that reports
   // them (#385): an offline server that still has its container adds one, and
   // one whose reinstall or update pass removed it does not — the fact the
-  // drill-in's empty console states per server. A reading, never a condition:
-  // plain value ink, and it keeps the container line up without a drift.
+  // drill-in's empty console states per server. Plain value ink, never the act
+  // colour, and it keeps the container line up without a drift (as
+  // .containers-plain, the mock's class for that line).
   const stopped = $derived(stoppedLabel(node));
   // The drifting containers, named. Inline only while the line stays readable —
   // each a .nc-name (mono 300, Sand Faint: context beside the count) carrying
@@ -300,11 +301,15 @@
            while its retire is in flight, the disabled "retire all" while any of
            its containers is being retired, and the .nc-fail-only fallback line
            below.
-           Inherited (undesigned) too, until the next mock round: the stopped
-           count (`2 running · 1 stopped`, #385) in plain .nc-v, and the line
-           standing with no drift at all when only that count has something to
-           say — the running part is the drift line's own words. -->
-      <span class="node-meta node-cond container-drift" title={driftTitle}>
+           Designed (mock round 2026-09-25): the stopped count (`2 running ·
+           1 stopped`, #385) in plain .nc-v — a stopped container is a
+           condition, not a fault, so nothing in it lifts into .act — sitting
+           between the running count and the drift word when there is drift.
+           With no drift the line still stands once a stopped container exists,
+           as .containers-plain rather than .container-drift, so an empty
+           `docker ps` is explained where the operator first looks. Which server
+           has no container is the drill-in's answer, not this line's. -->
+      <span class="node-meta node-cond {containers ? 'container-drift' : 'containers-plain'}" title={driftTitle}>
         <span class="nc-k">containers</span><b class="nc-v">{containers?.running ?? node.running_servers ?? 0} running</b>{#if stopped}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{stopped}</b>{/if}{#if containers}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span><button
               class="nc-go"
               disabled={!!retire.busy[item.server_id]}

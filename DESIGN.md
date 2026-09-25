@@ -171,7 +171,7 @@ A two-family palette: abyssal blue-green grounds and a single living sodium gold
 ### Hierarchy
 - **Headline** (700, clamp(19–34px), 0.04em, line-height 1.05): server names. The tight leading is what lets a Rack Label sit directly above the name instead of floating above it.
 - **Title** (700, clamp(22–40px), 0.05em): the `h2` of every sheet and of the drill-in (`.depth-title`) — the one place a screen says what it is. The login title is its close cousin (clamp(22–34px), 0.06em). Node names are *not* Title: on a band they are the Hollow Nameplate, and panel titles are Label-scale caps, so this role appears exactly once per screen.
-- **Data** (Spline Sans Mono 500, clamp(20–40px)): primary numerals — vitals, player counts. Always `font-variant-numeric: tabular-nums`, often with a soft gold text-shadow.
+- **Data** (Spline Sans Mono 500, clamp(20–40px)): primary numerals — vitals, player counts; one size up on the node band's rail (clamp(22–42px), see Metric). Always `font-variant-numeric: tabular-nums`, often with a soft gold text-shadow.
 - **Body** (400, clamp(12–16px)): metadata lines, event text. Mono at weight 300 for machine strings (worlds, ports, versions).
 - **Label** (600, clamp(11–14px), 0.18–0.28em, uppercase): section labels and metric names, in Sand Faint.
 - **Rack Label** (600, 11px, 0.26em, uppercase, Sand Secondary): the owning node above a server name — `node 01 **behemoth**`, the whole label on the same value as the metadata line beneath it, with the node name at 700 as the only mark separating it from the id. This is the one tracked-caps type that sits *above* a headline rather than beside a value, because a node contains servers and its name is a heading, not a datum. Underlined by a gold hairline at 0.15 alpha whose width fits the text plus a `clamp(20px, 3vw, 60px)` overhang, so the rule stops just past the label and never crosses the card.
@@ -190,6 +190,8 @@ The **deck** is the middle row and the only thing on the page that scrolls: `ove
 ### Named Rules
 **The Pinned Ends Rule.** The identity strip and the event stream are locked by being grid rows *outside* the scroller, never by `position: sticky`. Neither of them has a background: both sit directly on the page ground, which is what keeps the water column unbroken. A sticky element stays inside the scrolling box, so cards would travel visibly *through* the wordmark and the event line — and the only fix would be giving the ends an opaque fill, which is the thing the world is built to avoid. One `1fr` row scrolls; the two `auto` rows cannot. There is no `position: sticky` anywhere in the build, and that is on purpose.
 
+**The Instruments Line Up Rule.** A node band is an identity column and five equal instruments, and the identity column is capped: `grid-template-columns: fit-content(clamp(240px, 19vw, 400px)) repeat(5, minmax(0, 1fr))`, with `.node-id { min-width: 0 }` and `.node-cond { overflow-wrap: anywhere }` so what is inside it wraps rather than pushes. The track used to be `auto`, and one node carrying a long condition line — an untracked container named with its refusal — stretched its identity to half the band and crushed that band's gauges to a third of their width while the bands around it kept full-size ones. `fit-content` keeps a short identity tight and makes a long one wrap inside the cap, so every band's instruments come out the same size. The gauges are the reading, and readings line up down the deck; an identity with more to say grows taller, never wider.
+
 ## Elevation & Depth
 
 Depth is atmospheric, not stacked: panels carry a top-lit vertical gradient (Abyss Panel → Abyss Mid) plus a deep soft shadow (`0 18px 50px rgba(0,0,0,0.45)`) and a 1px inner top highlight (`inset 0 1px 0 rgba(255,194,102,0.07)`). Hover raises a surface by 1px translate and warms its border toward the lumen — light response, not shadow growth.
@@ -204,7 +206,7 @@ Two numbers, three queries, and no relationship between any of them. Everything 
 the layout is composed against the 1080p floor Layout commits to and scales by `clamp()`
 above it, so a
 breakpoint here is always a specific structural failure being caught, never a device class.
-- **1100px (max-width), twice:** the deck reflow. Above it the fleet is a multi-column grid and the node band sits beside it; below it both go to one column. The drill-in body collapses at the same number for the same reason.
+- **1100px (max-width), twice:** the deck reflow. Above it the fleet is a multi-column grid and the node band sits beside it; below it both go to one column. The drill-in body collapses at the same number for the same reason, and so does the node band: identity takes a row of its own, the instruments auto-fit on a 190px floor, and the rail's hairline dividers give way to gutters again (see Metric).
 - **640px (min-width):** an opt-in, gating the data-directory field's `grid-column: span 2`. It is a `min-width` rather than a `max-width` because `auto-fit` manufactures a second track for a spanning item even when only one track fits - ungated, a 380px viewport got tracks of 210px and 108px and every other row in the sheet was squeezed by a field that only needed room on wide screens. The revive sheet added the gate's second member, `.ns-grid > .cfg-row.ns-wide` (`grid-column: 1 / -1`), for a row whose value is a sentence — see Revive Sheet.
 - **640px (max-width):** the wizard's own two-column config grid (`.cfg-2`) collapsing to one. The same number in the opposite direction, and deliberately not folded into the rule above: one is a field asking for room it can only use when there is room, the other is a fixed two-track grid that has to stop being two tracks. Sharing a number is a coincidence, and writing them as one query would make the next person believe it is a system.
 
@@ -239,14 +241,18 @@ Quiet rectangles with 6px outer radius (4px for controls, 3px for chips), 1px go
 An extra `.node-meta` line in the band's id cell, stating something true of the node that its
 vitals cannot show. A band may carry more than one, so the layout and the key / value / separator
 bits are shared: `.nc-k` is the 0.8em/0.18em Archivo caps key in Sand Faint, `.nc-v` the mono 300
-values, `.nc-sep` whatever glyph divides them. **Exactly one value per line takes `.nc-v.act` and
+values, `.nc-sep` whatever glyph divides them. **At most one value per line takes `.nc-v.act` and
 its Caution Violet** — the one you would act on. The version being moved *to*, the containers
 nobody is tracking; everything else in the line is context, and colouring context spends the
-semantic for nothing.
+semantic for nothing. A line that only reads — Removals Owed, the plain containers line with its
+stopped count — takes none.
+
+The lines live inside the identity column's cap, so a long one wraps (`.node-cond { overflow-wrap:
+anywhere }`) instead of widening the column — see The Instruments Line Up Rule.
 
 A condition is not the node being unwell, which is why none of this touches Status: the node is
 online, and something about it nevertheless needs attention. Three members so far — Agent Drift,
-Container Drift and Removals Owed below.
+Container Drift (with its plain form, the stopped count) and Removals Owed below.
 
 ### Agent Drift (panel newer than the node's agent)
 
@@ -329,11 +335,23 @@ container is holding memory and ports the scheduler believes are free.
 A **deficit** reads the same way and is not an error either: containers stopped behind the panel's
 back. The line names whichever direction is true rather than assuming a surplus.
 
+**The stopped count sits beside the running one.** `containers · 2 running · 1 stopped`: the
+containers the agent reports that are not running, in plain `.nc-v` like the running count and
+never `.act`. A stopped container is a condition, not a fault — nothing is prevented by it, and
+nothing on this line lifts into the light. With drift it takes the middle place, `3 running · 1
+stopped · 1 untracked · …`, and the surplus keeps the line's one act colour. Without drift the line
+still stands once a stopped container exists, so an empty `docker ps` is explained where the
+operator first looks; that line carries the semantic class `.containers-plain` instead of
+`.container-drift`, because it is a reading and not a drift, and it needs no styling of its own
+beyond what every `.node-cond` line gets. It names no servers: the count is a node-wide total, and
+which server has no container is the drill-in's answer, not this line's.
+
 **The line names the containers and offers each its retire.** An untracked container is printed on
 the line as a `.nc-name` — mono 300 in Sand Faint, so it reads as context beside the count — spelt
 the way the Panel makes it, `kraken_` plus the id's first eight (`kraken_f4030778…`), with the full
-name and id in the title. The id column sizes to its content, and a whole UUID pushed the
-instruments into each other. Each name is followed by its own `.nc-go` chip reading `retire`
+name and id in the title. The id column used to size to its content, and a whole UUID pushed the
+instruments into each other; it is capped now (The Instruments Line Up Rule), and the short name
+still keeps the line from wrapping around a string nobody reads whole. Each name is followed by its own `.nc-go` chip reading `retire`
 (0.76em/0.2em caps in Caution Violet, `3px 9px`, 3px radius, a 0.5 border on a 0.05 ground — the
 Locked Node's chip), and it carries **no sweep**: a sweep says "a build is waiting for you", which
 is not true of a container nobody asked for. The sweep is the agent update's alone. **Past three
@@ -411,6 +429,22 @@ dims when the reading rounds to `0`, network when it formats to `0.0`, not when 
 happens to be zero. The unit suffix keeps its Status Gold either way; the scale the reading is
 measured against did not stop being true.
 
+**On the node band the five metrics are one rail** (accepted from live, mock round 2026-09-25).
+The band's `column-gap` drops to 0 and the gutters between meters become hairline dividers:
+`border-left: 1px solid rgba(var(--lumen-rgb), 0.12)` on each `.node-band > .metric`, padded
+`0 clamp(10px, 1vw, 18px)`. The first metric after `.node-id` (`:nth-child(2)`) takes a transparent
+divider and no left padding — the identity column's own `var(--edge)` border already draws that
+seam, and the identity keeps its distance with `margin-right: clamp(14px, 1.6vw, 34px)` in place of
+the gap — and the last takes no right padding. The rail sits on the band's centre line
+(`align-items: center`, each metric `align-self: center` at `gap: 5px`), the numeral steps up one
+size to `clamp(22px, 1.8vw, 42px)` from the base `clamp(20px, 1.7vw, 40px)`, and every chart zone
+is a third taller (see the Dot-matrix history meter). It is the band's alone: server cards keep
+their own meter sizing (`.srv-chart`). Below 1100px the wrapped rail is rows of meters again, so
+it gets its gutters back — `column-gap` returns, dividers and padding go, and the identity's
+margin with them. **The structure is load-bearing:** the `:nth-child(2)` rule assumes the band's
+direct children are `.node-id` and then the five `.metric`s with nothing between them. Anything
+inserted there puts a divider in front of the first meter.
+
 ### Label-Value Row
 The smallest readout in the house and the one to reach for first: tracked caps in Sand Faint on
 the left, the value as mono tabular `<b>` in Sand on the right, pushed apart by
@@ -422,7 +456,7 @@ finding its own right edge. Three readouts, one ladder: this row for one fact, *
 vital worth a glow, the **dot-matrix meter** for a fact with a history.
 
 ### Dot-matrix history meter (signature)
-The house chart: a row of dot columns (`--cell: 6px`, `--dot: 2.4px`), each column one sample, scrolling left as new samples arrive; the newest column glows (`.now`). History fades toward the left via mask. Track length is **72 columns** on both node bands and server cards: at `flex: 1` the columns stretch to fill the cell, so a count near the cell's own pixel width is what makes the ridge read *dense* — 48 stretched across a wide band cell left the dots widely spaced and sparse. 72 fills the width as a near-solid ridge that still shows its per-sample grain (raising it further, ~96, closes the grain into a solid bar; lower, ~48, spaces the dots out again). **Zone-coded variant** (`.zone-track`): columns recompute their color live — Status Gold below 50%, Caution Violet 50–75%, Crisis Magenta above 75% — with faint threshold guide lines at 50/75.
+The house chart: a row of dot columns (`--cell: 6px`, `--dot: 2.4px`), each column one sample, scrolling left as new samples arrive; the newest column glows (`.now`). History fades toward the left via mask — except on the node band's rail, where the mask is dropped (`mask-image: none`): a rail reads as one continuous instrument, and a fade at every divider would cut it into five. On that rail the track is `calc(clamp(30px, 4.5vh, 62px) * 1.35)` tall with `--cell: 6.5px` and `--dot: 2.6px`, and the packet channel (`.chan`) and the disk sparkline's canvas take the same ×1.35; server cards keep `clamp(26px, 4vh, 54px)`. Track length is **72 columns** on both node bands and server cards: at `flex: 1` the columns stretch to fill the cell, so a count near the cell's own pixel width is what makes the ridge read *dense* — 48 stretched across a wide band cell left the dots widely spaced and sparse. 72 fills the width as a near-solid ridge that still shows its per-sample grain (raising it further, ~96, closes the grain into a solid bar; lower, ~48, spaces the dots out again). **Zone-coded variant** (`.zone-track`): columns recompute their color live — Status Gold below 50%, Caution Violet 50–75%, Crisis Magenta above 75% — with faint threshold guide lines at 50/75.
 
 `--lvl` drives both the column's fill height *and* its zone color, which is why the sample band matters as much as the styling: a track whose values never leave one zone renders as a single-color block at a single height, and the chart stops being a chart. Both the seeded history and the live walk must span a threshold, and a walk with hard clamping will not do it — it piles up against whichever bound it drifts into. Mean-revert toward the middle of the band instead. The last column carries `.now` permanently, because the tick shifts values *between* columns rather than moving elements.
 
@@ -761,16 +795,20 @@ their node, and re-adding needs a fresh enrollment token because the old identit
 ### Retire Block (the drill-in's danger block)
 The danger block (`.danger-block`, `aria-label="Retire server"`, a crisis-tinted 0.22 border with
 its `pane-label` at 0.8 crisis) no longer deletes a server: it **retires** it. The note
-(`.danger-note`, clamp(11–13px) at 1.55 in Sand Faint) says what the act does in the order the
-Panel does it — stops the server, takes a final backup, then removes its world and config from the
-node — and then what it keeps: its backups, and that it can be revived later from any of them.
+(`.danger-note`, clamp(11–13px) at 1.55 in Sand Faint) says it in twenty-one words — `final backup,
+then the world and config leave the node. the backups stay and any of them can bring it back.` —
+what goes, in the order it goes, then what stays and what that buys. It used to run to thirty-one
+(`retiring stops this server, takes a final backup, …`); the full order, the stop included, is the
+typed confirmation's to spell out, and the note is the short form beside the control.
 Between the note and the control sits the one choice the retire offers, `take a final backup
 first`: the house Toggle Switch as `.tgl.retire-final`, at the note's size (clamp(11–13px), Sand
 Secondary, `margin: 10px 0 12px`, no padding), **on by default** because revive needs something to
 restore. The control beneath is still `.ctl-delete` and still Crisis — glyph, then `retire server`
 — because the live world is destroyed either way; the backups are what make it reversible, not the
-colour. Its typed confirmation is titled `retire <name>`, repeats the note's sentence and adds where
-the server goes (`the retired list`). What the body no longer says is *it cannot be undone*, because
+colour. Its typed confirmation is titled `retire <name>` and says it in full, in the order the Panel
+does it — `this stops the server, takes a final backup, then removes its world and config from the
+node. its backups are kept, and it can be revived later from the retired list.` — adding where the
+server goes. What the body no longer says is *it cannot be undone*, because
 it can.
 
 **The Cannot-Be-Undone Rule.** The sentence "it cannot be undone" is spent only where it is true. A retire keeps every backup and can be revived, so neither its note nor its confirmation says it; of the two lifecycle controls a server has, only the retired group's `delete for good` may. Every other typed confirmation in the house — node, spec, folder, file — says it because it is true there, and the moment a reversible act borrows the phrase the irreversible ones stop being believed.

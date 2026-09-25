@@ -1086,15 +1086,22 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .pb-split .cfg-desc { max-width: 70ch; }
 
   /* ---------- node band ---------- */
+  /* Identity column, then five equal instruments. The identity track is capped:
+     `auto` let a long condition line (an untracked container named with its
+     refusal) stretch it to half the band and crush the gauges to a third of
+     their width on that node only. fit-content keeps a short identity tight,
+     lets a long one wrap inside the cap, and every band's instruments come out
+     the same size — the gauges are the reading, and readings line up. */
   .node-band {
-    display: grid; grid-template-columns: minmax(0, auto) repeat(5, minmax(0, 1fr));
+    display: grid; grid-template-columns: fit-content(clamp(240px, 19vw, 400px)) repeat(5, minmax(0, 1fr));
     gap: clamp(14px, 1.6vw, 34px); align-items: stretch;
     background: linear-gradient(180deg, var(--d2), var(--d1));
     border: 1px solid var(--edge); border-radius: 6px;
     padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 30px);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07);
   }
-  .node-id { display: grid; align-content: center; gap: 4px; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
+  .node-id { display: grid; align-content: center; gap: 4px; min-width: 0; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
+  .node-cond { overflow-wrap: anywhere; }
   .node-name {
     font-weight: 700; font-size: clamp(26px, 2.2vw, 46px); letter-spacing: 0.1em;
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
@@ -5459,3 +5466,6 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
   setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString('en-US', { hour12: false }); }, 1000);
 </script>
+<!-- impeccable-live-start -->
+<script src="http://localhost:8400/live.js?token=8760d157-4921-4ba6-80c1-9b9d49e47975"></script>
+<!-- impeccable-live-end -->

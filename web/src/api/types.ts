@@ -566,8 +566,9 @@ export interface Node {
   running_servers?: number;
   /** Every `kraken.managed` container the agent reported, named, with Docker's
    *  state for each. With containers_reported it includes stopped containers,
-   *  so "running" means state === "running"; from an 0.54–0.58 agent it holds
-   *  running containers only, with no state; absent from an agent older than
+   *  so "running" means live by containerLive() — running, paused, restarting,
+   *  or an empty state; from an 0.54–0.58 agent it holds live containers only,
+   *  with no state; absent from an agent older than
    *  0.54.0, and absent when empty — so without containers_reported a missing
    *  list means "this agent did not say", never "nothing is running" — see
    *  containerDrift(). */

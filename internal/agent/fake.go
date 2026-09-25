@@ -1043,9 +1043,11 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 	// before the pass (#362), so after a reinstall or update pass the node has no
 	// container for the server until the next start creates one. The fake models
 	// only that half: where the real guard refuses a pass over a live game
-	// container, the fake installs anyway and leaves a running server's
-	// container in place (it goes `exited` on the next stop). A test that needs
-	// the refusal holds the dir explicitly with HoldDataDir.
+	// container, the fake installs anyway and keeps a running server's
+	// container. The pass ends by setting the server OFFLINE, so that kept
+	// container reads `exited` as soon as the pass ends, and a retry pass then
+	// deletes it. A test that needs the refusal holds the dir explicitly with
+	// HoldDataDir.
 	if f.states[req.ServerId] != agentpb.ServerState_SERVER_STATE_RUNNING {
 		delete(f.containers, req.ServerId)
 	}

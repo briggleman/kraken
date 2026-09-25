@@ -134,8 +134,9 @@ describe("containerDrift", () => {
 });
 
 // #385: an agent that sets containers_reported lists stopped containers too,
-// each with its state. Untracked and missing both filter on `running`; a stopped
-// container is neither, and the band counts it beside the running figure.
+// each with its state. Untracked and missing both filter on live
+// (containerLive); a stopped container is neither, and the band counts it
+// beside the running figure.
 describe("containerDrift with container states", () => {
   const reported = (extra: Partial<Node>) => node({ agent_version: "0.59.0", containers_reported: true, ...extra });
 

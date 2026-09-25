@@ -131,7 +131,7 @@ func TestNodeAdoptsTheAgentsManagedContainerList(t *testing.T) {
 
 	count, managed := nodeContainers(t, h, token, id)
 	if count != 2 {
-		t.Errorf("running_servers = %d, want 2 — the count and the list are one query read two ways", count)
+		t.Errorf("running_servers = %d, want 2 — the Agent sent two containers with no state, and an empty state counts as live", count)
 	}
 	if len(managed) != 2 {
 		t.Fatalf("managed_containers = %+v, want both containers", managed)

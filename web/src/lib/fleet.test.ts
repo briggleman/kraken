@@ -214,6 +214,37 @@ describe("refreshFleet", () => {
     await first;
     expect(serversReadIssued()).toBe(firstIssued + 1); // the older read was not applied
   });
+
+  it("names the older poll while it is the one on screen and a newer one is still out", async () => {
+    const older = deferred<{ servers: Server[] }>();
+    const newer = deferred<{ servers: Server[] }>();
+    listServers.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    const n1 = refreshFleet();
+    const olderIssued = fleetIssued();
+    const n2 = refreshFleet();
+    expect(fleetIssued()).toBe(olderIssued + 1);
+
+    // the older poll lands first: its servers are applied, and it is the one named
+    older.settle({ servers: [server("srv-1", "starting")] });
+    await n1;
+    expect(fleet.servers[0].state).toBe("starting");
+    expect(serversReadIssued()).toBe(olderIssued);
+
+    newer.settle({ servers: [server("srv-1", "running")] });
+    await n2;
+    expect(serversReadIssued()).toBe(olderIssued + 1);
+  });
+
+  it("does not move on a tick whose servers read failed, though the nodes read answered", async () => {
+    await refreshFleet();
+    const applied = serversReadIssued();
+    listServers.mockRejectedValueOnce(new Error("servers: bad gateway"));
+    listNodes.mockResolvedValueOnce({ nodes: [NODE, { ...NODE, id: "node-2" }], panel_version: "0.50.1" });
+    await refreshFleet();
+    expect(fleet.nodes).toHaveLength(2); // the nodes read was applied
+    expect(fleetIssued()).toBe(applied + 1);
+    expect(serversReadIssued()).toBe(applied); // the servers on screen are still that poll's
+  });
 });
 
 describe("fleet.loaded", () => {

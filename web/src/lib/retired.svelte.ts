@@ -13,6 +13,7 @@
 // that node comes back from offline or 30s after a read that failed for a
 // passing reason; never per poll.
 
+import { untrack } from "svelte";
 import { api, ApiError, errMsg } from "@/api/client";
 import type { Backup, Node, ReviveInput, Server } from "@/api/types";
 import { hasPerm, onSessionChange } from "./auth.svelte";
@@ -65,8 +66,12 @@ export const retired = $state({
    *  on screen. */
   note: "" as string,
   noteFailed: false,
-  /** The retired set the note was spoken for, as retiredKey() writes it. */
-  noteFor: "" as string,
+  /** The retired set the note is judged against, as retiredKey() writes it:
+   *  the set the first fleet read from a poll started after the note brought
+   *  back (#380), or null until that read has landed. Taken from that read
+   *  rather than worked out from the fleet on screen when the note is spoken,
+   *  which can be a poll behind (a second delete, another operator's retire). */
+  noteFor: null as string | null,
 });
 
 /** How long a failed (non-404) read waits before the row is read again. */
@@ -75,10 +80,13 @@ export const KEEP_RETRY_MS = 30_000;
  *  with a 20s timeout; a fleet with a dozen retired rows would otherwise fire
  *  a dozen at first paint. */
 export const KEEP_IN_FLIGHT = 2;
-/** How long the browser waits on one read before giving its slot back and
- *  treating it as failed (#380). The fetch itself has no timeout, and a read
- *  that never settles would otherwise hold its slot for the whole session. */
-export const KEEP_READ_TIMEOUT_MS = 20_000;
+/** How long the browser waits on one read before cancelling it, giving its
+ *  slot back and treating it as failed (#380). The fetch itself has no
+ *  timeout, and a read that never settles would otherwise hold its slot (and a
+ *  connection) for the whole session. Above the Panel's own 20s Agent limit,
+ *  so a slow answer that does come still lands, and a Panel that gives up
+ *  first is heard in its own words. */
+export const KEEP_READ_TIMEOUT_MS = 25_000;
 
 // Bumped when the session changes: a read still out from the last operator's
 // session must not land in the next one's.
@@ -102,7 +110,7 @@ export function resetRetired() {
   retired.reviving = {};
   retired.note = "";
   retired.noteFailed = false;
-  retired.noteFor = "";
+  retired.noteFor = null;
   noteGen = 0;
   // The slots go with the session: a read still out from the last one gives
   // nothing back when it settles (pump's done() checks the generation), so
@@ -122,33 +130,52 @@ export function retiredKey(servers: readonly Server[]): string {
     .join(",");
 }
 
-function speak(note: string, failed: boolean, forKey: string) {
+function speak(note: string, failed: boolean) {
   if (note) noteGen = fleetIssued() + 1;
   retired.note = note;
   retired.noteFailed = failed;
-  retired.noteFor = forKey;
+  retired.noteFor = null;
 }
 
 /** Clear the head's note: the next action is the operator's own. */
 export function clearRetiredNote() {
-  speak("", false, "");
+  speak("", false);
 }
 
 /**
- * Fold a fleet read into the group: the head's note goes when the retired set
- * is no longer the one it answered — judged only on a read from a poll started
- * after the note (`issuedAt`, the poll's issue number), since one started
- * before can still hold the row the delete took away; readings of rows that
- * are no longer retired go (a revive in another tab must not leave its old
- * "4 backups kept" waiting for the next retire); and the rows whose reading is
- * missing or stale are queued to be read.
+ * Fold a fleet read into the group. `issuedAt` is the issue number of the poll
+ * the read came from (serversReadIssued()).
+ *
+ * The head's note is judged only on reads from polls started after it: one
+ * started before can still hold the row the delete took away. The first such
+ * read sets the retired set the note stands for; the note goes when a later
+ * one's set differs from it (another operator's retire, revive or delete),
+ * when what it answered is no longer the picture on screen.
+ *
+ * Readings of rows that are no longer retired go (a revive in another tab must
+ * not leave its old "4 backups kept" waiting for the next retire), and the
+ * rows whose reading is missing or stale are queued to be read.
  */
-export function syncRetired(servers: readonly Server[], issuedAt: number = serversReadIssued(), now: number = Date.now()) {
-  const key = retiredKey(servers);
-  if (retired.note && issuedAt >= noteGen && key !== retired.noteFor) clearRetiredNote();
+export function syncRetired(servers: readonly Server[], issuedAt: number, now: number = Date.now()) {
+  if (retired.note && issuedAt >= noteGen) {
+    const key = retiredKey(servers);
+    if (retired.noteFor === null) retired.noteFor = key;
+    else if (key !== retired.noteFor) clearRetiredNote();
+  }
   const live = new Set(servers.filter((s) => s.state === "retired").map((s) => s.id));
   for (const id of Object.keys(retired.keep)) if (!live.has(id)) delete retired.keep[id];
   for (const s of retiredServers(servers)) if (keepStale(s, now)) queueKeep(s);
+}
+
+/** The retired list's fleet-sync effect (RetiredList mounts exactly this):
+ *  every fleet read is folded in, with the issue number of the poll it came
+ *  from. Tracks the servers and the nodes (a node coming back makes its rows
+ *  stale); the sync itself is untracked, so a reading landing does not re-run
+ *  it. Named here so a test can mount the effect the list does. */
+export function followRetired() {
+  const servers = fleet.servers;
+  void fleet.nodes;
+  untrack(() => syncRetired(servers, serversReadIssued()));
 }
 
 /** Queue a row's read; at most KEEP_IN_FLIGHT run at once. */
@@ -174,6 +201,14 @@ function pump() {
       pump();
     };
     if (!row || row.state !== "retired") {
+      done();
+      continue;
+    }
+    if (retired.reviving[id]) {
+      // Queued before its revive was sent: the reading would be thrown away.
+      // Dropped rather than left "loading", so a revive that is refused leaves
+      // the row to be read on the next sync.
+      delete retired.keep[id];
       done();
       continue;
     }
@@ -265,15 +300,19 @@ export async function loadKeep(server: Server, now: () => number = Date.now): Pr
   if (!hasPerm("backup.manage")) return unread(`${where} · no permission to read them`);
   if (node.status === "offline") return unread(`${where} · unreadable while ${node.name} is offline`);
   set({ kind: "loading" });
+  // Given up on after KEEP_READ_TIMEOUT_MS, and cancelled then too: freeing
+  // the slot alone would leave the request holding a connection, and a stuck
+  // node would soon hold all of the browser's to the Panel.
+  const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const r = await Promise.race([
-      api.listBackups(server.id),
+      api.listBackups(server.id, abort.signal),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`node ${node.name} did not answer within ${KEEP_READ_TIMEOUT_MS / 1000}s`)),
-          KEEP_READ_TIMEOUT_MS,
-        );
+        timer = setTimeout(() => {
+          reject(new Error(`the read of its backups timed out after ${KEEP_READ_TIMEOUT_MS / 1000}s`));
+          abort.abort();
+        }, KEEP_READ_TIMEOUT_MS);
       }),
     ]);
     set({ kind: "ok", ...keepOf(r.backups ?? []) });
@@ -335,14 +374,18 @@ export async function purge(id: string): Promise<void> {
   if (retired.busy[id]) return;
   retired.busy[id] = true;
   clearRetiredNote();
+  // An answer that arrives after a logout (or a logout and a new login) is the
+  // last session's, and is not spoken in this one.
+  const gen = keepGen;
   try {
     const res = await api.deleteServer(id);
-    // Spoken for the set this delete leaves behind, so the fleet read that
-    // takes the row away does not also take the answer away.
-    speak(res?.note ?? "", false, retiredKey(fleet.servers.filter((s) => s.id !== id)));
+    // The set the note stands for is taken from the first fleet read started
+    // after this answer (syncRetired), so the read that takes the row away
+    // does not also take the answer away.
+    if (gen === keepGen) speak(res?.note ?? "", false);
     delete retired.keep[id];
   } catch (e) {
-    speak(errMsg(e) || "the panel refused without a reason — check the audit log", true, retiredKey(fleet.servers));
+    if (gen === keepGen) speak(errMsg(e) || "the panel refused without a reason — check the audit log", true);
   } finally {
     delete retired.busy[id];
   }

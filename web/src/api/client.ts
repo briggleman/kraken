@@ -77,7 +77,7 @@ export function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -87,6 +87,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (res.status === 401) {
@@ -369,8 +370,10 @@ export const api = {
   },
 
   // --- backups ---
-  listBackups(id: string): Promise<{ backups: Backup[] | null; mirror?: string }> {
-    return request("GET", `/servers/${id}/backups`);
+  /** `signal` lets a caller that gives up on the read also cancel it, so a
+   *  node that never answers does not keep a connection held (#380). */
+  listBackups(id: string, signal?: AbortSignal): Promise<{ backups: Backup[] | null; mirror?: string }> {
+    return request("GET", `/servers/${id}/backups`, undefined, signal);
   },
   createBackup(id: string, name: string): Promise<Backup> {
     return request("POST", `/servers/${id}/backups`, { name });

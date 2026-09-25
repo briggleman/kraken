@@ -152,7 +152,7 @@ describe("reading what a row kept", () => {
     fleet.servers = [server("a")];
     listBackups.mockResolvedValueOnce({ backups: [backup("a", "ready", 2048)], mirror: "" });
     await loadKeep(server("a"));
-    expect(listBackups).toHaveBeenCalledWith("a");
+    expect(listBackups).toHaveBeenCalledWith("a", expect.any(AbortSignal));
     expect(retired.keep.a.reading).toEqual({ kind: "ok", count: 1, bytes: 2048 });
     // read once: the next poll does not read again
     expect(keepStale(server("a"))).toBe(false);
@@ -215,7 +215,7 @@ describe("reading what a row kept", () => {
     listBackups.mockReturnValueOnce(new Promise((r) => (answer = r)));
     const pending = loadKeep(server("a"));
     fleet.servers = [server("a", { state: "installing", node_id: "node-1" })];
-    syncRetired(fleet.servers);
+    syncRetired(fleet.servers, 0);
     answer({ backups: [backup("x", "ready", 2048)] });
     await pending;
     expect(retired.keep.a).toBeUndefined();
@@ -226,7 +226,7 @@ describe("reading what a row kept", () => {
     listBackups.mockResolvedValueOnce({ backups: [backup("x", "ready", 2048)] });
     await loadKeep(server("a"));
     expect(retired.keep.a).toBeDefined();
-    syncRetired([server("a", { state: "installing" })]);
+    syncRetired([server("a", { state: "installing" })], 0);
     expect(retired.keep.a).toBeUndefined();
   });
 
@@ -235,10 +235,10 @@ describe("reading what a row kept", () => {
     fleet.servers = rows;
     const answers: ((v: unknown) => void)[] = [];
     listBackups.mockImplementation(() => new Promise((r) => answers.push(r)));
-    syncRetired(rows);
+    syncRetired(rows, 0);
     expect(listBackups).toHaveBeenCalledTimes(2);
     // a second poll while they are out queues nothing twice
-    syncRetired(rows);
+    syncRetired(rows, 0);
     expect(listBackups).toHaveBeenCalledTimes(2);
     answers[0]({ backups: [] });
     await flush();
@@ -255,7 +255,7 @@ describe("reading what a row kept", () => {
     fleet.servers = ["a", "b", "c"].map((id) => server(id));
     const old: ((v: unknown) => void)[] = [];
     listBackups.mockImplementation(() => new Promise((r) => old.push(r)));
-    syncRetired(fleet.servers);
+    syncRetired(fleet.servers, 0);
     expect(listBackups).toHaveBeenCalledTimes(2);
     resetRetired();
     // the next session reads two at once again, although the last one's two are still out
@@ -263,7 +263,7 @@ describe("reading what a row kept", () => {
     listBackups.mockReset();
     listBackups.mockImplementation(() => new Promise((r) => next.push(r)));
     fleet.servers = ["d", "e", "f"].map((id) => server(id));
-    syncRetired(fleet.servers);
+    syncRetired(fleet.servers, 0);
     expect(listBackups.mock.calls.map((c) => c[0])).toEqual(["d", "e"]);
     // the old reads settling do not free a slot of this session's
     old.forEach((answer) => answer({ backups: [] }));
@@ -276,21 +276,27 @@ describe("reading what a row kept", () => {
     expect(listBackups.mock.calls.map((c) => c[0])).toEqual(["d", "e", "f"]);
   });
 
-  it("gives up on a read that never answers, frees its slot, and reads the row again later", async () => {
+  it("gives up on a read that never answers, cancels it, frees its slot, and reads the row again later", async () => {
     vi.useFakeTimers();
     fleet.servers = ["a", "b", "c"].map((id) => server(id));
     listBackups.mockImplementation(() => new Promise(() => {}));
-    syncRetired(fleet.servers);
+    syncRetired(fleet.servers, 0);
     expect(listBackups).toHaveBeenCalledTimes(2);
+    const signal = listBackups.mock.calls[0][1] as AbortSignal;
+    // past the Panel's own 20s Agent limit: its answer, slow or not, still lands
+    expect(KEEP_READ_TIMEOUT_MS).toBeGreaterThan(20_000);
     await vi.advanceTimersByTimeAsync(KEEP_READ_TIMEOUT_MS - 1);
     expect(listBackups).toHaveBeenCalledTimes(2);
     expect(retired.keep.a.reading.kind).toBe("loading");
+    expect(signal.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
+    // the request is cancelled, not only abandoned: it holds no connection
+    expect(signal.aborted).toBe(true);
     // failed like any other passing failure: said, and read again after the wait
     expect(retired.keep.a.reading).toMatchObject({
       kind: "unread",
       label: "backups on behemoth · could not be read",
-      title: `node behemoth did not answer within ${KEEP_READ_TIMEOUT_MS / 1000}s`,
+      title: `the read of its backups timed out after ${KEEP_READ_TIMEOUT_MS / 1000}s`,
     });
     const r = retired.keep.a.reading;
     expect(r.kind === "unread" && r.retryAt !== undefined).toBe(true);
@@ -311,6 +317,9 @@ describe("reading what a row kept", () => {
 });
 
 describe("the group's head note", () => {
+  // refreshFleet is mocked in this file, so no poll is ever issued and
+  // fleetIssued() stays put: "after" is the number the next poll would carry.
+  // The real poll numbering is covered end to end in retired.follow.svelte.test.
   it("outlives the delete that spoke it, and goes when the retired set changes under it", async () => {
     fleet.servers = [server("a"), server("b")];
     deleteServer.mockResolvedValueOnce({ note: "2 archives on the shared target were kept", removal_pending: false });
@@ -319,9 +328,58 @@ describe("the group's head note", () => {
     // the fleet read that takes the row away keeps the answer
     syncRetired([server("b")], after);
     expect(retired.note).toBe("2 archives on the shared target were kept");
+    // the same picture again keeps it too
+    syncRetired([server("b")], after + 1);
+    expect(retired.note).toBe("2 archives on the shared target were kept");
     // another operator retires a server: the answer is about a picture no longer on screen
-    syncRetired([server("b"), server("c")], after + 1);
+    syncRetired([server("b"), server("c")], after + 2);
     expect(retired.note).toBe("");
+  });
+
+  it("stands for the set the Panel reports after the delete, not the one on screen before it", async () => {
+    // Another operator retired c since the last poll: the fleet on screen does
+    // not have it, and the delete's own follow-up read does.
+    fleet.servers = [server("a"), server("b")];
+    deleteServer.mockResolvedValueOnce({ note: "2 archives on the shared target were kept", removal_pending: false });
+    await purge("a");
+    const after = fleetIssued() + 1;
+    syncRetired([server("b"), server("c")], after);
+    expect(retired.note).toBe("2 archives on the shared target were kept");
+    // and when c is revived or deleted by them later, the note goes
+    syncRetired([server("b")], after + 1);
+    expect(retired.note).toBe("");
+  });
+
+  it("survives two deletes close together", async () => {
+    // The second delete is sent before the first one's fleet read lands, so the
+    // fleet on screen still holds both rows when its answer is spoken.
+    fleet.servers = [server("a"), server("b"), server("c")];
+    deleteServer.mockResolvedValueOnce({ note: "", removal_pending: false });
+    await purge("a");
+    deleteServer.mockResolvedValueOnce({ note: "an archive on the shared target was kept", removal_pending: false });
+    await purge("b");
+    syncRetired([server("c")], fleetIssued() + 1);
+    expect(retired.note).toBe("an archive on the shared target was kept");
+  });
+
+  it("does not speak an answer that lands after the session changed", async () => {
+    fleet.servers = [server("a")];
+    let answer: (v: unknown) => void = () => {};
+    deleteServer.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    const going = purge("a");
+    resetRetired(); // a logout, and the next operator's login
+    answer({ note: "2 archives on the shared target were kept", removal_pending: false });
+    await going;
+    expect(retired.note).toBe("");
+    // a refusal likewise
+    let refuse: (e: unknown) => void = () => {};
+    deleteServer.mockReturnValueOnce(new Promise((_, r) => (refuse = r)));
+    const refused = purge("a");
+    resetRetired();
+    refuse(new ApiError(409, "a removal is still owed for this server on node titan", "removal_pending"));
+    await refused;
+    expect(retired.note).toBe("");
+    expect(retired.noteFailed).toBe(false);
   });
 
   it("is not cleared by a poll that was already out when the delete committed", async () => {
@@ -343,8 +401,9 @@ describe("the group's head note", () => {
     await purge("a");
     const after = fleetIssued() + 1;
     syncRetired(fleet.servers, after);
+    syncRetired(fleet.servers, after + 1);
     expect(retired.noteFailed).toBe(true);
-    syncRetired([], after + 1);
+    syncRetired([], after + 2);
     expect(retired.note).toBe("");
     expect(retired.noteFailed).toBe(false);
   });
@@ -383,14 +442,34 @@ describe("revive from the group", () => {
     // the 202 is in and its reading dropped; a poll lands before the fleet read
     // after the revive, still showing the row retired
     expect(retired.keep.a).toBeUndefined();
-    syncRetired([server("a")]);
+    syncRetired([server("a")], 0);
     expect(listBackups).not.toHaveBeenCalled();
     refreshed();
     expect(await going).toBe("");
     expect(retired.reviving.a).toBeUndefined();
     // once the revive has let go, a row that still reads retired is read again
-    syncRetired([server("a")]);
-    expect(listBackups).toHaveBeenCalledWith("a");
+    syncRetired([server("a")], 0);
+    expect(listBackups).toHaveBeenCalledWith("a", expect.any(AbortSignal));
+  });
+
+  it("does not read a row that was already waiting in the queue when its revive was sent", async () => {
+    fleet.servers = ["a", "b", "c"].map((id) => server(id));
+    const answers: ((v: unknown) => void)[] = [];
+    listBackups.mockImplementation(() => new Promise((r) => answers.push(r)));
+    syncRetired(fleet.servers, 0);
+    expect(listBackups.mock.calls.map((c) => c[0])).toEqual(["a", "b"]); // c waits in the queue
+    let refuse: (e: unknown) => void = () => {};
+    reviveServer.mockReturnValueOnce(new Promise((_, r) => (refuse = r)));
+    const going = reviveRetired("c", {});
+    // a slot frees while the revive is out: c is not read
+    answers[0]({ backups: [] });
+    await flush();
+    expect(listBackups.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
+    // the revive is refused: c is still retired, and the next sync reads it
+    refuse(new ApiError(409, "only a retired server can be revived", "server_not_retired"));
+    expect(await going).toMatch(/only a retired server/);
+    syncRetired(fleet.servers, 0);
+    expect(listBackups.mock.calls.map((c) => c[0])).toEqual(["a", "b", "c"]);
   });
 
   it("returns the Panel's refusal and lets go of the row", async () => {

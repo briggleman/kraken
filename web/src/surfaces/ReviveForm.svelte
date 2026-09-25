@@ -15,8 +15,7 @@
     reviveBlock,
     reviveBody,
     reviveCandidates,
-    reviveMemorySource,
-    reviveSeedMemory,
+    reviveMemorySeed,
     sizeParts,
     type BackupOption,
   } from "@/lib/revive";
@@ -45,6 +44,7 @@
   let nodeId = $state("");
   let memMb = $state("");
   let seedMb = $state(0);
+  let seedSource = $state("");
   let restorePick = $state("");
   let restoreTouched = $state(false);
   let startAfter = $state(true);
@@ -78,7 +78,9 @@
     const sv = fleet.servers.find((s) => s.id === id);
     if (!sv) return;
     nodeId = reviveCandidates(sv, fleet.nodes)[0]?.id ?? "";
-    seedMb = reviveSeedMemory(sv, specOf(sv));
+    const memSeed = reviveMemorySeed(sv, specOf(sv));
+    seedMb = memSeed.mb;
+    seedSource = memSeed.source;
     memMb = String(seedMb);
     restorePick = "";
     restoreTouched = false;
@@ -230,7 +232,7 @@
           <span>memory cap</span>
           <input type="text" class="cfg-in" bind:value={memMb} aria-label="Memory cap" />
           <p class="cfg-help">
-            in MB · {server ? reviveMemorySource(server, spec, seedMb) : ""}{spec
+            in MB{server && seedSource ? ` · ${seedSource}` : ""}{spec
               ? ` · spec minimum ${spec.resources.min_memory_mb}MB`
               : ""}{spec?.resources.recommended_memory_mb ? `, recommended ${spec.resources.recommended_memory_mb}MB` : ""}.
           </p>

@@ -93,8 +93,9 @@ func (l *installLog) entry(id string) *installEntry {
 // log must get the new attempt, never the one before the button press. The
 // returned undo is for that write failing: it puts the replaced attempt back
 // as it was, so a request that changed nothing leaves the log as it found it.
-// undo does nothing once the new attempt has a line or another Start has
-// replaced it. Subscribers Start closed stay closed; a reader re-subscribes.
+// undo does nothing once the new attempt has a line, has finished, or has been
+// replaced by another Start. Subscribers Start closed stay closed; a reader
+// re-subscribes.
 func (l *installLog) Start(id string) (undo func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

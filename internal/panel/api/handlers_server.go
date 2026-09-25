@@ -224,8 +224,9 @@ func treeUntouched(err error) bool {
 // caller owns both, because the three callers differ: create/reinstall end at
 // offline, the pre-start update pass continues into a start.
 //
-// The caller must have opened the buffer (installs.Start) first, so even a
-// connect-time failure leaves the operator something to read.
+// The buffer is already open when this runs: the handler that started the
+// attempt opened it (installs.Start) before it wrote `installing` (#387), so
+// even a connect-time failure leaves the operator something to read.
 func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, withBepInEx bool) error {
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {

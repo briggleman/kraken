@@ -422,7 +422,8 @@ func TestInstallLog_UndoOfAFirstStartForgetsTheServer(t *testing.T) {
 }
 
 // undo is only for the write right after Start. Once the attempt has output,
-// or a later Start has replaced it, the attempt is real and undo leaves it be.
+// has finished, or a later Start has replaced it, the attempt is real and undo
+// leaves it be.
 func TestInstallLog_UndoIsANoOpOnceTheAttemptIsUnderway(t *testing.T) {
 	l := newInstallLog()
 	l.Start("s1")
@@ -434,6 +435,14 @@ func TestInstallLog_UndoIsANoOpOnceTheAttemptIsUnderway(t *testing.T) {
 	undo()
 	if snap := l.Snapshot("s1"); len(snap.Lines) != 1 || snap.Lines[0].Text != "new" {
 		t.Fatalf("undo after a line rolled the attempt back; current = %+v", snap.Lines)
+	}
+
+	undo = l.Start("s1")
+	l.Finish("s1") // no line, but a verdict
+	undo()
+	if snap := l.Snapshot("s1"); !snap.Done || len(snap.Lines) != 0 || snap.Previous == nil ||
+		len(snap.Previous.Lines) != 1 || snap.Previous.Lines[0].Text != "new" {
+		t.Fatalf("undo after a Finish rolled the attempt back; got %+v", snap)
 	}
 
 	undo = l.Start("s1")

@@ -2533,7 +2533,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-meta">node 01 · 16c/32t · up 27d 06h</span>
       <span class="node-meta">10.0.0.4 · debian 12</span>
       <span class="node-meta node-cond container-drift">
-        <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
+        <span class="nc-k">containers</span><b class="nc-v">3 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v">1 stopped</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v act">1 untracked</b>
         <span class="nc-sep" aria-hidden="true">&middot;</span><span class="nc-name" title="kraken_f4030778-08c8-47b7-abba-59bbd9cebd08 (f4030778-08c8-47b7-abba-59bbd9cebd08)">kraken_f4030778…</span>
         <button class="nc-go" aria-label="Retire the untracked container kraken_f4030778… on BEHEMOTH — it is stopped and removed, its data untouched">retire</button>
         <span class="nc-fail" title="retire · node behemoth did not answer within the time allowed — the action may still be completing on the node">retire · node did not answer within the time allowed — the action may still be completing</span>
@@ -2593,6 +2593,15 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="node-name">TITAN</span>
       <span class="node-meta">node 02 &middot; 8c/16t &middot; up 6d 11h</span>
       <span class="node-meta">10.0.0.7 &middot; debian 12</span>
+      <!-- Containers with nothing wrong: the line stands on its own once a
+           stopped container exists, so an empty `docker ps` is explained where
+           the operator first looks. Plain value ink throughout — a stopped
+           container is a condition, not a fault (the Verb-Risk Rule: nothing
+           here lifts into the light). Which server has no container is the
+           drill-in's answer, not this line's. -->
+      <span class="node-meta node-cond containers-plain">
+        <span class="nc-k">containers</span><b class="nc-v">2 running</b><span class="nc-sep" aria-hidden="true">&middot;</span><b class="nc-v">1 stopped</b>
+      </span>
       <span class="node-meta node-cond removals-owed">
         <span class="nc-k">removals</span><b class="nc-v" title="dragonwilds-02 (retry in 40s · could not reach the node's agent)">1 pending</b>
       </span>

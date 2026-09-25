@@ -191,3 +191,92 @@ func TestInstallLog_ReviveOpensItsAttemptBeforeTheInstallingWrite(t *testing.T) 
 	waitForState(t, h, token, sv.ID, "offline")
 	waitOpClear(t, srv, sv.ID)
 }
+
+// A revive with start takes the update-on-start branch whenever its install
+// left the row unstamped (settings edited during the install) or a long
+// restore outlived the fresh-install window. The hook stands in for both: when
+// the revive's install writes the row offline, it clears provisioned_at, so
+// startAfterRevive runs the update pass. Its installing write must find the
+// log already rotated: the revive's attempt as previous, the new one empty.
+func TestInstallLog_StartAfterReviveRotatesBeforeTheInstallingWrite(t *testing.T) {
+	ctx := context.Background()
+	srv, st := newRemovalAPI(t)
+	h := srv.Handler()
+	token := login(t, h)
+	nodeID := liveNode(t, h, token, startFakeAgent(t, "node-rotate-revive-start"))
+	specID := createSpecWithInstall(t, h, token, "rotate-revive-start", map[string]any{"script": "install.sh"})
+	sv := placedServer(t, st, "sv-rotate-revive-start", nodeID, specID)
+	retireServer(t, srv, token, sv.ID)
+
+	var installingWrites atomic.Int32
+	var unstamped atomic.Bool
+	var reviveAttempt, atUpdate atomic.Pointer[installLogBody]
+	hook := func(row *store.Server) {
+		if row.ID != sv.ID {
+			return
+		}
+		switch {
+		case row.State == store.StateInstalling:
+			n := installingWrites.Add(1)
+			if n > 2 {
+				return
+			}
+			body, code := readInstallLogInHook(h, token, sv.ID)
+			if code != http.StatusOK {
+				t.Errorf("install-log read inside installing write %d: status %d", n, code)
+				return
+			}
+			if n == 1 {
+				reviveAttempt.Store(&body)
+			} else {
+				atUpdate.Store(&body)
+			}
+		case row.State == store.StateOffline && row.ProvisionedAt != nil && installingWrites.Load() == 1 &&
+			unstamped.CompareAndSwap(false, true):
+			// The revive's install landing: leave the row unstamped.
+			fresh, err := st.Store.GetServer(ctx, sv.ID)
+			if err != nil {
+				t.Errorf("reload after the revive's install: %v", err)
+				return
+			}
+			fresh.ProvisionedAt = nil
+			if err := st.Store.UpdateServer(ctx, fresh); err != nil {
+				t.Errorf("clear provisioned_at: %v", err)
+			}
+		}
+	}
+	st.onUpdateServer.Store(&hook)
+	t.Cleanup(func() { st.onUpdateServer.Store(nil) })
+
+	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/revive", token, map[string]any{"start": true})
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("revive: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	waitForState(t, h, token, sv.ID, "running")
+	waitOpClear(t, srv, sv.ID)
+
+	if !unstamped.Load() {
+		t.Fatal("the revive's install never wrote the row offline with provisioned_at set")
+	}
+	if n := installingWrites.Load(); n != 2 {
+		t.Fatalf("%d installing writes, want 2 (the revive, then the start's update pass)", n)
+	}
+	first, got := reviveAttempt.Load(), atUpdate.Load()
+	if first == nil || got == nil {
+		t.Fatal("an install-log read inside an installing write did not happen")
+	}
+	if got.Previous == nil {
+		t.Fatal("previous is null inside the start's installing write: the log was not rotated before it")
+	}
+	if got.Previous.StartedMs != first.StartedMs || !got.Previous.Done || len(got.Previous.Lines) == 0 {
+		t.Errorf("previous = started %d done=%v %d lines, want the revive's finished attempt (started %d)",
+			got.Previous.StartedMs, got.Previous.Done, len(got.Previous.Lines), first.StartedMs)
+	}
+	if len(got.Lines) != 0 || got.Done || got.FinishedMs != 0 || got.StartedMs == 0 {
+		t.Errorf("current attempt inside the start's installing write: done=%v started_ms=%d finished_ms=%d lines=%+v, want the new, empty one",
+			got.Done, got.StartedMs, got.FinishedMs, got.Lines)
+	}
+	if got.StartedMs < got.Previous.FinishedMs {
+		t.Errorf("current attempt started %d, before the revive's finished %d", got.StartedMs, got.Previous.FinishedMs)
+	}
+}

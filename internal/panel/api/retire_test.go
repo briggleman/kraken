@@ -238,6 +238,9 @@ func TestRetire_FinalBackupFailureAbandonsTheRetire(t *testing.T) {
 	if !strings.Contains(v.LastError, "the final backup failed: no space left on device") {
 		t.Fatalf("last_error = %q, want the backup's failure", v.LastError)
 	}
+	if strings.Contains(v.LastError, "final_backup: false") {
+		t.Fatalf("last_error = %q: the retire-without-a-backup hint is for a refused stop only", v.LastError)
+	}
 	if got := rt.Removals(); len(got) != 0 {
 		t.Fatalf("removals = %+v: the world went without the final backup", got)
 	}
@@ -363,6 +366,8 @@ func TestRevive_DefaultNodeAndOldPorts(t *testing.T) {
 	if n, err := st.Store.GetNode(ctx, nodeID); err != nil || n.Ports.IsFree(27050) || n.AllocatedMemoryMB != 1024 {
 		t.Fatalf("node after revive = %+v (%v), want port 27050 and 1024 MB reserved again", n, err)
 	}
+	// Switched back on just after the row reads offline, so waited for.
+	waitScheduleEnabled(t, st, sv.ID, "sched-on")
 	scheds := schedulesOf(t, st, sv.ID)
 	if on := scheds["sched-on"]; !on.Enabled || on.DisabledByRetire {
 		t.Fatalf("schedule the retire switched off = %+v, want back on and unflagged", on)

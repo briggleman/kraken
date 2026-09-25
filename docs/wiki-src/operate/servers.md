@@ -269,6 +269,15 @@ node that is unreachable at that moment gets its removal queued without a final
 backup; the retired server says so in `retire_note` ("final backup skipped: node
 unreachable").
 
+A node that answers but refuses the stop (the Agent reports an error, rather
+than not answering) abandons the retire the same way, and would refuse the next
+one too. The reason says the way through: retire again with "take a final
+backup first" unchecked (`final_backup: false` in the API). A retire without a
+final backup still sends the stop but does not depend on the stop's result: a
+refusal does not hold it up, and the removal force-removes the container. The
+world goes without
+a backup, though, so take one by hand first if you can.
+
 While it runs the server reads `retiring`, and carries a `retire` block with
 the state it came from, the phase (`stopping`, `backing_up`, `removing`) and the
 final backup's outcome so far. Anything else that would change the server — a
@@ -330,7 +339,9 @@ failed create does; a restore runs through the same job as any restore
 (`restoring`, then `offline` with `restore_result`); a start that is refused or
 fails lands `offline` with the reason in `last_error`. Once the install has
 landed, the schedules the retire switched off are switched back on — only
-those, never one you had switched off yourself.
+those, never one you had switched off yourself. When the revive's install
+fails they stay off, and the reinstall that then succeeds switches them back
+on.
 
 A revive is refused with `409 removal_pending` while the retire's removal is
 still owed to a node: the node would delete the revived world the moment it

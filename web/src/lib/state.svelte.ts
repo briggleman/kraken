@@ -131,8 +131,10 @@ export function closeSheet(id: SheetId) {
 // the warning says first, because it is what makes the rest recoverable.
 //
 // Two sentences, because the mock writes two: the drill-in's danger note says
-// what retiring does ("retiring stops this server…"), and the typed confirmation
-// repeats it and adds where the server goes ("…from the retired list"). Each
+// what retiring does in twenty-one words ("final backup, then the world and
+// config leave the node…"), and the typed confirmation says it in full, in the
+// order the Panel does it, and adds where the server goes ("…from the retired
+// list"). Each
 // follows the retire block's `take a final backup first` toggle, because the
 // no-backup retire must not claim a backup it will not take — and neither
 // says "it cannot be undone" (the Cannot-Be-Undone Rule): a retire keeps every
@@ -149,13 +151,15 @@ export function retireConfirmBody(finalBackup: boolean): string {
   return finalBackup ? CD_SERVER_BODY : CD_SERVER_BODY_NO_BACKUP;
 }
 
-/** The retire block's danger note, as the toggle stands. */
+/** The retire block's danger note, as the toggle stands. The final-backup
+ *  sentence is the mock's, word for word. The no-backup one has no mock frame
+ *  (the mock draws the toggle on): inherited from the round's register — same
+ *  lowercase, same length, same order — rather than designed. */
 export function retireNote(finalBackup: boolean): string {
   return finalBackup
-    ? "retiring stops this server, takes a final backup, then removes its world and config from the node. " +
-        "its backups are kept, and it can be revived later from any of them."
-    : "retiring stops this server, then removes its world and config from the node without a final backup. " +
-        "its existing backups are kept, and it can be revived later from one of them or as a fresh world.";
+    ? "final backup, then the world and config leave the node. the backups stay and any of them can bring it back."
+    : "no final backup: the world and config leave the node. " +
+        "earlier backups stay and any of them can bring it back, or it can start fresh.";
 }
 
 // Deleting a retired server for good (#360): the one lifecycle act that is

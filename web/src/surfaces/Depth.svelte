@@ -1203,8 +1203,10 @@
         </div>
       </section>
       <!-- The retire block (DESIGN.md, Retire Block): the danger block no longer
-           deletes a server, it retires it. The note says what the act does in
-           the order the Panel does it, then what it keeps; the one choice it
+           deletes a server, it retires it. The note is the short form (the
+           mock's twenty-one words): what goes — the final backup, then the world
+           and config — then what stays; the typed confirmation spells out the
+           full order, the stop included. The one choice it
            offers — a final backup, on by default because revive needs something
            to restore — sits between the note and the control, and both the note
            and the typed confirmation follow it. The control stays Crisis: the

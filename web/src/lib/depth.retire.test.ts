@@ -123,14 +123,17 @@ describe("the delete button", () => {
   });
 
   it("says what a retire does, in order, and that it can be undone", () => {
-    // The mock's confirmation body: the note's sentence, plus where it goes.
+    // The mock's confirmation body: what the retire does in full, plus where it goes.
     expect(CD_SERVER_BODY).toBe(
       "this stops the server, takes a final backup, then removes its world and config from the node. " +
         "its backups are kept, and it can be revived later from the retired list.",
     );
     expect(retireConfirmBody(true)).toBe(CD_SERVER_BODY);
-    expect(retireNote(true)).toMatch(/^retiring stops this server, takes a final backup, then removes its world and config/);
-    expect(retireNote(true)).toMatch(/its backups are kept, and it can be revived later from any of them\.$/);
+    // The danger note is the mock's twenty-one words, verbatim.
+    expect(retireNote(true)).toBe(
+      "final backup, then the world and config leave the node. the backups stay and any of them can bring it back.",
+    );
+    expect(retireNote(true).split(/\s+/)).toHaveLength(21);
     for (const s of [CD_SERVER_BODY, retireConfirmBody(false), retireNote(true), retireNote(false)]) {
       expect(s).not.toMatch(/cannot be undone/);
     }
@@ -139,8 +142,8 @@ describe("the delete button", () => {
   it("never claims a final backup the toggle turned off", () => {
     expect(retireConfirmBody(false)).not.toMatch(/takes a final backup/);
     expect(retireConfirmBody(false)).toMatch(/no final backup is taken/);
-    expect(retireNote(false)).not.toMatch(/takes a final backup/);
-    expect(retireNote(false)).toMatch(/without a final backup/);
+    expect(retireNote(false)).not.toMatch(/^final backup/);
+    expect(retireNote(false)).toMatch(/^no final backup: /);
   });
 
   it("sends the toggle with the retire, and every open starts it back on", async () => {

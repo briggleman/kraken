@@ -228,10 +228,12 @@ the node.</p>
 <h2 id="the-container-drift-badge">The container-drift badge <a class="hlink" href="#the-container-drift-badge" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>When a node&#39;s band reads <code>containers 4 running · 1 untracked</code>, the Panel is
 telling you that its own books and the node&#39;s disagree, and by how much.</p>
-<p>The Agent reports the containers carrying the <code>kraken.managed=true</code> label that
-are running right now. The Panel compares them against its own server rows on
-that node. The badge appears only when the two accounts differ, and only for a
-node that is not offline and has been contacted at least once.</p>
+<p>The Agent reports the containers carrying the <code>kraken.managed=true</code> label, and
+the Panel compares the live ones (running, paused or restarting) against its
+own server rows on that node. From Agent 0.59.0 the report includes stopped
+containers too, each with its state (below); an older Agent reports only the
+live ones. The drift half of the line appears only when the two accounts differ,
+and only for a node that is not offline and has been contacted at least once.</p>
 <ul>
 <li><strong><code>untracked</code></strong> means the node is running more than the Panel expects. Some
 container is up that no server row accounts for.</li>
@@ -253,7 +255,24 @@ container does, quite deliberately, so the Agent&#39;s adoption scan and its cle
 both find it, and while it ran the node had one more managed container than the
 Panel had <code>running</code> rows for. An Agent that names its containers reports that
 one against the server id it belongs to, the Panel finds the row, and the badge
-stays quiet for the length of the pass.</p>
+stays quiet for the length of the pass. From Agent 0.59.0 the install container
+is not reported at all, in any state: an exited one left behind after a pass
+would otherwise read as the server&#39;s stopped game container.</p>
+<p><strong>From Agent 0.59.0 the Agent reports stopped containers too</strong>, each with the
+state Docker gives it. A container is <strong>live</strong> when it is <code>running</code>, <code>paused</code> or
+<code>restarting</code> — it holds memory and ports — and stopped when it is <code>created</code>,
+<code>exited</code>, <code>dead</code> or <code>removing</code>. Only live ones count on either side: <code>untracked</code>
+is a live container no row accounts for, <code>missing</code> is a <code>running</code> row with no
+live container, and <code>N running</code> is the Agent&#39;s count of live containers. A
+stopped container is neither untracked nor missing — it is what an offline
+server keeps for its next start. The line counts them instead,
+<code>containers 2 running · 1 stopped</code>, and it stays on the band whenever that
+count is above zero, drift or no drift. The count is node-wide; whether one
+particular offline server still has its container is what the drill-in says —
+its empty console reads <code>installed · no container until start</code> when the node
+has none for it, which is what a reinstall or an update pass leaves until
+<strong>start</strong>. An Agent older than 0.59.0 reports only live containers, so there is
+no stopped count and no drill-in note until the Agent is updated.</p>
 <p>A badge that does <em>not</em> clear is worth acting on. There are two causes, and
 the badge tells you which. If a server row exists for the id — it shows
 <code>install_failed</code> or <code>offline</code> while players are connected — it is a restart

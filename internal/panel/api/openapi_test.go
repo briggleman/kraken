@@ -284,3 +284,39 @@ func TestOpenAPIInstallLogDeclaresPreviousNullable(t *testing.T) {
 		t.Errorf("InstallAttempt.lines must be an array of a schema that exists; got %+v", attempt.Properties["lines"])
 	}
 }
+
+// A client reading the node band's data needs both halves of #385 declared:
+// each container's state (the list now carries stopped containers, so
+// "running" must be filtered on it) and the marker that makes an empty list
+// mean "no containers" rather than "an Agent too old to say".
+func TestOpenAPINodeDeclaresContainerStateAndReportedMarker(t *testing.T) {
+	type schema struct {
+		Type       string            `json:"type"`
+		Items      *schema           `json:"items"`
+		Properties map[string]schema `json:"properties"`
+	}
+	var doc struct {
+		Comp struct {
+			Schemas map[string]schema `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	node, ok := doc.Comp.Schemas["Node"]
+	if !ok {
+		t.Fatal("openapi.yaml has no Node schema")
+	}
+	if got := node.Properties["containers_reported"].Type; got != "boolean" {
+		t.Errorf("Node.containers_reported type = %q, want boolean", got)
+	}
+	mc := node.Properties["managed_containers"]
+	if mc.Items == nil {
+		t.Fatal("Node.managed_containers declares no items")
+	}
+	for _, f := range []string{"server_id", "container_name", "state"} {
+		if got := mc.Items.Properties[f].Type; got != "string" {
+			t.Errorf("Node.managed_containers[].%s type = %q, want string", f, got)
+		}
+	}
+}

@@ -2812,13 +2812,25 @@ type NodeInfo struct {
 	// Panel over its reverse tunnel and therefore survives a failed bind, so
 	// without this the conflict is invisible outside the node's own agent.log.
 	ListenError string `protobuf:"bytes,17,opt,name=listen_error,json=listenError,proto3" json:"listen_error,omitempty"`
-	// Every `kraken.managed` container the Agent currently sees running, named.
-	// `running_servers` above is the same set counted, and stays authoritative for
-	// an Agent too old to fill this in; the list is what lets the Panel say *which*
-	// container it has lost track of instead of only how many.
+	// Every `kraken.managed` game container the Agent currently sees, in any
+	// state, named and with its state (the one-shot install container is left
+	// out; see ManagedContainer). Up to 0.58 this held only the containers
+	// `docker ps` lists; from the Agent that sets `containers_reported` below it
+	// holds stopped ones too, and `running_servers` above is the count of the
+	// LIVE ones by the rule on ManagedContainer.state — running, paused or
+	// restarting, which is the set `docker ps` without `-a` lists and so what
+	// an older Panel has always read there. The list is what lets the Panel say
+	// *which* container it has lost track of instead of only how many, and
+	// whether an offline server has a container at all.
 	ManagedContainers []*ManagedContainer `protobuf:"bytes,18,rep,name=managed_containers,json=managedContainers,proto3" json:"managed_containers,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// True from an Agent that reports every managed container in
+	// `managed_containers`, stopped ones included, with their state — set even
+	// when the list is empty. It is what tells "this node has no container for
+	// that server" apart from "this Agent is too old to say": an empty repeated
+	// field is indistinguishable from an absent one on the wire.
+	ContainersReported bool `protobuf:"varint,19,opt,name=containers_reported,json=containersReported,proto3" json:"containers_reported,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *NodeInfo) Reset() {
@@ -2977,14 +2989,33 @@ func (x *NodeInfo) GetManagedContainers() []*ManagedContainer {
 	return nil
 }
 
-// ManagedContainer is one running `kraken.managed` container as the Agent sees
-// it: the server id from the container's own label, and the container name.
-// Both are reported because the id is what the Panel matches against its rows
-// and the name is what an operator types into `docker`.
+func (x *NodeInfo) GetContainersReported() bool {
+	if x != nil {
+		return x.ContainersReported
+	}
+	return false
+}
+
+// ManagedContainer is one `kraken.managed` game container as the Agent sees
+// it: the server id from the container's own label, the container name, and
+// Docker's state word for it. The id is what the Panel matches against its
+// rows, the name is what an operator types into `docker`, and the state is what
+// separates a live container from a stopped one left behind for the next start.
+// The server's one-shot install container (`kraken_<id>_install`) carries the
+// same labels but is never reported: an exited one would read as the server's
+// stopped game container.
 type ManagedContainer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	ContainerName string                 `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
+	// Docker's state word, lowercase and passed through as reported: running,
+	// exited, created, dead, paused, restarting, removing. The rule for reading
+	// it, defined once per side (agentpb.ContainerStateLive in Go, containerLive
+	// in the web): LIVE = running | paused | restarting — it holds memory and
+	// ports; NOT LIVE = created | exited | dead | removing; EMPTY = live — an
+	// Agent that predates the field only ever listed running containers, and one
+	// that sets containers_reported always fills it.
+	State         string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3029,6 +3060,13 @@ func (x *ManagedContainer) GetServerId() string {
 func (x *ManagedContainer) GetContainerName() string {
 	if x != nil {
 		return x.ContainerName
+	}
+	return ""
+}
+
+func (x *ManagedContainer) GetState() string {
+	if x != nil {
+		return x.State
 	}
 	return ""
 }
@@ -4915,7 +4953,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\"\x16\n" +
-	"\x14DeleteBackupResponse\"\xd8\x05\n" +
+	"\x14DeleteBackupResponse\"\x89\x06\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12!\n" +
@@ -4936,10 +4974,12 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\rbinary_sha256\x18\x0f \x01(\tR\fbinarySha256\x12C\n" +
 	"\x0ehost_addresses\x18\x10 \x03(\v2\x1c.kraken.agent.v1.HostAddressR\rhostAddresses\x12!\n" +
 	"\flisten_error\x18\x11 \x01(\tR\vlistenError\x12P\n" +
-	"\x12managed_containers\x18\x12 \x03(\v2!.kraken.agent.v1.ManagedContainerR\x11managedContainers\"V\n" +
+	"\x12managed_containers\x18\x12 \x03(\v2!.kraken.agent.v1.ManagedContainerR\x11managedContainers\x12/\n" +
+	"\x13containers_reported\x18\x13 \x01(\bR\x12containersReported\"l\n" +
 	"\x10ManagedContainer\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12%\n" +
-	"\x0econtainer_name\x18\x02 \x01(\tR\rcontainerName\";\n" +
+	"\x0econtainer_name\x18\x02 \x01(\tR\rcontainerName\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\";\n" +
 	"\vHostAddress\x12\x1c\n" +
 	"\tinterface\x18\x01 \x01(\tR\tinterface\x12\x0e\n" +
 	"\x02ip\x18\x02 \x01(\tR\x02ip\"\x19\n" +

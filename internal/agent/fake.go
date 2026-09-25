@@ -41,6 +41,13 @@ type FakeRuntime struct {
 	// Docker's log follow ends when the container it was following stops. That
 	// is what lets the Panel's reconnect-on-restart path be exercised here.
 	runs map[string]int
+	// containers is which servers have a game container on the "host": one is
+	// created by the first start and outlives a stop (Docker keeps an exited
+	// container for the next start), and it goes when the server is removed or
+	// an install pass clears the stopped one ahead of itself — the three events
+	// that decide it on the Docker runtime. NodeInfo reports each with the
+	// state Docker would give it.
+	containers map[string]bool
 	// installScripts records the script of every install pass, per server, in
 	// order. The install phase runs more than once per server now (create, then
 	// again before every start — #307) and the passes differ, so what a pass
@@ -289,33 +296,43 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 		f.mu.Unlock()
 		return nil, grpcstatus.Error(codes.Unavailable, "the node did not answer")
 	}
-	// The running set named as well as counted, exactly as the Docker runtime
-	// reports it — the two are built from one walk here for the same reason they
-	// come from one container list there: a count that disagrees with its own
-	// list would show up as drift the Panel invented.
+	// Every container named with its state, and the running ones counted, exactly
+	// as the Docker runtime reports them — the two are built from one walk here
+	// for the same reason they come from one container list there: a count that
+	// disagrees with its own list would show up as drift the Panel invented. A
+	// server that has never started has no container, as on a real host.
+	// Like the Docker runtime, the fake never reports an install container: its
+	// install pass has none to report.
 	var managed []*agentpb.ManagedContainer
-	for id, st := range f.states {
-		if st == agentpb.ServerState_SERVER_STATE_RUNNING {
-			managed = append(managed, &agentpb.ManagedContainer{ServerId: id, ContainerName: "kraken_" + id})
+	var running int32
+	for id := range f.containers {
+		state := "exited"
+		if f.states[id] == agentpb.ServerState_SERVER_STATE_RUNNING {
+			state = "running"
 		}
+		if agentpb.ContainerStateLive(state) {
+			running++
+		}
+		managed = append(managed, &agentpb.ManagedContainer{ServerId: id, ContainerName: "kraken_" + id, State: state})
 	}
 	f.mu.Unlock()
 	// Map order is random; sort so a test reading the list twice reads it the same
 	// way, and so the Panel's set comparison isn't handed gratuitous churn.
 	sort.Slice(managed, func(i, j int) bool { return managed[i].ServerId < managed[j].ServerId })
 	return &agentpb.NodeInfo{
-		NodeId:            f.nodeID,
-		Os:                f.os,
-		WineEnabled:       f.wineEnabled,
-		AgentVersion:      f.version,
-		BinarySha256:      f.binarySHA, // empty unless WithFakeBinarySHA was used
-		TotalMemoryMb:     16384,
-		RunningServers:    int32(len(managed)),
-		ManagedContainers: managed,
-		Host:              PrimaryIP(),
-		HostAddresses:     CandidateIPs(),
-		ExternalIp:        "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
-		RuntimeStatus:     agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
+		NodeId:             f.nodeID,
+		Os:                 f.os,
+		WineEnabled:        f.wineEnabled,
+		AgentVersion:       f.version,
+		BinarySha256:       f.binarySHA, // empty unless WithFakeBinarySHA was used
+		TotalMemoryMb:      16384,
+		RunningServers:     running,
+		ManagedContainers:  managed,
+		ContainersReported: true,
+		Host:               PrimaryIP(),
+		HostAddresses:      CandidateIPs(),
+		ExternalIp:         "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
+		RuntimeStatus:      agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
 	}, nil
 }
 
@@ -415,6 +432,7 @@ func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bo
 		return errors.New(f.removeErr)
 	}
 	delete(f.states, serverID)
+	delete(f.containers, serverID)
 	if deleteData {
 		delete(f.files, serverID)
 	}
@@ -1021,6 +1039,18 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 		return "", errFakePassReported
 	}
 	delete(f.holders, req.ServerId)
+	// The Docker runtime's guard removes the server's stopped game container
+	// before the pass (#362), so after a reinstall or update pass the node has no
+	// container for the server until the next start creates one. The fake models
+	// only that half: where the real guard refuses a pass over a live game
+	// container, the fake installs anyway and keeps a running server's
+	// container. The pass ends by setting the server OFFLINE, so that kept
+	// container reads `exited` as soon as the pass ends, and a retry pass then
+	// deletes it. A test that needs the refusal holds the dir explicitly with
+	// HoldDataDir.
+	if f.states[req.ServerId] != agentpb.ServerState_SERVER_STATE_RUNNING {
+		delete(f.containers, req.ServerId)
+	}
 	f.mu.Unlock()
 	for _, h := range plan.remove {
 		if err := emit(logLine(dataDirRemovalNote(h, req.ServerId, installName))); err != nil {
@@ -1132,6 +1162,12 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 		f.runs = make(map[string]int)
 	}
 	f.runs[serverID]++
+	if st == agentpb.ServerState_SERVER_STATE_RUNNING {
+		if f.containers == nil {
+			f.containers = make(map[string]bool)
+		}
+		f.containers[serverID] = true
+	}
 	f.mu.Unlock()
 	return st, nil
 }

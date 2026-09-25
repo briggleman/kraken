@@ -8,6 +8,7 @@ import type {
   FileListing,
   InstallAttempt,
   InstallLog,
+  Node,
   PowerActionName,
   RestoreProgress,
   ScheduledTask,
@@ -328,12 +329,37 @@ export function restoreTop(v: { pinned: boolean; lastTop: number; scrollHeight: 
   return v.pinned ? v.scrollHeight : v.lastTop;
 }
 
-/** What the console pane says when it has no lines at all. Three different
+/** What the console pane says when it has no lines at all. Four different
  *  facts, and the difference matters: a dark server has nothing to tail, an
- *  install whose output never arrived has it on the chip above, and a Panel
- *  that restarted since the attempt genuinely kept none of it. */
-export function emptyConsoleNote(opts: { installing: boolean; hasRetained: boolean }): string {
-  if (!opts.installing) return "no output — server is dark";
+ *  offline server with no container at all is installed and waiting for its
+ *  first start (the state a reinstall or update pass leaves, which an empty
+ *  `docker ps -a` must not pass off as a deletion), an install whose output
+ *  never arrived has it on the chip above, and a Panel that restarted since
+ *  the attempt genuinely kept none of it.
+ *
+ *  "No container" is said only from real Agent data (#385): the server's node
+ *  must have reported every managed container (containers_reported) and listed
+ *  none, in any state, for this server's id. A stopped container, a node whose
+ *  agent is too old to report stopped ones, or a node that is offline (its list
+ *  is from its last contact) all leave the plain dark note. */
+export function emptyConsoleNote(opts: {
+  installing: boolean;
+  hasRetained: boolean;
+  server?: Pick<Server, "id" | "state">;
+  node?: Node;
+}): string {
+  if (!opts.installing) {
+    const { server, node } = opts;
+    if (
+      server?.state === "offline" &&
+      node?.containers_reported === true &&
+      node.status !== "offline" &&
+      !(node.managed_containers ?? []).some((c) => c.server_id === server.id)
+    ) {
+      return "installed · no container until start";
+    }
+    return "no output — server is dark";
+  }
   return opts.hasRetained
     ? "nothing came over the console — the retained install log is on the chip above"
     : "no install output kept — the panel restarted since this attempt";

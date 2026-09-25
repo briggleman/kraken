@@ -77,10 +77,12 @@ the node.
 When a node's band reads `containers 4 running · 1 untracked`, the Panel is
 telling you that its own books and the node's disagree, and by how much.
 
-The Agent reports the containers carrying the `kraken.managed=true` label that
-are running right now. The Panel compares them against its own server rows on
-that node. The badge appears only when the two accounts differ, and only for a
-node that is not offline and has been contacted at least once.
+The Agent reports the containers carrying the `kraken.managed=true` label, and
+the Panel compares the live ones (running, paused or restarting) against its
+own server rows on that node. From Agent 0.59.0 the report includes stopped
+containers too, each with its state (below); an older Agent reports only the
+live ones. The drift half of the line appears only when the two accounts differ,
+and only for a node that is not offline and has been contacted at least once.
 
 - **`untracked`** means the node is running more than the Panel expects. Some
   container is up that no server row accounts for.
@@ -103,7 +105,25 @@ container does, quite deliberately, so the Agent's adoption scan and its cleanup
 both find it, and while it ran the node had one more managed container than the
 Panel had `running` rows for. An Agent that names its containers reports that
 one against the server id it belongs to, the Panel finds the row, and the badge
-stays quiet for the length of the pass.
+stays quiet for the length of the pass. From Agent 0.59.0 the install container
+is not reported at all, in any state: an exited one left behind after a pass
+would otherwise read as the server's stopped game container.
+
+**From Agent 0.59.0 the Agent reports stopped containers too**, each with the
+state Docker gives it. A container is **live** when it is `running`, `paused` or
+`restarting` — it holds memory and ports — and stopped when it is `created`,
+`exited`, `dead` or `removing`. Only live ones count on either side: `untracked`
+is a live container no row accounts for, `missing` is a `running` row with no
+live container, and `N running` is the Agent's count of live containers. A
+stopped container is neither untracked nor missing — it is what an offline
+server keeps for its next start. The line counts them instead,
+`containers 2 running · 1 stopped`, and it stays on the band whenever that
+count is above zero, drift or no drift. The count is node-wide; whether one
+particular offline server still has its container is what the drill-in says —
+its empty console reads `installed · no container until start` when the node
+has none for it, which is what a reinstall or an update pass leaves until
+**start**. An Agent older than 0.59.0 reports only live containers, so there is
+no stopped count and no drill-in note until the Agent is updated.
 
 A badge that does *not* clear is worth acting on. There are two causes, and
 the badge tells you which. If a server row exists for the id — it shows

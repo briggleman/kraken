@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { fleet } from "./fleet.svelte";
-import { containerDrift, pendingRemovalsNote } from "./views.svelte";
+import { containerDrift, containerLive, pendingRemovalsNote, retirable, stoppedContainers, stoppedLabel } from "./views.svelte";
 import type { Node, Server } from "@/api/types";
 
 const NODE_ID = "node-1";
@@ -130,5 +130,168 @@ describe("containerDrift", () => {
     fleet.servers = [server("a", "running")];
     expect(containerDrift(node({ status: "offline", running_servers: 9 }))).toBeUndefined();
     expect(containerDrift(node({ agent_version: "", running_servers: 9 }))).toBeUndefined();
+  });
+});
+
+// #385: an agent that sets containers_reported lists stopped containers too,
+// each with its state. Untracked and missing both filter on live
+// (containerLive); a stopped container is neither, and the band counts it
+// beside the running figure.
+describe("containerDrift with container states", () => {
+  const reported = (extra: Partial<Node>) => node({ agent_version: "0.59.0", containers_reported: true, ...extra });
+
+  it("counts a stopped container as neither untracked nor missing", () => {
+    // a runs; b is offline and keeps its exited container; c's row is gone but
+    // its container sits exited on the host — an orphan holding no memory or
+    // ports, so not the badge's business.
+    fleet.servers = [server("a", "running"), server("b", "offline")];
+    const n = reported({
+      running_servers: 1,
+      managed_containers: [
+        { server_id: "a", container_name: "kraken_a", state: "running" },
+        { server_id: "b", container_name: "kraken_b", state: "exited" },
+        { server_id: "c", container_name: "kraken_c", state: "exited" },
+      ],
+    });
+    expect(containerDrift(n)).toBeUndefined();
+    expect(stoppedContainers(n)).toBe(2);
+  });
+
+  it("calls a running row with only a stopped container missing", () => {
+    fleet.servers = [server("a", "running")];
+    const drift = containerDrift(
+      reported({
+        running_servers: 0,
+        managed_containers: [{ server_id: "a", container_name: "kraken_a", state: "exited" }],
+      }),
+    );
+    expect(drift?.word).toBe("missing");
+    expect(drift?.items).toEqual([{ server_id: "a", label: "a-name" }]);
+  });
+
+  it("names a running orphan and leaves a stopped one out of it", () => {
+    fleet.servers = [server("a", "running")];
+    const drift = containerDrift(
+      reported({
+        running_servers: 2,
+        managed_containers: [
+          { server_id: "a", container_name: "kraken_a", state: "running" },
+          { server_id: "ghost", container_name: "kraken_ghost", state: "running" },
+          { server_id: "husk", container_name: "kraken_husk", state: "exited" },
+        ],
+      }),
+    );
+    expect(drift?.word).toBe("untracked");
+    expect(drift?.items).toEqual([{ server_id: "ghost", label: "kraken_ghost" }]);
+  });
+
+  it("reads a reported empty list as no containers at all", () => {
+    // The list is omitted from the JSON when empty; the marker is what says the
+    // agent reported, so a running row with nothing behind it is missing.
+    fleet.servers = [server("a", "running")];
+    const drift = containerDrift(reported({ running_servers: 0 }));
+    expect(drift?.word).toBe("missing");
+    expect(drift?.items).toEqual([{ server_id: "a", label: "a-name" }]);
+  });
+
+  it("falls back to today's reading for an agent without the marker", () => {
+    // 0.54–0.58: running containers only, no state, no marker. Every listed
+    // container is taken as running, and a missing list falls back to the count.
+    fleet.servers = [server("a", "running")];
+    const old = node({
+      running_servers: 2,
+      managed_containers: [
+        { server_id: "a", container_name: "kraken_a" },
+        { server_id: "ghost", container_name: "kraken_ghost" },
+      ],
+    });
+    expect(containerDrift(old)?.items).toEqual([{ server_id: "ghost", label: "kraken_ghost" }]);
+    expect(containerDrift(node({ running_servers: 2 }))).toMatchObject({ delta: 1, word: "untracked", items: [] });
+    // And no stopped count: this agent never says.
+    expect(stoppedContainers(old)).toBe(0);
+    expect(stoppedLabel(old)).toBeUndefined();
+  });
+
+  it("does not call a stopped owed container still running", () => {
+    fleet.servers = [];
+    const owed = pendingRemovalsNote(
+      reported({
+        managed_containers: [{ server_id: "gone", container_name: "kraken_gone", state: "exited" }],
+        pending_removals: [
+          { server_id: "gone", delete_data: false, requested_at: "2026-09-25T08:00:00Z", attempts: 1 },
+        ],
+      }),
+    );
+    expect(owed?.title).not.toContain("container still running");
+  });
+});
+
+describe("containerLive", () => {
+  // The one rule, shared with agentpb.ContainerStateLive on the Go side.
+  it("holds running, paused, restarting and an empty state live", () => {
+    const live = (state?: string) => containerLive({ server_id: "a", container_name: "kraken_a", state });
+    for (const s of ["running", "paused", "restarting", "", undefined]) expect(live(s)).toBe(true);
+    for (const s of ["created", "exited", "dead", "removing"]) expect(live(s)).toBe(false);
+  });
+
+  it("offers a paused orphan to retire and leaves it out of the stopped count", () => {
+    // A paused container holds memory and ports the scheduler believes free.
+    fleet.servers = [];
+    const n = node({
+      containers_reported: true,
+      running_servers: 1,
+      managed_containers: [{ server_id: "ghost", container_name: "kraken_ghost", state: "paused" }],
+    });
+    const drift = containerDrift(n);
+    expect(drift?.word).toBe("untracked");
+    expect(retirable(drift).map((i) => i.server_id)).toEqual(["ghost"]);
+    expect(stoppedContainers(n)).toBe(0);
+  });
+
+  it("does not call a running row with a restarting container missing", () => {
+    fleet.servers = [server("a", "running")];
+    const n = node({
+      containers_reported: true,
+      running_servers: 1,
+      managed_containers: [{ server_id: "a", container_name: "kraken_a", state: "restarting" }],
+    });
+    expect(containerDrift(n)).toBeUndefined();
+  });
+});
+
+describe("stoppedLabel", () => {
+  it("says how many containers are stopped, only when there are some", () => {
+    const n = node({
+      containers_reported: true,
+      running_servers: 2,
+      managed_containers: [
+        { server_id: "a", container_name: "kraken_a", state: "running" },
+        { server_id: "b", container_name: "kraken_b", state: "running" },
+        { server_id: "c", container_name: "kraken_c", state: "exited" },
+      ],
+    });
+    expect(stoppedLabel(n)).toBe("1 stopped");
+    expect(
+      stoppedLabel(node({ containers_reported: true, managed_containers: [{ server_id: "a", container_name: "kraken_a", state: "running" }] })),
+    ).toBeUndefined();
+    expect(stoppedLabel(node({ containers_reported: true }))).toBeUndefined();
+  });
+
+  it("counts every state that is not live", () => {
+    const n = node({
+      containers_reported: true,
+      managed_containers: ["exited", "created", "dead", "removing", "paused"].map((state, i) => ({
+        server_id: "s" + i,
+        container_name: "kraken_s" + i,
+        state,
+      })),
+    });
+    expect(stoppedLabel(n)).toBe("4 stopped");
+  });
+
+  it("says nothing for a node that is offline or never contacted", () => {
+    const managed_containers = [{ server_id: "a", container_name: "kraken_a", state: "exited" }];
+    expect(stoppedLabel(node({ status: "offline", containers_reported: true, managed_containers }))).toBeUndefined();
+    expect(stoppedLabel(node({ agent_version: "", containers_reported: true, managed_containers }))).toBeUndefined();
   });
 });

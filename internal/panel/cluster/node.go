@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/spec"
 	"github.com/briggleman/kraken/internal/shared/tunnel"
 )
@@ -100,12 +101,22 @@ type Node struct {
 	// Zero is indistinguishable from "never contacted"; pair it with Status.
 	RunningServers int `json:"running_servers,omitempty"`
 
-	// ManagedContainers is the same set RunningServers counts, named: every
-	// `kraken.managed` container the Agent reported running on last contact.
-	// It is what turns "1 untracked" into the id and container name an operator
-	// can act on, and it is absent from an Agent too old to report it — so the
+	// ManagedContainers is every `kraken.managed` game container the Agent
+	// reported on last contact, named, with Docker's state word for each. It is
+	// what turns "1 untracked" into the id and container name an operator can
+	// act on, and what says whether an offline server has a container at all.
+	// From an Agent that sets ContainersReported it holds stopped containers
+	// too, so anything that means "running" must filter with
+	// ManagedContainer.Live; from an Agent before that (0.54–0.58) it holds only
+	// running ones with no State; from one older still it is absent — so the
 	// count remains the thing to fall back on, never derived from this list.
 	ManagedContainers []ManagedContainer `json:"managed_containers,omitempty"`
+
+	// ContainersReported is true when the Agent's last NodeInfo carried every
+	// managed container with its state, even an empty list. It is the only way
+	// to tell "this node has no container for that server" from "this Agent is
+	// too old to say": an empty list is omitted on the wire and in JSON alike.
+	ContainersReported bool `json:"containers_reported,omitempty"`
 
 	// PendingRemovals are server removals the operator asked for that have not
 	// reached this node yet: the delete went through Panel-side, but the Agent
@@ -180,13 +191,24 @@ type Node struct {
 	Ports *PortPool `json:"ports"`
 }
 
-// ManagedContainer is one `kraken.managed` container the Agent reported running,
-// as the Agent named it. ServerID comes from the container's own label, which is
-// what the Panel matches against its server rows; ContainerName is what an
-// operator would type into `docker` on the host.
+// ManagedContainer is one `kraken.managed` container the Agent reported, as the
+// Agent named it. ServerID comes from the container's own label, which is what
+// the Panel matches against its server rows; ContainerName is what an operator
+// would type into `docker` on the host; State is Docker's state word (running,
+// exited, created, dead, paused, restarting, removing), empty from an Agent that
+// reported running containers only (see Node.ContainersReported).
 type ManagedContainer struct {
 	ServerID      string `json:"server_id"`
 	ContainerName string `json:"container_name"`
+	State         string `json:"state"`
+}
+
+// Live reports whether the container holds memory and ports on the node, by
+// the one rule agentpb.ContainerStateLive defines (running, paused, restarting,
+// or an empty state — an Agent that predates the field only ever reported live
+// containers). Every Panel reader that means "running" filters with this.
+func (c ManagedContainer) Live() bool {
+	return agentpb.ContainerStateLive(c.State)
 }
 
 // PendingRemoval is one server removal owed to a node (see Node.PendingRemovals).

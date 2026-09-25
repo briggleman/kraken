@@ -244,6 +244,15 @@ removal owed. The install console says so in the closing line,
 and in the Agent&#39;s removal line when there was a container to remove,
 <code>[kraken] removed exited container kraken_&lt;id&gt; (&lt;short id&gt;) … — start recreates it after this pass</code>.
 <strong>start</strong> creates the container fresh from the current image.</p>
+<p>Two other places state it without the install console. The drill-in&#39;s empty
+console reads <code>installed · no container until start</code> for an offline server
+whose node has no container for it in any state, and <code>no output — server is dark</code> while a stopped container is still there — that is the per-server answer.
+The node band&#39;s container line counts the node&#39;s stopped containers overall,
+<code>containers 2 running · 1 stopped</code>, which says how many are left behind but not
+whose. Both read the Agent&#39;s own report of every managed container with its
+state, which an Agent older than 0.59.0 does not send — it reports only running
+containers, so the drill-in note and the stopped count cannot appear until the
+Agent is updated.</p>
 <p>The pass before the reinstall is not lost either. The install log keeps one
 attempt back: the console shows a <code>previous attempt</code> row above the current
 output, with when it started and how it ended, and <code>show</code> opens its lines in

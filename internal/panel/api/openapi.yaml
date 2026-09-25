@@ -1333,6 +1333,10 @@ paths:
     get:
       tags: [Nodes]
       summary: Live Agent info (pings the node over mTLS, brings it online)
+      description: >-
+        The Agent's live NodeInfo, including running_servers, managed_containers
+        (with each container's state) and containers_reported, read the same way
+        as on the Node schema.
       responses:
         '200': { description: Live node info }
         '503': { $ref: '#/components/responses/NodeUnreachable' }
@@ -2169,20 +2173,45 @@ components:
             The AGENT's own count of the `kraken.managed` containers it had
             running on last contact. Compared against the server rows the Panel
             placed on this node it is what surfaces a container the Panel has
-            lost track of; it is not derived from those rows.
+            lost track of; it is not derived from those rows. Always the count
+            of LIVE containers (running, paused or restarting — see
+            managed_containers[].state), whatever managed_containers carries.
         managed_containers:
           type: array
           description: >-
-            The same containers running_servers counts, named — one entry per
-            `kraken.managed` container the Agent reported running. Absent from
-            an Agent older than 0.54.0, which reports only the count, so a
-            client must fall back to running_servers rather than treat an empty
+            Every `kraken.managed` game container the Agent reported, named,
+            with Docker's state for each (the one-shot `_install` container is
+            never listed). When containers_reported is true the list includes
+            stopped containers, so a reader that means "running" must keep only
+            the live ones by the rule on state. From an 0.54–0.58 Agent
+            (containers_reported false) it holds only running containers and no
+            state. Absent from an Agent older than 0.54.0, which reports only
+            the count, and absent when empty — so without containers_reported a
+            client must fall back to running_servers rather than treat a missing
             list as "nothing running".
           items:
             type: object
             properties:
               server_id: { type: string, description: from the container's own `kraken.server_id` label; what the Panel matches against its rows }
               container_name: { type: string, description: the container's name on the host (e.g. `kraken_<server-id>`) }
+              state:
+                type: string
+                description: >-
+                  Docker's state word as the Agent read it, lowercase and passed
+                  through: running, exited, created, dead, paused, restarting,
+                  removing. Read it by one rule — LIVE (holds memory and ports)
+                  = running, paused, restarting; NOT LIVE = created, exited,
+                  dead, removing; EMPTY = live (from an Agent that predates the
+                  field, which reported live containers only).
+        containers_reported:
+          type: boolean
+          description: >-
+            True when the Agent's last report listed every managed container
+            with its state, stopped ones included — even an empty list. It is
+            what makes a missing managed_containers mean "no containers on this
+            node" rather than "an Agent too old to say", and so what lets a
+            client say an offline server has no container until it starts.
+            Absent (false) from an Agent that predates it.
         pending_removals:
           type: array
           description: >-

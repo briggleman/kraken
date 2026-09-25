@@ -157,6 +157,17 @@ and in the Agent's removal line when there was a container to remove,
 `[kraken] removed exited container kraken_<id> (<short id>) … — start recreates it after this pass`.
 **start** creates the container fresh from the current image.
 
+Two other places state it without the install console. The drill-in's empty
+console reads `installed · no container until start` for an offline server
+whose node has no container for it in any state, and `no output — server is
+dark` while a stopped container is still there — that is the per-server answer.
+The node band's container line counts the node's stopped containers overall,
+`containers 2 running · 1 stopped`, which says how many are left behind but not
+whose. Both read the Agent's own report of every managed container with its
+state, which an Agent older than 0.59.0 does not send — it reports only running
+containers, so the drill-in note and the stopped count cannot appear until the
+Agent is updated.
+
 The pass before the reinstall is not lost either. The install log keeps one
 attempt back: the console shows a `previous attempt` row above the current
 output, with when it started and how it ended, and `show` opens its lines in

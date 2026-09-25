@@ -18,7 +18,7 @@ import (
 // Buffers live only in memory, one per server, capped at maxInstallLines. They
 // survive the install — success as well as failure — so the account of what the
 // installer actually did stays readable afterwards, and are dropped when the
-// server is deleted. A new attempt demotes the current one to `previous` rather
+// server is retired or deleted. A new attempt demotes the current one to `previous` rather
 // than discarding it, and exactly one attempt back is kept: pressing REINSTALL
 // on a failed pass used to erase the very output that said why it failed
 // (#381). Retention is therefore bounded at two tails per server, and the
@@ -166,8 +166,8 @@ type installSnapshot struct {
 	StartedAt  time.Time
 	FinishedAt time.Time
 	// Previous is the attempt the current one replaced, or nil when there is
-	// none. A previous attempt is over by definition, so it carries no
-	// Previous of its own.
+	// none. A previous attempt is over by definition; Snapshot never fills its
+	// Previous or its Retained.
 	Previous *installSnapshot
 }
 
@@ -180,6 +180,7 @@ func (l *installLog) Snapshot(id string) installSnapshot {
 		return installSnapshot{Done: true}
 	}
 	snap := e.snapshot()
+	snap.Retained = true
 	if e.previous != nil {
 		prev := e.previous.snapshot()
 		snap.Previous = &prev
@@ -187,19 +188,20 @@ func (l *installLog) Snapshot(id string) installSnapshot {
 	return snap
 }
 
-// snapshot copies one entry's lines and bracket, without its previous. Caller
-// holds mu.
+// snapshot copies one entry's lines and bracket, without its previous and
+// without Retained, which is a fact about the server's buffer as a whole and
+// is set by Snapshot on the current attempt only. Caller holds mu.
 func (e *installEntry) snapshot() installSnapshot {
 	lines := make([]installLine, len(e.lines))
 	copy(lines, e.lines)
 	return installSnapshot{
-		Lines: lines, Done: e.done, Retained: true,
+		Lines: lines, Done: e.done,
 		StartedAt: e.startedAt, FinishedAt: e.finishedAt,
 	}
 }
 
-// Drop forgets a server's install output entirely (server deleted) — the
-// current attempt and the previous one with it.
+// Drop forgets a server's install output entirely (server retired or deleted)
+// — the current attempt and the previous one with it.
 func (l *installLog) Drop(id string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

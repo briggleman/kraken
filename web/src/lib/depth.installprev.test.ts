@@ -1,9 +1,8 @@
 // #381, the drill-in half. On 2026-09-25 an update pass on dragonwilds-01 was
 // interrupted, REINSTALL was pressed, and the reinstall's fresh buffer erased
-// the only record of why the pass had failed. Then the reinstall landed
-// offline with no container on the node — expected, since START is what
-// recreates it — and the empty console read as a dark server. These pin the
-// three pieces the console pane now says about both.
+// the only record of why the pass had failed. The Panel now keeps that attempt
+// as the log's `previous`; these pin how the console pane names it, and that
+// the name is never the wrong attempt's.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,14 +26,7 @@ vi.mock("./stream.svelte", async (importOriginal) => {
   return { ...actual, ServerStream: QuietStream };
 });
 
-import {
-  FRESH_INSTALL_WINDOW_MS,
-  depth,
-  emptyConsoleNote,
-  freshlyInstalled,
-  previousAttemptHeader,
-  syncDepthFromFleet,
-} from "./depth.svelte";
+import { depth, previousAttemptHeader, refreshInstallLog, syncDepthFromFleet } from "./depth.svelte";
 import { fleet } from "./fleet.svelte";
 import type { InstallAttempt, Server } from "@/api/types";
 
@@ -84,51 +76,6 @@ describe("previousAttemptHeader", () => {
   });
 });
 
-describe("freshlyInstalled", () => {
-  const now = Date.parse("2026-09-25T09:00:00Z");
-  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
-
-  it("is true for an offline server inside the Panel's 30-minute window", () => {
-    expect(FRESH_INSTALL_WINDOW_MS).toBe(30 * 60_000);
-    expect(freshlyInstalled({ state: "offline", provisioned_at: at(0) }, now)).toBe(true);
-    expect(freshlyInstalled({ state: "offline", provisioned_at: at(29) }, now)).toBe(true);
-  });
-
-  it("is false once the window has passed", () => {
-    expect(freshlyInstalled({ state: "offline", provisioned_at: at(30) }, now)).toBe(false);
-  });
-
-  it("is false for a stamp in the future, as the Panel reads one", () => {
-    expect(freshlyInstalled({ state: "offline", provisioned_at: at(-5) }, now)).toBe(false);
-  });
-
-  it("is false without a stamp, with a bad one, or in any state but offline", () => {
-    expect(freshlyInstalled({ state: "offline" }, now)).toBe(false);
-    expect(freshlyInstalled({ state: "offline", provisioned_at: "not a time" }, now)).toBe(false);
-    // Started: the container exists again, and the console is its output.
-    expect(freshlyInstalled({ state: "running", provisioned_at: at(1) }, now)).toBe(false);
-    expect(freshlyInstalled({ state: "crashed", provisioned_at: at(1) }, now)).toBe(false);
-    expect(freshlyInstalled(null, now)).toBe(false);
-  });
-});
-
-describe("emptyConsoleNote after a fresh install", () => {
-  it("says there is no container until START instead of calling the server dark", () => {
-    expect(emptyConsoleNote({ installing: false, hasRetained: true, freshInstall: true })).toBe(
-      "installed · no container until START",
-    );
-    expect(emptyConsoleNote({ installing: false, hasRetained: true, freshInstall: false })).toBe(
-      "no output — server is dark",
-    );
-  });
-
-  it("leaves the install-time notes alone", () => {
-    expect(emptyConsoleNote({ installing: true, hasRetained: true, freshInstall: true })).toContain(
-      "chip above",
-    );
-  });
-});
-
 function server(state: Server["state"]): Server {
   return {
     id: "srv-1",
@@ -145,22 +92,63 @@ function server(state: Server["state"]): Server {
 }
 
 describe("the install log re-read when an install begins", () => {
+  const stale = attempt({ started_ms: today(6, 0), finished_ms: today(6, 5) });
+  const fresh = attempt({
+    lines: [{ ts: today(8, 6), stream: "error", text: "[panel] install failed: state is 0x6" }],
+  });
+
   beforeEach(() => {
     getInstallLog.mockReset();
-    getInstallLog.mockResolvedValue({ server_id: "srv-1", lines: [], done: false, retained: true, previous: null });
     depth.open = true;
     depth.serverId = "srv-1";
+    // What the drill-in held before REINSTALL: the failed 08:02 pass as the
+    // current attempt, and an older one as its previous.
+    depth.installLog = { server_id: "srv-1", lines: [], done: true, retained: true, previous: stale };
   });
 
   // The header names the attempt the new one replaced, which only a read taken
-  // after the install began can know: the drill-in's last read holds the log
-  // as it was before the button was pressed.
-  it("re-reads the log when an offline server enters installing", async () => {
+  // after the install began can know: until it lands there is no header at
+  // all, rather than one naming the attempt before the wrong one.
+  it("drops the held log at once and shows the new previous once the re-read lands", async () => {
+    let answer!: (v: unknown) => void;
+    getInstallLog.mockReturnValue(new Promise((r) => (answer = r)));
     depth.server = server("offline");
     fleet.servers = [server("installing")];
     syncDepthFromFleet();
-    await Promise.resolve();
     expect(getInstallLog).toHaveBeenCalledWith("srv-1");
+    expect(depth.installLog).toBeNull();
+
+    answer({ server_id: "srv-1", lines: [], done: false, retained: true, previous: fresh });
+    await flush();
+    expect(depth.installLog?.previous).toEqual(fresh);
+    expect(previousAttemptHeader(depth.installLog!.previous!)).toBe(
+      "previous attempt · started 08:02 · failed 08:06",
+    );
+  });
+
+  it("leaves it dropped when the re-read fails", async () => {
+    getInstallLog.mockRejectedValue(new Error("panel unreachable"));
+    depth.server = server("install_failed");
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    await flush();
+    expect(depth.installLog).toBeNull();
+  });
+
+  // An older read still in flight when the install began holds the log as it
+  // was before the button press; it must not land over the newer one.
+  it("ignores an older read that lands after the newer one", async () => {
+    let answerOld!: (v: unknown) => void;
+    getInstallLog.mockReturnValueOnce(new Promise((r) => (answerOld = r)));
+    getInstallLog.mockResolvedValueOnce({ server_id: "srv-1", lines: [], done: false, retained: true, previous: fresh });
+    const older = refreshInstallLog();
+    depth.server = server("offline");
+    fleet.servers = [server("installing")];
+    syncDepthFromFleet();
+    await flush();
+    answerOld({ server_id: "srv-1", lines: [], done: true, retained: true, previous: stale });
+    await older;
+    expect(depth.installLog?.previous).toEqual(fresh);
   });
 
   it("does not re-read while nothing changed", () => {
@@ -170,3 +158,6 @@ describe("the install log re-read when an install begins", () => {
     expect(getInstallLog).not.toHaveBeenCalled();
   });
 });
+
+/** Let every settled promise's continuation run. */
+const flush = () => new Promise((r) => setTimeout(r, 0));

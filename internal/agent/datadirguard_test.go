@@ -229,8 +229,8 @@ func TestClearDataDir_RemovesAnExitedHolderAndAwaitsIt(t *testing.T) {
 	}
 	// Nothing recreates a container Kraken does not own, so its line must not
 	// promise that START will (#381).
-	if strings.Contains(notes[0], "START recreates") {
-		t.Errorf("an untracked container's line must not say START recreates it; got %q", notes[0])
+	if strings.Contains(notes[0], "start recreates") {
+		t.Errorf("an untracked container's line must not say start recreates it; got %q", notes[0])
 	}
 }
 
@@ -245,7 +245,7 @@ func TestClearDataDir_OwnGameContainerNoteSaysStartRecreatesIt(t *testing.T) {
 		t.Fatalf("the server's own exited container must not block the pass: %v", err)
 	}
 	want := "[kraken] removed exited container " + guardName + " (" + exitedID[:12] +
-		") that still had this server's data dir mounted — START recreates it after this pass"
+		") that still had this server's data dir mounted — start recreates it after this pass"
 	if len(notes) != 1 || notes[0] != want {
 		t.Errorf("notes = %q, want [%q]", notes, want)
 	}
@@ -259,7 +259,7 @@ func TestDataDirRemovalNote_Wording(t *testing.T) {
 		name, holder, wantSuffix string
 		recreate                 bool
 	}{
-		{"own game container", guardName, "— START recreates it after this pass", true},
+		{"own game container", guardName, "— start recreates it after this pass", true},
 		{"own install container", guardInst, "before this pass", false},
 		{"a longer id sharing the prefix", guardName + "0", "data dir mounted", false},
 		{"hand-made", "hand-made", "data dir mounted", false},
@@ -270,7 +270,7 @@ func TestDataDirRemovalNote_Wording(t *testing.T) {
 			if !strings.HasSuffix(got, tc.wantSuffix) {
 				t.Errorf("note = %q, want suffix %q", got, tc.wantSuffix)
 			}
-			if strings.Contains(got, "START recreates") != tc.recreate {
+			if strings.Contains(got, "start recreates") != tc.recreate {
 				t.Errorf("note = %q, recreate clause present = %v, want %v", got, !tc.recreate, tc.recreate)
 			}
 		})

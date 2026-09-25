@@ -103,12 +103,21 @@ describe("containerDrift", () => {
   // and nothing is owed a removal.
   it("leaves an offline row with no container alone", () => {
     fleet.servers = [server("a", "running"), server("b", "offline")];
+    // A removal owed for some OTHER server, so the removals line is live and
+    // the question is whether the offline row joins it.
     const named = node({
       running_servers: 1,
       managed_containers: [{ server_id: "a", container_name: "kraken_a" }],
+      pending_removals: [
+        { server_id: "gone", delete_data: false, requested_at: "2026-09-25T08:00:00Z", attempts: 1 },
+      ],
     });
     expect(containerDrift(named)).toBeUndefined();
-    expect(pendingRemovalsNote(named)).toBeUndefined();
+    const owed = pendingRemovalsNote(named);
+    expect(owed?.count).toBe(1);
+    expect(owed?.title).toContain("gone (");
+    expect(owed?.title).not.toContain("b-name");
+    expect(owed?.title).not.toContain("b (");
     // An agent that reports only the count reads the same: one running row,
     // one running container.
     expect(containerDrift(node({ running_servers: 1 }))).toBeUndefined();

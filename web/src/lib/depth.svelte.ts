@@ -328,48 +328,15 @@ export function restoreTop(v: { pinned: boolean; lastTop: number; scrollHeight: 
   return v.pinned ? v.scrollHeight : v.lastTop;
 }
 
-/** What the console pane says when it has no lines at all. Four different
- *  facts, and the difference matters: a dark server has nothing to tail, a
- *  server that was just installed has no container to tail *yet* (START makes
- *  one — see freshlyInstalled), an install whose output never arrived has it on
- *  the chip above, and a Panel that restarted since the attempt genuinely kept
- *  none of it. */
-export function emptyConsoleNote(opts: {
-  installing: boolean;
-  hasRetained: boolean;
-  freshInstall?: boolean;
-}): string {
-  if (!opts.installing) {
-    return opts.freshInstall ? "installed · no container until START" : "no output — server is dark";
-  }
+/** What the console pane says when it has no lines at all. Three different
+ *  facts, and the difference matters: a dark server has nothing to tail, an
+ *  install whose output never arrived has it on the chip above, and a Panel
+ *  that restarted since the attempt genuinely kept none of it. */
+export function emptyConsoleNote(opts: { installing: boolean; hasRetained: boolean }): string {
+  if (!opts.installing) return "no output — server is dark";
   return opts.hasRetained
     ? "nothing came over the console — the retained install log is on the chip above"
     : "no install output kept — the panel restarted since this attempt";
-}
-
-/** The Panel's freshInstallWindow (handlers_server.go): how long after a create
- *  or reinstall its tree counts as just installed. */
-export const FRESH_INSTALL_WINDOW_MS = 30 * 60_000;
-
-/** Whether sv is an offline server whose install pass completed inside the
- *  fresh-install window — which is exactly when its node has no container for
- *  it (#381). The Agent's data-dir guard removes the exited game container
- *  before a pass and the install container goes with the verdict; nothing
- *  recreates the game container until START. Without saying so the empty pane
- *  read as "the container got deleted".
- *
- *  Evaluated against this browser's clock, the way the Panel evaluates the
- *  window against its own: a stamp in the future (skew, a clock that stepped
- *  back) is not fresh, the same safe answer the Panel gives. */
-export function freshlyInstalled(
-  sv: Pick<Server, "state" | "provisioned_at"> | null | undefined,
-  now: number = Date.now(),
-): boolean {
-  if (sv?.state !== "offline" || !sv.provisioned_at) return false;
-  const at = Date.parse(sv.provisioned_at);
-  if (!Number.isFinite(at)) return false;
-  const d = now - at;
-  return d >= 0 && d < FRESH_INSTALL_WINDOW_MS;
 }
 
 /** The one-line header the install console carries above the current output
@@ -528,6 +495,7 @@ async function refreshDetail() {
   // moment, and any write of depth.server made while the other reads are still
   // out is newer than it (#368).
   const genAtStart = serverGen;
+  const logRead = ++installLogReads;
   const results = await Promise.allSettled([
     api.getServer(id),
     api.listBackups(id),
@@ -566,7 +534,9 @@ async function refreshDetail() {
     sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
   // Same reasoning for the install log: it is a look back at a finished phase,
   // and failing to read it must not take the drill-in's error line hostage.
-  setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
+  if (logRead === installLogReads) {
+    setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
+  }
   // The two optional reads are excluded from the drill-in's error line.
   const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
@@ -620,12 +590,15 @@ export function syncDepthFromFleet() {
     // never read — and this is exactly the moment it matters, because the
     // console's socket is about to switch to a container that may not start.
     // An install that just began is the other moment: the attempt it replaced
-    // is now the log's `previous` (#381), and the console's header for it
-    // must name that attempt rather than whatever the last read held.
-    if (
-      was !== s.state &&
-      (was === "installing" || was === "install_failed" || s.state === "installing")
-    ) {
+    // is now the log's `previous` (#381). The snapshot in hand predates the
+    // button press, so its `previous` names the attempt before the wrong one —
+    // it is dropped at once (the header goes with it) and only the re-read puts
+    // one back. A re-read that fails leaves it dropped: no header beats a
+    // header naming the wrong attempt.
+    if (was !== s.state && s.state === "installing") {
+      setInstallLog(null);
+      void refreshInstallLog();
+    } else if (was !== s.state && (was === "installing" || was === "install_failed")) {
       void refreshInstallLog();
     }
   }
@@ -640,13 +613,20 @@ function setInstallLog(log: InstallLog | null) {
   depth.installLogSeq++;
 }
 
+/** Install-log reads started so far. Only the newest read's answer is applied:
+ *  an older one still in flight when an install begins holds the log as it was
+ *  before the button press, and landing after the newer read would put the
+ *  previous attempt's header back on the wrong attempt (#381). */
+let installLogReads = 0;
+
 /** Re-read the retained install log (after an install ends, or on demand). */
 export async function refreshInstallLog() {
   const id = depth.serverId;
   if (!id) return;
+  const mine = ++installLogReads;
   try {
     const log = await api.getInstallLog(id);
-    if (depth.serverId === id) setInstallLog(log);
+    if (depth.serverId === id && mine === installLogReads) setInstallLog(log);
   } catch {
     // Optional surface: a failed read leaves the last value rather than
     // claiming the log is gone.

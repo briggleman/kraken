@@ -285,11 +285,6 @@ export interface Server {
    *  before every start or restart, so this server stays on the build now on
    *  disk. Reinstall is then the explicit "update now". */
   pin_build?: boolean;
-  /** When the most recent create or reinstall install pass completed. Absent
-   *  when the last pass failed, when settings were edited during it, or on a
-   *  server never stamped. Inside the Panel's 30-minute fresh-install window an
-   *  offline server has no container on its node until START (#381). */
-  provisioned_at?: string;
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;

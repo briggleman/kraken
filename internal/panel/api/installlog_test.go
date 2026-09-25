@@ -266,15 +266,18 @@ func TestInstallLog_StartKeepsThePreviousAttempt(t *testing.T) {
 	if len(p.Lines) != 2 || p.Lines[0].Text != "downloading" || p.Lines[1].Stream != "error" {
 		t.Fatalf("previous lines = %+v, want the failed attempt's two lines, error stream kept", p.Lines)
 	}
-	if !p.Done || !p.Retained {
-		t.Errorf("previous done=%v retained=%v, want both true", p.Done, p.Retained)
+	if !p.Done {
+		t.Error("a previous attempt is over, so it must read as done")
 	}
 	if !p.StartedAt.Equal(first.StartedAt) || !p.FinishedAt.Equal(first.FinishedAt) {
 		t.Errorf("previous bracket %v–%v, want the first attempt's %v–%v",
 			p.StartedAt, p.FinishedAt, first.StartedAt, first.FinishedAt)
 	}
-	if p.Previous != nil {
-		t.Error("a previous attempt carries no Previous of its own")
+	l.mu.Lock()
+	chained := l.entries["s1"].previous.previous
+	l.mu.Unlock()
+	if chained != nil {
+		t.Error("a previous attempt must carry no previous of its own")
 	}
 }
 
@@ -290,9 +293,6 @@ func TestInstallLog_ASecondStartDropsTheOlderAttempt(t *testing.T) {
 	snap := l.Snapshot("s1")
 	if snap.Previous == nil || len(snap.Previous.Lines) != 1 || snap.Previous.Lines[0].Text != "attempt two" {
 		t.Fatalf("previous = %+v, want attempt two only", snap.Previous)
-	}
-	if snap.Previous.Previous != nil {
-		t.Fatal("attempt one is still reachable — the chain must stop at one back")
 	}
 	l.mu.Lock()
 	chained := l.entries["s1"].previous.previous

@@ -287,16 +287,17 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 // Runs in its own goroutine with a background context so it survives the request.
 // steamGuardCode is the optional one-time 2FA code for authenticated installs.
 //
-// prev is the state a reinstall started from, or "" for a fresh create. A
-// reinstall the Agent refused before touching the tree goes back to prev; a
-// fresh create has nothing to go back to and lands install_failed.
+// prev is the state a reinstall started from, or "" for a fresh create or a
+// revive. A reinstall the Agent refused before touching the tree goes back to
+// prev; a create or revive has nothing to go back to and lands install_failed.
+// prev also picks the closing line's wording (see installCompleteLine).
 func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, prev store.ServerState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	// Open a fresh install buffer before anything can fail, so even a
 	// connect-time failure leaves the operator something to read. failServer
-	// closes it out on every failure path; the success path drops it.
+	// closes it out on every failure path; the success path keeps it.
 	s.installs.Start(server.ID)
 	nodeName := node.Name
 	if nodeName == "" {
@@ -320,7 +321,8 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	// and once the state leaves `installing` the console has no container to
 	// tail, so dropping the lines here left the operator with a wipe-and-watch
 	// reinstall as the only way to see what SteamCMD had actually done (#280).
-	// It is freed on delete, and replaced the moment a reinstall starts.
+	// It is freed when the server is retired or deleted, and becomes `previous`
+	// when the next attempt starts (#381).
 	s.installs.Finish(server.ID)
 	s.logger.Info("server installed", "id", server.ID)
 }
@@ -328,11 +330,11 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 // installCompleteLine is the install console's closing line for a successful
 // provision. A reinstall says what the node now looks like, because it differs
 // from what the operator last saw there: the Agent's data-dir guard removed the
-// exited game container before the pass and the install container is removed
+// stopped game container before the pass and the install container is removed
 // with the verdict, so until START recreates the game container the node has
 // no container for this server at all — which read as "the container got
-// deleted" on the morning that produced #381. A first provision never had one,
-// so its line stays as it was.
+// deleted" on the morning that produced #381. A create or revive never had one
+// on this node, so its line stays as it was.
 func installCompleteLine(name string, reinstall bool) string {
 	line := "[panel] install complete — " + name + " is ready to start"
 	if reinstall {
@@ -656,6 +658,9 @@ func installAttemptFrom(snap *installSnapshot) *installAttemptJSON {
 // server that never started is nothing at all. This endpoint is the way back to
 // the one record of what the installer did (#280). It reads the same buffer, so
 // it needs no agent and works for a server on a node the Panel cannot reach.
+// Beside the current attempt it serves `previous`, the attempt that one
+// replaced (or null): a reinstall retrying a failed pass must not erase the
+// output that says why it failed (#381).
 func (s *Server) handleServerInstallLog(w http.ResponseWriter, r *http.Request) {
 	sv, err := s.store.GetServer(r.Context(), chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {

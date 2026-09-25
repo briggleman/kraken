@@ -633,7 +633,7 @@ paths:
         it in memory: there is no container left to tail once the phase ends. The
         buffer is kept after the install finishes — success included, since an
         installer can exit 0 having produced a broken tree — until the server is
-        deleted. A new attempt (a reinstall, or the update pass before a start)
+        retired or deleted. A new attempt (a reinstall, or the update pass before a start)
         does not discard the one it replaces: that attempt is answered as
         `previous`, exactly one back, so a reinstall retrying a failed pass keeps
         the output that says why it failed. It does NOT survive a Panel restart;
@@ -646,6 +646,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [server_id, lines, done, retained, previous]
                 properties:
                   server_id: { type: string }
                   done: { type: boolean, description: the attempt reached a verdict }
@@ -658,9 +659,11 @@ paths:
                   previous:
                     description: >-
                       The attempt the current one replaced (an InstallAttempt),
-                      or null when there is none. Only one back is kept; a previous attempt is over, so
-                      `done` is always true, and `finished_ms` is absent when it
-                      was superseded before it reached a verdict.
+                      or null when there is none — never absent. Only one back
+                      is kept; a previous attempt is over, so `done` is always
+                      true, and `finished_ms` is absent when it was superseded
+                      before it reached a verdict.
+                    type: object
                     nullable: true
                     allOf: [ { $ref: '#/components/schemas/InstallAttempt' } ]
 
@@ -2017,12 +2020,7 @@ components:
           description: >-
             When the most recent create or reinstall install pass completed. A
             start within 30 minutes of it skips the update pass, which would
-            only repeat an install that just ran. The web UI reads it too: an
-            offline server inside that window has no container on its node
-            until START creates one, and the drill-in says so rather than
-            reading as a dark server. Absent when the last pass failed, when
-            settings were edited during it, and on servers never installed
-            under a Panel that stamps it.
+            only repeat an install that just ran.
         created_at: { type: string, format: date-time }
     InstallLogLine:
       type: object

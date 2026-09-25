@@ -274,7 +274,7 @@ func dataDirRemovalNote(h dataDirHolder, serverID, installName string) string {
 	}
 	note := "[kraken] removed " + h.State + " container " + h.String() + " that still had this server's data dir mounted"
 	if h.Name == containerName(serverID) {
-		note += " — START recreates it after this pass"
+		note += " — start recreates it after this pass"
 	}
 	return note
 }

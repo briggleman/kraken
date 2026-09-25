@@ -1102,6 +1102,24 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   }
   .node-id { display: grid; align-content: center; gap: 4px; min-width: 0; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
   .node-cond { overflow-wrap: anywhere; }
+  /* The instruments as one rail (mock round 2026-09-25, accepted from live).
+     Gutters between the five meters become hairline dividers, each meter is a
+     third taller than a server card's, the numerals step up one size, and the
+     rail sits on the band's centre line beside the identity column. The
+     meter's left-fade mask is dropped: a rail reads as one continuous
+     instrument, and a fade at every divider would cut it into five. Server
+     cards keep their own meter sizing (.srv-chart). */
+  .node-band { column-gap: 0; align-items: center; }
+  .node-band > .node-id { margin-right: clamp(14px, 1.6vw, 34px); }
+  .node-band > .metric {
+    align-self: center; gap: 5px; padding: 0 clamp(10px, 1vw, 18px);
+    border-left: 1px solid rgba(var(--lumen-rgb), 0.12);
+  }
+  .node-band > .metric:nth-child(2) { border-left-color: transparent; padding-left: 0; }
+  .node-band > .metric:last-child { padding-right: 0; }
+  .node-band .metric-val { font-size: clamp(22px, 1.8vw, 42px); }
+  .node-band .seg-track, .node-band .chan, .node-band .metric canvas { height: calc(clamp(30px, 4.5vh, 62px) * 1.35); }
+  .node-band .seg-track { --cell: 6.5px; --dot: 2.6px; mask-image: none; -webkit-mask-image: none; }
   .node-name {
     font-weight: 700; font-size: clamp(26px, 2.2vw, 46px); letter-spacing: 0.1em;
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
@@ -1473,7 +1491,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      do not compete with instruments - and the instruments wrap as a rail with a
      real floor, so a narrow desk gets fewer per row instead of five broken ones. */
   @media (max-width: 1100px) {
-    .node-band { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .node-band { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); column-gap: clamp(14px, 1.6vw, 34px); }
+    /* A wrapped rail is rows of meters again: gutters, no dividers. */
+    .node-band > .metric { padding: 0; border-left: none; }
+    .node-band > .node-id { margin-right: 0; }
     .node-id {
       grid-column: 1 / -1; padding-right: 0; padding-bottom: clamp(10px, 1.2vh, 16px);
       border-right: none; border-bottom: 1px solid var(--edge);
@@ -5467,5 +5488,5 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString('en-US', { hour12: false }); }, 1000);
 </script>
 <!-- impeccable-live-start -->
-<script src="http://localhost:8400/live.js?token=8760d157-4921-4ba6-80c1-9b9d49e47975"></script>
+<script src="http://localhost:8400/live.js?token=d01d31e8-8a6f-4d67-98c7-bbc8c92dd224"></script>
 <!-- impeccable-live-end -->

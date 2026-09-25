@@ -248,8 +248,10 @@ export interface ScheduledTask {
   last_run_at?: string;
   next_run_at?: string;
   last_error?: string;
-  /** Switched off by its server's retire; a revive switches it back on
-   *  (#360). An operator's own enable or disable clears it. */
+  /** Switched off by its server's retire; the first install that lands after
+   *  the retire (the revive's, or a reinstall after a revive whose install
+   *  failed) switches it back on (#360). An operator's own enable or disable
+   *  clears it. */
   disabled_by_retire?: boolean;
   created_at: string;
 }

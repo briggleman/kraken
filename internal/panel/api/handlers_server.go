@@ -314,7 +314,16 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 
 	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
-	s.markProvisioned(server.ID, server.Vars, time.Now().UTC())
+	if s.markProvisioned(server.ID, server.Vars, time.Now().UTC()) {
+		// A revived server's schedules come back on with its first install
+		// that lands — the revive's own, or the reinstall after a revive whose
+		// install failed. A no-op for a server whose retire switched none off.
+		// Only once the row says the install landed, and on a context of its
+		// own: the install's may be all but spent by now.
+		sctx, scancel := context.WithTimeout(context.Background(), 30*time.Second)
+		s.enableRetireDisabledSchedules(sctx, server.ID)
+		scancel()
+	}
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
 	// and once the state leaves `installing` the console has no container to
@@ -396,11 +405,14 @@ func (s *Server) abortUpdate(sv *store.Server, prev store.ServerState, reason st
 // while the install was running cleared the stamp (see the settings handler),
 // and stamping now would undo that and let the next start skip the pass the
 // edit needs.
-func (s *Server) markProvisioned(id string, installedVars map[string]string, at time.Time) {
+//
+// It reports whether the row was recorded: what follows a landed install
+// waits on that.
+func (s *Server) markProvisioned(id string, installedVars map[string]string, at time.Time) bool {
 	sv, err := s.store.GetServer(context.Background(), id)
 	if err != nil {
 		s.logger.Error("could not load server to mark it provisioned", "id", id, "err", err)
-		return
+		return false
 	}
 	sv.State = store.StateOffline
 	sv.LastError = ""
@@ -413,7 +425,9 @@ func (s *Server) markProvisioned(id string, installedVars map[string]string, at 
 	}
 	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
 		s.logger.Error("could not mark server provisioned", "id", id, "err", err)
+		return false
 	}
+	return true
 }
 
 // requiredSettingsMessage is the sentence an operator reads when a start is

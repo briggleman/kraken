@@ -105,6 +105,9 @@ type FakeRuntime struct {
 	// listBackupsHook, when set, runs at the start of every ListBackups (see
 	// SetListBackupsHook).
 	listBackupsHook func(serverID string)
+	// nodeInfoFailN fails the next N NodeInfo calls with Unavailable (see
+	// FailNextNodeInfo).
+	nodeInfoFailN int
 	// fileErr, when set, is what every file operation that reads or changes the
 	// tree fails with (see WithFakeFileError).
 	fileErr error
@@ -270,8 +273,22 @@ func (f *FakeRuntime) getState(serverID string) agentpb.ServerState {
 	return agentpb.ServerState_SERVER_STATE_OFFLINE
 }
 
+// FailNextNodeInfo makes the next n NodeInfo calls fail with Unavailable, then
+// lets them through — a node that did not answer one probe and answers the
+// next.
+func (f *FakeRuntime) FailNextNodeInfo(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodeInfoFailN = n
+}
+
 func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 	f.mu.Lock()
+	if f.nodeInfoFailN > 0 {
+		f.nodeInfoFailN--
+		f.mu.Unlock()
+		return nil, grpcstatus.Error(codes.Unavailable, "the node did not answer")
+	}
 	// The running set named as well as counted, exactly as the Docker runtime
 	// reports it — the two are built from one walk here for the same reason they
 	// come from one container list there: a count that disagrees with its own

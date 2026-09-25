@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -158,7 +159,11 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		PinBuild:  req.PinBuild,
 		CreatedAt: time.Now().UTC(),
 	}
+	// The install buffer opens before the row exists, so the first read of a
+	// server in `installing` already finds its attempt (#387).
+	undoInstallLog := s.installs.Start(server.ID)
 	if err := s.store.CreateServer(ctx, server); err != nil {
+		undoInstallLog()
 		writeError(w, http.StatusInternalServerError, "could not persist server")
 		return
 	}
@@ -219,8 +224,9 @@ func treeUntouched(err error) bool {
 // caller owns both, because the three callers differ: create/reinstall end at
 // offline, the pre-start update pass continues into a start.
 //
-// The caller must have opened the buffer (installs.Start) first, so even a
-// connect-time failure leaves the operator something to read.
+// The buffer is already open when this runs: the handler that started the
+// attempt opened it (installs.Start) before it wrote `installing` (#387), so
+// even a connect-time failure leaves the operator something to read.
 func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, withBepInEx bool) error {
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
@@ -283,6 +289,13 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 	}
 }
 
+// provisionHook, when set, runs first thing in provision, before it has done
+// anything — a test holds the goroutine there to read what a client sees in the
+// gap between the handler's answer and the install's first line. Only tests
+// set it (see SetProvisionHookForTest). Atomic because an install goroutine
+// left over from an earlier test may still be reading it.
+var provisionHook atomic.Pointer[func(serverID string)]
+
 // provision runs the install phase on the Agent and flips the server's state.
 // Runs in its own goroutine with a background context so it survives the request.
 // steamGuardCode is the optional one-time 2FA code for authenticated installs.
@@ -291,14 +304,19 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 // revive. A reinstall the Agent refused before touching the tree goes back to
 // prev; a create or revive has nothing to go back to and lands install_failed.
 // prev also picks the closing line's wording (see installCompleteLine).
+//
+// The caller has already opened the attempt's install buffer (installs.Start),
+// synchronously and before the store write that made the row `installing`
+// (#387), so a client that reads the log as soon as it sees that state gets
+// this attempt and not the one before it. failServer closes the buffer out on
+// every failure path; the success path keeps it.
 func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, prev store.ServerState) {
+	if hook := provisionHook.Load(); hook != nil {
+		(*hook)(server.ID)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	// Open a fresh install buffer before anything can fail, so even a
-	// connect-time failure leaves the operator something to read. failServer
-	// closes it out on every failure path; the success path keeps it.
-	s.installs.Start(server.ID)
 	nodeName := node.Name
 	if nodeName == "" {
 		nodeName = node.ID
@@ -849,7 +867,11 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 				sv.State = store.StateInstalling
 				sv.LastError = ""
 				sv.LastExitCode, sv.LastExitCodeKnown = 0, false
+				// Rotate the install log before `installing` is written, so
+				// no read can pair that state with the last attempt (#387).
+				undoInstallLog := s.installs.Start(sv.ID)
 				if err := s.store.UpdateServer(ctx, sv); err != nil {
+					undoInstallLog()
 					writeError(w, http.StatusInternalServerError, "could not update server state")
 					return
 				}
@@ -1036,7 +1058,8 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	s.installs.Start(sv.ID)
+	// The caller opened this attempt's install buffer before it wrote
+	// `installing` (#387); nothing here rotates it again.
 	s.installs.Append(sv.ID, "[panel] updating "+sv.Name+" — re-running the install script before start")
 
 	client, err := s.nodes.Client(node.DialTarget())
@@ -1181,7 +1204,13 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 	prev := sv.State // where a refused pass puts it back (see provision)
 	sv.State = store.StateInstalling
 	sv.LastError = "" // a fresh attempt starts with a clean slate
+	// Every refusal is behind us; the last step that can still fail is the
+	// write itself, and undo puts the log back if it does. Rotating first
+	// means a read that sees `installing` never gets the attempt this
+	// reinstall is replacing as if it were the new one (#387).
+	undoInstallLog := s.installs.Start(sv.ID)
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		undoInstallLog()
 		writeError(w, http.StatusInternalServerError, "could not update server state")
 		return
 	}

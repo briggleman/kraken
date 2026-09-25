@@ -87,3 +87,13 @@ func SetRestoreClaimHookForTest(fn func(serverID string)) func() {
 	restoreClaimHook = fn
 	return func() { restoreClaimHook = nil }
 }
+
+// SetProvisionHookForTest runs fn first thing in provision, before the install
+// has written anything — a test blocks there to read the install log in the gap
+// between a handler's 202 and the install's first line (#387). The returned
+// func clears it. Unlike the plain-var hooks above, this one is an atomic
+// pointer: install goroutines from earlier tests may still be reading it.
+func SetProvisionHookForTest(fn func(serverID string)) func() {
+	provisionHook.Store(&fn)
+	return func() { provisionHook.Store(nil) }
+}

@@ -910,7 +910,10 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     overflow-y: auto; min-height: 0;
     scrollbar-width: thin; scrollbar-color: rgba(var(--lumen-rgb), 0.35) transparent;
   }
-  .node-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  /* The two doors keep their labels on one line; on a band too narrow for both
+     side by side they stack, rather than breaking "node settings" over two. */
+  .node-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; }
+  .node-actions .prefs-open { white-space: nowrap; }
   .opt-set { display: grid; gap: 10px; }
   .opt {
     display: grid; gap: 3px; padding: 12px 14px;
@@ -1091,20 +1094,29 @@ FINISH: mock for direction comparison; the chosen direction's production build e
      refusal) stretch it to half the band and crush the gauges to a third of
      their width on that node only. fit-content keeps a short identity tight,
      lets a long one wrap inside the cap, and every band's instruments come out
-     the same size — the gauges are the reading, and readings line up. */
+     the same size — the gauges are the reading, and readings line up. The
+     floor is 280px: at the old 240px each action button broke its label over
+     two lines. Where the column is still narrower than the pair side by side,
+     the pair stacks (.node-actions wraps) and every label stays on one line. */
   .node-band {
-    display: grid; grid-template-columns: fit-content(clamp(240px, 19vw, 400px)) repeat(5, minmax(0, 1fr));
+    display: grid; grid-template-columns: fit-content(clamp(280px, 19vw, 400px)) repeat(5, minmax(0, 1fr));
     gap: clamp(14px, 1.6vw, 34px); align-items: stretch;
     background: linear-gradient(180deg, var(--d2), var(--d1));
     border: 1px solid var(--edge); border-radius: 6px;
     padding: clamp(12px, 1.5vh, 22px) clamp(16px, 1.6vw, 30px);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07);
   }
-  .node-id { display: grid; align-content: center; gap: 4px; min-width: 0; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
+  /* Capping the band's track is not enough on its own: .node-id is a grid too,
+     and its implicit column is `auto`, so a nowrap child (a refusal, a long
+     name) sized that inner column past the cap and painted over the cpu meter.
+     minmax(0, 1fr) makes the inner column the cap's width exactly, and
+     everything inside has to wrap to fit it. */
+  .node-id { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; min-width: 0; padding-right: clamp(14px, 1.6vw, 34px); border-right: 1px solid var(--edge); }
   .node-cond { overflow-wrap: anywhere; }
   /* The instruments as one rail (mock round 2026-09-25, accepted from live).
-     Gutters between the five meters become hairline dividers, each meter is a
-     third taller than a server card's, the numerals step up one size, and the
+     Gutters between the five meters become hairline dividers, each meter is
+     1.35x the band's own base height (clamp(30px, 4.5vh, 62px) — a server
+     card's is clamp(26px, 4vh, 54px), so ~1.55x that), the numerals step up one size, and the
      rail sits on the band's centre line beside the identity column. The
      meter's left-fade mask is dropped: a rail reads as one continuous
      instrument, and a fade at every divider would cut it into five. Server
@@ -1120,10 +1132,13 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .node-band .metric-val { font-size: clamp(22px, 1.8vw, 42px); }
   .node-band .seg-track, .node-band .chan, .node-band .metric canvas { height: calc(clamp(30px, 4.5vh, 62px) * 1.35); }
   .node-band .seg-track { --cell: 6.5px; --dot: 2.6px; mask-image: none; -webkit-mask-image: none; }
+  /* A node name can run to 64 characters; inside the capped identity column it
+     wraps rather than pushing past the cap into the instruments. */
   .node-name {
     font-weight: 700; font-size: clamp(26px, 2.2vw, 46px); letter-spacing: 0.1em;
     color: transparent; -webkit-text-stroke: 1.4px var(--lumen);
     filter: drop-shadow(0 0 12px rgba(var(--lumen-rgb), 0.45));
+    overflow-wrap: anywhere; min-width: 0;
   }
   /* A locked node's mark, on the one element the eye already lands on. An
      indicator, never a control: its whole job is that a node you cordoned three
@@ -1154,7 +1169,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   }
   .node-cond .nc-v { font-weight: 300; color: var(--ink-3); }
   .node-cond .nc-sep { color: var(--ink-3); }
-  /* exactly one value in the line carries the colour: the one you would act on.
+  /* at most one value in the line carries the colour: the one you would act on.
      The version you are moving TO, the containers nobody is tracking — the rest
      is context, and colouring context spends the semantic for nothing. */
   .node-cond .nc-v.act { color: var(--caution); }
@@ -1256,16 +1271,21 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .agent-drift.st-failed .nc-v.act { color: var(--ink-3); }
   /* Any condition may carry a refusal, not only the agent drift: the retire of
      an untracked container is refused the same way an update push is. One rule,
-     one measure - the same 42ch the ticker family clips at. */
+     one measure - the same 42ch the ticker family uses. It wraps rather than
+     clips: the message is the reason for the refusal, and an ellipsis cut the
+     reason off; nowrap also forced the capped identity column wider and laid
+     the line over the cpu meter. The title still carries the whole sentence. */
   .node-cond .nc-fail {
     color: var(--caution);
-    max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 42ch; white-space: normal; overflow-wrap: anywhere;
   }
   /* Untracked containers are named on the line, each with its own retire chip:
      a .nc-go with no sweep (the sweep says "a build is waiting for you", which
      is not true of a container nobody asked for). Names print as the Panel
-     makes them - kraken_ plus the id's first eight - because the id column sizes
-     to its content and a whole UUID pushed the instruments into each other.
+     makes them - kraken_ plus the id's first eight. The id column used to size
+     to its content, and a whole UUID pushed the instruments into each other; it
+     is capped now, and the short name keeps the line from wrapping around a
+     string nobody reads whole.
      Past three names the line carries one "retire all" chip instead of a row of
      them; the roll call stays in the title. The count keeps the line's one act
      colour; the names are context. */

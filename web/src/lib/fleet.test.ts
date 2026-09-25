@@ -29,9 +29,11 @@ import {
   STALE_AFTER_MS,
   fleet,
   fleetHealth,
+  fleetIssued,
   fleetPollMs,
   refreshFleet,
   resumeStaleClock,
+  serversReadIssued,
   startFleetPolling,
   stopFleetPolling,
   suspendStaleClock,
@@ -192,6 +194,56 @@ describe("refreshFleet", () => {
     await first;
     expect(fleet.servers[0].state).toBe("running");
     expect(fleet.lastOkMs).toBe(fresh); // and it does not re-stamp freshness either
+  });
+
+  it("says which poll the servers on screen came from (#380)", async () => {
+    // The retired group's delete note judges a read by when its poll was
+    // started, not when it landed: a slow poll started before a delete can
+    // land after it and still carry the deleted row.
+    const slow = deferred<{ servers: Server[] }>();
+    listServers.mockReturnValueOnce(slow.promise);
+    const first = refreshFleet();
+    const firstIssued = fleetIssued();
+
+    listServers.mockResolvedValue({ servers: [server("srv-1", "running")] });
+    await refreshFleet();
+    expect(fleetIssued()).toBe(firstIssued + 1);
+    expect(serversReadIssued()).toBe(firstIssued + 1);
+
+    slow.settle({ servers: [server("srv-1", "starting")] });
+    await first;
+    expect(serversReadIssued()).toBe(firstIssued + 1); // the older read was not applied
+  });
+
+  it("names the older poll while it is the one on screen and a newer one is still out", async () => {
+    const older = deferred<{ servers: Server[] }>();
+    const newer = deferred<{ servers: Server[] }>();
+    listServers.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    const n1 = refreshFleet();
+    const olderIssued = fleetIssued();
+    const n2 = refreshFleet();
+    expect(fleetIssued()).toBe(olderIssued + 1);
+
+    // the older poll lands first: its servers are applied, and it is the one named
+    older.settle({ servers: [server("srv-1", "starting")] });
+    await n1;
+    expect(fleet.servers[0].state).toBe("starting");
+    expect(serversReadIssued()).toBe(olderIssued);
+
+    newer.settle({ servers: [server("srv-1", "running")] });
+    await n2;
+    expect(serversReadIssued()).toBe(olderIssued + 1);
+  });
+
+  it("does not move on a tick whose servers read failed, though the nodes read answered", async () => {
+    await refreshFleet();
+    const applied = serversReadIssued();
+    listServers.mockRejectedValueOnce(new Error("servers: bad gateway"));
+    listNodes.mockResolvedValueOnce({ nodes: [NODE, { ...NODE, id: "node-2" }], panel_version: "0.50.1" });
+    await refreshFleet();
+    expect(fleet.nodes).toHaveLength(2); // the nodes read was applied
+    expect(fleetIssued()).toBe(applied + 1);
+    expect(serversReadIssued()).toBe(applied); // the servers on screen are still that poll's
   });
 });
 

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   backupOptions,
   effectiveRestore,
-  reviveSeedMemory,
+  reviveMemorySeed,
   nodeFits,
   nodeOptionLabel,
   portsFree,
@@ -163,18 +163,30 @@ describe("the restore choice", () => {
   });
 });
 
-describe("reviveSeedMemory", () => {
+describe("reviveMemorySeed", () => {
   it("is its old figure, or the spec's allocation when the minimum was raised past it", () => {
-    expect(reviveSeedMemory(server({ memory_mb: 8192 }), SPEC)).toBe(8192);
+    expect(reviveMemorySeed(server({ memory_mb: 8192 }), SPEC)).toEqual({ mb: 8192, source: "what it had before" });
     const raised = { ...SPEC, resources: { min_memory_mb: 12288, recommended_memory_mb: 16384 } } as Spec;
-    expect(reviveSeedMemory(server({ memory_mb: 8192 }), raised)).toBe(16384);
+    const minRaised = "the spec's allocation — its minimum was raised since it was retired";
+    expect(reviveMemorySeed(server({ memory_mb: 8192 }), raised)).toEqual({ mb: 16384, source: minRaised });
     const minOnly = { ...SPEC, resources: { min_memory_mb: 12288 } } as Spec;
-    expect(reviveSeedMemory(server({ memory_mb: 8192 }), minOnly)).toBe(12288);
+    expect(reviveMemorySeed(server({ memory_mb: 8192 }), minOnly)).toEqual({ mb: 12288, source: minRaised });
+  });
+
+  it("says only the spec's allocation when no figure was stored, with no word of a raised minimum", () => {
+    const withRec = { ...SPEC, resources: { min_memory_mb: 4096, recommended_memory_mb: 8192 } } as Spec;
+    const sv = server({ memory_mb: 0 });
+    expect(reviveMemorySeed(sv, withRec)).toEqual({ mb: 8192, source: "the spec's allocation" });
+    expect(reviveMemorySeed(sv, SPEC)).toEqual({ mb: 4096, source: "the spec's allocation" });
+    // nothing stored and nothing in the spec either: still not "what it had before"
+    const bare = { ...SPEC, resources: { min_memory_mb: 0 } } as Spec;
+    expect(reviveMemorySeed(sv, bare).source).toBe("the spec's allocation");
+    expect(reviveMemorySeed(sv, undefined).source).toBe("the spec's allocation");
   });
 
   it("does not post the seed back as a change", () => {
     const raised = { ...SPEC, resources: { min_memory_mb: 12288 } } as Spec;
-    const seed = reviveSeedMemory(server(), raised);
+    const seed = reviveMemorySeed(server(), raised).mb;
     expect(reviveBody(server(), { nodeId: "behemoth", memoryMb: seed, restoreId: "", start: false, steamGuard: "" }, seed)).toEqual({});
   });
 });

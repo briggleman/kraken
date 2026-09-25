@@ -111,15 +111,27 @@ export interface ReviveChoice {
   steamGuard: string;
 }
 
-/** The memory the sheet starts from: what the Panel would give it with no
- *  memory_mb in the body — its old figure, or, when the spec's minimum has
- *  been raised past that since it was retired, the spec's allocation
- *  (recommended, else minimum; Resources.AllocMemoryMB). Seeding the old
- *  figure would open the sheet on a refusal the operator did not cause. */
-export function reviveSeedMemory(server: Server, spec: Spec | undefined): number {
+/**
+ * The memory the sheet starts from, and where it came from (the help line
+ * under the field). It is what the Panel would give the server with no
+ * memory_mb in the body:
+ *
+ * - its old figure, when it stored one and the spec's minimum still allows it
+ *   ("what it had before");
+ * - the spec's allocation (recommended, else minimum; Resources.AllocMemoryMB)
+ *   when it stored none ("the spec's allocation");
+ * - the spec's allocation when the spec's minimum has been raised past its old
+ *   figure since it was retired ("… its minimum was raised since it was
+ *   retired" — said only then, #380). Seeding the old figure would open the
+ *   sheet on a refusal the operator did not cause.
+ */
+export function reviveMemorySeed(server: Server, spec: Spec | undefined): { mb: number; source: string } {
   const min = spec?.resources.min_memory_mb ?? 0;
-  if (server.memory_mb > 0 && server.memory_mb >= min) return server.memory_mb;
-  return spec?.resources.recommended_memory_mb || min || server.memory_mb;
+  const had = server.memory_mb > 0 ? server.memory_mb : 0;
+  if (had > 0 && had >= min) return { mb: had, source: "what it had before" };
+  const mb = spec?.resources.recommended_memory_mb || min || server.memory_mb;
+  if (had === 0) return { mb, source: "the spec's allocation" };
+  return { mb, source: "the spec's allocation — its minimum was raised since it was retired" };
 }
 
 /** The restore the sheet posts. Only an archive on the node it lands on can

@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/briggleman/kraken/internal/panel/api"
 )
 
 // installLogBody is the shape of GET /servers/{id}/install-log.
@@ -259,6 +262,112 @@ func TestInstallLog_PreviousAttemptSurvivesAReinstall(t *testing.T) {
 	}
 	if got := completionLine(second.Lines); !strings.HasSuffix(got, "; no container exists until you start it") {
 		t.Errorf("a reinstall's completion line must say no container exists until you start it; got %q", got)
+	}
+}
+
+// #387: the reinstall used to write `installing` and answer 202 before its
+// provision goroutine rotated the install buffer, so a read in that gap got the
+// attempt before the button press as if it were the new one — and the drill-in
+// does not read again while the state stays `installing`. The buffer is now
+// rotated in the handler, before the state write. The provision goroutine is
+// held at its very first line here, so the read below lands in the gap every
+// time rather than only when the scheduler happens to be slow.
+func TestInstallLog_ReinstallRotatesTheLogBeforeItAnswers(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	nodeID := registerNode(t, h, token, startFakeAgent(t, "node-install-rotate"))
+	if rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+nodeID+"/info", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("node info: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	specID := createSpec(t, h, token, "install-log-rotate")
+	rec := do(t, h, http.MethodPost, "/api/v1/servers", token, map[string]any{
+		"spec_id": specID, "name": "rotate-01",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create server: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var created struct{ ID string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created: %v", err)
+	}
+	waitSettled := func(wantPrevious bool) installLogBody {
+		t.Helper()
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			if getServerState(t, h, token, created.ID) == "offline" {
+				body := getInstallLog(t, h, token, created.ID)
+				if body.Done && (body.Previous != nil) == wantPrevious {
+					return body
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("install never settled (state %q)", getServerState(t, h, token, created.ID))
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	first := waitSettled(false)
+	if len(first.Lines) == 0 {
+		t.Fatal("the first attempt printed nothing, so it cannot be told apart from a new one")
+	}
+
+	gate := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	clearHook := api.SetProvisionHookForTest(func(id string) {
+		if id != created.ID {
+			return
+		}
+		entered <- struct{}{}
+		<-gate
+	})
+	defer clearHook()
+	var opened sync.Once
+	openGate := func() { opened.Do(func() { close(gate) }) }
+	defer openGate()
+
+	if rec := do(t, h, http.MethodPost, "/api/v1/servers/"+created.ID+"/reinstall", token, nil); rec.Code != http.StatusAccepted {
+		t.Fatalf("reinstall: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	got := getInstallLog(t, h, token, created.ID)
+
+	if got.Previous == nil {
+		t.Fatal("previous is null right after the reinstall's 202: the log was not rotated before the answer")
+	}
+	if got.Previous.StartedMs != first.StartedMs || got.Previous.FinishedMs != first.FinishedMs {
+		t.Errorf("previous bracket %d–%d, want the first attempt's %d–%d",
+			got.Previous.StartedMs, got.Previous.FinishedMs, first.StartedMs, first.FinishedMs)
+	}
+	if len(got.Previous.Lines) != len(first.Lines) {
+		t.Errorf("previous has %d lines, want the first attempt's %d", len(got.Previous.Lines), len(first.Lines))
+	}
+	if len(got.Lines) != 0 || got.Done || got.FinishedMs != 0 {
+		t.Errorf("the current attempt must be the new, empty one; got done=%v finished_ms=%d lines=%+v",
+			got.Done, got.FinishedMs, got.Lines)
+	}
+	if got.StartedMs == 0 || got.StartedMs < first.FinishedMs {
+		t.Errorf("the new attempt's started_ms = %d, want set and not before the first finished (%d)",
+			got.StartedMs, first.FinishedMs)
+	}
+	if !got.Retained {
+		t.Error("the new attempt must read as retained")
+	}
+
+	// The provision goroutine reached the hook, so the read above really was
+	// in the gap before it had done anything.
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the reinstall's provision never started")
+	}
+	openGate()
+	second := waitSettled(true)
+	// Rotated once, not twice: the attempt kept as previous is still the first.
+	if second.Previous.StartedMs != first.StartedMs {
+		t.Errorf("after the install, previous started %d, want the first attempt's %d (rotated twice?)",
+			second.Previous.StartedMs, first.StartedMs)
+	}
+	if second.StartedMs != got.StartedMs {
+		t.Errorf("the finished attempt started %d, want the one opened in the handler (%d)", second.StartedMs, got.StartedMs)
 	}
 }
 

@@ -915,7 +915,11 @@ func (s *Server) handleReviveServer(w http.ResponseWriter, r *http.Request) {
 	sv.RetiredAt, sv.RetireNote, sv.RetiredFromNodeID, sv.RetiredPorts = nil, "", "", nil
 	sv.LastError = ""
 	sv.ProvisionedAt = nil
+	// The revive's install buffer opens before `installing` is written, so a
+	// read that sees the state finds this attempt (#387).
+	undoInstallLog := s.installs.Start(sv.ID)
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
+		undoInstallLog()
 		// Give the place back: the server is still retired.
 		if n, nerr := s.store.GetNode(ctx, chosen.ID); nerr == nil {
 			ports := make([]int, 0, len(placement.Ports))
@@ -1091,7 +1095,10 @@ func (s *Server) startAfterRevive(ctx context.Context, serverID string) {
 		prev := sv.State
 		sv.State = store.StateInstalling
 		sv.LastError = ""
+		// As on an operator's start: rotate before `installing` is written.
+		undoInstallLog := s.installs.Start(sv.ID)
 		if err := s.store.UpdateServer(ctx, sv); err != nil {
+			undoInstallLog()
 			refused("could not update its state")
 			return
 		}

@@ -18,11 +18,11 @@ import (
 // Buffers live only in memory, one per server, capped at maxInstallLines. They
 // survive the install — success as well as failure — so the account of what the
 // installer actually did stays readable afterwards, and are dropped when the
-// server is retired or deleted. A new attempt demotes the current one to `previous` rather
-// than discarding it, and exactly one attempt back is kept: pressing REINSTALL
-// on a failed pass used to erase the very output that said why it failed
-// (#381). Retention is therefore bounded at two tails per server, and the
-// server count is bounded by the node's memory and port reservations.
+// server is retired or deleted. A new attempt demotes the current one to
+// `previous` rather than discarding it, and exactly one attempt back is kept:
+// pressing REINSTALL on a failed pass used to erase the very output that said
+// why it failed (#381). Retention is therefore bounded at two tails per server,
+// and the server count is bounded by the node's memory and port reservations.
 //
 // Keeping a *successful* install's output is the fix for #280: an installer can
 // exit 0 having produced a broken tree (a SteamCMD self-update race downloads
@@ -87,11 +87,23 @@ func (l *installLog) entry(id string) *installEntry {
 // back is the bound), so the output of a failed pass survives the reinstall
 // that retries it. Live subscribers of the old entry are closed: what they
 // were tailing is over.
-func (l *installLog) Start(id string) {
+//
+// Handlers call Start synchronously, just before the store write that makes
+// the row `installing` (#387): a client that sees `installing` and reads the
+// log must get the new attempt, never the one before the button press. The
+// returned undo is for that write failing: it puts the replaced attempt back
+// as it was, so a request that changed nothing leaves the log as it found it.
+// undo does nothing once the new attempt has a line or another Start has
+// replaced it. Subscribers Start closed stay closed; a reader re-subscribes.
+func (l *installLog) Start(id string) (undo func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	e := &installEntry{startedAt: time.Now(), subs: map[chan installLine]struct{}{}}
-	if old := l.entries[id]; old != nil {
+	old := l.entries[id]
+	var oldDone bool
+	var oldPrevious *installEntry
+	if old != nil {
+		oldDone, oldPrevious = old.done, old.previous
 		for ch := range old.subs {
 			close(ch)
 		}
@@ -104,6 +116,22 @@ func (l *installLog) Start(id string) {
 		e.previous = old
 	}
 	l.entries[id] = e
+	return func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.entries[id] != e || len(e.lines) > 0 || e.done {
+			return
+		}
+		for ch := range e.subs {
+			close(ch)
+		}
+		if old == nil {
+			delete(l.entries, id)
+			return
+		}
+		old.done, old.previous = oldDone, oldPrevious
+		l.entries[id] = old
+	}
 }
 
 // Append records a line of ordinary installer output.

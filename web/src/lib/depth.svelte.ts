@@ -533,9 +533,10 @@ async function refreshDetail() {
   depth.sftpError =
     sftp.status === "rejected" ? String(sftp.reason?.message ?? sftp.reason) : null;
   // Same reasoning for the install log: it is a look back at a finished phase,
-  // and failing to read it must not take the drill-in's error line hostage.
-  if (logRead === installLogReads) {
-    setInstallLog(installLog.status === "fulfilled" ? installLog.value : null);
+  // and failing to read it must not take the drill-in's error line hostage. A
+  // failed read writes nothing (see claimInstallLog).
+  if (installLog.status === "fulfilled" && claimInstallLog(logRead)) {
+    setInstallLog(installLog.value);
   }
   // The two optional reads are excluded from the drill-in's error line.
   const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
@@ -594,9 +595,11 @@ export function syncDepthFromFleet() {
     // button press, so its `previous` names the attempt before the wrong one —
     // it is dropped at once (the header goes with it) and only the re-read puts
     // one back. A re-read that fails leaves it dropped: no header beats a
-    // header naming the wrong attempt.
+    // header naming the wrong attempt. Every read already out predates the
+    // press too, so none of them may land after the drop either.
     if (was !== s.state && s.state === "installing") {
       setInstallLog(null);
+      installLogFloor = installLogReads;
       void refreshInstallLog();
     } else if (was !== s.state && (was === "installing" || was === "install_failed")) {
       void refreshInstallLog();
@@ -613,11 +616,26 @@ function setInstallLog(log: InstallLog | null) {
   depth.installLogSeq++;
 }
 
-/** Install-log reads started so far. Only the newest read's answer is applied:
- *  an older one still in flight when an install begins holds the log as it was
- *  before the button press, and landing after the newer read would put the
- *  previous attempt's header back on the wrong attempt (#381). */
+/** Install-log reads started so far; each read is numbered by it. */
 let installLogReads = 0;
+/** The number of the newest read whose answer has been applied. */
+let installLogApplied = 0;
+/** Reads numbered at or below this were started before the latest install
+ *  began: they hold the log as it was before the button press, and landing
+ *  after the drop would put the previous attempt's header back on the wrong
+ *  attempt (#381). */
+let installLogFloor = 0;
+
+/** Whether a read that SUCCEEDED may apply its answer, and if so, record that
+ *  it did. Only successful reads ask: a failed one claims nothing, so a newer
+ *  read that fails leaves an older one still in flight free to land (#387). A
+ *  success applies unless a newer read has already succeeded, or it was
+ *  started before the latest install began. */
+function claimInstallLog(read: number): boolean {
+  if (read <= installLogFloor || read <= installLogApplied) return false;
+  installLogApplied = read;
+  return true;
+}
 
 /** Re-read the retained install log (after an install ends, or on demand). */
 export async function refreshInstallLog() {
@@ -626,7 +644,7 @@ export async function refreshInstallLog() {
   const mine = ++installLogReads;
   try {
     const log = await api.getInstallLog(id);
-    if (depth.serverId === id && mine === installLogReads) setInstallLog(log);
+    if (depth.serverId === id && claimInstallLog(mine)) setInstallLog(log);
   } catch {
     // Optional surface: a failed read leaves the last value rather than
     // claiming the log is gone.

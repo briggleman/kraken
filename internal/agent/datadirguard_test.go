@@ -227,6 +227,54 @@ func TestClearDataDir_RemovesAnExitedHolderAndAwaitsIt(t *testing.T) {
 	if len(notes) != 1 || !strings.HasPrefix(notes[0], "[kraken] ") || !strings.Contains(notes[0], "hand-made") {
 		t.Errorf("want one [kraken] console line naming the removed container; got %v", notes)
 	}
+	// Nothing recreates a container Kraken does not own, so its line must not
+	// promise that START will (#381).
+	if strings.Contains(notes[0], "START recreates") {
+		t.Errorf("an untracked container's line must not say START recreates it; got %q", notes[0])
+	}
+}
+
+// #381: the server's own exited game container is the holder a reinstall
+// removes every time, and until START the node then has no container for the
+// server at all. The console line says that is expected.
+func TestClearDataDir_OwnGameContainerNoteSaysStartRecreatesIt(t *testing.T) {
+	f := &fakeOps{list: []container.Summary{summary(exitedID, guardName, container.StateExited, ours(), guardSource)}}
+	withName(f, exitedID, guardName)
+	notes, err := runGuard(t, f)
+	if err != nil {
+		t.Fatalf("the server's own exited container must not block the pass: %v", err)
+	}
+	want := "[kraken] removed exited container " + guardName + " (" + exitedID[:12] +
+		") that still had this server's data dir mounted — START recreates it after this pass"
+	if len(notes) != 1 || notes[0] != want {
+		t.Errorf("notes = %q, want [%q]", notes, want)
+	}
+}
+
+// The wording per holder: only the server's own game container gets the
+// recreate clause — not its install container, not another server's
+// look-alike name, not a hand-made one.
+func TestDataDirRemovalNote_Wording(t *testing.T) {
+	cases := []struct {
+		name, holder, wantSuffix string
+		recreate                 bool
+	}{
+		{"own game container", guardName, "— START recreates it after this pass", true},
+		{"own install container", guardInst, "before this pass", false},
+		{"a longer id sharing the prefix", guardName + "0", "data dir mounted", false},
+		{"hand-made", "hand-made", "data dir mounted", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := dataDirRemovalNote(dataDirHolder{ID: exitedID, Name: tc.holder, State: container.StateExited}, guardServer, guardInst)
+			if !strings.HasSuffix(got, tc.wantSuffix) {
+				t.Errorf("note = %q, want suffix %q", got, tc.wantSuffix)
+			}
+			if strings.Contains(got, "START recreates") != tc.recreate {
+				t.Errorf("note = %q, recreate clause present = %v, want %v", got, !tc.recreate, tc.recreate)
+			}
+		})
+	}
 }
 
 // The previous pass's install container is cleared whatever its state — it is

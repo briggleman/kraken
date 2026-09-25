@@ -285,6 +285,11 @@ export interface Server {
    *  before every start or restart, so this server stays on the build now on
    *  disk. Reinstall is then the explicit "update now". */
   pin_build?: boolean;
+  /** When the most recent create or reinstall install pass completed. Absent
+   *  when the last pass failed, when settings were edited during it, or on a
+   *  server never stamped. Inside the Panel's 30-minute fresh-install window an
+   *  offline server has no container on its node until START (#381). */
+  provisioned_at?: string;
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;
@@ -703,6 +708,20 @@ export interface InstallLog {
   lines: InstallLogLine[];
   done: boolean;
   retained: boolean;
+  started_ms?: number;
+  finished_ms?: number;
+  /** The attempt this one replaced (#381), or null when there is none — a
+   *  reinstall retrying a failed pass keeps the output that says why it
+   *  failed. One back only. Optional because an older Panel does not send it. */
+  previous?: InstallAttempt | null;
+}
+
+/** An earlier install attempt: the current attempt's shape without the
+ *  server-level fields. `done` is always true — it is over — and `finished_ms`
+ *  is absent when it was superseded before it reached a verdict. */
+export interface InstallAttempt {
+  lines: InstallLogLine[];
+  done: boolean;
   started_ms?: number;
   finished_ms?: number;
 }

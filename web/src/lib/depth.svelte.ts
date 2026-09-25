@@ -6,6 +6,7 @@ import type {
   Backup,
   FileEntry,
   FileListing,
+  InstallAttempt,
   InstallLog,
   PowerActionName,
   RestoreProgress,
@@ -327,15 +328,64 @@ export function restoreTop(v: { pinned: boolean; lastTop: number; scrollHeight: 
   return v.pinned ? v.scrollHeight : v.lastTop;
 }
 
-/** What the console pane says when it has no lines at all. Three different
- *  facts, and the difference matters: a dark server has nothing to tail, an
- *  install whose output never arrived has it on the chip above, and a Panel
- *  that restarted since the attempt genuinely kept none of it. */
-export function emptyConsoleNote(opts: { installing: boolean; hasRetained: boolean }): string {
-  if (!opts.installing) return "no output — server is dark";
+/** What the console pane says when it has no lines at all. Four different
+ *  facts, and the difference matters: a dark server has nothing to tail, a
+ *  server that was just installed has no container to tail *yet* (START makes
+ *  one — see freshlyInstalled), an install whose output never arrived has it on
+ *  the chip above, and a Panel that restarted since the attempt genuinely kept
+ *  none of it. */
+export function emptyConsoleNote(opts: {
+  installing: boolean;
+  hasRetained: boolean;
+  freshInstall?: boolean;
+}): string {
+  if (!opts.installing) {
+    return opts.freshInstall ? "installed · no container until START" : "no output — server is dark";
+  }
   return opts.hasRetained
     ? "nothing came over the console — the retained install log is on the chip above"
     : "no install output kept — the panel restarted since this attempt";
+}
+
+/** The Panel's freshInstallWindow (handlers_server.go): how long after a create
+ *  or reinstall its tree counts as just installed. */
+export const FRESH_INSTALL_WINDOW_MS = 30 * 60_000;
+
+/** Whether sv is an offline server whose install pass completed inside the
+ *  fresh-install window — which is exactly when its node has no container for
+ *  it (#381). The Agent's data-dir guard removes the exited game container
+ *  before a pass and the install container goes with the verdict; nothing
+ *  recreates the game container until START. Without saying so the empty pane
+ *  read as "the container got deleted".
+ *
+ *  Evaluated against this browser's clock, the way the Panel evaluates the
+ *  window against its own: a stamp in the future (skew, a clock that stepped
+ *  back) is not fresh, the same safe answer the Panel gives. */
+export function freshlyInstalled(
+  sv: Pick<Server, "state" | "provisioned_at"> | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (sv?.state !== "offline" || !sv.provisioned_at) return false;
+  const at = Date.parse(sv.provisioned_at);
+  if (!Number.isFinite(at)) return false;
+  const d = now - at;
+  return d >= 0 && d < FRESH_INSTALL_WINDOW_MS;
+}
+
+/** The one-line header the install console carries above the current output
+ *  when the attempt before it is kept (#381):
+ *  `previous attempt · started 08:02 · failed 08:06`. The verdict is read from
+ *  the lines, because the Panel writes every failure — install_failed, a pass
+ *  refused before it touched the tree, a start after an update that did not
+ *  come up — on the `error` stream, and nothing else writes there. An attempt
+ *  with no finish time was superseded before it reached a verdict. */
+export function previousAttemptHeader(prev: InstallAttempt): string {
+  const at = (ms: number | undefined) => (ms ? fmtWhen(ms).replace("today ", "") : "—");
+  const failed = prev.lines.some((l) => l.stream === "error");
+  const end = prev.finished_ms
+    ? `${failed ? "failed" : "finished"} ${at(prev.finished_ms)}`
+    : "did not finish";
+  return `previous attempt · started ${at(prev.started_ms)} · ${end}`;
 }
 
 /** Whether the INSTALL LOG chip has anything to offer.
@@ -569,7 +619,13 @@ export function syncDepthFromFleet() {
     // An install that just ended leaves a retained log the open drill-in has
     // never read — and this is exactly the moment it matters, because the
     // console's socket is about to switch to a container that may not start.
-    if (was !== s.state && (was === "installing" || was === "install_failed")) {
+    // An install that just began is the other moment: the attempt it replaced
+    // is now the log's `previous` (#381), and the console's header for it
+    // must name that attempt rather than whatever the last read held.
+    if (
+      was !== s.state &&
+      (was === "installing" || was === "install_failed" || s.state === "installing")
+    ) {
       void refreshInstallLog();
     }
   }

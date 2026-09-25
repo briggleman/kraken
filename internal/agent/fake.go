@@ -1006,7 +1006,7 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 	delete(f.holders, req.ServerId)
 	f.mu.Unlock()
 	for _, h := range plan.remove {
-		if err := emit(logLine(dataDirRemovalNote(h, installName))); err != nil {
+		if err := emit(logLine(dataDirRemovalNote(h, req.ServerId, installName))); err != nil {
 			return "", err
 		}
 	}

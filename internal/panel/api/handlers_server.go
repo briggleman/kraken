@@ -313,7 +313,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 		return
 	}
 
-	s.installs.Append(server.ID, "[panel] install complete — "+server.Name+" is ready to start")
+	s.installs.Append(server.ID, installCompleteLine(server.Name, prev != ""))
 	s.markProvisioned(server.ID, server.Vars, time.Now().UTC())
 	// Close the buffer but KEEP it. A successful install is not proof of a
 	// working one: an installer can exit 0 having written half a game (#278),
@@ -323,6 +323,22 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	// It is freed on delete, and replaced the moment a reinstall starts.
 	s.installs.Finish(server.ID)
 	s.logger.Info("server installed", "id", server.ID)
+}
+
+// installCompleteLine is the install console's closing line for a successful
+// provision. A reinstall says what the node now looks like, because it differs
+// from what the operator last saw there: the Agent's data-dir guard removed the
+// exited game container before the pass and the install container is removed
+// with the verdict, so until START recreates the game container the node has
+// no container for this server at all — which read as "the container got
+// deleted" on the morning that produced #381. A first provision never had one,
+// so its line stays as it was.
+func installCompleteLine(name string, reinstall bool) string {
+	line := "[panel] install complete — " + name + " is ready to start"
+	if reinstall {
+		line += "; no container exists until you start it"
+	}
+	return line
 }
 
 // failServer marks the server as install_failed — distinct from runtime
@@ -591,13 +607,45 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 // `retained` is the honest part: the buffer lives in this Panel process's
 // memory, so a restart between the install and the read leaves nothing, and the
 // caller must be able to tell that from an install that printed nothing at all.
+//
+// `previous` is the attempt the current one replaced (#381) — a reinstall
+// retrying a failed pass must not erase the output that says why it failed —
+// in the same shape as the current attempt, or null when there is none.
 type installLogResponse struct {
-	ServerID   string        `json:"server_id"`
+	ServerID   string              `json:"server_id"`
+	Lines      []installLine       `json:"lines"`
+	Done       bool                `json:"done"`
+	Retained   bool                `json:"retained"`
+	StartedMs  int64               `json:"started_ms,omitempty"`
+	FinishedMs int64               `json:"finished_ms,omitempty"`
+	Previous   *installAttemptJSON `json:"previous"`
+}
+
+// installAttemptJSON is one earlier install attempt as the install-log endpoint
+// answers it: the current attempt's shape without the server-level fields.
+type installAttemptJSON struct {
 	Lines      []installLine `json:"lines"`
 	Done       bool          `json:"done"`
-	Retained   bool          `json:"retained"`
 	StartedMs  int64         `json:"started_ms,omitempty"`
 	FinishedMs int64         `json:"finished_ms,omitempty"`
+}
+
+// installAttemptFrom renders a snapshot's lines and bracket; nil for nil.
+func installAttemptFrom(snap *installSnapshot) *installAttemptJSON {
+	if snap == nil {
+		return nil
+	}
+	out := &installAttemptJSON{Lines: snap.Lines, Done: snap.Done}
+	if out.Lines == nil {
+		out.Lines = []installLine{} // a JSON array, never null
+	}
+	if !snap.StartedAt.IsZero() {
+		out.StartedMs = snap.StartedAt.UnixMilli()
+	}
+	if !snap.FinishedAt.IsZero() {
+		out.FinishedMs = snap.FinishedAt.UnixMilli()
+	}
+	return out
 }
 
 // handleServerInstallLog serves the buffered output of a server's most recent
@@ -622,22 +670,16 @@ func (s *Server) handleServerInstallLog(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	snap := s.installs.Snapshot(sv.ID)
-	resp := installLogResponse{
-		ServerID: sv.ID,
-		Lines:    snap.Lines,
-		Done:     snap.Done,
-		Retained: snap.Retained,
-	}
-	if resp.Lines == nil {
-		resp.Lines = []installLine{} // a JSON array, never null
-	}
-	if !snap.StartedAt.IsZero() {
-		resp.StartedMs = snap.StartedAt.UnixMilli()
-	}
-	if !snap.FinishedAt.IsZero() {
-		resp.FinishedMs = snap.FinishedAt.UnixMilli()
-	}
-	writeJSON(w, http.StatusOK, resp)
+	cur := installAttemptFrom(&snap)
+	writeJSON(w, http.StatusOK, installLogResponse{
+		ServerID:   sv.ID,
+		Lines:      cur.Lines,
+		Done:       cur.Done,
+		Retained:   snap.Retained,
+		StartedMs:  cur.StartedMs,
+		FinishedMs: cur.FinishedMs,
+		Previous:   installAttemptFrom(snap.Previous),
+	})
 }
 
 // serverView returns a shallow copy of sv with SFTP credential material removed,

@@ -633,9 +633,12 @@ paths:
         it in memory: there is no container left to tail once the phase ends. The
         buffer is kept after the install finishes — success included, since an
         installer can exit 0 having produced a broken tree — until the server is
-        deleted or reinstalled. It does NOT survive a Panel restart; `retained`
-        is false when nothing is held, which is not the same as an install that
-        printed nothing.
+        deleted. A new attempt (a reinstall, or the update pass before a start)
+        does not discard the one it replaces: that attempt is answered as
+        `previous`, exactly one back, so a reinstall retrying a failed pass keeps
+        the output that says why it failed. It does NOT survive a Panel restart;
+        `retained` is false when nothing is held, which is not the same as an
+        install that printed nothing.
       responses:
         '200':
           description: Buffered install output
@@ -651,12 +654,15 @@ paths:
                   finished_ms: { type: integer, format: int64 }
                   lines:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        ts: { type: integer, format: int64 }
-                        stream: { type: string, description: '"install" or "error"' }
-                        text: { type: string }
+                    items: { $ref: '#/components/schemas/InstallLogLine' }
+                  previous:
+                    description: >-
+                      The attempt the current one replaced (an InstallAttempt),
+                      or null when there is none. Only one back is kept; a previous attempt is over, so
+                      `done` is always true, and `finished_ms` is absent when it
+                      was superseded before it reached a verdict.
+                    nullable: true
+                    allOf: [ { $ref: '#/components/schemas/InstallAttempt' } ]
 
   /servers/{id}/settings:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
@@ -2011,8 +2017,29 @@ components:
           description: >-
             When the most recent create or reinstall install pass completed. A
             start within 30 minutes of it skips the update pass, which would
-            only repeat an install that just ran.
+            only repeat an install that just ran. The web UI reads it too: an
+            offline server inside that window has no container on its node
+            until START creates one, and the drill-in says so rather than
+            reading as a dark server. Absent when the last pass failed, when
+            settings were edited during it, and on servers never installed
+            under a Panel that stamps it.
         created_at: { type: string, format: date-time }
+    InstallLogLine:
+      type: object
+      properties:
+        ts: { type: integer, format: int64 }
+        stream: { type: string, description: '"install" or "error"' }
+        text: { type: string }
+    InstallAttempt:
+      type: object
+      description: One earlier install attempt, in the shape of the current one without the server-level fields.
+      properties:
+        done: { type: boolean, description: the attempt is over — always true for a previous attempt }
+        started_ms: { type: integer, format: int64 }
+        finished_ms: { type: integer, format: int64, description: absent when the attempt was superseded before it reached a verdict }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/InstallLogLine' }
     PermanentDeleteResult:
       type: object
       properties:

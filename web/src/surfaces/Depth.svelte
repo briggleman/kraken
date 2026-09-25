@@ -28,6 +28,8 @@
     consoleRepin,
     consoleViewKey,
     emptyConsoleNote,
+    freshlyInstalled,
+    previousAttemptHeader,
     restoreTop,
     restoreActive,
     restoreMeter,
@@ -153,6 +155,22 @@
     const ms = depth.installLog?.finished_ms || depth.installLog?.started_ms || 0;
     return ms ? fmtWhen(ms) : "the last attempt";
   });
+  // The attempt the current install replaced (#381), offered whenever the pane
+  // is an install log — live while installing or after a failure, or the
+  // retained snapshot behind the chip. Collapsed by default, and keyed on the
+  // attempt itself, so a newer previous (another reinstall) opens collapsed
+  // again rather than inheriting the last one's disclosure.
+  const prevAttempt = $derived(
+    installing || showingInstall ? (depth.installLog?.previous ?? null) : null,
+  );
+  const prevKey = $derived(
+    prevAttempt ? `${depth.serverId ?? ""}|${prevAttempt.started_ms ?? 0}` : "",
+  );
+  let prevOpenKey = $state("");
+  const prevOpen = $derived(prevKey !== "" && prevOpenKey === prevKey);
+  // A server whose install just finished has no container until START, and
+  // its empty pane says so instead of reading as dark.
+  const freshInstall = $derived(freshlyInstalled(server));
 
   function ui_now(): string {
     return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -661,6 +679,23 @@
         </div>
         <div class="stn-panel p-console">
           <div class="console-log" id="consoleLog" bind:this={consoleLog} onscroll={onLogScroll}>
+            <!-- The attempt this install replaced (#381): a reinstall retrying a
+                 failed pass used to erase the output that said why it failed.
+                 One header row; `show` expands its lines in place, read-only,
+                 rendered exactly as the current log's are. -->
+            {#if prevAttempt}
+              <div class="log-line"><span class="t">—</span><span class="t">{previousAttemptHeader(prevAttempt)} ·</span><button
+                  type="button"
+                  class="log-more"
+                  aria-expanded={prevOpen}
+                  onclick={() => (prevOpenKey = prevOpen ? "" : prevKey)}
+                >{prevOpen ? "hide" : "show"}</button></div>
+              {#if prevOpen}
+                {#each prevAttempt.lines as line, i (i)}
+                  <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}</div>
+                {/each}
+              {/if}
+            {/if}
             {#if showingInstall}
               <div class="log-line"><span class="t">—</span>[panel] install log from {installWhen} — held in panel memory only, so a panel restart loses it</div>
             {:else if stream.status === "retrying"}
@@ -676,6 +711,7 @@
                 <div><span class="t">—</span>{emptyConsoleNote({
                     installing,
                     hasRetained: installLines.length > 0,
+                    freshInstall,
                   })}</div>
               {/if}
             {/each}

@@ -160,12 +160,13 @@ and in the Agent's removal line when there was a container to remove,
 Two other places state it without the install console. The drill-in's empty
 console reads `installed · no container until start` for an offline server
 whose node has no container for it in any state, and `no output — server is
-dark` while a stopped container is still there. The node band's container line
-counts stopped containers, `containers 2 running · 1 stopped`: an offline server
-missing from that count has no container. Both read the Agent's own report of
-every managed container with its state, which an Agent older than 0.59.0 does
-not send — it reports only running containers, so the drill-in note and the
-stopped count cannot appear until the Agent is updated.
+dark` while a stopped container is still there — that is the per-server answer.
+The node band's container line counts the node's stopped containers overall,
+`containers 2 running · 1 stopped`, which says how many are left behind but not
+whose. Both read the Agent's own report of every managed container with its
+state, which an Agent older than 0.59.0 does not send — it reports only running
+containers, so the drill-in note and the stopped count cannot appear until the
+Agent is updated.
 
 The pass before the reinstall is not lost either. The install log keeps one
 attempt back: the console shows a `previous attempt` row above the current

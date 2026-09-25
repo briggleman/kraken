@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.59.0](https://github.com/briggleman/kraken/compare/v0.58.0...v0.59.0) (2026-09-25)
+
+
+### Features
+
+* **specs:** palworld runs windows-native on a windows node ([#390](https://github.com/briggleman/kraken/issues/390)) ([25901b2](https://github.com/briggleman/kraken/commit/25901b2a308d73264a744bb4b8991e434a7e95cb))
+* the agent reports every managed container with its state, so the panel can say when a server has none ([#389](https://github.com/briggleman/kraken/issues/389)) ([f833995](https://github.com/briggleman/kraken/commit/f8339956b37a9c2649192bf511db4b2d6d61d2f7))
+
+
+### Bug Fixes
+
+* keep the previous install log across a reinstall and say when an offline server has no container ([#384](https://github.com/briggleman/kraken/issues/384)) ([b044aba](https://github.com/briggleman/kraken/commit/b044aba80f76629ff5e9ff6c3d0b27048c5a4aeb))
+* **panel:** retire probe keeps node edits, revive re-enables schedules after a failed install, stop-refusal hints at final_backup false ([#382](https://github.com/briggleman/kraken/issues/382)) ([406514c](https://github.com/briggleman/kraken/commit/406514c1c45c2969dea77eecbd9d71f47ca4d779))
+* **panel:** rotate the install log before the state write, and keep an older good read when a newer one fails ([#388](https://github.com/briggleman/kraken/issues/388)) ([7c1d6b2](https://github.com/briggleman/kraken/commit/7c1d6b29a8addb3a5848e2e056af281f0a560c39))
+* **web:** retired-group note generation, in-flight reset and read timeout, revive help text ([#383](https://github.com/briggleman/kraken/issues/383)) ([1b26437](https://github.com/briggleman/kraken/commit/1b26437a29888cc83f3480451b3440218d8a1d36))
+
 ## [0.58.0](https://github.com/briggleman/kraken/compare/v0.57.0...v0.58.0) (2026-09-24)
 
 

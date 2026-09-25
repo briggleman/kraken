@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   backupOptions,
   effectiveRestore,
+  reviveMemorySource,
   reviveSeedMemory,
   nodeFits,
   nodeOptionLabel,
@@ -176,6 +177,32 @@ describe("reviveSeedMemory", () => {
     const raised = { ...SPEC, resources: { min_memory_mb: 12288 } } as Spec;
     const seed = reviveSeedMemory(server(), raised);
     expect(reviveBody(server(), { nodeId: "behemoth", memoryMb: seed, restoreId: "", start: false, steamGuard: "" }, seed)).toEqual({});
+  });
+});
+
+describe("reviveMemorySource", () => {
+  it("says what it had before when the seed is its old figure", () => {
+    const sv = server({ memory_mb: 8192 });
+    expect(reviveMemorySource(sv, SPEC, reviveSeedMemory(sv, SPEC))).toBe("what it had before");
+  });
+
+  it("says the minimum was raised only when there was an old figure and the minimum is now above it", () => {
+    const raised = { ...SPEC, resources: { min_memory_mb: 12288, recommended_memory_mb: 16384 } } as Spec;
+    const sv = server({ memory_mb: 8192 });
+    expect(reviveMemorySource(sv, raised, reviveSeedMemory(sv, raised))).toBe(
+      "the spec's allocation — its minimum was raised since it was retired",
+    );
+  });
+
+  it("says only the spec's allocation when no figure was stored", () => {
+    const withRec = { ...SPEC, resources: { min_memory_mb: 4096, recommended_memory_mb: 8192 } } as Spec;
+    const sv = server({ memory_mb: 0 });
+    expect(reviveSeedMemory(sv, withRec)).toBe(8192);
+    expect(reviveMemorySource(sv, withRec, reviveSeedMemory(sv, withRec))).toBe("the spec's allocation");
+    // nothing stored and nothing in the spec either: still not "what it had before"
+    const bare = { ...SPEC, resources: { min_memory_mb: 0 } } as Spec;
+    expect(reviveMemorySource(sv, bare, reviveSeedMemory(sv, bare))).toBe("the spec's allocation");
+    expect(reviveMemorySource(sv, undefined, 0)).toBe("the spec's allocation");
   });
 });
 

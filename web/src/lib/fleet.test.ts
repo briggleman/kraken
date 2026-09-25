@@ -29,9 +29,11 @@ import {
   STALE_AFTER_MS,
   fleet,
   fleetHealth,
+  fleetIssued,
   fleetPollMs,
   refreshFleet,
   resumeStaleClock,
+  serversReadIssued,
   startFleetPolling,
   stopFleetPolling,
   suspendStaleClock,
@@ -192,6 +194,25 @@ describe("refreshFleet", () => {
     await first;
     expect(fleet.servers[0].state).toBe("running");
     expect(fleet.lastOkMs).toBe(fresh); // and it does not re-stamp freshness either
+  });
+
+  it("says which poll the servers on screen came from (#380)", async () => {
+    // The retired group's delete note judges a read by when its poll was
+    // started, not when it landed: a slow poll started before a delete can
+    // land after it and still carry the deleted row.
+    const slow = deferred<{ servers: Server[] }>();
+    listServers.mockReturnValueOnce(slow.promise);
+    const first = refreshFleet();
+    const firstIssued = fleetIssued();
+
+    listServers.mockResolvedValue({ servers: [server("srv-1", "running")] });
+    await refreshFleet();
+    expect(fleetIssued()).toBe(firstIssued + 1);
+    expect(serversReadIssued()).toBe(firstIssued + 1);
+
+    slow.settle({ servers: [server("srv-1", "starting")] });
+    await first;
+    expect(serversReadIssued()).toBe(firstIssued + 1); // the older read was not applied
   });
 });
 

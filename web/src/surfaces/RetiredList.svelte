@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { istyle } from "@/lib/istyle";
   import { hasPerm } from "@/lib/auth.svelte";
-  import { fleet, specOf } from "@/lib/fleet.svelte";
+  import { fleet, serversReadIssued, specOf } from "@/lib/fleet.svelte";
   import { serverArt } from "@/lib/views.svelte";
   import {
     keepLabel,
@@ -24,16 +24,17 @@
   // stopped, it is off its node. With nothing retired, the section is absent.
   const rows = $derived(retiredServers(fleet.servers));
 
-  // Every fleet read is folded in (syncRetired): the head's note goes when the
-  // retired set changes under it, readings of rows no longer retired go, and
-  // rows whose reading is missing or stale are queued, two reads at a time.
-  // Tracks the servers and the nodes (a node coming back makes its rows
-  // stale); the sync itself is untracked, so a reading landing does not re-run
-  // this effect.
+  // Every fleet read is folded in (syncRetired): the head's note goes when a
+  // poll started after it shows the retired set changed under it (the read
+  // carries the issue number of the poll it came from), readings of rows no
+  // longer retired go, and rows whose reading is missing or stale are queued,
+  // two reads at a time. Tracks the servers and the nodes (a node coming back
+  // makes its rows stale); the sync itself is untracked, so a reading landing
+  // does not re-run this effect.
   $effect(() => {
     const servers = fleet.servers;
     void fleet.nodes;
-    untrack(() => syncRetired(servers));
+    untrack(() => syncRetired(servers, serversReadIssued()));
   });
 
   const mayRevive = $derived(hasPerm("server.create"));

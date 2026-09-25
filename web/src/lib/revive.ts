@@ -122,6 +122,18 @@ export function reviveSeedMemory(server: Server, spec: Spec | undefined): number
   return spec?.resources.recommended_memory_mb || min || server.memory_mb;
 }
 
+/** Where the memory cap's seed came from, for its help line. "Its minimum
+ *  was raised since it was retired" is said only when there was an old figure
+ *  and the spec's minimum is now above it (#380); a server that stored none
+ *  simply gets the spec's allocation. */
+export function reviveMemorySource(server: Server, spec: Spec | undefined, seedMb: number): string {
+  const had = server.memory_mb > 0 ? server.memory_mb : 0;
+  if (had === 0) return "the spec's allocation";
+  if (seedMb === had) return "what it had before";
+  if ((spec?.resources.min_memory_mb ?? 0) > had) return "the spec's allocation — its minimum was raised since it was retired";
+  return "the spec's allocation";
+}
+
 /** The restore the sheet posts. Only an archive on the node it lands on can
  *  be restored (the archives stay where they were taken), so away from its
  *  old node it is always none. On it, the latest ready archive is the default

@@ -16,7 +16,7 @@
 import { api, ApiError, errMsg } from "@/api/client";
 import type { Backup, Node, ReviveInput, Server } from "@/api/types";
 import { hasPerm, onSessionChange } from "./auth.svelte";
-import { fleet, refreshFleet } from "./fleet.svelte";
+import { fleet, fleetIssued, refreshFleet, serversReadIssued } from "./fleet.svelte";
 import { fmtAgo, fmtDay, fmtSize } from "./fmt";
 import { CD_PURGE_BODY, openConfirm, openSheet, ui } from "./state.svelte";
 
@@ -54,12 +54,15 @@ export const retired = $state({
   busy: {} as Record<string, boolean>,
   /** Per server id: a revive in flight, from the sheet's click until the fleet
    *  read after it has landed — until then the row still reads retired, and a
-   *  second revive would only come back 409. */
+   *  second revive would only come back 409. Its archives are not read in that
+   *  window either (#380): a poll landing between the 202 and that fleet read
+   *  still shows the row retired, and its reading would be thrown away. */
   reviving: {} as Record<string, boolean>,
   /** The last delete's answer (the Panel's note, or its refusal), spoken in
-   *  the group's head until the next action — or until the retired set changes
-   *  under it (another operator's retire, revive or delete), when what it
-   *  answered is no longer the picture on screen. */
+   *  the group's head until the next action — or until a fleet poll started
+   *  after it shows the retired set changed under it (another operator's
+   *  retire, revive or delete), when what it answered is no longer the picture
+   *  on screen. */
   note: "" as string,
   noteFailed: false,
   /** The retired set the note was spoken for, as retiredKey() writes it. */
@@ -72,6 +75,10 @@ export const KEEP_RETRY_MS = 30_000;
  *  with a 20s timeout; a fleet with a dozen retired rows would otherwise fire
  *  a dozen at first paint. */
 export const KEEP_IN_FLIGHT = 2;
+/** How long the browser waits on one read before giving its slot back and
+ *  treating it as failed (#380). The fetch itself has no timeout, and a read
+ *  that never settles would otherwise hold its slot for the whole session. */
+export const KEEP_READ_TIMEOUT_MS = 20_000;
 
 // Bumped when the session changes: a read still out from the last operator's
 // session must not land in the next one's.
@@ -79,6 +86,12 @@ let keepGen = 0;
 const queue: string[] = [];
 const queued = new Set<string>();
 let inFlight = 0;
+
+// The head note's generation (#380): the issue number of the first fleet poll
+// started after the answer it speaks arrived. A poll started before that —
+// one already out when the delete committed — can still carry the deleted
+// row, and must not be read as the set changing under the note.
+let noteGen = 0;
 
 /** Everything the group holds for a session. Run on login and logout (and by
  *  the tests between cases). */
@@ -90,8 +103,13 @@ export function resetRetired() {
   retired.note = "";
   retired.noteFailed = false;
   retired.noteFor = "";
+  noteGen = 0;
+  // The slots go with the session: a read still out from the last one gives
+  // nothing back when it settles (pump's done() checks the generation), so
+  // without this its slot would stay taken in the next.
   queue.length = 0;
   queued.clear();
+  inFlight = 0;
 }
 onSessionChange(resetRetired);
 
@@ -105,6 +123,7 @@ export function retiredKey(servers: readonly Server[]): string {
 }
 
 function speak(note: string, failed: boolean, forKey: string) {
+  if (note) noteGen = fleetIssued() + 1;
   retired.note = note;
   retired.noteFailed = failed;
   retired.noteFor = forKey;
@@ -117,14 +136,16 @@ export function clearRetiredNote() {
 
 /**
  * Fold a fleet read into the group: the head's note goes when the retired set
- * is no longer the one it answered; readings of rows that are no longer
- * retired go (a revive in another tab must not leave its old "4 backups kept"
- * waiting for the next retire); and the rows whose reading is missing or stale
- * are queued to be read.
+ * is no longer the one it answered — judged only on a read from a poll started
+ * after the note (`issuedAt`, the poll's issue number), since one started
+ * before can still hold the row the delete took away; readings of rows that
+ * are no longer retired go (a revive in another tab must not leave its old
+ * "4 backups kept" waiting for the next retire); and the rows whose reading is
+ * missing or stale are queued to be read.
  */
-export function syncRetired(servers: readonly Server[], now: number = Date.now()) {
+export function syncRetired(servers: readonly Server[], issuedAt: number = serversReadIssued(), now: number = Date.now()) {
   const key = retiredKey(servers);
-  if (retired.note && key !== retired.noteFor) clearRetiredNote();
+  if (retired.note && issuedAt >= noteGen && key !== retired.noteFor) clearRetiredNote();
   const live = new Set(servers.filter((s) => s.state === "retired").map((s) => s.id));
   for (const id of Object.keys(retired.keep)) if (!live.has(id)) delete retired.keep[id];
   for (const s of retiredServers(servers)) if (keepStale(s, now)) queueKeep(s);
@@ -132,7 +153,7 @@ export function syncRetired(servers: readonly Server[], now: number = Date.now()
 
 /** Queue a row's read; at most KEEP_IN_FLIGHT run at once. */
 export function queueKeep(server: Server) {
-  if (queued.has(server.id)) return;
+  if (queued.has(server.id) || retired.reviving[server.id]) return;
   queued.add(server.id);
   retired.keep[server.id] = { reading: { kind: "loading" }, nodeStatus: retiredNode(server)?.status ?? "gone" };
   queue.push(server.id);
@@ -146,8 +167,10 @@ function pump() {
     inFlight++;
     const row = fleet.servers.find((s) => s.id === id);
     const done = () => {
+      // A read from a session since reset has no slot to give back.
+      if (gen !== keepGen) return;
       inFlight--;
-      if (gen === keepGen) queued.delete(id);
+      queued.delete(id);
       pump();
     };
     if (!row || row.state !== "retired") {
@@ -242,14 +265,25 @@ export async function loadKeep(server: Server, now: () => number = Date.now): Pr
   if (!hasPerm("backup.manage")) return unread(`${where} · no permission to read them`);
   if (node.status === "offline") return unread(`${where} · unreadable while ${node.name} is offline`);
   set({ kind: "loading" });
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const r = await api.listBackups(server.id);
+    const r = await Promise.race([
+      api.listBackups(server.id),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`node ${node.name} did not answer within ${KEEP_READ_TIMEOUT_MS / 1000}s`)),
+          KEEP_READ_TIMEOUT_MS,
+        );
+      }),
+    ]);
     set({ kind: "ok", ...keepOf(r.backups ?? []) });
   } catch (e) {
     // 404 is the Panel saying the node went (with the archives); anything
     // else — a timeout, an agent error — may pass, so it is read again later.
     if (e instanceof ApiError && e.status === 404) return unread(`${where} · ${GONE}`, errMsg(e));
     unread(`${where} · could not be read`, errMsg(e), now() + KEEP_RETRY_MS);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

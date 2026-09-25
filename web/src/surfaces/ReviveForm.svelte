@@ -15,6 +15,7 @@
     reviveBlock,
     reviveBody,
     reviveCandidates,
+    reviveMemorySource,
     reviveSeedMemory,
     sizeParts,
     type BackupOption,
@@ -229,7 +230,7 @@
           <span>memory cap</span>
           <input type="text" class="cfg-in" bind:value={memMb} aria-label="Memory cap" />
           <p class="cfg-help">
-            in MB · {seedMb === server?.memory_mb ? "what it had before" : "the spec's allocation — its minimum was raised since it was retired"}{spec
+            in MB · {server ? reviveMemorySource(server, spec, seedMb) : ""}{spec
               ? ` · spec minimum ${spec.resources.min_memory_mb}MB`
               : ""}{spec?.resources.recommended_memory_mb ? `, recommended ${spec.resources.recommended_memory_mb}MB` : ""}.
           </p>

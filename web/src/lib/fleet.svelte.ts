@@ -94,6 +94,22 @@ const everAnswered = { servers: false, specs: false, nodes: false };
 // re-stamp freshness with data from before the flip.
 let issued = 0;
 let appliedGen = 0;
+// The issue number of the tick whose servers read is on screen. A consumer
+// that must not act on a read from before something it did (the retired
+// group's delete note, #380) compares this against fleetIssued() taken at
+// that moment: a larger number is a poll that was started afterwards.
+let serversIssued = 0;
+
+/** The issue number of the most recent poll started so far. Every poll
+ *  started after this call carries a larger one. */
+export function fleetIssued(): number {
+  return issued;
+}
+
+/** The issue number of the poll whose servers read `fleet.servers` holds. */
+export function serversReadIssued(): number {
+  return serversIssued;
+}
 
 /** One poll tick. Partial-failure tolerant on purpose: the three reads are
  *  independent resources, and a rejected `/nodes` used to discard the servers
@@ -126,6 +142,7 @@ export async function refreshFleet(): Promise<void> {
   }
 
   take("servers", s, (v) => {
+    serversIssued = gen;
     fleet.servers = v.servers ?? [];
   });
   take("specs", sp, (v) => {

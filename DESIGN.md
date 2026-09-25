@@ -190,7 +190,9 @@ The **deck** is the middle row and the only thing on the page that scrolls: `ove
 ### Named Rules
 **The Pinned Ends Rule.** The identity strip and the event stream are locked by being grid rows *outside* the scroller, never by `position: sticky`. Neither of them has a background: both sit directly on the page ground, which is what keeps the water column unbroken. A sticky element stays inside the scrolling box, so cards would travel visibly *through* the wordmark and the event line — and the only fix would be giving the ends an opaque fill, which is the thing the world is built to avoid. One `1fr` row scrolls; the two `auto` rows cannot. There is no `position: sticky` anywhere in the build, and that is on purpose.
 
-**The Instruments Line Up Rule.** A node band is an identity column and five equal instruments, and the identity column is capped: `grid-template-columns: fit-content(clamp(240px, 19vw, 400px)) repeat(5, minmax(0, 1fr))`, with `.node-id { min-width: 0 }` and `.node-cond { overflow-wrap: anywhere }` so what is inside it wraps rather than pushes. The track used to be `auto`, and one node carrying a long condition line — an untracked container named with its refusal — stretched its identity to half the band and crushed that band's gauges to a third of their width while the bands around it kept full-size ones. `fit-content` keeps a short identity tight and makes a long one wrap inside the cap, so every band's instruments come out the same size. The gauges are the reading, and readings line up down the deck; an identity with more to say grows taller, never wider.
+**The Instruments Line Up Rule.** A node band is an identity column and five equal instruments, and the identity column is capped: `grid-template-columns: fit-content(clamp(280px, 19vw, 400px)) repeat(5, minmax(0, 1fr))`. The track used to be `auto`, and one node carrying a long condition line — an untracked container named with its refusal — stretched its identity to half the band and crushed that band's gauges to a third of their width while the bands around it kept full-size ones. `fit-content` keeps a short identity tight and makes a long one wrap inside the cap, so every band's instruments come out the same size. The gauges are the reading, and readings line up down the deck; an identity with more to say grows taller, never wider.
+
+Capping the band's track is only half of it, because **everything inside the cap has to wrap to fit it**. `.node-id` is a grid of its own, and its implicit column was `auto`: a nowrap child sized that inner column past the cap, and the refusal line painted 34px over the cpu meter at 1280px. So `.node-id` declares `grid-template-columns: minmax(0, 1fr)` with `min-width: 0`, and its contents give way: condition lines wrap (`.node-cond { overflow-wrap: anywhere }`), a refusal wraps rather than clips (`.nc-fail { white-space: normal; overflow-wrap: anywhere }` at `max-width: 42ch`), and a node name — the server allows 64 characters — wraps too (`.node-name { overflow-wrap: anywhere; min-width: 0 }`). The two doors are the exception that proves it: their labels do not break (`.node-actions .prefs-open { white-space: nowrap }`), so where the pair does not fit side by side it stacks (`.node-actions { flex-wrap: wrap }`). The cap's 280px floor exists for them — at 240px each button broke its label over two lines. Measured on the mock: at 1280px and 1536px viewports the column (280px, 292px) is still narrower than the pair plus its padding and the pair stacks; at 1920px (365px) they sit side by side.
 
 ## Elevation & Depth
 
@@ -202,11 +204,11 @@ Depth is atmospheric, not stacked: panels carry a top-lit vertical gradient (Aby
 - **Lifted** (`0 18px 50px rgba(0,0,0,0.51-0.55), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07-0.084)`): overlays that float above a panel - the select picker and the modal card. Same geometry as Depth with both terms scaled ~1.13x, so a floating layer is the resting surface turned up rather than a new material.
 
 ### Breakpoints
-Two numbers, three queries, and no relationship between any of them. Everything else is fluid:
+Two widths, and no relationship between them. Everything else is fluid:
 the layout is composed against the 1080p floor Layout commits to and scales by `clamp()`
 above it, so a
 breakpoint here is always a specific structural failure being caught, never a device class.
-- **1100px (max-width), twice:** the deck reflow. Above it the fleet is a multi-column grid and the node band sits beside it; below it both go to one column. The drill-in body collapses at the same number for the same reason, and so does the node band: identity takes a row of its own, the instruments auto-fit on a 190px floor, and the rail's hairline dividers give way to gutters again (see Metric).
+- **1100px (max-width), four queries:** the deck reflow, and three other structures that fail at the same width — the drill-in body (`.depth-body`) and the split preferences sheet (`.prefs-body.pb-split`) go to one column, and the step rail's labels drop (`.wz-lbl`). In the deck itself the node band stops being an identity column beside five instruments: the identity takes a row of its own (so the 280px cap no longer applies), the instruments become an auto-fit grid of meters on a 190px floor, and the rail's hairline dividers give way to gutters again (see Metric); a server card drops to two columns. Only at **640px** does the band become a single column.
 - **640px (min-width):** an opt-in, gating the data-directory field's `grid-column: span 2`. It is a `min-width` rather than a `max-width` because `auto-fit` manufactures a second track for a spanning item even when only one track fits - ungated, a 380px viewport got tracks of 210px and 108px and every other row in the sheet was squeezed by a field that only needed room on wide screens. The revive sheet added the gate's second member, `.ns-grid > .cfg-row.ns-wide` (`grid-column: 1 / -1`), for a row whose value is a sentence — see Revive Sheet.
 - **640px (max-width):** the wizard's own two-column config grid (`.cfg-2`) collapsing to one. The same number in the opposite direction, and deliberately not folded into the rule above: one is a field asking for room it can only use when there is room, the other is a fixed two-track grid that has to stop being two tracks. Sharing a number is a coincidence, and writing them as one query would make the next person believe it is a system.
 
@@ -360,8 +362,10 @@ the title. The count keeps the line's one act colour; the names are context.
 
 **Any condition may carry a refusal.** `.node-cond .nc-fail` — generalised from
 `.agent-drift .nc-fail`, which it replaces — is the answer where the eye already is when the node
-says no: Caution Violet, `max-width: 42ch` with an ellipsis, the same measure the ticker family clips
-at, the whole sentence in the title. The retire of an untracked container is refused the same way
+says no: Caution Violet at `max-width: 42ch`, the same measure the ticker family uses, the whole
+sentence in the title. It **wraps rather than clips** (`white-space: normal; overflow-wrap:
+anywhere`): the message is the reason for the refusal, and an ellipsis cut the reason off — while
+`nowrap` also forced the capped identity column wider (see The Instruments Line Up Rule). The retire of an untracked container is refused the same way
 an update push is (`retire · node did not answer within the time allowed — the action may still be
 completing`). One rule, one measure.
 
@@ -438,7 +442,8 @@ seam, and the identity keeps its distance with `margin-right: clamp(14px, 1.6vw,
 the gap — and the last takes no right padding. The rail sits on the band's centre line
 (`align-items: center`, each metric `align-self: center` at `gap: 5px`), the numeral steps up one
 size to `clamp(22px, 1.8vw, 42px)` from the base `clamp(20px, 1.7vw, 40px)`, and every chart zone
-is a third taller (see the Dot-matrix history meter). It is the band's alone: server cards keep
+is 1.35× the band's own base meter height, `clamp(30px, 4.5vh, 62px)` (see the Dot-matrix history
+meter). It is the band's alone: server cards keep
 their own meter sizing (`.srv-chart`). Below 1100px the wrapped rail is rows of meters again, so
 it gets its gutters back — `column-gap` returns, dividers and padding go, and the identity's
 margin with them. **The structure is load-bearing:** the `:nth-child(2)` rule assumes the band's

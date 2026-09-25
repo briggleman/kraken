@@ -1,12 +1,52 @@
 name: Palworld
 slug: palworld
-description: Palworld dedicated server with the full PalWorldSettings.ini option set.
+description: >-
+  Palworld dedicated server with the full PalWorldSettings.ini option set —
+  runs Linux-native on a Linux node or Windows-native on a Windows node.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1623730/2d3bef9d1a0ad28c0ea002ec4522e12e7218fbff/library_hero_2x.jpg?t=1784714419
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/1623730/804ab521bcc4720021d63744a245ab8c0ca19ade.jpg
+# One server appid ships both OS depots (docs.palworldgame.com, "Deploy
+# dedicated server": the same `steamcmd +login anonymous +app_update 2394010`
+# on Windows and Linux); SteamCMD picks the depot for the platform it runs on.
 steam_app_ids:
   linux: 2394010
+  windows: 2394010
 platforms:
+  # Both native builds are declared, so the node's OS picks: a Linux node runs
+  # the native Linux build, a Windows node the native Windows build (steam-win
+  # image). No linux-wine entry: wine is only a fallback for games with no
+  # Linux build. List order is scheduler priority (bundled/SPECS.md). The
+  # spec-level install/startup below are the Linux commands; the
+  # windows-native entry overrides both.
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
+  - kind: windows-native
+    image: ghcr.io/briggleman/kraken-steam-win:ltsc2022
+    # Same anonymous two-step as Linux, cmd-flavoured (`&` so the second pass
+    # always runs and its "Success!" clears the first pass's "Missing
+    # configuration" exit). The Agent guards every windows-native install
+    # against steamcmd.exe's self-update relaunch (prime + wait after each
+    # pass, PR #283) — no PowerShell loop belongs in the spec.
+    install_script: >-
+      steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    # Runs via `cmd /S /C`. The docs launch the root PalServer.exe; that is
+    # UE's BootstrapPackagedGame, which checks DirectX/VC++ prerequisites and
+    # pops a modal dialog nobody can click in Server Core (Dragonwilds sat in
+    # `starting` at 0 MB, 2026-09-12), so the Shipping binary is launched
+    # directly with the project name first — exactly what PalServer.sh does on
+    # Linux (`PalServer-Linux-Shipping Pal "$@"`). The `-Cmd` build is the
+    # console-subsystem variant, which is what puts the log on stdout in a
+    # container. UNVERIFIED LIVE (2026-09-25): the binary name is taken from
+    # the Windows depot's known layout, not from an install on abyss-win —
+    # confirm it in the Files tab after the first install and fix here if the
+    # depot names it differently. The docs' own flags follow (-port binds the
+    # allocated game port; the three thread flags are the docs' performance
+    # set, the same ones the Linux command uses). -UserDir pins UE's user dir
+    # to the install tree so Pal/Saved (world, config, logs) stays in the
+    # bind mount the backup globs cover; -unattended suppresses crash dialogs.
+    startup_command: >-
+      cd /d C:\data\Pal\Binaries\Win64
+      & PalServer-Win64-Shipping-Cmd.exe Pal -port={{PORT_GAME}} -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS -unattended -UserDir=C:\data\Pal
 install:
   # Palworld's Linux dedicated server is anonymous on SteamCMD (app 2394010).
   # Run app_update twice: a fresh SteamCMD frequently fails the first pass with
@@ -126,12 +166,20 @@ settings:
         - { key: bAutoResetGuildNoOnlinePlayers, label: Auto-reset empty guilds, type: bool, default: "false" }
         - { key: AutoResetGuildTimeNoOnlinePlayers, label: Guild reset time (h), type: float, default: "72.0", min: 1, max: 720 }
 
+# UE reads the platform-named folder (LinuxServer/ or WindowsServer/) and
+# ignores the other; config_files has no per-platform selector, so the same
+# rendered file is declared once per path — a YAML anchor keeps one template.
+# The docs seed the Windows file at Pal\Saved\Config\WindowsServer# PalWorldSettings.ini (docs.palworldgame.com, "Configure the server").
 config_files:
   - path: /data/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini
     format: template
-    template: |
+    template: &palworld_ini |
       [/Script/Pal.PalGameWorldSettings]
       OptionSettings=(Difficulty={{.settings.Difficulty}},DayTimeSpeedRate={{.settings.DayTimeSpeedRate}},NightTimeSpeedRate={{.settings.NightTimeSpeedRate}},ExpRate={{.settings.ExpRate}},PalCaptureRate={{.settings.PalCaptureRate}},PalSpawnNumRate={{.settings.PalSpawnNumRate}},PalDamageRateAttack={{.settings.PalDamageRateAttack}},PalDamageRateDefense={{.settings.PalDamageRateDefense}},PlayerDamageRateAttack={{.settings.PlayerDamageRateAttack}},PlayerDamageRateDefense={{.settings.PlayerDamageRateDefense}},PlayerStomachDecreaceRate={{.settings.PlayerStomachDecreaceRate}},PlayerStaminaDecreaceRate={{.settings.PlayerStaminaDecreaceRate}},PlayerAutoHPRegeneRate={{.settings.PlayerAutoHPRegeneRate}},PlayerAutoHpRegeneRateInSleep={{.settings.PlayerAutoHpRegeneRateInSleep}},PalStomachDecreaceRate={{.settings.PalStomachDecreaceRate}},PalStaminaDecreaceRate={{.settings.PalStaminaDecreaceRate}},PalAutoHPRegeneRate={{.settings.PalAutoHPRegeneRate}},PalAutoHpRegeneRateInSleep={{.settings.PalAutoHpRegeneRateInSleep}},BuildObjectDamageRate={{.settings.BuildObjectDamageRate}},BuildObjectDeteriorationDamageRate={{.settings.BuildObjectDeteriorationDamageRate}},CollectionDropRate={{.settings.CollectionDropRate}},CollectionObjectHpRate={{.settings.CollectionObjectHpRate}},CollectionObjectRespawnSpeedRate={{.settings.CollectionObjectRespawnSpeedRate}},EnemyDropItemRate={{.settings.EnemyDropItemRate}},ItemWeightRate={{.settings.ItemWeightRate}},WorkSpeedRate={{.settings.WorkSpeedRate}},DeathPenalty={{.settings.DeathPenalty}},bEnablePlayerToPlayerDamage={{if eq .settings.bEnablePlayerToPlayerDamage "true"}}True{{else}}False{{end}},bEnableFriendlyFire={{if eq .settings.bEnableFriendlyFire "true"}}True{{else}}False{{end}},bEnableInvaderEnemy={{if eq .settings.bEnableInvaderEnemy "true"}}True{{else}}False{{end}},bEnableFastTravel={{if eq .settings.bEnableFastTravel "true"}}True{{else}}False{{end}},bIsStartLocationSelectByMap={{if eq .settings.bIsStartLocationSelectByMap "true"}}True{{else}}False{{end}},DropItemMaxNum={{.settings.DropItemMaxNum}},DropItemAliveMaxHours={{.settings.DropItemAliveMaxHours}},BaseCampMaxNum={{.settings.BaseCampMaxNum}},BaseCampWorkerMaxNum={{.settings.BaseCampWorkerMaxNum}},PalEggDefaultHatchingTime={{.settings.PalEggDefaultHatchingTime}},GuildPlayerMaxNum={{.settings.GuildPlayerMaxNum}},bAutoResetGuildNoOnlinePlayers={{if eq .settings.bAutoResetGuildNoOnlinePlayers "true"}}True{{else}}False{{end}},AutoResetGuildTimeNoOnlinePlayers={{.settings.AutoResetGuildTimeNoOnlinePlayers}},bIsPvP={{if eq .settings.bIsPvP "true"}}True{{else}}False{{end}},bIsMultiplay={{if eq .settings.bIsMultiplay "true"}}True{{else}}False{{end}},CoopPlayerMaxNum={{.settings.CoopPlayerMaxNum}},ServerPlayerMaxNum={{.settings.ServerPlayerMaxNum}},ServerName="{{.settings.ServerName}}",ServerDescription="{{.settings.ServerDescription}}",AdminPassword="{{.settings.AdminPassword}}",ServerPassword="{{.settings.ServerPassword}}",PublicPort={{.settings.PublicPort}},PublicIP="{{.settings.PublicIP}}",RCONEnabled={{if eq .settings.RCONEnabled "true"}}True{{else}}False{{end}},RCONPort={{.settings.RCONPort}},RESTAPIEnabled={{if eq .settings.RESTAPIEnabled "true"}}True{{else}}False{{end}},RESTAPIPort={{.settings.RESTAPIPort}},Region="{{.settings.Region}}",bUseAuth={{if eq .settings.bUseAuth "true"}}True{{else}}False{{end}},bShowPlayerList={{if eq .settings.bShowPlayerList "true"}}True{{else}}False{{end}})
+
+  - path: /data/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini
+    format: template
+    template: *palworld_ini
 
 # A backup is the save data, not the reinstallable install tree. Source: the
 # config_files path above — /data/Pal/Saved/… — which pins the UE project dir

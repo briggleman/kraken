@@ -38,7 +38,7 @@
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote } from "@/lib/state.svelte";
   import { retireAbandoned, retirePhaseWord } from "@/lib/views.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
-  import { specOf } from "@/lib/fleet.svelte";
+  import { nodeOf, specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isFromSpec, isMissing } from "@/lib/required";
   import { lastRun } from "@/lib/schedules";
@@ -712,6 +712,8 @@
                 <div><span class="t">—</span>{emptyConsoleNote({
                     installing,
                     hasRetained: installLines.length > 0,
+                    server: server ?? undefined,
+                    node: server ? nodeOf(server) : undefined,
                   })}</div>
               {/if}
             {/each}

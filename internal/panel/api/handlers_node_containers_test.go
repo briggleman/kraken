@@ -19,15 +19,26 @@ import (
 // the list as well, and these pin the Panel's half: the list is adopted onto the
 // node record, it survives to the fleet list the UI reads, and an Agent too old
 // to report it leaves the record with nothing rather than a stale roll call.
+// From #385 the list carries every managed container with its state, and a
+// marker says the Agent reported the whole list — so an empty one reads as "no
+// containers" rather than "too old to say".
 
 // containerListingRuntime is a fake Agent runtime whose reported managed
 // containers can be set mid-test, standing in for a Docker daemon whose
-// container set changes between reconciles.
+// container set changes between reconciles. Unless reporting(true) is called it
+// answers as an 0.54–0.58 Agent does: running containers only, no marker.
 type containerListingRuntime struct {
 	*agent.FakeRuntime
 
 	mu         sync.Mutex
 	containers []*agentpb.ManagedContainer
+	reported   bool
+}
+
+func (r *containerListingRuntime) reporting(on bool) {
+	r.mu.Lock()
+	r.reported = on
+	r.mu.Unlock()
 }
 
 func (r *containerListingRuntime) set(containers ...*agentpb.ManagedContainer) {
@@ -43,7 +54,15 @@ func (r *containerListingRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeIn
 	}
 	r.mu.Lock()
 	info.ManagedContainers = r.containers
-	info.RunningServers = int32(len(r.containers))
+	info.ContainersReported = r.reported
+	// The count is the running subset, as the Docker runtime builds it; an entry
+	// with no state is an older Agent's, and those were all running.
+	info.RunningServers = 0
+	for _, c := range r.containers {
+		if c.GetState() == "" || c.GetState() == "running" {
+			info.RunningServers++
+		}
+	}
 	r.mu.Unlock()
 	return info, nil
 }
@@ -186,5 +205,106 @@ func TestManagedContainerListIsRefreshedAndCleared(t *testing.T) {
 	pollNode(t, h, token, id)
 	if count, managed := nodeContainers(t, h, token, id); count != 0 || len(managed) != 0 {
 		t.Errorf("after the Agent reported none: count %d, list %+v — want both empty", count, managed)
+	}
+}
+
+// nodeContainerStates reads the stored node's containers with their states and
+// the reported marker off the fleet list.
+func nodeContainerStates(t *testing.T, h http.Handler, token, id string) (running int, reported bool, managed []struct {
+	ServerID string `json:"server_id"`
+	State    string `json:"state"`
+}) {
+	t.Helper()
+	rec := do(t, h, http.MethodGet, "/api/v1/nodes", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list nodes: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Nodes []struct {
+			ID             string `json:"id"`
+			RunningServers int    `json:"running_servers"`
+			Reported       bool   `json:"containers_reported"`
+			Managed        []struct {
+				ServerID string `json:"server_id"`
+				State    string `json:"state"`
+			} `json:"managed_containers"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode nodes: %v", err)
+	}
+	for _, n := range resp.Nodes {
+		if n.ID == id {
+			return n.RunningServers, n.Reported, n.Managed
+		}
+	}
+	t.Fatalf("node %s not in the fleet list", id)
+	return 0, false, nil
+}
+
+// An Agent that reports every container stores each with its state and the
+// marker; the count stays the running subset an older Panel reads; a state
+// change alone is a change worth storing; an empty reported list keeps the
+// marker (that is the whole point of it); and a downgrade clears it (#385).
+func TestNodeStoresContainerStatesAndTheReportedMarker(t *testing.T) {
+	h, _ := newTestServerStore(t)
+	token := login(t, h)
+	addr, rt := startAgentReportingContainers(t, "stately",
+		&agentpb.ManagedContainer{ServerId: "srv-a", ContainerName: "kraken_srv-a", State: "running"},
+		&agentpb.ManagedContainer{ServerId: "srv-b", ContainerName: "kraken_srv-b", State: "exited"},
+	)
+	rt.reporting(true)
+	id := registerNode(t, h, token, addr)
+
+	// The node-info endpoint carries the marker straight from the Agent.
+	rec := do(t, h, http.MethodGet, "/api/v1/nodes/"+id+"/info", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("node info: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var info struct {
+		Reported bool `json:"containers_reported"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatalf("decode info: %v", err)
+	}
+	if !info.Reported {
+		t.Errorf("node info containers_reported = false, want true from an Agent that sets it")
+	}
+
+	running, reported, managed := nodeContainerStates(t, h, token, id)
+	if !reported {
+		t.Errorf("stored containers_reported = false, want true")
+	}
+	if running != 1 {
+		t.Errorf("running_servers = %d, want 1 — the stopped container is listed, not counted", running)
+	}
+	if len(managed) != 2 || managed[0].State != "running" || managed[1].State != "exited" {
+		t.Fatalf("managed_containers = %+v, want srv-a running and srv-b exited", managed)
+	}
+
+	// srv-a stops: same ids, same names, only the state moved — still stored.
+	rt.set(
+		&agentpb.ManagedContainer{ServerId: "srv-a", ContainerName: "kraken_srv-a", State: "exited"},
+		&agentpb.ManagedContainer{ServerId: "srv-b", ContainerName: "kraken_srv-b", State: "exited"},
+	)
+	pollNode(t, h, token, id)
+	running, _, managed = nodeContainerStates(t, h, token, id)
+	if running != 0 || len(managed) != 2 || managed[0].State != "exited" {
+		t.Errorf("after srv-a stopped: count %d, list %+v — want 0 running, srv-a exited", running, managed)
+	}
+
+	// No containers at all, reported as such: the marker stays, the list goes.
+	rt.set()
+	pollNode(t, h, token, id)
+	running, reported, managed = nodeContainerStates(t, h, token, id)
+	if !reported || running != 0 || len(managed) != 0 {
+		t.Errorf("empty reported list: reported %v, count %d, list %+v — want reported, 0, none", reported, running, managed)
+	}
+
+	// Rolled back to an Agent that predates the marker: it clears.
+	rt.reporting(false)
+	pollNode(t, h, token, id)
+	if _, reported, _ := nodeContainerStates(t, h, token, id); reported {
+		t.Errorf("after a downgrade containers_reported is still true — the web would trust a running-only list")
 	}
 }

@@ -22,7 +22,7 @@ import {
 } from "./depth.svelte";
 import { fleet } from "./fleet.svelte";
 import { serverMeta } from "./views.svelte";
-import type { Server } from "@/api/types";
+import type { Node, Server } from "@/api/types";
 
 const UPDATING_LINE = {
   text: UPDATE_PASS_LINE + "dragonwilds-01 — re-running the install script before start",
@@ -338,6 +338,54 @@ describe("emptyConsoleNote", () => {
     expect(emptyConsoleNote({ installing: false, hasRetained: false })).toBe(
       "no output — server is dark",
     );
+  });
+
+  // #385: from real Agent data only. The node must have reported every managed
+  // container, stopped ones included, and listed none for this server.
+  describe("an offline server's container", () => {
+    const sv = { id: "srv-1", state: "offline" as const };
+    const nodeWith = (extra: Partial<Node>): Node =>
+      ({ id: "node-1", name: "abyss-lnx", status: "online", agent_version: "0.59.0", ...extra }) as Node;
+    const note = (node: Node, server: Pick<Server, "id" | "state"> = sv) =>
+      emptyConsoleNote({ installing: false, hasRetained: false, server, node });
+
+    it("says installed with no container when the node reports none for it", () => {
+      // The node runs something else; this server has nothing, not even exited.
+      const node = nodeWith({
+        containers_reported: true,
+        managed_containers: [{ server_id: "other", container_name: "kraken_other", state: "running" }],
+      });
+      expect(note(node)).toBe("installed · no container until start");
+      // A reported empty list (omitted from the JSON) says the same.
+      expect(note(nodeWith({ containers_reported: true }))).toBe("installed · no container until start");
+    });
+
+    it("stays dark while a stopped container exists", () => {
+      const node = nodeWith({
+        containers_reported: true,
+        managed_containers: [{ server_id: "srv-1", container_name: "kraken_srv-1", state: "exited" }],
+      });
+      expect(note(node)).toBe("no output — server is dark");
+    });
+
+    it("stays dark when the node has not reported its containers", () => {
+      // An agent before the marker lists running containers only, so an absent
+      // entry proves nothing.
+      expect(note(nodeWith({ managed_containers: [] }))).toBe("no output — server is dark");
+      expect(note(nodeWith({}))).toBe("no output — server is dark");
+      // Nor from a node that is offline (its list is from its last contact), nor
+      // with no node at all.
+      expect(note(nodeWith({ containers_reported: true, status: "offline" }))).toBe("no output — server is dark");
+      expect(emptyConsoleNote({ installing: false, hasRetained: false, server: sv })).toBe(
+        "no output — server is dark",
+      );
+    });
+
+    it("is only for an offline server", () => {
+      const node = nodeWith({ containers_reported: true });
+      expect(note(node, { id: "srv-1", state: "crashed" })).toBe("no output — server is dark");
+      expect(note(node, { id: "srv-1", state: "running" })).toBe("no output — server is dark");
+    });
   });
 });
 

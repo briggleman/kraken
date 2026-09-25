@@ -73,19 +73,28 @@ func managedContainers(in []*agentpb.ManagedContainer) []cluster.ManagedContaine
 	}
 	out := make([]cluster.ManagedContainer, 0, len(in))
 	for _, c := range in {
-		out = append(out, cluster.ManagedContainer{ServerID: c.GetServerId(), ContainerName: c.GetContainerName()})
+		out = append(out, cluster.ManagedContainer{
+			ServerID:      c.GetServerId(),
+			ContainerName: c.GetContainerName(),
+			State:         c.GetState(),
+		})
 	}
 	slices.SortFunc(out, func(a, b cluster.ManagedContainer) int {
 		if c := strings.Compare(a.ServerID, b.ServerID); c != 0 {
 			return c
 		}
-		return strings.Compare(a.ContainerName, b.ContainerName)
+		if c := strings.Compare(a.ContainerName, b.ContainerName); c != 0 {
+			return c
+		}
+		return strings.Compare(a.State, b.State)
 	})
 	return out
 }
 
 // sameManagedContainers reports whether two already-sorted container lists carry
-// the same containers.
+// the same containers in the same states — a container that stopped is a change
+// worth storing, because it is what the web reads to say an offline server's
+// container is still there.
 func sameManagedContainers(a, b []cluster.ManagedContainer) bool {
 	return slices.Equal(a, b)
 }
@@ -585,6 +594,15 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.ManagedContainers = managed
 		changed = true
 	}
+	// Whether that list is the whole story, stopped containers included — the
+	// marker that makes an empty list mean "no containers" rather than "an Agent
+	// too old to say". Adopted every time, so an Agent rolled back to an older
+	// build clears it instead of leaving the web trusting a list that no longer
+	// carries stopped containers.
+	if n.ContainersReported != info.GetContainersReported() {
+		n.ContainersReported = info.GetContainersReported()
+		changed = true
+	}
 	if n.LastUpdateError != info.LastUpdateError {
 		n.LastUpdateError = info.LastUpdateError
 		changed = true
@@ -829,8 +847,11 @@ func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		// The same containers named, so this endpoint answers "which one?" and not
 		// just "how many?". Absent from an Agent that predates the field.
 		"managed_containers": managedContainers(info.GetManagedContainers()),
-		"host":               info.Host,
-		"public_host":        n.PublicHost,
+		// True when that list is every managed container with its state, even
+		// empty; false from an Agent that reports running containers only.
+		"containers_reported": info.GetContainersReported(),
+		"host":                info.Host,
+		"public_host":         n.PublicHost,
 		// The Agent answered; status distinguishes a node ready for work from one
 		// whose container runtime is down (see reconcileNode).
 		"status":        string(n.Status),

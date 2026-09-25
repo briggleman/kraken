@@ -698,19 +698,36 @@ func (d *DockerRuntime) NodeInfo(ctx context.Context) (*agentpb.NodeInfo, error)
 	if info, err := d.cli.Info(ctx); err == nil {
 		out.TotalMemoryMb = info.MemTotal / (1024 * 1024)
 	}
-	running, _ := d.cli.ContainerList(ctx, container.ListOptions{
+	managed, err := d.cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
 		Filters: filters.NewArgs(filters.Arg("label", labelManaged+"=true")),
 	})
-	// The count and the list are the same query read two ways, so they can never
-	// disagree: the count is what an older Panel reads, the list is what lets a
-	// current one name the container it has no row for. The server id comes from
-	// the label the runtime writes at create time rather than from the name, so a
-	// container renamed by hand still identifies itself.
-	out.RunningServers = int32(len(running))
-	for _, c := range running {
+	if err != nil {
+		// No list to report, and saying "reported" over an empty one would tell
+		// the Panel this node has no containers at all. Leave the marker unset:
+		// the Panel then falls back to the count, which is zero here as it always
+		// was when the listing failed.
+		return out, nil
+	}
+	// Every managed container, stopped ones included, each with Docker's own state
+	// word — and the count is the running subset of that same listing, so the two
+	// can never disagree: the count is what an older Panel reads (it always meant
+	// running), the list is what lets a current one name the container it has no
+	// row for, and tell an offline server whose container is merely stopped from
+	// one that has no container until it starts. The server id comes from the
+	// label the runtime writes at create time rather than from the name, so a
+	// container renamed by hand still identifies itself. Docker reports the same
+	// state words for Windows containers, so nothing here is OS-specific.
+	out.ContainersReported = true
+	for _, c := range managed {
+		state := strings.ToLower(string(c.State))
+		if state == "running" {
+			out.RunningServers++
+		}
 		out.ManagedContainers = append(out.ManagedContainers, &agentpb.ManagedContainer{
 			ServerId:      c.Labels[labelServerID],
 			ContainerName: containerDisplayName(c.Names),
+			State:         state,
 		})
 	}
 	return out, nil

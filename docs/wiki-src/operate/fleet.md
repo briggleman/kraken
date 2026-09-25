@@ -105,6 +105,18 @@ Panel had `running` rows for. An Agent that names its containers reports that
 one against the server id it belongs to, the Panel finds the row, and the badge
 stays quiet for the length of the pass.
 
+**From Agent 0.59.0 the Agent reports stopped containers too**, each with the
+state Docker gives it (`running`, `exited`, `created`, `dead` …). Only running
+ones count on either side: `untracked` is a running container no row accounts
+for, `missing` is a `running` row with no running container. A stopped
+container is neither — it is what an offline server keeps for its next start.
+The line counts them instead, `containers 2 running · 1 stopped`, and it stays
+on the band whenever that count is above zero, drift or no drift. An offline
+server that is not in the stopped count has no container at all, which is what
+a reinstall or an update pass leaves until **start**. An Agent older than 0.59.0
+reports only running containers, so there is no stopped count until the Agent
+is updated.
+
 A badge that does *not* clear is worth acting on. There are two causes, and
 the badge tells you which. If a server row exists for the id — it shows
 `install_failed` or `offline` while players are connected — it is a restart

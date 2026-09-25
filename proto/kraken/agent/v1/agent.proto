@@ -486,20 +486,34 @@ message NodeInfo {
   // Panel over its reverse tunnel and therefore survives a failed bind, so
   // without this the conflict is invisible outside the node's own agent.log.
   string listen_error = 17;
-  // Every `kraken.managed` container the Agent currently sees running, named.
-  // `running_servers` above is the same set counted, and stays authoritative for
-  // an Agent too old to fill this in; the list is what lets the Panel say *which*
-  // container it has lost track of instead of only how many.
+  // Every `kraken.managed` container the Agent currently sees, in any state,
+  // named and with its state. Up to 0.58 this held only the running ones; from
+  // the Agent that sets `containers_reported` below it holds all of them, and
+  // `running_servers` above is the count of those whose state is `running` —
+  // the same number an older Panel has always read there. The list is what lets
+  // the Panel say *which* container it has lost track of instead of only how
+  // many, and whether an offline server has a container at all.
   repeated ManagedContainer managed_containers = 18;
+  // True from an Agent that reports every managed container in
+  // `managed_containers`, stopped ones included, with their state — set even
+  // when the list is empty. It is what tells "this node has no container for
+  // that server" apart from "this Agent is too old to say": an empty repeated
+  // field is indistinguishable from an absent one on the wire.
+  bool containers_reported = 19;
 }
 
-// ManagedContainer is one running `kraken.managed` container as the Agent sees
-// it: the server id from the container's own label, and the container name.
-// Both are reported because the id is what the Panel matches against its rows
-// and the name is what an operator types into `docker`.
+// ManagedContainer is one `kraken.managed` container as the Agent sees it: the
+// server id from the container's own label, the container name, and Docker's
+// state word for it. The id is what the Panel matches against its rows, the
+// name is what an operator types into `docker`, and the state is what separates
+// a running container from a stopped one left behind for the next start.
 message ManagedContainer {
   string server_id = 1;
   string container_name = 2;
+  // Docker's state word, lowercase and passed through as reported: running,
+  // exited, created, dead, paused, restarting, removing. Empty from an Agent
+  // that predates the field (which reported running containers only).
+  string state = 3;
 }
 
 // HostAddress is one interface/IPv4 pair on the agent host.

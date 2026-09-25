@@ -457,17 +457,22 @@ func (s *Server) handleRetireNodeContainer(w http.ResponseWriter, r *http.Reques
 	// the badge the operator acted on clears when the UI refetches.
 	if fresh, ferr := s.store.GetNode(ctx, n.ID); ferr == nil {
 		kept := fresh.ManagedContainers[:0:0]
+		wasRunning := 0
 		for _, c := range fresh.ManagedContainers {
 			if c.ServerID != serverID {
 				kept = append(kept, c)
+			} else if c.Running() {
+				// The list carries stopped containers too (#385); only the running
+				// ones were ever in the Agent's count.
+				wasRunning++
 			}
 		}
-		if removed := len(fresh.ManagedContainers) - len(kept); removed > 0 {
+		if len(kept) < len(fresh.ManagedContainers) {
 			fresh.ManagedContainers = kept
 			if len(kept) == 0 {
 				fresh.ManagedContainers = nil
 			}
-			fresh.RunningServers = max(0, fresh.RunningServers-removed)
+			fresh.RunningServers = max(0, fresh.RunningServers-wasRunning)
 			_ = s.store.UpdateNode(ctx, fresh)
 		}
 	}

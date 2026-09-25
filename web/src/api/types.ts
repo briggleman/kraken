@@ -530,6 +530,15 @@ export interface PendingRemoval {
   last_error?: string;
 }
 
+/** One `kraken.managed` container a node's agent reported (see Node). */
+export interface ManagedContainer {
+  server_id: string;
+  container_name: string;
+  /** Docker's state word — running, exited, created, dead, paused, restarting,
+   *  removing. Empty from an agent that reported running containers only. */
+  state?: string;
+}
+
 export interface Node {
   id: string;
   name: string;
@@ -553,11 +562,18 @@ export interface Node {
    *  contact. Compared against the servers the panel placed here it surfaces
    *  containers the panel has lost track of — see containerDrift(). */
   running_servers?: number;
-  /** The same containers running_servers counts, named — one entry per
-   *  `kraken.managed` container the agent reported running. Absent from an agent
-   *  older than 0.54.0, which reports only the count, so an empty list means
-   *  "this agent did not say", never "nothing is running" — see containerDrift(). */
-  managed_containers?: { server_id: string; container_name: string }[];
+  /** Every `kraken.managed` container the agent reported, named, with Docker's
+   *  state for each. With containers_reported it includes stopped containers,
+   *  so "running" means state === "running"; from an 0.54–0.58 agent it holds
+   *  running containers only, with no state; absent from an agent older than
+   *  0.54.0, and absent when empty — so without containers_reported a missing
+   *  list means "this agent did not say", never "nothing is running" — see
+   *  containerDrift(). */
+  managed_containers?: ManagedContainer[];
+  /** True when the agent's last report listed every managed container with
+   *  its state, even none — what makes a missing managed_containers mean "no
+   *  containers on this node" (#385). Absent from an agent that predates it. */
+  containers_reported?: boolean;
   /** Server removals this node owes: servers deleted in the panel whose removal
    *  the node never confirmed (it was unreachable, or its agent failed it). The
    *  panel's node reconciler replays each one every time the node answers and

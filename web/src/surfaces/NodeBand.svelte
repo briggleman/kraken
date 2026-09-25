@@ -14,6 +14,7 @@
     DRIFT_INLINE_MAX,
     agentDrift,
     containerDrift,
+    stoppedLabel,
     containerTitle,
     nodeMemLabel,
     pendingRemovalsNote,
@@ -76,6 +77,12 @@
   // the drift is information about the fleet either way.
   const drift = $derived(agentDrift(node));
   const containers = $derived(containerDrift(node));
+  // The node's stopped containers (`1 stopped`), from an agent that reports
+  // them (#385): an offline server that still has its container adds one, and
+  // one whose reinstall or update pass removed it does not — the fact the
+  // drill-in's empty console states per server. A reading, never a condition:
+  // plain value ink, and it keeps the container line up without a drift.
+  const stopped = $derived(stoppedLabel(node));
   // The drifting containers, named. Inline only while the line stays readable —
   // each a .nc-name (mono 300, Sand Faint: context beside the count) carrying
   // its whole name and server id in its own title. Past three the badge keeps
@@ -279,7 +286,7 @@
     <!-- the agent version rides the address line while it is merely a fact; once the
          panel has outrun it, it moves to the drift line below rather than printing twice -->
     <span class="node-meta">{node.address || node.lan_host || node.public_host || "—"}{node.agent_version && !drift ? " · agent " + node.agent_version : ""}</span>
-    {#if containers}
+    {#if containers || stopped}
       <!-- The one comparison that runs from the agent's own count inward. A
            surplus is holding memory and ports the scheduler believes are free.
            An agent that names its containers turns the count into something an
@@ -292,9 +299,13 @@
            Inherited (undesigned) states, not in the mock: a chip's "retiring…"
            while its retire is in flight, the disabled "retire all" while any of
            its containers is being retired, and the .nc-fail-only fallback line
-           below. -->
+           below.
+           Inherited (undesigned) too, until the next mock round: the stopped
+           count (`2 running · 1 stopped`, #385) in plain .nc-v, and the line
+           standing with no drift at all when only that count has something to
+           say — the running part is the drift line's own words. -->
       <span class="node-meta node-cond container-drift" title={driftTitle}>
-        <span class="nc-k">containers</span><b class="nc-v">{containers.running} running</b><span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span><button
+        <span class="nc-k">containers</span><b class="nc-v">{containers?.running ?? node.running_servers ?? 0} running</b>{#if stopped}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v">{stopped}</b>{/if}{#if containers}<span class="nc-sep" aria-hidden="true">·</span><b class="nc-v act">{containers.delta} {containers.word}</b>{#if retireInline}{#each retireItems as item (item.server_id || item.label)}<span class="nc-sep" aria-hidden="true">·</span><span class="nc-name" title={containerTitle(item)}>{shortContainerLabel(item.label)}</span><button
               class="nc-go"
               disabled={!!retire.busy[item.server_id]}
               aria-label={retireChipLabel(item, node.name)}
@@ -305,7 +316,7 @@
               title="stop and remove all {retireItems.length} untracked containers on {node.name} — their data stays"
               aria-label="Retire all {retireItems.length} untracked containers on {node.name}"
               onclick={(e) => openRetireAll(node.id, retireItems, e.currentTarget)}>{retireItems.some((it) => retire.busy[it.server_id]) ? "retiring…" : "retire all"}</button
-            >{/if}{/if}{#if retireErr}<span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span>{/if}
+            >{/if}{/if}{/if}{#if retireErr}<span class="nc-fail" title="retire · {retireErr}">retire · {retireErr}</span>{/if}
       </span>
     {:else if retireErr}
       <!-- Inherited (undesigned): the refusal outlived its line (the drift

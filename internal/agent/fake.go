@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,14 @@ type FakeRuntime struct {
 	// in microseconds. The install-progress UI is otherwise unreachable on the
 	// fake-live stack. Zero (the default) keeps tests fast.
 	installDelay time.Duration
+	// appBuilds is what the fake's SteamCMD "knows" for the build check (#392):
+	// app id (or "app@branch" for a non-public branch) → the current build.
+	// An install writes that build into the server's appmanifest, as a real
+	// pass would, so a later bump makes the server read as behind. Nil means
+	// every app is unknown; appBuildsErr, when set, fails the whole RPC (an
+	// Unimplemented status plays an Agent that predates it).
+	appBuilds    map[string]FakeAppBuild
+	appBuildsErr error
 	// removals records every Remove, and removeErr, when set, makes them fail
 	// (see SetRemoveFailure).
 	removals  []FakeRemoval
@@ -219,6 +228,104 @@ func WithFakePowerError(action agentpb.PowerAction, err error) FakeOption {
 // to it for the fake-live stack.
 func WithFakeInstallDelay(d time.Duration) FakeOption {
 	return func(f *FakeRuntime) { f.installDelay = d }
+}
+
+// FakeAppBuild is one app's current build as the fake's SteamCMD reports it.
+type FakeAppBuild struct {
+	BuildID     string
+	TimeUpdated int64 // Unix seconds; 0 leaves it unset
+}
+
+// WithFakeAppBuilds seeds the builds the fake's SteamCMD reports (see
+// appBuilds). Keys are app ids, or "app@branch" for a non-public branch.
+func WithFakeAppBuilds(builds map[string]FakeAppBuild) FakeOption {
+	return func(f *FakeRuntime) {
+		f.appBuilds = make(map[string]FakeAppBuild, len(builds))
+		for k, v := range builds {
+			f.appBuilds[k] = v
+		}
+	}
+}
+
+// SetAppBuild changes what the fake's SteamCMD reports for one app from now
+// on — "Steam shipped a new build". Servers installed before the change keep
+// the old build in their manifest.
+func (f *FakeRuntime) SetAppBuild(key string, b FakeAppBuild) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.appBuilds == nil {
+		f.appBuilds = make(map[string]FakeAppBuild)
+	}
+	f.appBuilds[key] = b
+}
+
+// SetAppBuildsError makes every AppBuilds call fail with err until cleared
+// with nil. A gRPC Unimplemented status plays an Agent that predates the RPC.
+func (f *FakeRuntime) SetAppBuildsError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.appBuildsErr = err
+}
+
+// AppBuilds answers the build check from the seeded table: one entry per
+// requested app, in request order, with a per-app error for an app or branch
+// the table does not know.
+func (f *FakeRuntime) AppBuilds(_ context.Context, req *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.appBuildsErr != nil {
+		return nil, f.appBuildsErr
+	}
+	resp := &agentpb.GetAppBuildsResponse{}
+	for _, q := range req.GetApps() {
+		out := &agentpb.AppBuild{AppId: q.GetAppId(), Branch: q.GetBranch()}
+		b, ok := f.appBuildLocked(q.GetAppId(), q.GetBranch())
+		if !ok {
+			out.Error = "no build for app " + q.GetAppId() + " on branch " + q.GetBranch()
+		} else {
+			out.BuildId, out.TimeUpdated = b.BuildID, b.TimeUpdated
+		}
+		resp.Builds = append(resp.Builds, out)
+	}
+	return resp, nil
+}
+
+// appBuildLocked looks an app and branch up in the seeded table. Callers hold f.mu.
+func (f *FakeRuntime) appBuildLocked(appID, branch string) (FakeAppBuild, bool) {
+	if branch != "" && branch != "public" {
+		b, ok := f.appBuilds[appID+"@"+branch]
+		return b, ok
+	}
+	b, ok := f.appBuilds[appID]
+	return b, ok
+}
+
+// writeAppManifestLocked records a finished install's build in the server's
+// steamapps/appmanifest_<app>.acf, the way SteamCMD does, when the install env
+// names an APP_ID the table knows. Callers hold f.mu.
+func (f *FakeRuntime) writeAppManifestLocked(serverID string, env map[string]string) {
+	appID := env["APP_ID"]
+	if appID == "" {
+		return
+	}
+	b, ok := f.appBuildLocked(appID, "public")
+	if !ok {
+		return
+	}
+	updated := b.TimeUpdated
+	if updated == 0 {
+		updated = time.Now().Unix()
+	}
+	acf := "\"AppState\"\n{\n" +
+		"\t\"appid\"\t\t\"" + appID + "\"\n" +
+		"\t\"Universe\"\t\t\"1\"\n" +
+		"\t\"name\"\t\t\"fake app " + appID + "\"\n" +
+		"\t\"StateFlags\"\t\t\"4\"\n" +
+		"\t\"installdir\"\t\t\"fake\"\n" +
+		"\t\"LastUpdated\"\t\t\"" + strconv.FormatInt(updated, 10) + "\"\n" +
+		"\t\"buildid\"\t\t\"" + b.BuildID + "\"\n" +
+		"}\n"
+	f.putFile(f.tree(serverID), fakePath("steamapps/appmanifest_"+appID+".acf"), []byte(acf))
 }
 
 // WithFakeFileError makes every file operation that reads or changes the tree
@@ -1107,6 +1214,12 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 		if err := emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: int32((i + 1) * 100 / len(steps))}}); err != nil {
 			return "", err
 		}
+	}
+	if steamErr == "" {
+		// A pass that landed leaves the build it pulled in the manifest (#392).
+		f.mu.Lock()
+		f.writeAppManifestLocked(req.ServerId, req.GetEnv())
+		f.mu.Unlock()
 	}
 	return steamErr, nil
 }

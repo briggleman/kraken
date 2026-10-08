@@ -500,6 +500,10 @@ func (s *Service) ApplyNodeConfig(ctx context.Context, req *agentpb.ApplyNodeCon
 	return &agentpb.ApplyNodeConfigResponse{Ok: ok, Detail: detail}, nil
 }
 
+func (s *Service) GetAppBuilds(ctx context.Context, req *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
+	return s.rt.AppBuilds(ctx, req)
+}
+
 func (s *Service) ReplicateBackups(ctx context.Context, req *agentpb.ReplicateBackupsRequest) (*agentpb.ReplicateBackupsResponse, error) {
 	mirrored, skipped, err := s.rt.ReplicateBackups(ctx, req.ServerId, req.Slug)
 	if err != nil {

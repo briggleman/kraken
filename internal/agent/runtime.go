@@ -122,4 +122,10 @@ type Runtime interface {
 	// ReplicateBackups mirrors a server's existing archives from the primary
 	// target to the configured SFTP remote, returning the counts copied/skipped.
 	ReplicateBackups(ctx context.Context, serverID, slug string) (mirrored, skipped int32, err error)
+
+	// AppBuilds asks SteamCMD for the current build id of each requested app
+	// and branch, in one session, with no server's data dir mounted (#392).
+	// Per-app failures are reported inside the response; the error is for a
+	// run that could not happen at all (no image, SteamCMD never started).
+	AppBuilds(ctx context.Context, req *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error)
 }

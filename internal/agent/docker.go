@@ -571,6 +571,15 @@ var _ Runtime = (*DockerRuntime)(nil)
 // Close releases the Docker client.
 func (d *DockerRuntime) Close() error { return d.cli.Close() }
 
+// AppBuilds is the Docker runtime's half of the Steam build check (#392). The
+// scaffold answers Unimplemented, which is exactly what an Agent without the
+// RPC answers, so the Panel treats both the same way until the real
+// implementation lands (one SteamCMD session per request, no data dir
+// mounted, parsed by internal/shared/steam).
+func (d *DockerRuntime) AppBuilds(_ context.Context, _ *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
+	return nil, grpcstatus.Error(codes.Unimplemented, "the steam build check is not implemented on this agent yet")
+}
+
 // OSType reports the daemon's container OS ("linux" or "windows"). Until the
 // daemon has been reached once this is the operator-configured node OS.
 func (d *DockerRuntime) OSType() string {

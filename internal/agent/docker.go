@@ -109,6 +109,10 @@ type DockerRuntime struct {
 	// containers (removeInstallContainerLater), so a test can wait for them.
 	installCleanup sync.WaitGroup
 
+	// appInfo is the Steam build check's state: the in-flight checks and the
+	// lock its one-shot container runs under (see appbuilds.go).
+	appInfo appInfoChecks
+
 	// bjMu guards backupJobs: the live state of asynchronous backups, keyed by
 	// "<serverID>/<id>". Holds in-flight (PENDING) jobs and recently-finished ones
 	// so ListBackups can report archiving + replication state the on-disk listing
@@ -571,15 +575,6 @@ var _ Runtime = (*DockerRuntime)(nil)
 // Close releases the Docker client.
 func (d *DockerRuntime) Close() error { return d.cli.Close() }
 
-// AppBuilds is the Docker runtime's half of the Steam build check (#392). The
-// scaffold answers Unimplemented, which is exactly what an Agent without the
-// RPC answers, so the Panel treats both the same way until the real
-// implementation lands (one SteamCMD session per request, no data dir
-// mounted, parsed by internal/shared/steam).
-func (d *DockerRuntime) AppBuilds(_ context.Context, _ *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
-	return nil, grpcstatus.Error(codes.Unimplemented, "the steam build check is not implemented on this agent yet")
-}
-
 // OSType reports the daemon's container OS ("linux" or "windows"). Until the
 // daemon has been reached once this is the operator-configured node OS.
 func (d *DockerRuntime) OSType() string {
@@ -750,6 +745,12 @@ func reportManagedContainers(ctx context.Context, ops containerOps) (list []*age
 		// gate refuses starts until the pass ends), and its row is `installing`,
 		// which is never missing.
 		if serverID != "" && name == installContainerName(serverID) {
+			continue
+		}
+		// The Steam build check's container (appbuilds.go) is managed too, but
+		// belongs to no server: reported, it would read as a game container
+		// with no server behind it for the twenty seconds a check runs.
+		if serverID == "" && name == appInfoContainerName {
 			continue
 		}
 		state := strings.ToLower(string(c.State))

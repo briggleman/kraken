@@ -126,7 +126,19 @@ export class ServerStream {
   #say(ts: number, stream: string, raw: string) {
     const { text, hidden, full } = renderable(raw);
     this.lines.push({ seq: this.#seq++, ts, stream, text, hidden, full });
-    if (this.lines.length > MAX_LINES) this.lines.splice(0, this.lines.length - MAX_LINES);
+    if (this.lines.length > MAX_LINES) this.#evictOne();
+  }
+
+  /** Drop one line to bring the ring back under the cap: the oldest line of
+   *  ordinary output, or, only when none is left, the oldest of all. Kraken's
+   *  own lines (`system`, `error`) are kept: a Windows SteamCMD validate
+   *  streams well over MAX_LINES progress ticks during a live install, and
+   *  with a plain tail the step lines the pass opened with were scrolled off
+   *  this ring before the pass ended (#392). The Panel's buffer keeps them the
+   *  same way, so the retained log and the live view agree. */
+  #evictOne() {
+    const i = this.lines.findIndex((l) => l.stream !== "system" && l.stream !== "error");
+    this.lines.splice(i < 0 ? 0 : i, 1);
   }
 
   get connected() {

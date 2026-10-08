@@ -2039,7 +2039,13 @@ components:
       type: object
       properties:
         ts: { type: integer, format: int64 }
-        stream: { type: string, description: '"install" or "error"' }
+        stream:
+          type: string
+          description: >-
+            "install" for the installer's own output, "system" for a line
+            Kraken wrote about the attempt (the step it is on, how long a
+            phase took, what the Agent's guard removed), "error" for a
+            failure note.
         text: { type: string }
     InstallAttempt:
       type: object

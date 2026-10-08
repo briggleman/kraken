@@ -354,6 +354,37 @@ next install starts.</li>
 when nothing is held, which is not the same as an install that printed
 nothing, and the UI says which it is rather than showing you an empty pane.</li>
 </ul>
+<p>Each line carries a <code>stream</code> that says who wrote it, and the console colors
+the three apart:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>stream</th>
+<th>who</th>
+<th>what it says</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>install</code></td>
+<td>the installer</td>
+<td>SteamCMD&#39;s progress, unpack errors, a game&#39;s first-run output</td>
+</tr>
+<tr>
+<td><code>system</code></td>
+<td>Kraken, prefixed <code>[panel]</code> or <code>[kraken]</code></td>
+<td>which step the attempt is on and how long each phase took: <code>stop took 12s</code>, <code>install script ran 6m02s, exit 0</code>, <code>update pass took 6m40s</code>, <code>start took 9s</code></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Kraken</td>
+<td>the failure that ended the attempt</td>
+</tr>
+</tbody></table>
+</div>
+<p>The <code>system</code> lines are the account of where the time went. A start or restart
+that re-runs the install pass reads, top to bottom: the stop and its duration,
+the Agent&#39;s image check and whatever its guard removed, the install script&#39;s
+run time and exit code, the pass total, then the config apply and the start.</p>
 <h2 id="reading-a-crash">Reading a crash <a class="hlink" href="#reading-a-crash" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>When a server lands in <code>crashed</code>, the Agent captures the container&#39;s exit code
 and the Panel keeps it until the next power action. The drill-in renders it as

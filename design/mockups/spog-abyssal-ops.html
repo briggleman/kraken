@@ -160,6 +160,12 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .console-log .t { color: var(--ink-3); margin-right: 10px; }
   .console-log .good { color: var(--ok); }
   .console-log .warn { color: var(--caution); }
+  /* The system voice: a line Kraken wrote about the attempt — which step it is
+     on, how long a phase took — as opposed to a line the installer printed. Set
+     back in Sand Faint so the installer's own output stays the louder voice,
+     with the [panel] / [kraken] tag alone in Lumen to say who is speaking. */
+  .console-log .sys { color: var(--ink-3); }
+  .console-log .sys .tag { color: var(--lumen); }
   .console-in { display: flex; border-top: 1px solid var(--edge); }
   .console-in span { padding: 12px 0 12px 16px; font-family: var(--mono); color: var(--lumen); font-size: 14px; }
   .console-in input {
@@ -4715,6 +4721,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       cpuV: 22, memU: 14.2, memM: 16, tickV: 31, worldG: '4.8',
       roster: [['Kestrel','6m'],['MossVeil','1h 12m'],['Brakkus','2h 03m'],['softserve','2h 40m'],['Anchorite','3h 15m'],['Pellet','4h 27m'],['DGRhino','5h 58m']],
       lines: [
+        '<span class="sys"><span class="tag">[panel]</span> stop took 12s</span>',
+        '<span class="sys"><span class="tag">[kraken]</span> install script ran 6m02s, exit 0</span>',
+        '<span class="sys"><span class="tag">[panel]</span> update pass took 6m40s — applying config and starting Palworld — behemoth</span>',
         '[Session] world feybreak-01 autosaved (2.41s)',
         '<span class="good">[Join] Kestrel connected — 7 online</span>',
         '[Pal] wild raid event scheduled at Bamboo Grove',
@@ -5395,7 +5404,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   // values interpolated here come from the schedule/backup name inputs, so
   // innerHTML would let anything typed into them execute (js/xss-through-dom).
   // tone selects the voice — 'warn' for a prevented or destructive action,
-  // 'good' for a completed one, omitted for plain narration.
+  // 'good' for a completed one, omitted for plain narration. ('sys', the
+  // system voice for Kraken's own step lines, is only ever written by the
+  // Panel and Agent, so the seeded console lines above carry it inline.)
   function logDepthLine(text, tone) {
     const log = $('consoleLog');
     const d = document.createElement('div');

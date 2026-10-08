@@ -1004,7 +1004,7 @@ func (f *FakeRuntime) Install(ctx context.Context, req *agentpb.InstallServerReq
 	failure, err := runInstallWithRecovery(ctx, func(ctx context.Context) (string, error) {
 		passes++
 		return f.installPass(ctx, req, passes == 1, emit)
-	}, hostStagingTree{root: f.DataDir(req.ServerId)}, func(line string) { _ = emit(logLine(line)) }, time.Now, noRetryReason(req))
+	}, hostStagingTree{root: f.DataDir(req.ServerId)}, func(line string) { _ = emit(sysLine(line)) }, time.Now, noRetryReason(req))
 	switch {
 	case errors.Is(err, errFakePassReported):
 		return nil
@@ -1053,7 +1053,7 @@ func (f *FakeRuntime) installPass(ctx context.Context, req *agentpb.InstallServe
 	}
 	f.mu.Unlock()
 	for _, h := range plan.remove {
-		if err := emit(logLine(dataDirRemovalNote(h, req.ServerId, installName))); err != nil {
+		if err := emit(sysLine(dataDirRemovalNote(h, req.ServerId, installName))); err != nil {
 			return "", err
 		}
 	}

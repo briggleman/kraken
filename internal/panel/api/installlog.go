@@ -135,9 +135,24 @@ func (l *installLog) Start(id string) (undo func()) {
 	}
 }
 
+// systemStreamName marks a line Kraken wrote about the attempt — which step it
+// is on, how long a phase took, what the Agent's guard removed — as opposed to
+// a line the installer printed. The console colors the two apart (#392): with
+// both on the install stream, "[panel] update pass took 6m40s" read as one
+// more thing SteamCMD said. The `[panel]` / `[kraken]` prefix stays on the
+// text, so the line still says who wrote it wherever the stream is lost (an
+// older web bundle, a copied line).
+const systemStreamName = "system"
+
 // Append records a line of ordinary installer output.
 func (l *installLog) Append(id, text string) {
 	l.append(id, installStreamName, text)
+}
+
+// AppendSystem records a line Kraken wrote about the attempt itself, so the
+// console can set it apart from the installer's output.
+func (l *installLog) AppendSystem(id, text string) {
+	l.append(id, systemStreamName, text)
 }
 
 // AppendError records a line that reports a failure, so it reads as one.

@@ -478,6 +478,28 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .ctl-restart:hover { filter: brightness(1.3); }
   .ctl-start { background: rgba(var(--ok-rgb), 0.1); color: var(--ok); border: 1px solid rgba(var(--ok-rgb), 0.45); }
   .ctl-start:hover { filter: brightness(1.3); }
+  /* A start that is not the operator's to take: the server is mid-install,
+     mid-update or mid-restore and boots on its own when the pass lands. The
+     control stays where it is (the geometry never changes) but stops being a
+     button: the press travel and the hover brightening go, the colour steps
+     down to say "not yours to click", and the label says what is happening —
+     "updating…" — the way the node band's agent chip says "pushing…" while it
+     works. The traversal of light is the one thing that keeps moving: a long
+     copy phase can hold the console still for a minute, and that stillness is
+     what made the start read as an invitation. Here the light is the
+     control's own colour at a whisper; it says "working", not the caution
+     colour's "a build is waiting for you". */
+  .ctl-wait { position: relative; overflow: hidden; cursor: progress; box-shadow: none; }
+  .ctl-wait:hover { filter: none; }
+  .ctl-wait:active { transform: none; box-shadow: none; }
+  .ctl-start.ctl-wait { color: rgba(var(--ok-rgb), 0.55); border-color: rgba(var(--ok-rgb), 0.25); background: rgba(var(--ok-rgb), 0.05); }
+  .ctl-wait::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 55%;
+    background: linear-gradient(100deg, rgba(var(--ok-rgb), 0), rgba(var(--ok-rgb), 0.22), rgba(var(--ok-rgb), 0));
+    pointer-events: none;
+    animation: adSweep 3.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .ctl-wait::after { animation: none; opacity: 0; } }
   .ctl-delete {
     background: rgba(var(--crisis-rgb), 0.08); color: var(--crisis); border: 1px solid rgba(var(--crisis-rgb), 0.35);
     display: inline-flex; align-items: center; justify-content: center; gap: 9px;
@@ -2743,16 +2765,16 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
 
 
-    <button class="srv" aria-label="Enshrouded — running. Open full-screen control.">
+    <button class="srv" aria-label="Enshrouded — installing. Open full-screen control.">
       <span class="srv-art" style="background-image: url('https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/library_hero.jpg')" aria-hidden="true"></span><span class="srv-shade" aria-hidden="true"></span>
       <span class="srv-id">
         <span class="nd-rack">node 01 <b>behemoth</b></span><span class="srv-name">Enshrouded</span>
-        <span class="srv-meta">embervale · v0.8.3 · :15636 · up 11h 02m</span>
-        <span class="chip run"><i></i>running</span>
+        <span class="srv-meta">embervale · v0.8.3 · :15636 · updating</span>
+        <span class="chip stop"><i></i>installing</span>
       </span>
       <span class="players">
-        <span class="players-num">3<small> / 16</small></span>
-        <span class="occ-rail" style="--pct: 19%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span>
+        <span class="players-num">0<small> / 16</small></span>
+        <span class="occ-rail" style="--pct: 0%" aria-hidden="true"><i class="occ-ghost"></i><i class="occ-fill"></i><i class="occ-edge"></i></span>
         <span class="players-label">players online</span>
       </span>
       <span class="srv-chart"><span class="srv-chart-label"><span>cpu</span><b id="s2cVal">9%</b></span><span class="zone-track"><span class="seg-track" id="s2cSegs" aria-hidden="true"><i class="dotcol" style="--lvl:7%"></i><i class="dotcol" style="--lvl:7.3%"></i><i class="dotcol" style="--lvl:7.5%"></i><i class="dotcol" style="--lvl:7.8%"></i><i class="dotcol" style="--lvl:8.2%"></i><i class="dotcol" style="--lvl:8.6%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9.7%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.1%"></i><i class="dotcol" style="--lvl:8.8%"></i><i class="dotcol" style="--lvl:8.6%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.1%"></i><i class="dotcol" style="--lvl:8.8%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:10.4%"></i><i class="dotcol" style="--lvl:11%"></i><i class="dotcol" style="--lvl:11.4%"></i><i class="dotcol" style="--lvl:11.7%"></i><i class="dotcol" style="--lvl:11.8%"></i><i class="dotcol" style="--lvl:11.6%"></i><i class="dotcol" style="--lvl:11.2%"></i><i class="dotcol" style="--lvl:10.7%"></i><i class="dotcol" style="--lvl:10.2%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.5%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.2%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol" style="--lvl:9.9%"></i><i class="dotcol" style="--lvl:10.5%"></i><i class="dotcol" style="--lvl:11.3%"></i><i class="dotcol" style="--lvl:12.1%"></i><i class="dotcol" style="--lvl:12.6%"></i><i class="dotcol" style="--lvl:12.4%"></i><i class="dotcol" style="--lvl:12%"></i><i class="dotcol" style="--lvl:11.5%"></i><i class="dotcol" style="--lvl:10.9%"></i><i class="dotcol" style="--lvl:10.3%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol" style="--lvl:8.9%"></i><i class="dotcol" style="--lvl:8.7%"></i><i class="dotcol" style="--lvl:8.5%"></i><i class="dotcol" style="--lvl:8.3%"></i><i class="dotcol" style="--lvl:8.4%"></i><i class="dotcol" style="--lvl:8.9%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.9%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.2%"></i><i class="dotcol" style="--lvl:9.4%"></i><i class="dotcol" style="--lvl:9.6%"></i><i class="dotcol" style="--lvl:10.1%"></i><i class="dotcol" style="--lvl:10.7%"></i><i class="dotcol" style="--lvl:10.8%"></i><i class="dotcol" style="--lvl:10.6%"></i><i class="dotcol" style="--lvl:10.3%"></i><i class="dotcol" style="--lvl:10.1%"></i><i class="dotcol" style="--lvl:9.8%"></i><i class="dotcol" style="--lvl:9.5%"></i><i class="dotcol" style="--lvl:9.3%"></i><i class="dotcol now" style="--lvl:9%"></i></span><span class="th t50" aria-hidden="true"></span><span class="th t75" aria-hidden="true"></span></span></span>
@@ -4732,14 +4754,17 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       ]
     },
     'Enshrouded': {
-      state: 'running', up: '11h 02m', players: '3/16', port: '15636', ver: 'v0.8.3',
+      // Mid-update: the pre-start pass is running, the console is the install
+      // log, and the start control is the .ctl-wait "updating…" above.
+      state: 'installing', up: '—', players: '0/16', port: '15636', ver: 'v0.8.3',
       cpuV: 9, memU: 6.8, memM: 12, tickV: 24, worldG: '2.1',
-      roster: [['Hollowfen','24m'],['Bramble','1h 05m'],['Vess','2h 18m']],
+      roster: [],
       lines: [
-        '[Session] embervale autosaved (1.12s)',
-        '<span class="good">[Join] Vess connected — 3 online</span>',
-        '[Shroud] storm cycle beginning in Revelwood',
-        '[Net] keepalive ok — 3 clients'
+        '<span class="sys"><span class="tag">[panel]</span> updating Enshrouded — checking its build before start</span>',
+        '<span class="sys"><span class="tag">[panel]</span> stop took 4s</span>',
+        '<span class="sys"><span class="tag">[panel]</span> build 23178631 → 23204410, running the update pass</span>',
+        ' Update state (0x61) downloading, progress: 42.17 (2083461904 / 4940781568)',
+        ' Update state (0x61) downloading, progress: 58.90 (2910246195 / 4940781568)'
       ]
     },
     'Dragonwilds': {
@@ -4805,7 +4830,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     $('dWorld').textContent = s.worldG;
     $('dControls').innerHTML = s.state === 'running'
       ? '<button class="ctl ctl-stop">stop</button><button class="ctl ctl-restart">restart</button>'
-      : '<button class="ctl ctl-start">start</button>';
+      : s.state === 'installing'
+        ? '<button class="ctl ctl-start ctl-wait" disabled aria-busy="true" title="the server boots on its own once this finishes">updating…</button>'
+        : '<button class="ctl ctl-start">start</button>';
     $('rosterLabel').textContent = s.state === 'running' ? 'online · ' + s.roster.length : 'online · 0';
     $('dRoster').innerHTML = s.roster.length
       ? s.roster.map(r => '<div class="roster-row"><span>' + r[0] + '</span><time>' + r[1] + '</time><button class="kick">kick</button></div>').join('')

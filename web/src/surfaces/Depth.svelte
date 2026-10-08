@@ -23,6 +23,7 @@
     sftpShow,
     syncUpdatePass,
     stateLabel,
+    startControl,
     powerControls,
     canShowInstallLog,
     consoleRepin,
@@ -978,10 +979,18 @@
           <button class="ctl ctl-stop" disabled={depth.powerBusy} onclick={() => void power("stop")}>stop</button>
           <button class="ctl ctl-restart" disabled={depth.powerBusy} onclick={() => void power("restart")}>restart</button>
         {:else}
+          <!-- While a pass or a restore runs the control is not a start at all:
+               it is inert, carries the busy look, and says what is happening,
+               so a console that sits still through a long copy phase does not
+               read as "press start" (#392). -->
+          {@const sc = startControl(server?.state, updatePass)}
           <button
             class="ctl ctl-start"
-            disabled={depth.powerBusy || server?.state === "installing" || server?.state === "restoring"}
-            onclick={() => void power("start")}>start</button
+            class:ctl-wait={sc.waiting}
+            disabled={depth.powerBusy || sc.waiting}
+            aria-busy={sc.waiting}
+            title={sc.waiting ? "the server boots on its own once this finishes" : undefined}
+            onclick={() => void power("start")}>{sc.label}</button
           >
           <!-- The same endpoint as the install_failed retry, under the name it
                has on a working server: run the install script once, now. It is

@@ -185,7 +185,11 @@ The install runs on the node and is streamed to the Panel, which buffers it in
 memory. There is no container left to tail once the phase ends, so the buffer is
 the record.
 
-- It keeps the last **500 lines** of the current attempt.
+- It keeps **500 lines** of the current attempt. When an installer prints more
+  than that, its own oldest lines are the ones dropped: the `system` step lines
+  and the `error` note survive, so the account of where the time went is still
+  there after a SteamCMD validate that printed thousands of progress ticks.
+  The console in the browser keeps its live buffer the same way.
 - It is kept **after the install finishes, success included**, because an
   installer can exit 0 having produced a broken tree.
 - It is dropped when the server is retired or deleted, and replaced when the

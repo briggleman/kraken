@@ -170,7 +170,7 @@ func (l *installLog) append(id, stream, text string) {
 	e := l.entry(id)
 	e.lines = append(e.lines, line)
 	if len(e.lines) > maxInstallLines {
-		e.lines = e.lines[len(e.lines)-maxInstallLines:]
+		e.lines = evictOne(e.lines)
 	}
 	for ch := range e.subs {
 		select {
@@ -180,6 +180,26 @@ func (l *installLog) append(id, stream, text string) {
 			close(ch)
 		}
 	}
+}
+
+// evictOne drops one line to bring an over-full buffer back under the cap: the
+// oldest line of installer output, or — only when there is none left — the
+// oldest line of all.
+//
+// The installer's own lines are the expendable ones. A Windows SteamCMD
+// validate prints well over 500 of them, and with a plain tail the step lines
+// the pass opened with (the stop, the image check, the guard's removals) were
+// gone before it ended — on the first live read of 0.60.0 the operator had to
+// race the scroll to copy them (#392). Those lines and the failure notes are
+// the account of the attempt; the progress ticks are not, and the last few
+// hundred of them are still here for diagnosing where the installer stopped.
+func evictOne(lines []installLine) []installLine {
+	for i, ln := range lines {
+		if ln.Stream == installStreamName {
+			return append(lines[:i], lines[i+1:]...)
+		}
+	}
+	return lines[1:]
 }
 
 // Finish marks the attempt complete (either verdict) and releases live

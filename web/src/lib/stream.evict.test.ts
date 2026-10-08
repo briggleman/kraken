@@ -56,6 +56,21 @@ describe("the console ring under a chatty installer", () => {
     s.set("", "off");
   });
 
+  it("strips ANSI escapes from what it renders, Steam's colour resets included", () => {
+    const s = new ServerStream();
+    s.set("sv-3", "live");
+    const ws = sockets[0];
+    ws.say("install", "\u001b[0m Update state (0x5) verifying install, progress: 36.08");
+    ws.say("install", "Loading Steam API...\u001b[0mOK");
+    ws.say("stdout", "\u001b[1;32m[Server]\u001b[0m world saved");
+    expect(s.lines.map((l) => l.text)).toEqual([
+      " Update state (0x5) verifying install, progress: 36.08",
+      "Loading Steam API...OK",
+      "[Server] world saved",
+    ]);
+    s.set("", "off");
+  });
+
   it("still caps the ring when every line is Kraken's own", () => {
     const s = new ServerStream();
     s.set("sv-2", "live");

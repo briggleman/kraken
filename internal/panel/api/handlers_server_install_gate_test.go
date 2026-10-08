@@ -3,8 +3,10 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/briggleman/kraken/internal/panel/api"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -144,6 +146,23 @@ func TestReinstall_FromInstallFailedAcceptsAndFlipsState(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
+	// Hold the reinstall's provision goroutine before it does anything, so
+	// the start below is guaranteed to race a server that is still
+	// `installing`. The fake install lands in microseconds; without the hold,
+	// a loaded CI runner let the install finish first and the start answered
+	// 200 as a plain start on a freshly installed server (seen on the 0.61.0
+	// release branch).
+	gate := make(chan struct{})
+	clearHook := api.SetProvisionHookForTest(func(id string) {
+		if id == sv.ID {
+			<-gate
+		}
+	})
+	defer clearHook()
+	var opened sync.Once
+	openGate := func() { opened.Do(func() { close(gate) }) }
+	defer openGate()
+
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/reinstall", token, nil)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("reinstall: got %d, want 202; body: %s", rec.Code, rec.Body.String())
@@ -162,4 +181,5 @@ func TestReinstall_FromInstallFailedAcceptsAndFlipsState(t *testing.T) {
 	if pw.Code != http.StatusConflict {
 		t.Errorf("start during reinstall: got %d, want 409", pw.Code)
 	}
+	openGate()
 }

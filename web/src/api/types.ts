@@ -287,6 +287,9 @@ export interface Server {
    *  before every start or restart, so this server stays on the build now on
    *  disk. Reinstall is then the explicit "update now". */
   pin_build?: boolean;
+  /** A launch-variable edit since the last install owes the next start the
+   *  update pass, whatever the build check says (#392). */
+  update_pass_owed?: boolean;
   /** Present only while a backup restore runs (state `restoring`, #361). */
   restore?: RestoreProgress;
   restore_result?: RestoreResult;
@@ -698,13 +701,16 @@ export interface ServerSettings {
   updates_on_start?: boolean;
   /** What the next operator start or restart through the Panel would do right
    *  now: false when the spec opted out, the build is pinned, the server was
-   *  installed within the last 30 minutes, or its Steam-login install has no
-   *  stored credentials. Scheduled restarts and the node-scoped power endpoint
+   *  installed within the last 30 minutes, its Steam-login install has no
+   *  stored credentials, or a fresh build check found it current. Scheduled restarts and the node-scoped power endpoint
    *  never run the pass, and it means nothing while installing or
    *  install_failed, where a start is refused outright. */
   next_start_updates?: boolean;
-  /** Why the next start skips the pass; absent when it runs. */
-  update_skip_reason?: "spec" | "pinned" | "fresh_install" | "steam_login";
+  /** Why the next start skips the pass; absent when it runs. current_build: a
+   *  build check in the last 10 minutes found the installed build current. */
+  update_skip_reason?: "spec" | "pinned" | "fresh_install" | "steam_login" | "current_build";
+  /** When the server's build was last checked (#392); absent when never. */
+  update_checked_at?: string;
 }
 
 export interface UpdateSettingsResult {

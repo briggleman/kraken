@@ -236,6 +236,12 @@ type Server struct {
 	// chance to fail. Nil for a server provisioned before the field existed,
 	// which then updates on start exactly as before.
 	ProvisionedAt *time.Time `json:"provisioned_at,omitempty"`
+	// UpdatePassOwed says the next update-on-start must run the install pass
+	// whatever the build check finds (#392). It is set when an operator edits a
+	// launch variable — the install script is rendered from the variables, so
+	// a tree installed with the old values is not vouched for by its build id
+	// — and cleared by the next install pass that lands.
+	UpdatePassOwed bool `json:"update_pass_owed,omitempty"`
 	// Players / MaxPlayers / PlayersKnown are the last-known online-player count,
 	// refreshed by the reconciler from the Agent so the fleet list can show it
 	// without an open stats stream. PlayersKnown separates "0 online" from "unknown".

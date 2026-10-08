@@ -220,7 +220,8 @@ func TestUpdateCheck_UpdateOnStartRecordsTheBuild(t *testing.T) {
 		"script": "steamcmd +login anonymous +app_update {{APP_ID}} validate +quit",
 	})
 	sv := seedOfflineServer(t, st, "sv-uos", nodeID, specID, nil)
-	// The last check found the tree a build behind.
+	installOnFake(t, rt, sv.ID, "730") // build 100 on disk
+	// The last check, an hour ago, found the tree a build behind.
 	at := time.Now().Add(-time.Hour)
 	if err := st.UpdateServerBuild(context.Background(), sv.ID, store.ServerBuild{InstalledBuild: "99", AvailableBuild: "100", CheckedAt: &at}); err != nil {
 		t.Fatal(err)

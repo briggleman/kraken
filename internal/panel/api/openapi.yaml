@@ -526,7 +526,16 @@ paths:
         last 30 minutes (so the pass would only repeat it), or the spec needs an
         authenticated Steam login and the node has no stored credentials.
         GET /servers/{id}/settings reports which way the next start will go.
-        That pass is asynchronous: the
+        Otherwise the server is stopped and its Steam build checked (a check
+        from the last 10 minutes is reused): a current build skips the pass, a
+        newer build on Steam runs it, a spec with no build to check or an
+        Agent that predates the check runs it, a check that could not reach
+        the node or its Agent (or ran out of time) starts the server on the
+        installed tree without it, and any other failed check (a missing
+        manifest, an app Steam does not know) runs it. A failed check leaves
+        its reason in the server's `update.error`. A launch-variable edit since the last
+        install runs the pass whatever the build says.
+        This path is asynchronous: the
         response is then 202 with state `installing` (the console streams the
         install log), and the server continues to `running` on its own. Where a
         failed pass lands depends on the phase: a stop (or agent connection)
@@ -2053,6 +2062,7 @@ components:
           description: >-
             Pinned to the build on disk — the panel skips the install/update
             pass it otherwise runs before every start or restart.
+        update_pass_owed: { type: boolean, description: "a launch-variable edit since the last install owes the next start the update pass, whatever the build check says; cleared by the next install pass that lands" }
         last_error: { type: string, description: "why the most recent provisioning attempt failed (a backup restore never writes it)" }
         restore:
           allOf: [ { $ref: '#/components/schemas/RestoreProgress' } ]
@@ -2492,9 +2502,17 @@ components:
             the server is installing or install_failed, where a start is refused.
         update_skip_reason:
           type: string
-          enum: [spec, pinned, fresh_install, steam_login]
+          enum: [spec, pinned, fresh_install, steam_login, current_build]
           description: >-
             Why next_start_updates is false; absent when it is true.
+            current_build — a build check in the last 10 minutes found the
+            installed build current, so the start skips the pass. When the
+            check is older the start asks Steam first and may still skip it;
+            next_start_updates cannot know that in advance.
+        update_checked_at:
+          type: string
+          format: date-time
+          description: When the server's build was last checked; absent when it never was.
     ScheduleInput:
       type: object
       required: [action, cron]

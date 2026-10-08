@@ -1,10 +1,10 @@
 package api
 
 import (
-	"regexp"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/briggleman/kraken/internal/shared/steam"
 )
 
 // installLog holds the output of each server's install phase so an operator can
@@ -165,8 +165,15 @@ func (l *installLog) AppendError(id, text string) {
 // append records a line and fans it out to live subscribers. A subscriber whose
 // buffer is full is dropped rather than allowed to stall the install: the
 // installer's progress must never wait on a slow browser.
+//
+// Terminal escape sequences are stripped on the way in. SteamCMD wraps its
+// lines in colour resets, and nothing downstream renders them: the ESC byte is
+// invisible in a browser, so what the operator saw on every Steam line was the
+// `[0m` it left behind (#392). Stripping here keeps the REST body, the replay
+// and the retained log in agreement, and uses the same stripper the Agent's
+// SteamCMD parser does.
 func (l *installLog) append(id, stream, text string) {
-	line := installLine{Ts: time.Now().UnixMilli(), Stream: stream, Text: stripANSI(text)}
+	line := installLine{Ts: time.Now().UnixMilli(), Stream: stream, Text: steam.StripANSI(text)}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	e := l.entry(id)
@@ -182,22 +189,6 @@ func (l *installLog) append(id, stream, text string) {
 			close(ch)
 		}
 	}
-}
-
-// ansiRE matches ANSI escape sequences: CSI (`ESC [ … m` and friends), OSC
-// (`ESC ] … BEL`), and any lone two-byte escape.
-var ansiRE = regexp.MustCompile("\x1b\\[[0-?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)|\x1b[@-Z\\\\-_]")
-
-// stripANSI removes terminal escape sequences from a line of installer output.
-// SteamCMD wraps its lines in colour resets, and nothing downstream renders
-// them: the ESC byte is invisible in a browser, so what the operator saw on
-// every Steam line was the `[0m` it left behind (#392). Stripped on the way
-// into the buffer so the REST body, the replay and the retained log agree.
-func stripANSI(text string) string {
-	if !strings.Contains(text, "\x1b") {
-		return text
-	}
-	return ansiRE.ReplaceAllString(text, "")
 }
 
 // evictOne drops one line to bring an over-full buffer back under the cap: the

@@ -304,9 +304,10 @@ export interface Server {
   /** The host ports a retired server held, which a revive asks for again. */
   retired_ports?: Record<string, number>;
   created_at: string;
-  /** The Steam build check (#392). On every server the list and get endpoints
-   *  answer with; absent from a create's answer, which is written before the
-   *  install has run. */
+  /** The Steam build check (#392). Present on every server GET /servers and
+   *  GET /servers/{id} answer with (and on the retire, revive and restore
+   *  answers). Absent from POST /servers' 201, which is the stored record as
+   *  written before the install runs — read the server back for it. */
   update?: ServerUpdate;
 }
 

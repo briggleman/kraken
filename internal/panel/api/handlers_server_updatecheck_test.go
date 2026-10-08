@@ -87,9 +87,15 @@ func TestUpdateCheck_CreateIsCurrentThenSteamShipsABuild(t *testing.T) {
 		t.Fatalf("create server: status %d, body %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ID string `json:"id"`
+		ID     string          `json:"id"`
+		Update json.RawMessage `json:"update"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	// The create answers with the row as written, before any install: no
+	// `update` block (web/src/api/types.ts says so).
+	if created.Update != nil {
+		t.Fatalf("the create's answer carries update: %s", created.Update)
+	}
 	waitForState(t, h, token, created.ID, "offline")
 
 	// The install recorded its build before the row left `installing`.

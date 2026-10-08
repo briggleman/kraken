@@ -372,7 +372,9 @@ platform, so the fleet costs one SteamCMD session per game, run on a node
 that already hosts it. Servers that are installing, restoring or retired are
 skipped. See <a href="/wiki/configure/panel/">Panel configuration</a> for the variable.</li>
 <li><strong>On demand</strong>: <code>POST /servers/{id}/update-check</code> checks one server and answers
-with the result, within two minutes, and <code>POST /servers/update-check</code> starts
+with the result (usually in seconds; it waits up to a little over four
+minutes, the Agent&#39;s own bound on a SteamCMD session, and a check that runs
+out of time says to try again shortly), and <code>POST /servers/update-check</code> starts
 a fleet pass in the background (<code>202</code>). Both take <code>server.power</code>; the fleet
 pass also takes <code>server.any</code>, because it reads every server.</li>
 <li><strong>After every install pass that lands</strong>: create, reinstall, revive and the

@@ -189,7 +189,9 @@ It runs at three moments:
   that already hosts it. Servers that are installing, restoring or retired are
   skipped. See [Panel configuration](/wiki/configure/panel/) for the variable.
 - **On demand**: `POST /servers/{id}/update-check` checks one server and answers
-  with the result, within two minutes, and `POST /servers/update-check` starts
+  with the result (usually in seconds; it waits up to a little over four
+  minutes, the Agent's own bound on a SteamCMD session, and a check that runs
+  out of time says to try again shortly), and `POST /servers/update-check` starts
   a fleet pass in the background (`202`). Both take `server.power`; the fleet
   pass also takes `server.any`, because it reads every server.
 - **After every install pass that lands**: create, reinstall, revive and the

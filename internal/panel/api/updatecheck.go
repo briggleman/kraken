@@ -20,9 +20,11 @@ import (
 const updateCheckFirstRun = 5 * time.Minute
 
 // serverUpdateCheckTimeout caps an on-demand check of one server. The answer
-// is a SteamCMD session on the node — about twenty seconds when the image is
-// already there — and an operator is waiting on it.
-const serverUpdateCheckTimeout = 2 * time.Minute
+// is a SteamCMD session on the node — about twenty seconds on Linux, more on a
+// Hyper-V Windows node — and the cap is the Agent's own bound plus a margin
+// (see updatecheck.ServerCheckTimeout): any shorter and the Panel would give
+// up on a session the Agent is still running.
+var serverUpdateCheckTimeout = updatecheck.ServerCheckTimeout
 
 // fleetUpdateCheckTimeout bounds a fleet pass started from the API, which
 // outlives the request that asked for it.

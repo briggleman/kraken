@@ -188,12 +188,18 @@ func (p *acfParser) quoted() (int, string, error) {
 		case '\\':
 			if p.pos+1 < len(p.src) {
 				p.pos++
+				// KeyValues escapes only these four, as appinfo.go reads them.
+				// Any other backslash is a literal one: the separator in a
+				// Windows path ("bin\win64").
 				switch e := p.src[p.pos]; e {
 				case 'n':
 					b.WriteByte('\n')
 				case 't':
 					b.WriteByte('\t')
-				default: // \\ and \" and anything Steam would not have escaped
+				case '"', '\\':
+					b.WriteByte(e)
+				default:
+					b.WriteByte('\\')
 					b.WriteByte(e)
 				}
 				p.pos++

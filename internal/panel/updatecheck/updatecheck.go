@@ -25,6 +25,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/powerbudget"
 	"github.com/briggleman/kraken/internal/shared/spec"
 	"github.com/briggleman/kraken/internal/shared/steam"
 )
@@ -110,13 +111,25 @@ type LiveFunc func(ctx context.Context, n *cluster.Node) error
 
 // Timeouts for the two Agent calls a check makes.
 var (
-	// appBuildsTimeout bounds one GetAppBuilds call. The Agent runs SteamCMD
-	// in a one-shot container under its own three-minute limit, and may pull
-	// the image first.
-	appBuildsTimeout = 5 * time.Minute
+	// appBuildsTimeout bounds one GetAppBuilds call: the Agent's own worst
+	// case — an image refresh that waits up to the start pull budget, then a
+	// SteamCMD session it caps at three minutes (a Hyper-V steam-win boot and
+	// SteamCMD's self-update both fit inside that) — plus the Panel's usual
+	// margin. Shorter, and the Panel would give up on a session the Agent is
+	// still running and would have answered.
+	appBuildsTimeout = 3*time.Minute + powerbudget.StartPullBudget + powerbudget.DeadlineMargin
 	// manifestTimeout bounds one manifest read: a few KB off the node's disk.
 	manifestTimeout = 30 * time.Second
 )
+
+// ServerCheckTimeout is long enough for CheckServer to finish against an
+// Agent at its slowest: the GetAppBuilds call, then the manifest read. A
+// caller with an operator waiting caps the check here, and no lower.
+var ServerCheckTimeout = appBuildsTimeout + manifestTimeout
+
+// livenessTimeout bounds one liveness probe. The probe runs detached from
+// the caller's cancellation (see liveness), so it needs a bound of its own.
+const livenessTimeout = 15 * time.Second
 
 // maxManifestBytes caps a manifest read. A real one is a few KB; anything
 // past this is not a manifest worth parsing.
@@ -347,7 +360,8 @@ type liveness struct {
 }
 
 type liveProbe struct {
-	once sync.Once
+	mu   sync.Mutex
+	done bool
 	err  error
 }
 
@@ -355,7 +369,16 @@ func newLiveness(probe LiveFunc) *liveness {
 	return &liveness{probe: probe, seen: map[string]*liveProbe{}}
 }
 
+// check probes n once per pass. The probe runs on a context detached from the
+// caller's cancellation and bounded on its own: a pass whose context ends
+// partway must not record "context canceled" as the node's answer — that
+// would read as "node offline" for every later server on it, and the probe's
+// own write would store the node offline. A caller whose context has already
+// ended is told so, and nothing is cached for it.
 func (l *liveness) check(ctx context.Context, n *cluster.Node) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	p, ok := l.seen[n.ID]
 	if !ok {
@@ -363,9 +386,32 @@ func (l *liveness) check(ctx context.Context, n *cluster.Node) error {
 		l.seen[n.ID] = p
 	}
 	l.mu.Unlock()
-	p.once.Do(func() { p.err = l.probe(ctx, n) })
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.done {
+		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), livenessTimeout)
+		p.err = l.probe(pctx, n)
+		cancel()
+		p.done = true
+	}
 	return p.err
 }
+
+// timedOut reports whether err is a deadline or a cancellation, from the
+// context or from the gRPC status that carries one.
+func timedOut(err error) bool {
+	switch status.Code(err) {
+	case codes.DeadlineExceeded, codes.Canceled:
+		return true
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+}
+
+// errOutOfTime is what a check records when its caller's time ran out before
+// it could finish. The Agent's SteamCMD session is not stopped by that, and a
+// check asked again shortly finds its answer.
+var errOutOfTime = errors.New("the check ran out of time before it finished; SteamCMD may still be running on the node — check again shortly")
 
 // checkGroup asks for the group's available builds once, reads each member's
 // manifest, writes each member's row, and returns the results by server id.
@@ -378,10 +424,19 @@ func (c *Checker) checkGroup(ctx context.Context, g group, live *liveness) map[s
 		b.CheckedAt = &now
 		var problems []string
 
-		if installed, err := c.installedBuild(ctx, m, live); err != nil {
-			problems = append(problems, err.Error())
-		} else {
-			b.InstalledBuild = installed
+		switch {
+		case ctx.Err() != nil:
+			// Out of time before the manifest could be read. Said once: when
+			// the builds call is what ran out, its own error already says so.
+			if buildsErr == nil {
+				problems = append(problems, errOutOfTime.Error())
+			}
+		default:
+			if installed, err := c.installedBuild(ctx, m, live); err != nil {
+				problems = append(problems, err.Error())
+			} else {
+				b.InstalledBuild = installed
+			}
 		}
 		if buildsErr != nil {
 			problems = append(problems, buildsErr.Error())
@@ -442,6 +497,9 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 
 	var last error
 	for _, n := range candidates {
+		if ctx.Err() != nil {
+			return nil, errOutOfTime
+		}
 		if err := live.check(ctx, n); err != nil {
 			last = fmt.Errorf("node %s is offline: %v", nodeLabel(n), err)
 			continue
@@ -456,6 +514,16 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 		cancel()
 		if status.Code(err) == codes.Unimplemented {
 			last = fmt.Errorf("the agent on node %s predates the build check; update it from the node's page", nodeLabel(n))
+			continue
+		}
+		if err != nil && timedOut(err) {
+			// The Agent's session runs on regardless, and answers the next
+			// caller from the same SteamCMD run; the raw context error would
+			// tell the operator nothing of that.
+			last = fmt.Errorf("node %s did not answer the build check in time; SteamCMD may still be running there — check again shortly", nodeLabel(n))
+			if ctx.Err() != nil {
+				return nil, last
+			}
 			continue
 		}
 		if err != nil {
@@ -484,8 +552,16 @@ func (c *Checker) installedBuild(ctx context.Context, m member, live *liveness) 
 	if err != nil {
 		return "", fmt.Errorf("connect to node %s: %v", nodeLabel(m.node), err)
 	}
-	return ReadInstalledBuild(ctx, client, m.sv.ID, m.uc)
+	build, err := ReadInstalledBuild(ctx, client, m.sv.ID, m.uc)
+	if errors.Is(err, errManifestTimeout) {
+		return "", fmt.Errorf("node %s did not return the manifest in time — check again shortly", nodeLabel(m.node))
+	}
+	return build, err
 }
+
+// errManifestTimeout marks a manifest read that ran out of time, so the check
+// records "try again" rather than a raw context error.
+var errManifestTimeout = errors.New("manifest read timed out")
 
 // ManifestPath is where SteamCMD keeps an app's manifest, relative to the
 // server's data dir: the install scripts force_install_dir the data dir
@@ -505,6 +581,9 @@ func ReadInstalledBuild(ctx context.Context, client agentpb.NodeServiceClient, s
 	resp, err := client.ReadFile(rctx, &agentpb.ReadFileRequest{ServerId: serverID, Path: path, MaxBytes: maxManifestBytes})
 	if status.Code(err) == codes.NotFound {
 		return "", fmt.Errorf("no %s in the data dir — the install has not written one", path)
+	}
+	if err != nil && timedOut(err) {
+		return "", fmt.Errorf("read %s: %w", path, errManifestTimeout)
 	}
 	if err != nil {
 		return "", fmt.Errorf("read %s: %v", path, status.Convert(err).Message())

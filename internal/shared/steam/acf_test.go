@@ -126,3 +126,17 @@ func TestParseAppManifestRejects(t *testing.T) {
 		})
 	}
 }
+
+// KeyValues escapes only \" \\ \n and \t; any other backslash is a literal
+// one — the separator in a Windows path — and must survive, exactly as
+// appinfo.go reads it.
+func TestParseAppManifestKeepsUnknownEscapes(t *testing.T) {
+	in := `"AppState" { "name" "C:\\steamcmd\bin\win64 \"x\"\tend\n" "buildid" "1" }`
+	m, err := ParseAppManifest([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "C:\\steamcmd\\bin\\win64 \"x\"\tend\n"; m.Name != want {
+		t.Fatalf("name = %q, want %q", m.Name, want)
+	}
+}

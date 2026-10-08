@@ -146,7 +146,13 @@ type countingClient struct {
 func (c countingClient) GetAppBuilds(ctx context.Context, in *agentpb.GetAppBuildsRequest, opts ...grpc.CallOption) (*agentpb.GetAppBuildsResponse, error) {
 	c.owner.calls.Add(1)
 	if g := c.owner.gate; g != nil {
-		<-g
+		// A held call still ends with its deadline, the way a SteamCMD
+		// session the Panel stopped waiting for does.
+		select {
+		case <-g:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	return c.NodeServiceClient.GetAppBuilds(ctx, in, opts...)
 }
@@ -347,6 +353,87 @@ func TestCheckAll_SingleFlight(t *testing.T) {
 	}
 	if h.checker.Running() {
 		t.Fatal("Running() = true after the pass ended")
+	}
+}
+
+// A check the Panel stops waiting for — its own per-call bound, or the
+// caller's deadline — records that it may still be running on the node and to
+// ask again, not a raw "context deadline exceeded".
+func TestCheckServer_TimeoutSaysTryAgain(t *testing.T) {
+	h := newHarness(t)
+	rt := h.node("n1")
+	h.spec("pal", "steam-base", steamScript, nil)
+	h.server("sv1", "pal", "n1", rt, store.StateOffline, true)
+	h.clients.gate = make(chan struct{}) // never released: SteamCMD still running
+	defer close(h.clients.gate)
+
+	old := appBuildsTimeout
+	appBuildsTimeout = 50 * time.Millisecond
+	defer func() { appBuildsTimeout = old }()
+	r, err := h.checker.CheckServer(context.Background(), "sv1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") {
+		t.Fatalf("per-call timeout: %+v", r)
+	}
+	if r.InstalledBuild != "100" {
+		t.Fatalf("the manifest is still read after the builds call timed out: %+v", r)
+	}
+
+	// The caller's own deadline ends first.
+	appBuildsTimeout = time.Hour
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	r, err = h.checker.CheckServer(ctx, "sv1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") {
+		t.Fatalf("caller deadline: %+v", r)
+	}
+	if b := h.row("sv1"); b.CheckError != r.Error {
+		t.Fatalf("the row should carry the same reason: %+v", b)
+	}
+}
+
+// A liveness probe runs detached from the caller's cancellation, and a caller
+// whose context has ended neither probes nor caches anything — so a fleet pass
+// cancelled partway cannot leave "context canceled" as a live node's answer
+// for the rest of the pass.
+func TestLivenessDoesNotCacheTheCallersCancellation(t *testing.T) {
+	var probes atomic.Int32
+	l := newLiveness(func(ctx context.Context, _ *cluster.Node) error {
+		probes.Add(1)
+		return ctx.Err() // a probe on the caller's context would fail here
+	})
+	n := &cluster.Node{ID: "n1"}
+
+	gone, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := l.check(gone, n); !errors.Is(err, context.Canceled) {
+		t.Fatalf("an ended caller: %v", err)
+	}
+	if probes.Load() != 0 {
+		t.Fatal("an ended caller probed the node")
+	}
+	if err := l.check(context.Background(), n); err != nil {
+		t.Fatalf("a live caller after it: %v (the cancellation was cached)", err)
+	}
+
+	// A caller whose context ends while the probe runs does not cancel it.
+	l = newLiveness(func(ctx context.Context, _ *cluster.Node) error {
+		probes.Add(1)
+		time.Sleep(30 * time.Millisecond)
+		return ctx.Err()
+	})
+	short, cancel2 := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel2()
+	if err := l.check(short, n); err != nil {
+		t.Fatalf("the probe saw the caller's deadline: %v", err)
+	}
+	if err := l.check(context.Background(), n); err != nil || probes.Load() != 2 {
+		t.Fatalf("second caller: err %v, probes %d (want the first probe's answer, cached)", err, probes.Load())
 	}
 }
 

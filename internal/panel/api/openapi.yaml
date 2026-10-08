@@ -639,8 +639,11 @@ paths:
         Reads the build in the server's appmanifest and asks the node's Agent
         for the branch's current build (one SteamCMD session, about twenty
         seconds), records both on the server and answers with the result —
-        the same object GET /servers/{id} carries as `update`. Capped at two
-        minutes. A node that cannot be reached, or an Agent that predates the
+        the same object GET /servers/{id} carries as `update`. Capped at a
+        little over four minutes, the Agent's own bound on a session plus a
+        margin; a check that runs out of time answers `unknown` and says to
+        try again shortly, since the session may still be finishing on the
+        node. A node that cannot be reached, or an Agent that predates the
         check, is not a refusal: the answer is `unknown` with the reason in
         `error`. A spec with no build to check answers `unsupported` and
         records nothing. Refused while the server is installing (the install

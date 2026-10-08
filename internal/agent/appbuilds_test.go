@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -264,23 +265,100 @@ func TestAppBuilds_UnknownAppIsNotRetried(t *testing.T) {
 
 // A session that never reached Steam answers every app with an error and
 // hands back its output, and is not retried.
+// A session that never reached Steam is the check failing, not every app:
+// the RPC answers Unavailable, which the Panel reads as "Steam could not be
+// asked" and starts on the installed tree. Its message ends with what
+// SteamCMD last printed, and it is not retried.
 func TestAppBuilds_SteamUnreachable(t *testing.T) {
 	d, ops := newAppInfoRuntime(t, []string{"Loading Steam API...\x1b[0mOK", "Connecting anonymously to Steam Public...FAILED (No Connection)"})
 	resp, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010", "896660")})
-	if err != nil {
-		t.Fatalf("a session that ran is a response, not an RPC error: %v", err)
+	if grpcstatus.Code(err) != codes.Unavailable {
+		t.Fatalf("want Unavailable, got resp=%v err=%v", resp, err)
 	}
-	d.appInfo.wg.Wait()
-	for _, b := range resp.GetBuilds() {
-		if b.GetBuildId() != "" || !strings.Contains(b.GetError(), "no app info at all") {
-			t.Errorf("build = %v", b)
+	msg := grpcstatus.Convert(err).Message()
+	for _, want := range []string{"no app info at all", "exit 0", "Steam was unreachable"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q lacks %q", msg, want)
 		}
 	}
-	if !strings.Contains(resp.GetRawTail(), "FAILED (No Connection)") {
-		t.Errorf("raw_tail should carry the login failure: %q", resp.GetRawTail())
+	lines := strings.Split(msg, "\n")
+	if last := lines[len(lines)-1]; last != "steamcmd's last output: Loading Steam API...OK | Connecting anonymously to Steam Public...FAILED (No Connection)" {
+		t.Errorf("last line = %q, want SteamCMD's last output, ANSI stripped", last)
 	}
-	if cfgs, _, _ := ops.snapshot(); len(cfgs) != 1 {
+	d.appInfo.wg.Wait()
+	cfgs, _, events := ops.snapshot()
+	if len(cfgs) != 1 {
 		t.Errorf("an unreachable Steam cost %d sessions, want 1", len(cfgs))
+	}
+	if !slices.Equal(events, []string{"create " + appInfoContainerName, "remove install-1"}) {
+		t.Errorf("events = %v, want the container removed", events)
+	}
+}
+
+// A session that ran out of time before printing any app block is the same
+// failure: Unavailable, no retry, the container force-removed.
+func TestAppBuilds_TimeoutWithNothingParsedIsUnavailable(t *testing.T) {
+	prev := appInfoRunTimeout
+	appInfoRunTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { appInfoRunTimeout = prev })
+
+	d, ops := newAppInfoRuntime(t, []string{"Loading Steam API...\x1b[0mOK", "Connecting anonymously to Steam Public..."})
+	ops.waitBlock = true
+	_, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010", "896660")})
+	if grpcstatus.Code(err) != codes.Unavailable {
+		t.Fatalf("want Unavailable, got %v", err)
+	}
+	msg := grpcstatus.Convert(err).Message()
+	if !strings.Contains(msg, "did not finish within 100ms") || !strings.HasSuffix(msg, "Connecting anonymously to Steam Public...") {
+		t.Errorf("message = %q", msg)
+	}
+	d.appInfo.wg.Wait()
+	cfgs, _, _ := ops.snapshot()
+	if len(cfgs) != 1 {
+		t.Errorf("a timed-out session was retried: %d sessions", len(cfgs))
+	}
+	ops.mu.Lock()
+	forced := slices.Clone(ops.forced)
+	ops.mu.Unlock()
+	if !slices.Equal(forced, []bool{true}) {
+		t.Errorf("removals forced = %v, want one forced removal", forced)
+	}
+}
+
+// The output quoted in an Unavailable error stays a few lines long, however
+// much SteamCMD printed, and keeps the end, where the reason is.
+func TestAppInfoLastLines(t *testing.T) {
+	var out strings.Builder
+	for i := range 200 {
+		out.WriteString(strings.Repeat("x", 40) + " line " + strconv.Itoa(i) + "\n\n")
+	}
+	got := appInfoLastLines(out.String(), appInfoErrorTailBytes)
+	if len(got) > appInfoErrorTailBytes+64 || !strings.HasSuffix(got, "line 199") || strings.Contains(got, "\n") {
+		t.Errorf("last lines (%d bytes) = %q", len(got), got)
+	}
+	if got := appInfoLastLines(strings.Repeat("y", 2000), 512); len(got) > 520 || !strings.HasPrefix(got, "…") {
+		t.Errorf("one long line should be cut to its end: %d bytes", len(got))
+	}
+	if got := appInfoLastLines("\x1b[0m\n\n", 512); got != "" {
+		t.Errorf("blank output = %q", got)
+	}
+}
+
+// One app missing among apps that did parse is that app's problem, not
+// Steam's: a response with a per-app error, after the one retry for it.
+func TestAppBuilds_MissingAmongParsedIsAnAppError(t *testing.T) {
+	pal := append([]string{appInfoPreamble}, appBlock("2394010", branchesBody("25247047"))...)
+	d, _ := newAppInfoRuntime(t, pal, pal)
+	resp, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010", "896660")})
+	if err != nil {
+		t.Fatalf("Steam answered, so this is a response: %v", err)
+	}
+	b := resp.GetBuilds()
+	if b[0].GetBuildId() != "25247047" || b[0].GetError() != "" {
+		t.Errorf("the app that parsed: %v", b[0])
+	}
+	if b[1].GetBuildId() != "" || !strings.Contains(b[1].GetError(), "no app info for app 896660") {
+		t.Errorf("the missing app: %v", b[1])
 	}
 }
 

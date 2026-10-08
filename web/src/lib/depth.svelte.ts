@@ -231,6 +231,28 @@ export function stateLabel(state: Server["state"] | undefined, updating: boolean
   return state.replace("_", " ");
 }
 
+/** The start control's face while the server is in a state where a start is
+ *  not the operator's to take: it is mid-install, mid-update or mid-restore,
+ *  and will boot (or come back) on its own when the pass lands. `waiting` is
+ *  what disables the button and gives it the busy look; `label` says what is
+ *  happening instead of "start", because a start that reads "start" while the
+ *  console sits still through a copy phase is an invitation to click it
+ *  (#392). The Panel already refuses such a start with 409; this is the
+ *  control telling the truth before the refusal. */
+export function startControl(
+  state: Server["state"] | undefined,
+  updating: boolean,
+): { label: string; waiting: boolean } {
+  switch (state) {
+    case "installing":
+      return { label: updating ? "updating…" : "installing…", waiting: true };
+    case "restoring":
+      return { label: "restoring…", waiting: true };
+    default:
+      return { label: "start", waiting: false };
+  }
+}
+
 /** Which pair of power controls a state offers: "stop" is stop + restart, and
  *  "start" is start (+ update, where the state allows it). Keyed off the store
  *  state and nothing else — never the `updating` label. */

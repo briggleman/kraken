@@ -19,6 +19,7 @@ import {
   surface,
   syncDepthFromFleet,
   syncUpdatePass,
+  startControl,
 } from "./depth.svelte";
 import { fleet } from "./fleet.svelte";
 import { serverMeta } from "./views.svelte";
@@ -454,5 +455,22 @@ describe("the fleet card", () => {
     expect(serverMeta(server("running"))).not.toContain("·  ");
     expect(serverMeta(server("running"))).not.toContain("updating");
     expect(serverMeta(server("install_failed"))).toContain("· install failed");
+  });
+});
+
+describe("startControl", () => {
+  it("is a plain start on a stopped, crashed or failed server", () => {
+    for (const st of ["offline", "crashed", "install_failed"] as const) {
+      expect(startControl(st, false)).toEqual({ label: "start", waiting: false });
+    }
+  });
+  it("waits and says what is happening while a pass or a restore runs", () => {
+    expect(startControl("installing", false)).toEqual({ label: "installing…", waiting: true });
+    expect(startControl("installing", true)).toEqual({ label: "updating…", waiting: true });
+    expect(startControl("restoring", false)).toEqual({ label: "restoring…", waiting: true });
+  });
+  it("never lets the updating latch change a state that is not installing", () => {
+    expect(startControl("offline", true)).toEqual({ label: "start", waiting: false });
+    expect(startControl(undefined, true)).toEqual({ label: "start", waiting: false });
   });
 });

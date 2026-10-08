@@ -403,19 +403,28 @@ func (s *Store) CreateServer(ctx context.Context, sv *store.Server) error {
 	if err != nil {
 		return err
 	}
+	b := sv.Build
 	_, err = s.pool.Exec(ctx,
-		`INSERT INTO servers (id, name, spec_id, node_id, state, data, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)`,
-		sv.ID, sv.Name, sv.SpecID, sv.NodeID, string(sv.State), string(data), sv.CreatedAt)
+		`INSERT INTO servers (id, name, spec_id, node_id, state, data, created_at,
+		   installed_build, available_build, available_build_at, update_checked_at, update_check_error)
+		 VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12)`,
+		sv.ID, sv.Name, sv.SpecID, sv.NodeID, string(sv.State), string(data), sv.CreatedAt,
+		nullText(b.InstalledBuild), nullText(b.AvailableBuild), b.AvailableBuildAt, b.CheckedAt, nullText(b.CheckError))
 	if isUniqueViolation(err) {
 		return store.ErrConflict
 	}
 	return err
 }
 
+// scanServer reads what every server query selects: the row's JSON document,
+// then the build-check columns that live beside it (see store.ServerBuild).
 func (s *Store) scanServer(row pgx.Row) (*store.Server, error) {
-	var data []byte
-	err := row.Scan(&data)
+	var (
+		data                           []byte
+		installed, available, checkErr *string
+		availableAt, checkedAt         *time.Time
+	)
+	err := row.Scan(&data, &installed, &available, &availableAt, &checkedAt, &checkErr)
 	if notFoundErr(err) {
 		return nil, store.ErrNotFound
 	}
@@ -426,15 +435,57 @@ func (s *Store) scanServer(row pgx.Row) (*store.Server, error) {
 	if err := json.Unmarshal(data, &sv); err != nil {
 		return nil, err
 	}
+	sv.Build = store.ServerBuild{
+		InstalledBuild:   deref(installed),
+		AvailableBuild:   deref(available),
+		AvailableBuildAt: availableAt,
+		CheckedAt:        checkedAt,
+		CheckError:       deref(checkErr),
+	}
 	return &sv, nil
 }
 
+// UpdateServerBuild writes the build-check columns alone; the row's JSON is
+// never touched, so it races no other writer of the server.
+func (s *Store) UpdateServerBuild(ctx context.Context, id string, b store.ServerBuild) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE servers SET installed_build=$2, available_build=$3, available_build_at=$4,
+		   update_checked_at=$5, update_check_error=$6 WHERE id=$1`,
+		id, nullText(b.InstalledBuild), nullText(b.AvailableBuild), b.AvailableBuildAt, b.CheckedAt, nullText(b.CheckError))
+	if err != nil {
+		if notFoundErr(err) {
+			return store.ErrNotFound
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+// nullText stores an empty string as NULL, so "never read" is one value in the
+// database rather than two.
+func nullText(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 func (s *Store) GetServer(ctx context.Context, id string) (*store.Server, error) {
-	return s.scanServer(s.pool.QueryRow(ctx, `SELECT data FROM servers WHERE id=$1`, id))
+	return s.scanServer(s.pool.QueryRow(ctx, `SELECT data, installed_build, available_build, available_build_at, update_checked_at, update_check_error FROM servers WHERE id=$1`, id))
 }
 
 func (s *Store) ListServers(ctx context.Context) ([]*store.Server, error) {
-	rows, err := s.pool.Query(ctx, `SELECT data FROM servers ORDER BY created_at`)
+	rows, err := s.pool.Query(ctx, `SELECT data, installed_build, available_build, available_build_at, update_checked_at, update_check_error FROM servers ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}

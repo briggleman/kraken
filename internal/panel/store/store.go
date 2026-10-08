@@ -290,6 +290,40 @@ type Server struct {
 	// when the ports are still free.
 	RetiredPorts map[string]int `json:"retired_ports,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`
+
+	// Build is the server's Steam build check (#392). It is read with the row
+	// but written only by ServerStore.UpdateServerBuild — UpdateServer leaves
+	// it as it is — and it never rides in the row's JSON. See ServerBuild.
+	Build ServerBuild `json:"-"`
+}
+
+// ServerBuild is what the most recent build check of a server found: the build
+// its install tree holds (from steamapps/appmanifest_<app>.acf) and the build
+// Steam has on the branch it follows.
+//
+// It is kept apart from the rest of the row on purpose. The check writes it
+// from a background job while every other writer of the server — a start, a
+// settings save, the reconciler — reads the row, edits it and writes the whole
+// thing back. Were the build part of that write, a check landing in between
+// would be undone by the next stale copy, and a stale check would undo a
+// fresher install. So it has its own columns and its own writer, and the two
+// never overwrite each other.
+type ServerBuild struct {
+	// InstalledBuild is the manifest's buildid; empty when it has never been
+	// read.
+	InstalledBuild string
+	// AvailableBuild is the branch's current build as SteamCMD reported it,
+	// and AvailableBuildAt Steam's timeupdated for it.
+	AvailableBuild   string
+	AvailableBuildAt *time.Time
+	// CheckedAt is when a check last ran, whatever it found; nil when none
+	// ever has.
+	CheckedAt *time.Time
+	// CheckError is why that check could not compare the two builds — the
+	// node was offline, the Agent predates the check, the manifest was not
+	// there — and empty when it could. The build fields keep what the last
+	// check that could read them found.
+	CheckError string
 }
 
 // ServerRetire is a retire in progress as the server row records it.
@@ -484,7 +518,13 @@ type ServerStore interface {
 	CreateServer(ctx context.Context, s *Server) error
 	GetServer(ctx context.Context, id string) (*Server, error)
 	ListServers(ctx context.Context) ([]*Server, error)
+	// UpdateServer writes the server row. It does NOT write Server.Build,
+	// whatever the passed copy holds: that is UpdateServerBuild's alone.
 	UpdateServer(ctx context.Context, s *Server) error
+	// UpdateServerBuild writes the server's build-check fields and nothing
+	// else, so a check never races the row's other writers (see ServerBuild).
+	// ErrNotFound when there is no such server.
+	UpdateServerBuild(ctx context.Context, id string, b ServerBuild) error
 	// DeleteServer deletes the server and, atomically with it, every schedule
 	// that targets it. A schedule has no life of its own: one left behind fires
 	// forever against a server that no longer exists and fails with "load

@@ -1,6 +1,6 @@
 ---
 title: Servers
-description: Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.
+description: Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, the Steam build check, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.
 section: operate
 order: 31
 ---
@@ -163,6 +163,49 @@ the operator has since edited, or unconditionally re-downloads a large
 unversioned artifact is not. If you write specs, [Writing a
 spec](/wiki/specs/writing/) is the obligation in full.
 :::
+
+## The build check
+
+The Panel also knows whether a Steam server is on the current build without
+running the pass. It reads the `buildid` in the server's
+`steamapps/appmanifest_<app>.acf` and asks the node's Agent for the build Steam
+has on the branch, which is one SteamCMD session in a throwaway container from
+the game's image with no data directory mounted. The answer is on every server
+the API returns, as `update`:
+
+| `status` | what it means |
+| --- | --- |
+| `current` | the installed build is the branch's current one |
+| `available` | Steam has a newer build: `installed_build` and `available_build` say which two |
+| `unknown` | no check has run yet, or the last one could not compare, and `error` says why: the node was offline, its Agent predates the check, the manifest is not there |
+| `unsupported` | the spec has no Steam build to check |
+
+It runs at three moments:
+
+- **Daily**, for the whole fleet, about five minutes after the Panel starts and
+  then every `KRAKEN_UPDATE_CHECK_INTERVAL` (default `24h`, each wait varied by
+  up to 10%; `0` turns the timer off). Servers are grouped by game image and
+  platform, so the fleet costs one SteamCMD session per game, run on a node
+  that already hosts it. Servers that are installing, restoring or retired are
+  skipped. See [Panel configuration](/wiki/configure/panel/) for the variable.
+- **On demand**: `POST /servers/{id}/update-check` checks one server and answers
+  with the result, within two minutes, and `POST /servers/update-check` starts
+  a fleet pass in the background (`202`). Both take `server.power`; the fleet
+  pass also takes `server.any`, because it reads every server.
+- **After every install pass that lands**: create, reinstall, revive and the
+  update-on-start pass. The pass just pulled the current build, so it records
+  that build as both installed and available, and the install log says
+  `[panel] installed build <n>`.
+
+A spec gets the check without an edit when its install script runs
+`app_update`: it is checked for its `steam_app_ids` entry on the `public`
+branch. A spec can say otherwise in an `install.update_check` block:
+`{ method: steam, branch: experimental }` for a server that follows a beta
+branch, an `app_id` when the script installs a different app, or
+`{ method: none }` to opt out. Factorio opts out; it is not on Steam.
+
+The check reports. It does not yet change what a start does: update-on-start
+still runs the pass as described above.
 
 ## Reinstall as "update now"
 

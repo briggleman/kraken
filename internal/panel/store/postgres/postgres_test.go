@@ -458,3 +458,78 @@ func TestPostgresDeleteServerTakesItsSchedules(t *testing.T) {
 		t.Fatalf("second DeleteServer = %v, want ErrNotFound", err)
 	}
 }
+
+// The build check (#392) lives in its own columns: it round-trips through
+// UpdateServerBuild, reads back on both GetServer and ListServers, and a stale
+// copy written back with UpdateServer cannot undo it.
+func TestPostgresServerBuildColumns(t *testing.T) {
+	st := testDB(t)
+	ctx := context.Background()
+
+	sv := &store.Server{ID: uuid.NewString(), Name: "build", SpecID: uuid.NewString(), NodeID: uuid.NewString(), State: store.StateOffline, CreatedAt: time.Now().UTC()}
+	if err := st.CreateServer(ctx, sv); err != nil {
+		t.Fatalf("CreateServer: %v", err)
+	}
+	t.Cleanup(func() { _ = st.DeleteServer(ctx, sv.ID) })
+
+	// Never checked: every column NULL, read back as the zero value.
+	got, err := st.GetServer(ctx, sv.ID)
+	if err != nil {
+		t.Fatalf("GetServer: %v", err)
+	}
+	if got.Build != (store.ServerBuild{}) {
+		t.Fatalf("a new server's build = %+v, want zero", got.Build)
+	}
+	stale := got
+
+	at := time.Unix(1759921187, 0).UTC()
+	checked := time.Now().UTC().Truncate(time.Microsecond) // Postgres keeps microseconds
+	want := store.ServerBuild{InstalledBuild: "25247047", AvailableBuild: "25630937", AvailableBuildAt: &at, CheckedAt: &checked, CheckError: ""}
+	if err := st.UpdateServerBuild(ctx, sv.ID, want); err != nil {
+		t.Fatalf("UpdateServerBuild: %v", err)
+	}
+	check := func(label string, b store.ServerBuild) {
+		t.Helper()
+		if b.InstalledBuild != want.InstalledBuild || b.AvailableBuild != want.AvailableBuild ||
+			b.AvailableBuildAt == nil || !b.AvailableBuildAt.Equal(at) || b.CheckedAt == nil || !b.CheckedAt.Equal(checked) || b.CheckError != "" {
+			t.Fatalf("%s: build = %+v, want %+v", label, b, want)
+		}
+	}
+	got, _ = st.GetServer(ctx, sv.ID)
+	check("GetServer", got.Build)
+	all, err := st.ListServers(ctx)
+	if err != nil {
+		t.Fatalf("ListServers: %v", err)
+	}
+	for _, x := range all {
+		if x.ID == sv.ID {
+			check("ListServers", x.Build)
+		}
+	}
+
+	stale.Name = "renamed"
+	if err := st.UpdateServer(ctx, stale); err != nil {
+		t.Fatalf("UpdateServer: %v", err)
+	}
+	got, _ = st.GetServer(ctx, sv.ID)
+	if got.Name != "renamed" {
+		t.Fatalf("UpdateServer did not write the row: %+v", got)
+	}
+	check("after a stale UpdateServer", got.Build)
+
+	// An error is kept with the builds; clearing it stores NULL again.
+	want.CheckError = "the agent on node x predates the build check"
+	if err := st.UpdateServerBuild(ctx, sv.ID, want); err != nil {
+		t.Fatalf("UpdateServerBuild: %v", err)
+	}
+	if got, _ = st.GetServer(ctx, sv.ID); got.Build.CheckError != want.CheckError {
+		t.Fatalf("check error = %q, want %q", got.Build.CheckError, want.CheckError)
+	}
+
+	if err := st.UpdateServerBuild(ctx, uuid.NewString(), want); err != store.ErrNotFound {
+		t.Fatalf("UpdateServerBuild on a missing server = %v, want ErrNotFound", err)
+	}
+	if err := st.UpdateServerBuild(ctx, "not-a-uuid", want); err != store.ErrNotFound {
+		t.Fatalf("UpdateServerBuild on a malformed id = %v, want ErrNotFound", err)
+	}
+}

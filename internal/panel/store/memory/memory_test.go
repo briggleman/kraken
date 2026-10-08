@@ -65,3 +65,46 @@ func TestGetServerCopiesTheRetireFields(t *testing.T) {
 		t.Fatalf("editing a read server changed the stored one: %+v", b)
 	}
 }
+
+// The build check (#392) round-trips through its own writer, and the row's
+// ordinary writer cannot undo it: a stale copy of the server written back with
+// UpdateServer keeps the check that landed after the copy was read.
+func TestServerBuildRoundTripAndUpdateServerLeavesIt(t *testing.T) {
+	st := memory.New()
+	ctx := context.Background()
+	if err := st.CreateServer(ctx, &store.Server{ID: "sv", Name: "a", State: store.StateOffline}); err != nil {
+		t.Fatal(err)
+	}
+	stale, _ := st.GetServer(ctx, "sv")
+
+	at := time.Unix(1759921187, 0).UTC()
+	checked := time.Now().UTC()
+	want := store.ServerBuild{InstalledBuild: "100", AvailableBuild: "101", AvailableBuildAt: &at, CheckedAt: &checked, CheckError: "x"}
+	if err := st.UpdateServerBuild(ctx, "sv", want); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetServer(ctx, "sv")
+	if got.Build.InstalledBuild != "100" || got.Build.AvailableBuild != "101" || !got.Build.AvailableBuildAt.Equal(at) ||
+		!got.Build.CheckedAt.Equal(checked) || got.Build.CheckError != "x" {
+		t.Fatalf("build did not round-trip: %+v", got.Build)
+	}
+	// A reader's copy is its own.
+	*got.Build.CheckedAt = time.Time{}
+	if again, _ := st.GetServer(ctx, "sv"); again.Build.CheckedAt.IsZero() {
+		t.Fatal("editing a read server's build changed the stored one")
+	}
+
+	stale.Name = "renamed"
+	stale.Build = store.ServerBuild{InstalledBuild: "stale"}
+	if err := st.UpdateServer(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.GetServer(ctx, "sv")
+	if got.Name != "renamed" || got.Build.InstalledBuild != "100" {
+		t.Fatalf("UpdateServer: name %q build %+v; want the rename and the check kept", got.Name, got.Build)
+	}
+
+	if err := st.UpdateServerBuild(ctx, "missing", want); err != store.ErrNotFound {
+		t.Fatalf("UpdateServerBuild on a missing server = %v, want ErrNotFound", err)
+	}
+}

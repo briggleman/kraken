@@ -217,6 +217,11 @@ func run(logger *slog.Logger) error {
 	// batches, once shortly after boot and daily after that. No-op at 0.
 	srv.StartAuditPruner(reconcileCtx, 24*time.Hour)
 
+	// Steam build check (#392): every server's installed build against the
+	// build on its branch, five minutes after boot and every
+	// KRAKEN_UPDATE_CHECK_INTERVAL (default 24h) after that. No-op at 0.
+	srv.StartUpdateChecker(reconcileCtx)
+
 	// Reverse-tunnel listener: tunnel-mode Agents dial in here and the node
 	// pool routes their gRPC through the session. No-op when disabled.
 	srv.StartTunnel(reconcileCtx)

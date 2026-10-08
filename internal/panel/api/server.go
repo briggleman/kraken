@@ -23,6 +23,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/tunnel"
+	"github.com/briggleman/kraken/internal/panel/updatecheck"
 	"github.com/briggleman/kraken/internal/panel/webui"
 	"github.com/briggleman/kraken/internal/shared/mtls"
 	"github.com/briggleman/kraken/internal/shared/version"
@@ -122,6 +123,11 @@ type Server struct {
 	// if they are all the same private address — the signature of a NAT that
 	// has erased the client (see natwarn.go).
 	nat natDetector
+
+	// updates is the Steam build check (#392): the daily fleet pass, the
+	// on-demand checks, and the record an install pass leaves behind (see
+	// updatecheck.go).
+	updates *updatecheck.Checker
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -259,6 +265,7 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 	// bytes (from Panel auto-issue) beat file paths (operator override); no
 	// TLS at all → plaintext with a warning.
 	s.nodes = s.buildNodePool()
+	s.updates = updatecheck.New(s.store, s.nodes, s.ensureNodeLive, s.logger)
 	s.router = s.routes()
 	return s
 }
@@ -572,6 +579,13 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerCreate)).Post("/servers", s.handleCreateServer)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/power", s.handleServerLifecyclePower)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/reinstall", s.handleReinstallServer)
+			// The Steam build check (#392), on demand: one server, answered
+			// with the result; or the whole fleet, in the background. The
+			// fleet pass reads and records servers the caller may not own, so
+			// it also takes server.any.
+			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/update-check", s.handleServerUpdateCheck)
+			r.With(s.requirePermission(rbac.PermServerPower), s.requirePermission(rbac.PermServerAny)).
+				Post("/servers/update-check", s.handleFleetUpdateCheck)
 			r.With(s.requirePermission(rbac.PermServerDelete)).Delete("/servers/{id}", s.handleDeleteServer)
 			r.With(s.requirePermission(rbac.PermServerDelete)).Post("/servers/{id}/retire", s.handleRetireServer)
 			r.With(s.requirePermission(rbac.PermServerCreate)).Post("/servers/{id}/revive", s.handleReviveServer)

@@ -268,7 +268,41 @@ type Install struct {
 	// `validate` only touches depot-manifest files and so leaves the
 	// Doorstop/winhttp overlay intact across a game update.
 	BepInExScript string `json:"bepinex_script,omitempty"`
+
+	// UpdateCheck says how the Panel learns whether a server's installed build
+	// is still the current one (#392). Usually omitted: a spec whose install
+	// script runs `app_update` is checked against Steam with no edit (see
+	// UpdateCheckFor). Declare it to name another branch or app id, or set
+	// method none to opt out.
+	UpdateCheck *UpdateCheck `json:"update_check,omitempty"`
 }
+
+// The update-check methods.
+const (
+	// UpdateCheckSteam compares the build id in the server's
+	// steamapps/appmanifest_<app>.acf with the branch's current build, which
+	// the Agent asks SteamCMD for.
+	UpdateCheckSteam = "steam"
+	// UpdateCheckNone opts out: the build is never checked and reads as
+	// unsupported.
+	UpdateCheckNone = "none"
+)
+
+// UpdateCheck is how a server's build is checked.
+type UpdateCheck struct {
+	// Method is steam or none.
+	Method string `json:"method"`
+	// AppID is the Steam app whose build is compared. Zero takes the spec's
+	// steam_app_ids entry for the server's platform, which is the app the
+	// install script was rendered with.
+	AppID int `json:"app_id,omitempty"`
+	// Branch is the depot branch the install follows; empty means public.
+	Branch string `json:"branch,omitempty"`
+}
+
+// Steam reports whether the check is a Steam build-id check that can run: the
+// method is steam and there is an app id to ask about.
+func (u UpdateCheck) Steam() bool { return u.Method == UpdateCheckSteam && u.AppID > 0 }
 
 // StopKind selects how a running server is asked to shut down gracefully.
 type StopKind string
@@ -427,6 +461,82 @@ func (s *Spec) SkipUpdateOnStartFor(kind PlatformKind) bool {
 	return false
 }
 
+// UpdateCheckFor resolves the build check for servers on the given platform
+// kind.
+//
+// Without an update_check block the check is derived, so every Steam spec is
+// covered without an edit: an install script (the platform's own, else the
+// spec's) that runs `app_update` is checked against Steam, for the platform's
+// steam_app_ids entry on the public branch. Any other script is method none —
+// there is no manifest to read and no build to compare.
+//
+// A declared block wins. Its app id and branch fill in from the same
+// defaults when it leaves them out, so `{method: steam, branch: beta}` is a
+// whole declaration. A result with method steam but no app id cannot run
+// (UpdateCheck.Steam is false); Validate refuses such a spec when the block is
+// declared, and a derived one simply reads as unsupported.
+func (s *Spec) UpdateCheckFor(kind PlatformKind) UpdateCheck {
+	appID := s.SteamAppIDs[osFamily(kind)] // a nil map reads as 0
+	if d := s.Install.UpdateCheck; d != nil {
+		if d.Method != UpdateCheckSteam {
+			return UpdateCheck{Method: UpdateCheckNone}
+		}
+		out := UpdateCheck{Method: UpdateCheckSteam, AppID: d.AppID, Branch: d.Branch}
+		if out.AppID == 0 {
+			out.AppID = appID
+		}
+		if out.Branch == "" {
+			out.Branch = "public"
+		}
+		return out
+	}
+	if !strings.Contains(s.InstallScriptFor(kind), "app_update") {
+		return UpdateCheck{Method: UpdateCheckNone}
+	}
+	return UpdateCheck{Method: UpdateCheckSteam, AppID: appID, Branch: "public"}
+}
+
+// osFamily is the steam_app_ids key for a platform kind: linux for a Linux
+// server, windows for the Windows depot — which a linux-wine server runs too.
+func osFamily(kind PlatformKind) string {
+	if kind == LinuxNative {
+		return "linux"
+	}
+	return "windows"
+}
+
+// validateUpdateCheck rejects a declared update_check block the Panel could
+// not act on. A bad one does not fail loudly at runtime — it reads as unknown
+// or unsupported on every server, forever — so the author is told here.
+func (s *Spec) validateUpdateCheck() error {
+	d := s.Install.UpdateCheck
+	if d == nil {
+		return nil
+	}
+	switch d.Method {
+	case UpdateCheckNone:
+		return nil
+	case UpdateCheckSteam:
+	default:
+		return fmt.Errorf("spec %q: install.update_check.method must be %q or %q", s.Slug, UpdateCheckSteam, UpdateCheckNone)
+	}
+	if d.AppID < 0 {
+		return fmt.Errorf("spec %q: install.update_check.app_id must be a Steam app id", s.Slug)
+	}
+	// The branch names a key under the app's "branches" in SteamCMD's app
+	// info; a name with whitespace or a quote in it is no branch Steam has.
+	if strings.ContainsAny(d.Branch, " \t\r\n\"'\\") {
+		return fmt.Errorf("spec %q: install.update_check.branch %q is not a branch name", s.Slug, d.Branch)
+	}
+	for _, p := range s.Platforms {
+		if !s.UpdateCheckFor(p.Kind).Steam() {
+			return fmt.Errorf("spec %q: install.update_check.method is steam but %s has no app id — set install.update_check.app_id or steam_app_ids.%s",
+				s.Slug, p.Kind, osFamily(p.Kind))
+		}
+	}
+	return nil
+}
+
 // Validate performs structural validation beyond JSON Schema: it enforces
 // invariants the rest of the system relies on (non-empty identifiers, known
 // enums, at least one platform and one port, etc.).
@@ -506,6 +616,9 @@ func (s *Spec) Validate() error {
 		return err
 	}
 	if err := s.validateQuery(); err != nil {
+		return err
+	}
+	if err := s.validateUpdateCheck(); err != nil {
 		return err
 	}
 	return nil

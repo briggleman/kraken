@@ -295,6 +295,43 @@ query:
   methods, and a `log` regex that does not compile or captures neither group,
   because every one of those fails silently at runtime as "players unknown".
 
+## The `update_check:` block — is the installed build current
+
+Optional, and usually left out. The Panel checks each server's Steam build
+(#392): the `buildid` in the data dir's `steamapps/appmanifest_<app>.acf`
+against the branch's current build, which the Agent asks SteamCMD for. It runs
+daily, on demand, and after every install pass, and the server reports
+`current`, `available`, `unknown` or `unsupported`.
+
+**The default is derived, so a Steam spec needs no edit.** When the install
+script for a platform (its `install_script`, else `install.script`) contains
+`app_update`, servers on that platform are checked for that platform's
+`steam_app_ids` entry (`linux` for linux-native, `windows` for windows-native
+and linux-wine) on the `public` branch. A script without `app_update` has no
+build to check and reports `unsupported`.
+
+Declare the block only to change that:
+
+```yaml
+install:
+  script: >-
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} -beta experimental validate +quit
+  update_check: { method: steam, branch: experimental }   # app_id still comes from steam_app_ids
+```
+
+| field | meaning |
+| --- | --- |
+| `method` | `steam` (compare against Steam) or `none` (opt out; the check reports `unsupported`). Required in a declared block. |
+| `app_id` | the Steam app to compare; default the platform's `steam_app_ids` entry — the app `{{APP_ID}}` renders to. |
+| `branch` | the depot branch the install follows; default `public`. It must match the `-beta` the script passes, or the check compares against the wrong branch. |
+
+- `factorio.yaml` sets `method: none` explicitly: it is not a Steam install,
+  and a factorio.com version check is a follow-up.
+- `Validate` rejects an unknown method, a negative `app_id`, a branch name with
+  whitespace or quotes in it, and `method: steam` on a spec where some platform
+  has no app id to check, because each of those reads as `unknown` or
+  `unsupported` on every server, forever, without saying why.
+
 ## Related
 
 - Spec schema: [`internal/shared/spec/spec.go`](../../../shared/spec/spec.go)

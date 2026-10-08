@@ -113,3 +113,30 @@ func TestDragonwildsOwnerIdIsRequired(t *testing.T) {
 		t.Fatal("OwnerId needs a label: it is what the refusal message names")
 	}
 }
+
+// Every bundled Steam spec is covered by the build check (#392) on every
+// platform it declares, with no update_check block of its own: the derivation
+// from the install script finds app_update and the platform's app id. The two
+// that are not Steam installs say so — Factorio explicitly, the Windows demo
+// by having no app_update to find.
+func TestBundledSpecsResolveTheBuildCheck(t *testing.T) {
+	entries, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	notSteam := map[string]bool{"factorio": true, "windemo": true}
+	for _, e := range entries {
+		for _, kind := range e.Spec.PlatformKinds() {
+			uc := e.Spec.UpdateCheckFor(kind)
+			switch {
+			case notSteam[e.ID] && uc.Steam():
+				t.Errorf("%s/%s: want no build check, got %+v", e.ID, kind, uc)
+			case !notSteam[e.ID] && (!uc.Steam() || uc.Branch != "public"):
+				t.Errorf("%s/%s: want a steam check on the public branch, got %+v", e.ID, kind, uc)
+			}
+		}
+	}
+	if f, ok := Get("factorio"); !ok || f.Spec.Install.UpdateCheck == nil || f.Spec.Install.UpdateCheck.Method != spec.UpdateCheckNone {
+		t.Error("factorio must opt out of the build check explicitly (install.update_check.method: none)")
+	}
+}

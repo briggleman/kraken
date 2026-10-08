@@ -204,7 +204,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	req := &agentpb.RestoreBackupRequest{ServerId: sv.ID, Id: backupID, Slug: s.serverSlug(ctx, sv)}
 	s.logger.Info("backup restore started", "server", sv.ID, "name", sv.Name, "backup", backupID)
 	go s.runRestore(client, req)
-	writeJSON(w, http.StatusAccepted, s.serverResponse(sv))
+	writeJSON(w, http.StatusAccepted, s.serverResponse(r.Context(), sv))
 }
 
 // opRefusal is an operation the Panel will not begin: the status, the

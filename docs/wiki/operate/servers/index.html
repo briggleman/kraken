@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Servers — Kraken wiki</title>
-<meta name="description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
+<meta name="description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, the Steam build check, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/servers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/servers/" />
 <meta property="og:title" content="Servers — Kraken wiki" />
-<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
+<meta property="og:description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, the Steam build check, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Servers — Kraken wiki" />
-<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
+<meta name="twitter:description" content="Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, the Steam build check, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -110,13 +110,14 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Servers</span></nav>
     <h1>Servers</h1>
-    <p class="lede">Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.</p>
+    <p class="lede">Deploying a server from a spec and running it afterwards — the ten lifecycle states, what update-on-start does before every start, when it deliberately does not run, the Steam build check, how to read a crash exit code, which settings wait for a restart, and what retiring, reviving and deleting a server permanently do.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#deploying">Deploying</a>
 <a class="toc-link lvl-2" href="#the-ten-states">The ten states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
+<a class="toc-link lvl-2" href="#the-build-check">The build check</a>
 <a class="toc-link lvl-2" href="#reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot;</a>
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>
@@ -330,6 +331,63 @@ spec</a> is the obligation in full.</p>
 </aside>
 
 
+<h2 id="the-build-check">The build check <a class="hlink" href="#the-build-check" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The Panel also knows whether a Steam server is on the current build without
+running the pass. It reads the <code>buildid</code> in the server&#39;s
+<code>steamapps/appmanifest_&lt;app&gt;.acf</code> and asks the node&#39;s Agent for the build Steam
+has on the branch, which is one SteamCMD session in a throwaway container from
+the game&#39;s image with no data directory mounted. The answer is on every server
+the API returns, as <code>update</code>:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th><code>status</code></th>
+<th>what it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>current</code></td>
+<td>the installed build is the branch&#39;s current one</td>
+</tr>
+<tr>
+<td><code>available</code></td>
+<td>Steam has a newer build: <code>installed_build</code> and <code>available_build</code> say which two</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>no check has run yet, or the last one could not compare, and <code>error</code> says why: the node was offline, its Agent predates the check, the manifest is not there</td>
+</tr>
+<tr>
+<td><code>unsupported</code></td>
+<td>the spec has no Steam build to check</td>
+</tr>
+</tbody></table>
+</div>
+<p>It runs at three moments:</p>
+<ul>
+<li><strong>Daily</strong>, for the whole fleet, about five minutes after the Panel starts and
+then every <code>KRAKEN_UPDATE_CHECK_INTERVAL</code> (default <code>24h</code>, each wait varied by
+up to 10%; <code>0</code> turns the timer off). Servers are grouped by game image and
+platform, so the fleet costs one SteamCMD session per game, run on a node
+that already hosts it. Servers that are installing, restoring or retired are
+skipped. See <a href="/wiki/configure/panel/">Panel configuration</a> for the variable.</li>
+<li><strong>On demand</strong>: <code>POST /servers/{id}/update-check</code> checks one server and answers
+with the result, within two minutes, and <code>POST /servers/update-check</code> starts
+a fleet pass in the background (<code>202</code>). Both take <code>server.power</code>; the fleet
+pass also takes <code>server.any</code>, because it reads every server.</li>
+<li><strong>After every install pass that lands</strong>: create, reinstall, revive and the
+update-on-start pass. The pass just pulled the current build, so it records
+that build as both installed and available, and the install log says
+<code>[panel] installed build &lt;n&gt;</code>.</li>
+</ul>
+<p>A spec gets the check without an edit when its install script runs
+<code>app_update</code>: it is checked for its <code>steam_app_ids</code> entry on the <code>public</code>
+branch. A spec can say otherwise in an <code>install.update_check</code> block:
+<code>{ method: steam, branch: experimental }</code> for a server that follows a beta
+branch, an <code>app_id</code> when the script installs a different app, or
+<code>{ method: none }</code> to opt out. Factorio opts out; it is not on Steam.</p>
+<p>The check reports. It does not yet change what a start does: update-on-start
+still runs the pass as described above.</p>
 <h2 id="reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot; <a class="hlink" href="#reinstall-as-quotupdate-nowquot" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><code>POST /servers/{id}/reinstall</code>, or the action in the UI, re-runs the install
 script once, immediately. It is both the retry for a failed install and the
@@ -576,6 +634,7 @@ way a retire&#39;s removal is owed; the answer carries <code>removal_pending: tr
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
+<a class="toc-link lvl-2" href="#the-build-check">The build check</a>
 <a class="toc-link lvl-2" href="#reinstall-as-quotupdate-nowquot">Reinstall as &quot;update now&quot;</a>
 <a class="toc-link lvl-2" href="#the-install-log">The install log</a>
 <a class="toc-link lvl-2" href="#reading-a-crash">Reading a crash</a>

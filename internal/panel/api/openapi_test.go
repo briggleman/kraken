@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/panel/updatecheck"
 )
 
 // TestOpenAPISpecValid parses the embedded OpenAPI document and asserts it is
@@ -33,6 +34,7 @@ func TestOpenAPISpecValid(t *testing.T) {
 	want := []string{
 		"/auth/login", "/servers", "/servers/{id}", "/servers/{id}/power",
 		"/servers/{id}/retire", "/servers/{id}/revive",
+		"/servers/{id}/update-check", "/servers/update-check",
 		"/servers/{id}/schedules", "/specs", "/nodes", "/agents/enroll",
 		"/agents/bootstrap-tokens", "/audit",
 	}
@@ -218,6 +220,31 @@ func TestOpenAPIServerStateEnumMatchesStore(t *testing.T) {
 	}
 	if got := doc.Components.Schemas.ServerState.Enum; !slices.Equal(got, want) {
 		t.Errorf("ServerState enum = %v, want store.ServerStates() = %v", got, want)
+	}
+}
+
+// The build check's status (#392) is what a client branches on, so the
+// document names exactly the four the Checker reports, and every server
+// carries the block.
+func TestOpenAPIServerUpdateMatchesTheChecker(t *testing.T) {
+	var doc struct {
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]struct {
+					Enum []string `json:"enum"`
+				} `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	want := []string{updatecheck.StatusCurrent, updatecheck.StatusAvailable, updatecheck.StatusUnknown, updatecheck.StatusUnsupported}
+	if got := doc.Components.Schemas["ServerUpdate"].Properties["status"].Enum; !slices.Equal(got, want) {
+		t.Errorf("ServerUpdate.status enum = %v, want %v", got, want)
+	}
+	if _, ok := doc.Components.Schemas["Server"].Properties["update"]; !ok {
+		t.Error("Server does not declare `update`")
 	}
 }
 

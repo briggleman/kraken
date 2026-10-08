@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.60.0](https://github.com/briggleman/kraken/compare/v0.59.0...v0.60.0) (2026-10-08)
+
+
+### Features
+
+* **console:** step lines with durations on a system stream, set apart from installer output ([#393](https://github.com/briggleman/kraken/issues/393)) ([699e566](https://github.com/briggleman/kraken/commit/699e56646b88ef5d3c7c8098ca04ef3981ca9507))
+
 ## [0.59.0](https://github.com/briggleman/kraken/compare/v0.58.0...v0.59.0) (2026-09-25)
 
 

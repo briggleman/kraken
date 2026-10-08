@@ -17,8 +17,7 @@ func TestPower_UpdatePassWritesSystemStepLines(t *testing.T) {
 	addr, _ := startFakeAgentRuntime(t, "node-x")
 	nodeID := registerNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "update-steps", map[string]any{
-		"script":       "steamcmd +login anonymous +app_update {{APP_ID}} validate +quit",
-		"update_check": legacyUpdateCheck, // the pass's own lines; the check's are in handlers_server_startplan_test.go
+		"script": "steamcmd +login anonymous +app_update {{APP_ID}} validate +quit",
 	})
 	sv := seedOfflineServer(t, st, "sv-steps", nodeID, specID, nil)
 

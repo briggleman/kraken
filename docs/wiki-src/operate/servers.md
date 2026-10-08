@@ -75,19 +75,22 @@ After the stop (below), the Panel compares the build in the server's
 appmanifest with the build Steam has on the branch ([the build
 check](#the-build-check)), reusing a check from the last 10 minutes and asking
 Steam otherwise, which takes about twenty seconds. The console says which of
-four things happens:
+these happens:
 
 | the check found | what the start does | console line |
 | --- | --- | --- |
 | the installed build is current | **skips the pass**: re-pushes the spec, re-renders the config and starts | `build 25247047 is current, skipping the update pass` |
 | Steam has a newer build | runs the pass as below, then records the new build | `build 25247047 → 25630937, running the update pass` |
 | nothing to check: the spec is not a Steam install or opts out, or the node's Agent predates the check | runs the pass as below, as every start did before | `this game has no build to check, running the update pass`, or `update check unavailable (…)` |
-| the check failed: Steam unreachable, the manifest missing or unreadable, an error from the node | **starts on the installed tree** without the pass. The reason stays on the server, whose build reads `unknown`. It never lands `install_failed` over a check | `update check failed (<reason>), starting on installed build 25247047` |
+| the node or its Agent could not be reached, the Agent could not run SteamCMD, or the check ran out of time | **starts on the installed tree** without the pass. The reason stays on the server, whose build reads `unknown`, and it never lands `install_failed` over a check | `update check failed (<reason>), starting on installed build 25247047` |
+| the check failed for a reason about the server: the manifest missing or unreadable, an app Steam does not know | runs the pass as before; it records the build when it lands | `update check could not read the installed build (…), running the update pass`, or `… could not get Steam's current build (…)` |
 
-A failed check starts on what is there because the tree was good at the last
-start, and a pass that cannot reach Steam is what stranded servers in
+An unreachable check starts on what is there because the tree was good at the
+last start, and a pass that cannot reach Steam is what stranded servers in
 `install_failed` during the 2026-09-25 Steam outage. Reinstall is the way to
-force a pass. Two things run the pass whatever the check says: a launch
+force a pass. Any other failure runs the pass, because skipping it would leave
+a server whose manifest is missing never updating again. Two things run the
+pass whatever the check says: a launch
 variable edited since the last install (the install script is rendered from
 the variables, so the server's `update_pass_owed` is set until a pass lands),
 and a check the spec or the node cannot do at all. The console also shows

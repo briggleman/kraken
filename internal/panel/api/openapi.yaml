@@ -529,9 +529,11 @@ paths:
         Otherwise the server is stopped and its Steam build checked (a check
         from the last 10 minutes is reused): a current build skips the pass, a
         newer build on Steam runs it, a spec with no build to check or an
-        Agent that predates the check runs it, and a check that fails starts
-        the server on the installed tree without it, leaving the reason in
-        the server's `update.error`. A launch-variable edit since the last
+        Agent that predates the check runs it, a check that could not reach
+        the node or its Agent (or ran out of time) starts the server on the
+        installed tree without it, and any other failed check (a missing
+        manifest, an app Steam does not know) runs it. A failed check leaves
+        its reason in the server's `update.error`. A launch-variable edit since the last
         install runs the pass whatever the build says.
         This path is asynchronous: the
         response is then 202 with state `installing` (the console streams the

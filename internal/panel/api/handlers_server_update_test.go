@@ -119,11 +119,6 @@ func installOnFake(t *testing.T, rt *agent.FakeRuntime, serverID, appID string) 
 	}
 }
 
-// legacyUpdateCheck is the update_check block for the specs of tests about the
-// pass itself — its scripts, its step lines, its failures — which opt out of
-// the build check (#392) so every start runs the pass as it did before.
-var legacyUpdateCheck = map[string]any{"method": "none"}
-
 // TestPower_RestartRunsUpdatePass — a restart takes the same path (stop, update,
 // start) rather than the Agent's straight restart.
 func TestPower_RestartRunsUpdatePass(t *testing.T) {
@@ -205,7 +200,6 @@ func TestPower_UpdatePassExcludesBepInExScript(t *testing.T) {
 	nodeID := registerNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "update-bepinex", map[string]any{
 		"script":             "steamcmd +app_update {{APP_ID}} validate +quit",
-		"update_check":       legacyUpdateCheck,
 		"bepinex_compatible": true,
 		"bepinex_script":     "curl -L bepinex.zip | unzip-into /data",
 	})

@@ -61,7 +61,7 @@ func TestPower_UpdatePassRecoversFromAFailedSteamCommit(t *testing.T) {
 			addr, rt := startFakeAgentRuntime(t, "node-x",
 				agent.WithFakeInstallOutcomes(tc.outcomes...), agent.WithFakeDataDir(t.TempDir()))
 			nodeID := registerNode(t, h, token, addr)
-			specID := createSpecWithInstall(t, h, token, "update-rf", map[string]any{"script": "steamcmd +app_update 4019830 validate +quit", "update_check": legacyUpdateCheck})
+			specID := createSpecWithInstall(t, h, token, "update-rf", map[string]any{"script": "steamcmd +app_update 4019830 validate +quit"})
 			sv := seedOfflineServer(t, st, "sv-rf", nodeID, specID, nil)
 			// The orphan goes on real disk: the fake runs the Agent's real
 			// scanner over its data dir.

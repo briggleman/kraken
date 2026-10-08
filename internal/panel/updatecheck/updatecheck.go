@@ -58,6 +58,17 @@ type Result struct {
 	// cannot run there at all, which is not the same as a check that failed.
 	// Not part of the API: it is only known for a check just run.
 	AgentPredates bool `json:"-"`
+	// Unreachable is set by a check that ran when it failed because the node
+	// or its Agent could not be reached or did not answer in time — the
+	// liveness probe failed, the connection failed, the Agent answered
+	// Unavailable, or the check timed out. Such a failure says nothing about
+	// the server's tree, and a start goes ahead on it without the pass. Any
+	// other failure (a manifest missing or unreadable, an app Steam does not
+	// know) is about this server, and a start runs the pass as before #392.
+	Unreachable bool `json:"-"`
+	// InstalledUnread is set by a check that ran when it could not read the
+	// installed build, so a start can say which half of the check failed.
+	InstalledUnread bool `json:"-"`
 }
 
 // agentPredatesError is the builds error of a group whose last answer was an
@@ -425,7 +436,26 @@ func timedOut(err error) bool {
 // errOutOfTime is what a check records when its caller's time ran out before
 // it could finish. The Agent's SteamCMD session is not stopped by that, and a
 // check asked again shortly finds its answer.
-var errOutOfTime = errors.New("the check ran out of time before it finished; SteamCMD may still be running on the node — check again shortly")
+var errOutOfTime error = &unreachableError{"the check ran out of time before it finished; SteamCMD may still be running on the node — check again shortly"}
+
+// unreachableError is a check failure that says nothing about the server's
+// tree or its game: the node or the Agent could not be reached, or did not
+// answer in time. Result.Unreachable is set from it, and a start that sees it
+// goes ahead on the installed tree rather than run a pass that could not reach
+// Steam either. Every other failure — a manifest missing or unreadable, an
+// app Steam does not know — is about this server, and a start runs the pass.
+type unreachableError struct{ msg string }
+
+func (e *unreachableError) Error() string { return e.msg }
+
+func unreachablef(format string, a ...any) error {
+	return &unreachableError{fmt.Sprintf(format, a...)}
+}
+
+func isUnreachable(err error) bool {
+	var u *unreachableError
+	return errors.As(err, &u)
+}
 
 // checkGroup asks for the group's available builds once, reads each member's
 // manifest, writes each member's row, and returns the results by server id.
@@ -437,17 +467,22 @@ func (c *Checker) checkGroup(ctx context.Context, g group, live *liveness) map[s
 		now := c.now().UTC()
 		b.CheckedAt = &now
 		var problems []string
+		unreachable := isUnreachable(buildsErr)
+		installedUnread := false
 
 		switch {
 		case ctx.Err() != nil:
 			// Out of time before the manifest could be read. Said once: when
 			// the builds call is what ran out, its own error already says so.
+			unreachable = true
 			if buildsErr == nil {
 				problems = append(problems, errOutOfTime.Error())
 			}
 		default:
 			if installed, err := c.installedBuild(ctx, m, live); err != nil {
 				problems = append(problems, err.Error())
+				unreachable = unreachable || isUnreachable(err)
+				installedUnread = true
 			} else {
 				b.InstalledBuild = installed
 			}
@@ -483,6 +518,8 @@ func (c *Checker) checkGroup(ctx context.Context, g group, live *liveness) map[s
 		r := fromBuild(b)
 		var old *agentPredatesError
 		r.AgentPredates = errors.As(buildsErr, &old)
+		r.Unreachable = unreachable
+		r.InstalledUnread = installedUnread
 		out[m.sv.ID] = r
 		if r.Status == StatusUnknown {
 			c.logger.Info("build check: could not compare builds", "server", m.sv.ID, "name", m.sv.Name, "reason", b.CheckError)
@@ -517,12 +554,12 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 			return nil, errOutOfTime
 		}
 		if err := live.check(ctx, n); err != nil {
-			last = fmt.Errorf("node %s is offline: %v", nodeLabel(n), err)
+			last = unreachablef("node %s is offline: %v", nodeLabel(n), err)
 			continue
 		}
 		client, err := c.clients.Client(n.DialTarget())
 		if err != nil {
-			last = fmt.Errorf("connect to node %s: %v", nodeLabel(n), err)
+			last = unreachablef("connect to node %s: %v", nodeLabel(n), err)
 			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, appBuildsTimeout)
@@ -536,10 +573,17 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 			// The Agent's session runs on regardless, and answers the next
 			// caller from the same SteamCMD run; the raw context error would
 			// tell the operator nothing of that.
-			last = fmt.Errorf("node %s did not answer the build check in time; SteamCMD may still be running there — check again shortly", nodeLabel(n))
+			last = unreachablef("node %s did not answer the build check in time; SteamCMD may still be running there — check again shortly", nodeLabel(n))
 			if ctx.Err() != nil {
 				return nil, last
 			}
+			continue
+		}
+		if status.Code(err) == codes.Unavailable {
+			// The Agent could not run SteamCMD at all (the check container
+			// would not start, its log stream broke) or the call never
+			// reached it.
+			last = unreachablef("ask node %s for the current builds: %v", nodeLabel(n), status.Convert(err).Message())
 			continue
 		}
 		if err != nil {
@@ -562,15 +606,15 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 // node.
 func (c *Checker) installedBuild(ctx context.Context, m member, live *liveness) (string, error) {
 	if err := live.check(ctx, m.node); err != nil {
-		return "", fmt.Errorf("node %s is offline, so the installed build could not be read: %v", nodeLabel(m.node), err)
+		return "", unreachablef("node %s is offline, so the installed build could not be read: %v", nodeLabel(m.node), err)
 	}
 	client, err := c.clients.Client(m.node.DialTarget())
 	if err != nil {
-		return "", fmt.Errorf("connect to node %s: %v", nodeLabel(m.node), err)
+		return "", unreachablef("connect to node %s: %v", nodeLabel(m.node), err)
 	}
 	build, err := ReadInstalledBuild(ctx, client, m.sv.ID, m.uc)
 	if errors.Is(err, errManifestTimeout) {
-		return "", fmt.Errorf("node %s did not return the manifest in time — check again shortly", nodeLabel(m.node))
+		return "", unreachablef("node %s did not return the manifest in time — check again shortly", nodeLabel(m.node))
 	}
 	return build, err
 }
@@ -600,6 +644,9 @@ func ReadInstalledBuild(ctx context.Context, client agentpb.NodeServiceClient, s
 	}
 	if err != nil && timedOut(err) {
 		return "", fmt.Errorf("read %s: %w", path, errManifestTimeout)
+	}
+	if status.Code(err) == codes.Unavailable {
+		return "", unreachablef("read %s: %v", path, status.Convert(err).Message())
 	}
 	if err != nil {
 		return "", fmt.Errorf("read %s: %v", path, status.Convert(err).Message())

@@ -226,7 +226,7 @@ the pass when there is nothing to pull.</p>
 appmanifest with the build Steam has on the branch (<a href="#the-build-check">the build
 check</a>), reusing a check from the last 10 minutes and asking
 Steam otherwise, which takes about twenty seconds. The console says which of
-four things happens:</p>
+these happens:</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -251,16 +251,23 @@ four things happens:</p>
 <td><code>this game has no build to check, running the update pass</code>, or <code>update check unavailable (…)</code></td>
 </tr>
 <tr>
-<td>the check failed: Steam unreachable, the manifest missing or unreadable, an error from the node</td>
-<td><strong>starts on the installed tree</strong> without the pass. The reason stays on the server, whose build reads <code>unknown</code>. It never lands <code>install_failed</code> over a check</td>
+<td>the node or its Agent could not be reached, the Agent could not run SteamCMD, or the check ran out of time</td>
+<td><strong>starts on the installed tree</strong> without the pass. The reason stays on the server, whose build reads <code>unknown</code>, and it never lands <code>install_failed</code> over a check</td>
 <td><code>update check failed (&lt;reason&gt;), starting on installed build 25247047</code></td>
+</tr>
+<tr>
+<td>the check failed for a reason about the server: the manifest missing or unreadable, an app Steam does not know</td>
+<td>runs the pass as before; it records the build when it lands</td>
+<td><code>update check could not read the installed build (…), running the update pass</code>, or <code>… could not get Steam&#39;s current build (…)</code></td>
 </tr>
 </tbody></table>
 </div>
-<p>A failed check starts on what is there because the tree was good at the last
-start, and a pass that cannot reach Steam is what stranded servers in
+<p>An unreachable check starts on what is there because the tree was good at the
+last start, and a pass that cannot reach Steam is what stranded servers in
 <code>install_failed</code> during the 2026-09-25 Steam outage. Reinstall is the way to
-force a pass. Two things run the pass whatever the check says: a launch
+force a pass. Any other failure runs the pass, because skipping it would leave
+a server whose manifest is missing never updating again. Two things run the
+pass whatever the check says: a launch
 variable edited since the last install (the install script is rendered from
 the variables, so the server&#39;s <code>update_pass_owed</code> is set until a pass lands),
 and a check the spec or the node cannot do at all. The console also shows

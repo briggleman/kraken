@@ -378,6 +378,9 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 // that, where "0s" would hide that anything happened at all.
 func took(since time.Time) string {
 	d := time.Since(since)
+	if d < time.Millisecond {
+		return "<1ms" // never "0s": a line must not claim a phase took nothing
+	}
 	if d < time.Second {
 		return d.Round(time.Millisecond).String()
 	}
@@ -1290,10 +1293,11 @@ const (
 	startRunPass startAction = iota
 	// startSkipCurrent skips it: the installed build is the branch's current.
 	startSkipCurrent
-	// startSkipCheckFailed skips it because the check could not compare the
-	// builds: the tree was good at the last start, and a pass that cannot
-	// reach Steam is what stranded servers in install_failed on 2026-09-25.
-	// Reinstall is the way to force a pass.
+	// startSkipCheckFailed skips it because the check could not reach the
+	// node or its Agent, or ran out of time: the tree was good at the last
+	// start, and a pass that cannot reach Steam is what stranded servers in
+	// install_failed on 2026-09-25. Reinstall is the way to force a pass. A
+	// check that failed for a reason about the server itself does not skip.
 	startSkipCheckFailed
 )
 
@@ -1324,16 +1328,26 @@ type startPlan struct {
 //     predates the check: run the pass, as before;
 //   - current: skip it;
 //   - available: run it;
-//   - anything else is a check that failed — Steam unreachable, a missing or
-//     unreadable manifest, an Agent error, checkErr from the check itself —
-//     and starts on the installed tree. The failure stays on the row, so the
-//     server's build reads unknown until a check succeeds.
+//   - a check that could not reach the node or its Agent, or ran out of time
+//     (Result.Unreachable): start on the installed tree. A pass would need
+//     the same node to reach Steam, and the tree was good at the last start;
+//   - any other failed check — a missing or unreadable manifest, an app Steam
+//     does not know, checkErr from the check itself — is about this server,
+//     not about reaching Steam, so the pass runs as it did before #392.
+//     Skipping on those would leave a server that never updates again.
+//
+// A failure stays on the row either way, so the build reads unknown until a
+// check succeeds.
 func decideUpdatePass(sv *store.Server, res updatecheck.Result, checkErr error) startPlan {
+	reason := res.Error
+	if reason == "" {
+		reason = "no build was recorded"
+	}
 	switch {
 	case sv.UpdatePassOwed:
 		return startPlan{startRunPass, "[panel] launch variables changed since the last install, running the update pass"}
 	case checkErr != nil:
-		return startPlan{startSkipCheckFailed, checkFailedLine(checkErr.Error(), installedBuildOf(sv, res))}
+		return startPlan{startRunPass, "[panel] update check failed (" + checkErr.Error() + "), running the update pass"}
 	case res.Status == updatecheck.StatusUnsupported:
 		return startPlan{startRunPass, "[panel] this game has no build to check, running the update pass"}
 	case res.AgentPredates:
@@ -1342,20 +1356,16 @@ func decideUpdatePass(sv *store.Server, res updatecheck.Result, checkErr error) 
 		return startPlan{startSkipCurrent, "[panel] build " + res.InstalledBuild + " is current, skipping the update pass"}
 	case res.Status == updatecheck.StatusAvailable:
 		return startPlan{startRunPass, "[panel] build " + res.InstalledBuild + " → " + res.AvailableBuild + ", running the update pass"}
+	case res.Unreachable:
+		on := "the installed tree"
+		if b := installedBuildOf(sv, res); b != "" {
+			on = "installed build " + b
+		}
+		return startPlan{startSkipCheckFailed, "[panel] update check failed (" + reason + "), starting on " + on}
+	case res.InstalledUnread:
+		return startPlan{startRunPass, "[panel] update check could not read the installed build (" + reason + "), running the update pass"}
 	}
-	reason := res.Error
-	if reason == "" {
-		reason = "no build was recorded"
-	}
-	return startPlan{startSkipCheckFailed, checkFailedLine(reason, installedBuildOf(sv, res))}
-}
-
-func checkFailedLine(reason, build string) string {
-	on := "the installed tree"
-	if build != "" {
-		on = "installed build " + build
-	}
-	return "[panel] update check failed (" + reason + "), starting on " + on
+	return startPlan{startRunPass, "[panel] update check could not get Steam's current build (" + reason + "), running the update pass"}
 }
 
 // installedBuildOf is the best-known installed build: the check's, else the
@@ -1391,6 +1401,17 @@ func (s *Server) planUpdatePass(ctx context.Context, sv *store.Server, sp *spec.
 	cancel()
 	checkTook := took(began)
 	s.installs.AppendSystem(sv.ID, "[panel] build check took "+checkTook)
+	if err != nil {
+		// CheckServer failed before it could write the row (the spec or the
+		// node could not be loaded). Recorded anyway, so the build reads
+		// unknown with the same reason the console gives.
+		b := sv.Build
+		now := time.Now().UTC()
+		b.CheckedAt, b.CheckError = &now, err.Error()
+		if werr := s.store.UpdateServerBuild(context.WithoutCancel(ctx), sv.ID, b); werr != nil {
+			s.logger.Warn("could not record the failed build check", "server", sv.ID, "check_err", err, "err", werr)
+		}
+	}
 	return decideUpdatePass(sv, res, err), checkTook
 }
 

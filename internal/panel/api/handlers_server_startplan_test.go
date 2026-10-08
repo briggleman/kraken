@@ -210,11 +210,11 @@ func TestStart_OldAgentRunsThePass(t *testing.T) {
 	}
 }
 
-// A check that fails — Steam unreachable, or no manifest to read — starts on
-// the installed tree and never lands install_failed: running the pass is what
-// stranded servers during the 2026-09-25 Steam outage. The failure stays on
-// the row, so the build reads unknown.
-func TestStart_FailedCheckStartsOnTheInstalledTree(t *testing.T) {
+// A check the node's Agent could not answer (Unavailable: SteamCMD could not
+// run there) starts on the installed tree and never lands install_failed:
+// running the pass is what stranded servers during the 2026-09-25 Steam
+// outage. The failure stays on the row, so the build reads unknown.
+func TestStart_UnreachableCheckStartsOnTheInstalledTree(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)
 	nodeID, rt, _ := startPlanNode(t, h, token, "node-failed")
@@ -237,15 +237,33 @@ func TestStart_FailedCheckStartsOnTheInstalledTree(t *testing.T) {
 		t.Errorf("the failure should stay on the row: %+v", u)
 	}
 
-	// No manifest: nothing is known about the build, and it still starts.
-	rt.SetAppBuildsError(nil)
+}
+
+// A check that failed for a reason about the server itself — here, no
+// manifest to read — runs the pass as before #392: skipping would leave a
+// server that never updates again. The pass then records the build, so the
+// next check has one.
+func TestStart_ManifestMissingRunsThePass(t *testing.T) {
+	h, st := newTestServerStore(t)
+	token := login(t, h)
+	nodeID, rt, _ := startPlanNode(t, h, token, "node-bare")
+	specID := createSteamSpecWithConfig(t, h, token, "plan-bare")
 	bare := seedOfflineServer(t, st, "sv-no-manifest", nodeID, specID, nil)
-	lines = startAndSettle(t, h, token, bare.ID, "running")
-	if !strings.Contains(strings.Join(lines, "\n"), "), starting on the installed tree") {
-		t.Errorf("missing the failed-check line for an unknown build; lines: %q", lines)
+
+	lines := startAndSettle(t, h, token, bare.ID, "running")
+	if len(rt.InstallScripts(bare.ID)) != 1 {
+		t.Fatalf("install passes: %d, want one", len(rt.InstallScripts(bare.ID)))
 	}
-	if len(rt.InstallScripts(bare.ID)) != 0 {
-		t.Error("a pass ran although the check failed")
+	for _, want := range []string{
+		"[panel] update check could not read the installed build (no steamapps/appmanifest_730.acf",
+		"[panel] installed build 100",
+	} {
+		if !hasLine(lines, want) {
+			t.Errorf("missing %q; lines: %q", want, lines)
+		}
+	}
+	if u := getUpdate(t, h, token, bare.ID); u.Status != "current" || u.InstalledBuild != "100" {
+		t.Errorf("update after the pass: %+v", u)
 	}
 }
 

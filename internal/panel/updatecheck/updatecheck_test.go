@@ -206,7 +206,7 @@ func TestCheckServer_OldAgentIsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "predates the build check") || r.InstalledBuild != "100" || !r.AgentPredates {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "predates the build check") || r.InstalledBuild != "100" || !r.AgentPredates || r.Unreachable {
 		t.Fatalf("old agent: %+v", r)
 	}
 	if b := h.row("sv1"); !strings.Contains(b.CheckError, "predates") || b.CheckedAt == nil {
@@ -225,18 +225,27 @@ func TestCheckServer_UnknownReasons(t *testing.T) {
 	h.server("unknown-app", "other", "n1", rt, store.StateOffline, true)
 	ctx := context.Background()
 
+	// About the server itself: not Unreachable, so a start runs the pass.
 	r, _ := h.checker.CheckServer(ctx, "never-installed")
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "appmanifest_2394010.acf") {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "appmanifest_2394010.acf") || r.Unreachable || !r.InstalledUnread {
 		t.Errorf("missing manifest: %+v", r)
 	}
 	r, _ = h.checker.CheckServer(ctx, "unknown-app")
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "steam:") {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "steam:") || r.Unreachable {
 		t.Errorf("per-app error: %+v", r)
 	}
 
+	// The node itself: Unreachable, so a start goes ahead on the tree.
+	rt.SetAppBuildsError(grpcstatus.Error(codes.Unavailable, "steam build check: start kraken_appinfo: daemon gone"))
+	r, _ = h.checker.CheckServer(ctx, "unknown-app")
+	if r.Status != StatusUnknown || !r.Unreachable {
+		t.Errorf("agent unavailable: %+v", r)
+	}
+	rt.SetAppBuildsError(nil)
+
 	h.offline["n1"] = true
 	r, _ = h.checker.CheckServer(ctx, "never-installed")
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "offline") {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "offline") || !r.Unreachable {
 		t.Errorf("node offline: %+v", r)
 	}
 }
@@ -374,7 +383,7 @@ func TestCheckServer_TimeoutSaysTryAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") || !r.Unreachable {
 		t.Fatalf("per-call timeout: %+v", r)
 	}
 	if r.InstalledBuild != "100" {
@@ -389,7 +398,7 @@ func TestCheckServer_TimeoutSaysTryAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "check again shortly") || strings.Contains(r.Error, "context deadline") || !r.Unreachable {
 		t.Fatalf("caller deadline: %+v", r)
 	}
 	if b := h.row("sv1"); b.CheckError != r.Error {

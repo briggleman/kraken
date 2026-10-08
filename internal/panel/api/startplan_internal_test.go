@@ -33,14 +33,21 @@ func TestDecideUpdatePass(t *testing.T) {
 			startRunPass, "[panel] this game has no build to check, running the update pass"},
 		{"agent predates the check", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "the agent on node n predates the build check", AgentPredates: true}, nil,
 			startRunPass, "[panel] update check unavailable (the agent on node n predates the build check), running the update pass"},
-		{"steam unreachable", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, InstalledBuild: "100", Error: "steam: timed out"}, nil,
-			startSkipCheckFailed, "[panel] update check failed (steam: timed out), starting on installed build 100"},
-		{"manifest missing, earlier build known", known, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "no manifest"}, nil,
-			startSkipCheckFailed, "[panel] update check failed (no manifest), starting on installed build 77"},
-		{"nothing known", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "no manifest"}, nil,
-			startSkipCheckFailed, "[panel] update check failed (no manifest), starting on the installed tree"},
+		// Could not reach the node or the Agent, or ran out of time: start on
+		// what is there.
+		{"node unreachable, build known", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, InstalledBuild: "100", Error: "ask node n: unavailable", Unreachable: true}, nil,
+			startSkipCheckFailed, "[panel] update check failed (ask node n: unavailable), starting on installed build 100"},
+		{"node unreachable, earlier build on the row", known, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "node n is offline", Unreachable: true, InstalledUnread: true}, nil,
+			startSkipCheckFailed, "[panel] update check failed (node n is offline), starting on installed build 77"},
+		{"timed out, nothing known", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "the check ran out of time", Unreachable: true}, nil,
+			startSkipCheckFailed, "[panel] update check failed (the check ran out of time), starting on the installed tree"},
+		// A failure about the server itself: run the pass, as before #392.
+		{"manifest missing", known, updatecheck.Result{Status: updatecheck.StatusUnknown, Error: "no manifest", InstalledUnread: true}, nil,
+			startRunPass, "[panel] update check could not read the installed build (no manifest), running the update pass"},
+		{"unknown app on steam", plain, updatecheck.Result{Status: updatecheck.StatusUnknown, InstalledBuild: "100", Error: "steam: no app info for app 1"}, nil,
+			startRunPass, "[panel] update check could not get Steam's current build (steam: no app info for app 1), running the update pass"},
 		{"the check itself errored", plain, updatecheck.Result{}, errors.New("load node: boom"),
-			startSkipCheckFailed, "[panel] update check failed (load node: boom), starting on the installed tree"},
+			startRunPass, "[panel] update check failed (load node: boom), running the update pass"},
 		{"a variable edit owes the pass", owed, updatecheck.Result{Status: updatecheck.StatusCurrent, InstalledBuild: "100", AvailableBuild: "100"}, nil,
 			startRunPass, "[panel] launch variables changed since the last install, running the update pass"},
 	}

@@ -97,11 +97,20 @@ type appInfoFlight struct {
 // AppBuilds answers GetAppBuilds: the current build of each requested app and
 // branch, from one SteamCMD session for the whole request.
 //
-// Per-app trouble (an unknown app, a branch the anonymous account cannot see,
-// a block SteamCMD cut short) is reported in that app's error, with the end of
-// SteamCMD's output in raw_tail. The returned error is for a check that could
-// not run at all: a bad request, an image that is not on this node, a
-// container that would not start.
+// The contract the Panel decides a start on:
+//
+//   - Unavailable: Steam or the node could not be reached. SteamCMD printed
+//     no app block at all (its login failed, the node has no network, the
+//     session ran out of time first), or the check container would not be
+//     created, started or followed. The message's last line quotes the end
+//     of SteamCMD's output when there is any.
+//   - FailedPrecondition: the request cannot run here (the image is not on
+//     this node, or the platform is not this daemon's). InvalidArgument: the
+//     request is malformed.
+//   - A per-app error in the response: Steam answered, and that app is the
+//     problem (an unknown id, a branch the anonymous account cannot see, a
+//     block cut short or missing among apps that did parse), with the end of
+//     SteamCMD's output in raw_tail.
 func (d *DockerRuntime) AppBuilds(ctx context.Context, req *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
 	if len(req.GetApps()) == 0 {
 		return &agentpb.GetAppBuildsResponse{}, nil
@@ -267,6 +276,19 @@ func (d *DockerRuntime) runAppInfoCheck(img string, windows bool, ids []string, 
 		d.removeAppInfoContainer(first.id)
 		return
 	}
+	// A session that printed no app block at all never got through to Steam:
+	// the login failed, the node has no network, or it ran out of time first.
+	// That is the check failing, not every app at once, and it is the RPC's
+	// error (Unavailable) so the Panel can tell "Steam could not be asked"
+	// from "Steam answered and this app is the problem". It is not retried:
+	// a second session would only do the same again.
+	if !first.parsed {
+		f.err = appInfoUnreachable(first)
+		note(grpcstatus.Convert(f.err).Message())
+		finish()
+		d.removeAppInfoContainer(first.id)
+		return
+	}
 	f.apps, f.notes = map[string]steam.AppInfo{}, map[string]string{}
 	f.tail = first.output
 	mergeAppInfo(f, ids, first)
@@ -293,6 +315,52 @@ func (d *DockerRuntime) runAppInfoCheck(img string, windows bool, ids []string, 
 
 	finish()
 	d.removeAppInfoContainer(first.id)
+}
+
+// appInfoUnreachable is the RPC error for a session that printed no app block
+// at all. Its last line is the end of what SteamCMD printed, ANSI stripped,
+// so the reason ("FAILED (No Connection)") reaches whoever reads the error
+// without a trip to the node; raw_tail is not there to carry it, since an
+// error answer has no response body.
+func appInfoUnreachable(res appInfoResult) error {
+	why := fmt.Sprintf("steamcmd printed no app info at all (exit %d): its login failed or Steam was unreachable from this node", res.exit)
+	if res.timedOut {
+		why = fmt.Sprintf("steamcmd did not finish within %s and printed no app info: Steam was unreachable or too slow from this node", appInfoRunTimeout)
+	}
+	msg := "steam build check: " + why
+	if last := appInfoLastLines(res.output, appInfoErrorTailBytes); last != "" {
+		msg += "\nsteamcmd's last output: " + last
+	}
+	return grpcstatus.Error(codes.Unavailable, msg)
+}
+
+// appInfoErrorTailBytes bounds the output quoted in an Unavailable error. It
+// is shorter than raw_tail: the message ends up in the Panel's check error and
+// its log line, where a few lines say what happened and 4 KB would bury it.
+const appInfoErrorTailBytes = 512
+
+// appInfoLastLines returns the last non-empty lines of out, ANSI stripped,
+// joined with " | " on one line, at most about n bytes of them.
+func appInfoLastLines(out string, n int) string {
+	lines := strings.Split(steam.StripANSI(out), "\n")
+	var kept []string
+	size := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" {
+			continue
+		}
+		if size+len(l) > n && len(kept) > 0 {
+			break
+		}
+		if len(l) > n {
+			l = "…" + l[len(l)-n:]
+		}
+		kept = append(kept, l)
+		size += len(l) + 3
+	}
+	slices.Reverse(kept)
+	return strings.Join(kept, " | ")
 }
 
 // appInfoImage makes sure the check can run on img without turning it into a

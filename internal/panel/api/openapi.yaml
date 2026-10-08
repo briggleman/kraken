@@ -630,6 +630,63 @@ paths:
                   state: { $ref: '#/components/schemas/ServerState' }
         '409':
           description: The server is not in a stopped state
+  /servers/{id}/update-check:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    post:
+      tags: [Servers]
+      summary: Check the server's Steam build now
+      description: >-
+        Reads the build in the server's appmanifest and asks the node's Agent
+        for the branch's current build (one SteamCMD session, about twenty
+        seconds), records both on the server and answers with the result —
+        the same object GET /servers/{id} carries as `update`. Capped at a
+        little over four minutes, the Agent's own bound on a session plus a
+        margin; a check that runs out of time answers `unknown` and says to
+        try again shortly, since the session may still be finishing on the
+        node. A node that cannot be reached, or an Agent that predates the
+        check, is not a refusal: the answer is `unknown` with the reason in
+        `error`. A spec with no build to check answers `unsupported` and
+        records nothing. Refused while the server is installing (the install
+        records its own build when it lands), while a restore, retire or
+        revive holds it, and once it is retired. Requires server.power.
+      responses:
+        '200':
+          description: The check ran; the result is recorded on the server
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerUpdate' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `code: server_busy` — installing, or a retire or revive holds the
+            server. `code: server_restoring` — a backup restore is running.
+            `code: server_retired` — the server is on no node.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+  /servers/update-check:
+    post:
+      tags: [Servers]
+      summary: Check every server's Steam build, in the background
+      description: >-
+        Starts the pass the daily timer runs and answers at once: servers are
+        grouped by game image and platform, each group's current builds come
+        from one SteamCMD session on a node that hosts it, and each server's
+        manifest is read from its own node. Results land on the servers, where
+        GET /servers reads them. Servers that are installing, restoring,
+        retiring or retired are skipped. A pass already running is joined, not
+        doubled (`joined: true`). Requires server.power and server.any — the
+        pass reads and records every server, not only the caller's.
+      responses:
+        '202':
+          description: The pass is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running: { type: boolean }
+                  joined: { type: boolean, description: a pass was already running and this request joined it }
+        '403': { description: The caller lacks server.power or server.any }
   /servers/{id}/install-log:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -2035,6 +2092,36 @@ components:
             start within 30 minutes of it skips the update pass, which would
             only repeat an install that just ran.
         created_at: { type: string, format: date-time }
+        update: { $ref: '#/components/schemas/ServerUpdate' }
+    ServerUpdate:
+      type: object
+      description: >-
+        The Steam build check: the build the server's install tree holds (the
+        buildid in steamapps/appmanifest_<app>.acf) against the build Steam has
+        on the branch it follows. Recorded by the daily pass
+        (KRAKEN_UPDATE_CHECK_INTERVAL), by POST /servers/{id}/update-check and
+        POST /servers/update-check, and by every install pass that lands — a
+        pass pulls the current build, so it leaves both builds equal. The
+        status is worked out when the server is read, under the spec as it is
+        then.
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [current, available, unknown, unsupported]
+          description: >-
+            current — the installed build is the branch's current one.
+            available — Steam has a newer build; the next update pass installs
+            it. unknown — no check has run yet, or the last one could not
+            compare the builds; `error` says why (the node was offline, its
+            Agent predates the check, the manifest is missing). unsupported —
+            the spec has no build to check: its install is not a Steam
+            app_update, or it sets install.update_check.method none.
+        installed_build: { type: string, description: "the build on disk, as the last check that could read the manifest found it" }
+        available_build: { type: string, description: "the branch's current build, as the last check that could ask Steam found it" }
+        available_build_at: { type: string, format: date-time, description: "when Steam last updated the branch (its timeupdated), when it said" }
+        checked_at: { type: string, format: date-time, description: "when a check last ran, whatever it found" }
+        error: { type: string, description: "why the last check could not compare the builds; empty when it could" }
     InstallLogLine:
       type: object
       properties:
@@ -2114,6 +2201,23 @@ components:
             properties:
               kind: { type: string }
               image: { type: string }
+        install:
+          type: object
+          properties:
+            script: { type: string }
+            update_check:
+              type: object
+              description: >-
+                How the build check reads this game's build. Usually omitted: an
+                install script that runs app_update is checked against Steam for
+                the platform's steam_app_ids entry on the public branch. Declare
+                it to name another app id or branch, or set method none to opt
+                out (the check then reports unsupported).
+              required: [method]
+              properties:
+                method: { type: string, enum: [steam, none] }
+                app_id: { type: integer, description: "default: steam_app_ids for the server's platform" }
+                branch: { type: string, description: "default: public" }
         startup:
           type: object
           properties:

@@ -161,7 +161,7 @@ func (s *Server) handleRetireServer(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logger.Info("server retire started", "server", fresh.ID, "name", fresh.Name, "final_backup", finalBackup)
 	go s.runRetire(fresh.ID)
-	writeJSON(w, http.StatusAccepted, s.serverResponse(fresh))
+	writeJSON(w, http.StatusAccepted, s.serverResponse(r.Context(), fresh))
 }
 
 // retireRefusalFor says why sv cannot be retired now, or nil. The operation
@@ -935,7 +935,7 @@ func (s *Server) handleReviveServer(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("server revive started", "server", sv.ID, "name", sv.Name, "node", chosen.Name,
 		"ports", placement.Ports, "restore", req.RestoreBackupID, "start", req.Start)
 	go s.runRevive(sv, sp, chosen, req.SteamGuardCode, req.RestoreBackupID, req.Start)
-	writeJSON(w, http.StatusAccepted, s.serverResponse(sv))
+	writeJSON(w, http.StatusAccepted, s.serverResponse(r.Context(), sv))
 }
 
 // reviveCandidates narrows placement for a revive: the node asked for, else

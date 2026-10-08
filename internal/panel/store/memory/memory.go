@@ -316,10 +316,27 @@ func (s *Store) ListServers(_ context.Context) ([]*store.Server, error) {
 func (s *Store) UpdateServer(_ context.Context, sv *store.Server) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.servers[sv.ID]; !ok {
+	cur, ok := s.servers[sv.ID]
+	if !ok {
 		return store.ErrNotFound
 	}
-	s.servers[sv.ID] = cloneServer(sv)
+	next := cloneServer(sv)
+	// The build check is UpdateServerBuild's to write, as the Postgres store's
+	// separate columns make it there: a stale copy written back here must not
+	// undo a check that landed after it was read.
+	next.Build = cur.Build
+	s.servers[sv.ID] = next
+	return nil
+}
+
+func (s *Store) UpdateServerBuild(_ context.Context, id string, b store.ServerBuild) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.servers[id]
+	if !ok {
+		return store.ErrNotFound
+	}
+	cur.Build = cloneBuild(b)
 	return nil
 }
 
@@ -644,7 +661,20 @@ func cloneServer(sv *store.Server) *store.Server {
 			c.RetiredPorts[k] = v
 		}
 	}
+	c.Build = cloneBuild(sv.Build)
 	return &c
+}
+
+func cloneBuild(b store.ServerBuild) store.ServerBuild {
+	if b.AvailableBuildAt != nil {
+		at := *b.AvailableBuildAt
+		b.AvailableBuildAt = &at
+	}
+	if b.CheckedAt != nil {
+		at := *b.CheckedAt
+		b.CheckedAt = &at
+	}
+	return b
 }
 
 func cloneSchedule(t *store.ScheduledTask) *store.ScheduledTask {

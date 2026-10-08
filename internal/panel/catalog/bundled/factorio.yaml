@@ -38,6 +38,12 @@ install:
     fi
     mkdir -p /data/saves
     [ -f /data/saves/world.zip ] || /data/bin/x64/factorio --create /data/saves/world.zip
+  # The Panel's build check (#392) reads a SteamCMD appmanifest and asks Steam
+  # for the branch's current build; Factorio has neither, so it opts out and
+  # its servers report the build check as unsupported. The script above
+  # already makes a current tree cheap to "update". A factorio.com version
+  # check is a follow-up on #392, not something this spec can declare yet.
+  update_check: { method: none }
 startup:
   command: >-
     /data/bin/x64/factorio --start-server /data/saves/world.zip

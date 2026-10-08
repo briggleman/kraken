@@ -19,6 +19,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/scheduler"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/panel/updatecheck"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/powerbudget"
 	"github.com/briggleman/kraken/internal/shared/spec"
@@ -346,6 +347,9 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	}
 
 	s.installs.AppendSystem(server.ID, "[panel] install pass took "+took(began))
+	// Recorded before the row leaves `installing`, so the first read of the
+	// installed server already carries the build it was installed at.
+	s.recordInstalledBuild(ctx, server, sp, node)
 	s.installs.AppendSystem(server.ID, installCompleteLine(server.Name, prev != ""))
 	if s.markProvisioned(server.ID, server.Vars, time.Now().UTC()) {
 		// A revived server's schedules come back on with its first install
@@ -635,12 +639,20 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list servers")
 		return
 	}
+	// Every spec once, for the build checks: a spec that cannot be listed
+	// leaves each server's check reading unknown rather than failing the list.
+	specs := map[string]*spec.Spec{}
+	if all, serr := s.store.ListSpecs(r.Context()); serr == nil {
+		for _, sp := range all {
+			specs[sp.ID] = sp
+		}
+	}
 	// Scope the list to servers the caller may access (owner, or PermServerAny),
 	// and strip SFTP credential material from the response.
-	visible := make([]*store.Server, 0, len(servers))
+	visible := make([]*serverJSON, 0, len(servers))
 	for _, sv := range servers {
 		if s.mayAccessServer(r.Context(), sv) {
-			visible = append(visible, s.serverResponse(sv))
+			visible = append(visible, s.serverResponseWith(sv, specs[sv.SpecID]))
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"servers": visible})
@@ -659,7 +671,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.serverResponse(sv))
+	writeJSON(w, http.StatusOK, s.serverResponse(r.Context(), sv))
 }
 
 // installLogResponse is the retained install output for one server.
@@ -756,14 +768,25 @@ func serverView(sv *store.Server) *store.Server {
 
 // serverResponse is a server as the list and get endpoints answer it: the
 // stripped record with a running restore's live reading laid over the row's
-// `restore` block (#361). The row holds what the job knew when it began; the
-// meter needs the bytes read since, which only the job has.
-func (s *Server) serverResponse(sv *store.Server) *store.Server {
+// `restore` block (#361) — the row holds what the job knew when it began; the
+// meter needs the bytes read since, which only the job has — and its build
+// check (#392) under the spec as it is now.
+func (s *Server) serverResponse(ctx context.Context, sv *store.Server) *serverJSON {
+	sp, err := s.store.GetSpec(ctx, sv.SpecID)
+	if err != nil {
+		sp = nil // the build check reads unknown, and says why
+	}
+	return s.serverResponseWith(sv, sp)
+}
+
+// serverResponseWith is serverResponse with the spec already in hand, for the
+// list, which loads every spec once rather than once per server.
+func (s *Server) serverResponseWith(sv *store.Server, sp *spec.Spec) *serverJSON {
 	out := serverView(sv)
 	if job, ok := s.restores.active(sv.ID); ok {
 		out.Restore = job.overlay(sv.Restore)
 	}
-	return out
+	return &serverJSON{Server: out, Update: updatecheck.Evaluate(sv, sp)}
 }
 
 // handleServerLifecyclePower forwards a power action to the Agent hosting the
@@ -1142,6 +1165,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	}
 	passTook := took(passBegan)
 	s.installs.AppendSystem(sv.ID, "[panel] update pass took "+passTook)
+	s.recordInstalledBuild(ctx, sv, sp, node)
 	s.installs.AppendSystem(sv.ID, "[panel] update complete — applying config and starting "+sv.Name)
 
 	// Config after the update, not before: the pass can restore a file the

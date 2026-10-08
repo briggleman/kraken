@@ -304,6 +304,30 @@ export interface Server {
   /** The host ports a retired server held, which a revive asks for again. */
   retired_ports?: Record<string, number>;
   created_at: string;
+  /** The Steam build check (#392). Present on every server GET /servers and
+   *  GET /servers/{id} answer with (and on the retire, revive and restore
+   *  answers). Absent from POST /servers' 201, which is the stored record as
+   *  written before the install runs — read the server back for it. */
+  update?: ServerUpdate;
+}
+
+/** The Steam build check: the build the install tree holds (its appmanifest's
+ *  buildid) against the build Steam has on the branch it follows. Also the
+ *  answer of POST /servers/{id}/update-check. */
+export interface ServerUpdate {
+  /** current — the installed build is the branch's current one; available —
+   *  Steam has a newer build; unknown — no check has run, or the last one
+   *  could not compare (see `error`); unsupported — the spec has no build to
+   *  check (not a Steam install, or update_check method none). */
+  status: "current" | "available" | "unknown" | "unsupported";
+  installed_build?: string;
+  available_build?: string;
+  /** When Steam last updated the branch (its timeupdated), when it said. */
+  available_build_at?: string;
+  /** When a check last ran, whatever it found. */
+  checked_at?: string;
+  /** Why the last check could not compare the builds. */
+  error?: string;
 }
 
 /** A retire in progress, as the server row records it (#360). */

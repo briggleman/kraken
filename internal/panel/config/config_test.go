@@ -3,6 +3,7 @@ package config
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 const sampleDSN = "postgres://u:p@h:5432/kraken?sslmode=disable"
@@ -199,6 +200,28 @@ func TestLoadValidatesAuditRetention(t *testing.T) {
 		t.Setenv("KRAKEN_AUDIT_RETENTION_DAYS", bad)
 		if _, err := Load(); err == nil {
 			t.Errorf("Load accepted KRAKEN_AUDIT_RETENTION_DAYS=%q", bad)
+		}
+	}
+}
+
+// The build check's timer (#392) defaults to daily, turns off at 0, and a
+// value Load cannot read stops startup instead of leaving a Panel that never
+// checks — or checks every nanosecond.
+func TestLoadUpdateCheckInterval(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": 24 * time.Hour, "0": 0, "6h": 6 * time.Hour, "90m": 90 * time.Minute} {
+		t.Setenv("KRAKEN_UPDATE_CHECK_INTERVAL", in)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load rejected %q: %v", in, err)
+		}
+		if cfg.UpdateCheckInterval != want {
+			t.Errorf("KRAKEN_UPDATE_CHECK_INTERVAL=%q gave %v, want %v", in, cfg.UpdateCheckInterval, want)
+		}
+	}
+	for _, bad := range []string{"-1h", "daily", "1d"} {
+		t.Setenv("KRAKEN_UPDATE_CHECK_INTERVAL", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load accepted KRAKEN_UPDATE_CHECK_INTERVAL=%q", bad)
 		}
 	}
 }

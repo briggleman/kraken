@@ -128,6 +128,7 @@
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
 <a class="toc-link lvl-3" href="#audit-log">audit log</a>
+<a class="toc-link lvl-3" href="#steam-build-check">steam build check</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
@@ -292,6 +293,14 @@ description.</p>
 </tbody>
 </table></div>
 
+<h3 id="steam-build-check">steam build check <a class="hlink" href="#steam-build-check" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_UPDATE_CHECK_INTERVAL</code><span class="def">default <b>24h</b></span></td><td>UpdateCheckInterval is how often the Panel checks every server&#39;s Steam build against the build Steam has on its branch: one SteamCMD session per game image and platform, on a node that hosts it, plus a read of each server&#39;s appmanifest. The first pass runs about five minutes after startup, and every wait is varied by up to 10% either way. A Go duration (&quot;24h&quot;, &quot;6h&quot;, &quot;90m&quot;); 0 turns the timer off, leaving the check to run on demand and after each install. A negative or unparseable value stops the Panel at startup.</td></tr>
+</tbody>
+</table></div>
+
 
 <h2 id="reading-the-defaults">Reading the defaults <a class="hlink" href="#reading-the-defaults" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
@@ -368,6 +377,7 @@ clicking around.</p>
 <a class="toc-link lvl-3" href="#rate-limits">rate limits</a>
 <a class="toc-link lvl-3" href="#logging">logging</a>
 <a class="toc-link lvl-3" href="#audit-log">audit log</a>
+<a class="toc-link lvl-3" href="#steam-build-check">steam build check</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>

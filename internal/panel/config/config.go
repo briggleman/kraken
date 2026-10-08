@@ -169,6 +169,16 @@ type Config struct {
 	// number of days; anything else stops the Panel at startup rather than
 	// quietly pruning on a schedule nobody chose.
 	AuditRetentionDays int
+
+	// UpdateCheckInterval is how often the Panel checks every server's Steam
+	// build against the build Steam has on its branch: one SteamCMD session
+	// per game image and platform, on a node that hosts it, plus a read of
+	// each server's appmanifest. The first pass runs about five minutes after
+	// startup, and every wait is varied by up to 10% either way. A Go duration
+	// ("24h", "6h", "90m"); 0 turns the timer off, leaving the check to run on
+	// demand and after each install. A negative or unparseable value stops the
+	// Panel at startup.
+	UpdateCheckInterval time.Duration
 }
 
 // The accepted values of KRAKEN_RATE_LIMITS. "on" is accepted too as the
@@ -394,6 +404,15 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	c.SessionTTL = ttl
+
+	updateEvery, err := durationEnv("KRAKEN_UPDATE_CHECK_INTERVAL", 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	if updateEvery < 0 {
+		return nil, fmt.Errorf("config: KRAKEN_UPDATE_CHECK_INTERVAL=%v must be 0 (off) or a positive duration", updateEvery)
+	}
+	c.UpdateCheckInterval = updateEvery
 
 	return c, nil
 }

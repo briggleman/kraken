@@ -84,7 +84,18 @@ export type StreamStatus = "idle" | "connecting" | "open" | "retrying" | "ended"
 /** Reduce one raw console line to what the pane should render, keeping the
  *  original alongside it when the two differ. O(1) in the line's length apart
  *  from the one slice that produces the clamped prefix. */
+/** ANSI escape sequences: CSI (`ESC [ … m` and friends), OSC (`ESC ] … BEL`),
+ *  and any lone two-byte escape. SteamCMD wraps its lines in colour resets and
+ *  games print colour too; the console never renders them, and the ESC byte is
+ *  invisible, so what the operator saw was the `[0m` left behind (#392). */
+const ANSI_RE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+
+export function stripAnsi(raw: string): string {
+  return raw.includes("\u001b") ? raw.replace(ANSI_RE, "") : raw;
+}
+
 function renderable(raw: string): { text: string; hidden: number; full?: string } {
+  raw = stripAnsi(raw);
   const head = raw.length > CLIXML_HEAD_CHARS ? raw.slice(0, CLIXML_HEAD_CHARS) : raw;
   if (CLIXML_RE.test(head)) {
     return {

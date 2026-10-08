@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.61.0](https://github.com/briggleman/kraken/compare/v0.60.0...v0.61.0) (2026-10-08)
+
+
+### Features
+
+* **agent:** answer GetAppBuilds from one steamcmd session ([#399](https://github.com/briggleman/kraken/issues/399)) ([924829f](https://github.com/briggleman/kraken/commit/924829f16791c5cb7f7302fd25fcfcdee9a76b87))
+* **agent:** scaffold the GetAppBuilds rpc for the steam build check ([#398](https://github.com/briggleman/kraken/issues/398)) ([394b63c](https://github.com/briggleman/kraken/commit/394b63c04c650257f57b20a379e9df8a7584dc34))
+* **panel:** skip the update pass on a start when the installed steam build is current ([#401](https://github.com/briggleman/kraken/issues/401)) ([d2eca41](https://github.com/briggleman/kraken/commit/d2eca419aedbb76897d391bc8a42725f348ac67e))
+* **panel:** steam build check — daily, on demand, and recorded per server ([#400](https://github.com/briggleman/kraken/issues/400)) ([b080545](https://github.com/briggleman/kraken/commit/b0805454a4503fe327b5d667a457727dc575dca1))
+
+
+### Bug Fixes
+
+* **agent:** report a steam build check that never reached steam as unavailable ([#402](https://github.com/briggleman/kraken/issues/402)) ([1050f37](https://github.com/briggleman/kraken/commit/1050f377d89d45f7d790cbb75e1f85796b6515a5))
+* **console:** keep the step lines when a chatty installer overruns the install log ([#395](https://github.com/briggleman/kraken/issues/395)) ([6cff732](https://github.com/briggleman/kraken/commit/6cff732f54074096d5ab200d74209cdd40365b68))
+* **console:** strip ANSI escape sequences from installer and console lines ([#397](https://github.com/briggleman/kraken/issues/397)) ([39102be](https://github.com/briggleman/kraken/commit/39102be3f00bba69d463d1880b3854bfb2a81aab))
+
 ## [0.60.0](https://github.com/briggleman/kraken/compare/v0.59.0...v0.60.0) (2026-10-08)
 
 

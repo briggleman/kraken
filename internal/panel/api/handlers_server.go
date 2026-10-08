@@ -275,7 +275,18 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 			// The installer's own output — SteamCMD's download progress, unpack
 			// errors, a game's first-run complaints. This is the only place it
 			// exists: the install container is removed when the phase ends.
-			s.installs.Append(server.ID, e.LogLine)
+			//
+			// Unless the Agent wrote the line itself (the guard's removals, the
+			// image check, the script's run time): those go on the system stream
+			// so the console sets them apart. An Agent before the `system` flag
+			// still prefixes its own lines `[kraken] `, so the prefix is honoured
+			// too — an installer printing that prefix is not a case worth
+			// defending against.
+			if ev.GetSystem() || strings.HasPrefix(e.LogLine, "[kraken] ") {
+				s.installs.AppendSystem(server.ID, e.LogLine)
+			} else {
+				s.installs.Append(server.ID, e.LogLine)
+			}
 		case *agentpb.InstallEvent_Failed:
 			// The Panel owns the "install failed: " prefix. Agents up to 0.55
 			// sent SteamCMD failures already prefixed, which read as "install
@@ -321,18 +332,21 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	if nodeName == "" {
 		nodeName = node.ID
 	}
-	s.installs.Append(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
+	s.installs.AppendSystem(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
 
+	began := time.Now()
 	if err := s.runInstallPass(ctx, server, sp, node, steamGuardCode, server.BepInEx); err != nil {
 		if prev != "" && treeUntouched(err) {
 			s.abortUpdate(server, prev, err.Error())
 			return
 		}
+		s.installs.AppendSystem(server.ID, "[panel] install pass took "+took(began)+" before it failed")
 		s.failServer(server, err.Error())
 		return
 	}
 
-	s.installs.Append(server.ID, installCompleteLine(server.Name, prev != ""))
+	s.installs.AppendSystem(server.ID, "[panel] install pass took "+took(began))
+	s.installs.AppendSystem(server.ID, installCompleteLine(server.Name, prev != ""))
 	if s.markProvisioned(server.ID, server.Vars, time.Now().UTC()) {
 		// A revived server's schedules come back on with its first install
 		// that lands — the revive's own, or the reinstall after a revive whose
@@ -351,7 +365,19 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	// It is freed when the server is retired or deleted, and becomes `previous`
 	// when the next attempt starts (#381).
 	s.installs.Finish(server.ID)
-	s.logger.Info("server installed", "id", server.ID)
+	s.logger.Info("server installed", "id", server.ID, "took", took(began))
+}
+
+// took renders how long a phase has been running, for the step lines on the
+// install console and the Panel log — seconds once it is past one, so
+// "6m40s" reads as a duration and not a stopwatch, and milliseconds under
+// that, where "0s" would hide that anything happened at all.
+func took(since time.Time) string {
+	d := time.Since(since)
+	if d < time.Second {
+		return d.Round(time.Millisecond).String()
+	}
+	return d.Round(time.Second).String()
 }
 
 // installCompleteLine is the install console's closing line for a successful
@@ -889,11 +915,16 @@ func (s *Server) handleServerLifecyclePower(w http.ResponseWriter, r *http.Reque
 
 	pctx, cancel := context.WithTimeout(ctx, powerTimeout(action))
 	defer cancel()
+	began := time.Now()
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{ServerId: sv.ID, Action: action})
 	if err != nil {
 		writeAgentError(w, err)
 		return
 	}
+	// The plain path has no install console to write to, so the Panel log is
+	// where its duration lives (#392) — the pair to updateThenStart's lines.
+	s.logger.Info("power action applied", "id", sv.ID, "name", sv.Name, "action", req.Action,
+		"state", resp.State, "took", took(began))
 	// Stop and kill still reach the Agent while a restore runs — they are how
 	// an operator clears a container that should not be there — but the row
 	// stays `restoring`: writing the Agent's `offline` over it would lift the
@@ -1060,7 +1091,14 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 
 	// The caller opened this attempt's install buffer before it wrote
 	// `installing` (#387); nothing here rotates it again.
-	s.installs.Append(sv.ID, "[panel] updating "+sv.Name+" — re-running the install script before start")
+	//
+	// Every phase boundary below writes a system line with how long the phase
+	// took (#392): a start that re-runs the pass can take minutes, and the
+	// console is the only place an operator can see which minute went where.
+	// The same durations go to the Panel log at the end, for the fleet-wide
+	// view a log search gives.
+	began := time.Now()
+	s.installs.AppendSystem(sv.ID, "[panel] updating "+sv.Name+" — re-running the install script before start")
 
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
@@ -1071,6 +1109,8 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	// bind-mount the same data dir, and SteamCMD writing under a running game
 	// is how an update pass corrupts a live server. On a `start` the server is
 	// already down and this is a no-op; on a `restart` it is the stop half.
+	s.installs.AppendSystem(sv.ID, "[panel] stopping "+sv.Name+" before the update")
+	stopBegan := time.Now()
 	sctx, scancel := context.WithTimeout(ctx, preUpdateStopTimeout)
 	_, perr := client.PowerAction(sctx, &agentpb.PowerActionRequest{
 		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_STOP,
@@ -1080,9 +1120,12 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 		s.abortUpdate(sv, prev, "stop before update: "+perr.Error())
 		return
 	}
+	stopTook := took(stopBegan)
+	s.installs.AppendSystem(sv.ID, "[panel] stop took "+stopTook)
 
 	// Vanilla install script only — never the BepInEx overlay (see
 	// installScriptFor).
+	passBegan := time.Now()
 	if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
 		// A pass the Agent refused before touching the tree (a container still
 		// holds the data dir) says nothing about the tree, so it is not
@@ -1093,16 +1136,20 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 			s.abortUpdate(sv, store.StateOffline, err.Error())
 			return
 		}
+		s.installs.AppendSystem(sv.ID, "[panel] update pass took "+took(passBegan)+" before it failed")
 		s.failServer(sv, err.Error())
 		return
 	}
-	s.installs.Append(sv.ID, "[panel] update complete — starting "+sv.Name)
+	passTook := took(passBegan)
+	s.installs.AppendSystem(sv.ID, "[panel] update pass took "+passTook)
+	s.installs.AppendSystem(sv.ID, "[panel] update complete — applying config and starting "+sv.Name)
 
 	// Config after the update, not before: the pass can restore a file the
 	// depot owns, so the server's settings are re-rendered over the fresh tree.
 	if _, aerr := s.applyConfig(ctx, sv, sp); aerr != nil {
 		s.logger.Warn("config apply after update failed", "server", sv.ID, "err", aerr)
 	}
+	startBegan := time.Now()
 	pctx, pcancel := context.WithTimeout(ctx, postUpdateStartTimeout)
 	resp, err := client.PowerAction(pctx, &agentpb.PowerActionRequest{
 		ServerId: sv.ID, Action: agentpb.PowerAction_POWER_ACTION_START,
@@ -1115,12 +1162,16 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 		s.installs.AppendError(sv.ID, "[panel] start after update failed: "+err.Error())
 		s.installs.Finish(sv.ID)
 		s.setServerState(sv.ID, store.StateOffline, "")
-		s.logger.Error("start after update failed", "server", sv.ID, "err", err)
+		s.logger.Error("start after update failed", "server", sv.ID, "err", err,
+			"stop_took", stopTook, "pass_took", passTook)
 		return
 	}
+	startTook := took(startBegan)
+	s.installs.AppendSystem(sv.ID, "[panel] start took "+startTook+" — update and start took "+took(began)+" in all")
 	s.installs.Finish(sv.ID)
 	s.setServerState(sv.ID, storeStateFromAgent(resp.State), "")
-	s.logger.Info("server updated and started", "id", sv.ID, "state", resp.State)
+	s.logger.Info("server updated and started", "id", sv.ID, "state", resp.State,
+		"stop_took", stopTook, "pass_took", passTook, "start_took", startTook, "took", took(began))
 }
 
 // handleReinstallServer re-runs the install phase without deleting the server

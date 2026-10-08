@@ -194,6 +194,20 @@ the record.
   when nothing is held, which is not the same as an install that printed
   nothing, and the UI says which it is rather than showing you an empty pane.
 
+Each line carries a `stream` that says who wrote it, and the console colors
+the three apart:
+
+| stream | who | what it says |
+| --- | --- | --- |
+| `install` | the installer | SteamCMD's progress, unpack errors, a game's first-run output |
+| `system` | Kraken, prefixed `[panel]` or `[kraken]` | which step the attempt is on and how long each phase took: `stop took 12s`, `install script ran 6m02s, exit 0`, `update pass took 6m40s`, `start took 9s` |
+| `error` | Kraken | the failure that ended the attempt |
+
+The `system` lines are the account of where the time went. A start or restart
+that re-runs the install pass reads, top to bottom: the stop and its duration,
+the Agent's image check and whatever its guard removed, the install script's
+run time and exit code, the pass total, then the config apply and the start.
+
 ## Reading a crash
 
 When a server lands in `crashed`, the Agent captures the container's exit code

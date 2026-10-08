@@ -163,6 +163,12 @@
   .console-log .t { color: var(--ink-3); margin-right: 10px; }
   .console-log .good { color: var(--ok); }
   .console-log .warn { color: var(--caution); }
+  /* The system voice: a line Kraken wrote about the attempt — which step it is
+     on, how long a phase took — as opposed to a line the installer printed. Set
+     back in Sand Faint so the installer's own output stays the louder voice,
+     with the [panel] / [kraken] tag alone in Lumen to say who is speaking. */
+  .console-log .sys { color: var(--ink-3); }
+  .console-log .sys .tag { color: var(--lumen); }
   .console-in { display: flex; border-top: 1px solid var(--edge); }
   .console-in span { padding: 12px 0 12px 16px; font-family: var(--mono); color: var(--lumen); font-size: 14px; }
   .console-in input {

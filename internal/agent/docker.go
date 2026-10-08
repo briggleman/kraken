@@ -922,9 +922,17 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		return d.fail(emit, "create data dir: "+err.Error())
 	}
 
-	if err := d.pullImage(ctx, req.Image, installPullTimeout, func(line string) { _ = emit(logLine(line)) }); err != nil {
+	// Every line the Agent writes about the pass — here and in the guard, the
+	// recovery and the script run — goes out as a system line (#392), so the
+	// console can set it apart from what the installer printed. The pass total
+	// is the Panel's line, not one of these: the recovery's summary is the
+	// Agent's closing word on a pass, and the Panel's clock is the one an
+	// operator's wait is measured on.
+	imageBegan := time.Now()
+	if err := d.pullImage(ctx, req.Image, installPullTimeout, func(line string) { _ = emit(sysLine(line)) }); err != nil {
 		return d.fail(emit, "pull image: "+err.Error())
 	}
+	_ = emit(sysLine("image check took " + took(imageBegan)))
 
 	// Windows containers only: steamcmd.exe self-updates by spawning the new
 	// binary and exiting, which lets cmd (PID 1) run off the end of the script
@@ -934,7 +942,7 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	if d.isWindows() {
 		if guarded, applied := guardWindowsSteamInstall(script); applied {
 			script = guarded
-			_ = emit(logLine("[kraken] windows SteamCMD guard applied: priming steamcmd.exe's self-update and waiting for steamcmd to exit before the install container ends"))
+			_ = emit(sysLine("windows SteamCMD guard applied: priming steamcmd.exe's self-update and waiting for steamcmd to exit before the install container ends"))
 		}
 	}
 
@@ -968,7 +976,7 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	// the name on Windows, and the Panel moves on (applyConfig, START) the
 	// moment the stream ends. Between passes it is removed synchronously —
 	// the retry reuses the name.
-	note := func(line string) { _ = emit(logLine(line)) }
+	note := func(line string) { _ = emit(sysLine(line)) }
 	installName := installContainerName(req.ServerId)
 	passes := 0
 	pending := "" // the last pass's exited install container, not yet removed
@@ -1031,7 +1039,7 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 	// retry the first pass has already written to the tree, so it is an
 	// ordinary failure.
 	if err := clearDataDir(ctx, d.containers, serverID, d.bindSource(serverID), installName, d.foldHostPaths(),
-		selfContainerID(), func(line string) { _ = emit(logLine(line)) }); err != nil {
+		selfContainerID(), func(line string) { _ = emit(sysLine(line)) }); err != nil {
 		if first {
 			return "", "", d.failUntouched(emit, err.Error())
 		}
@@ -1048,6 +1056,12 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 	if err := d.containers.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return "", id, d.fail(emit, "start install container: "+err.Error())
 	}
+	pass := "running the install script"
+	if !first {
+		pass = "running the install script again (the retry pass)"
+	}
+	_ = emit(sysLine(pass))
+	scriptBegan := time.Now()
 	_ = emit(&agentpb.InstallEvent{Event: &agentpb.InstallEvent_Progress{Progress: 10}})
 
 	// Stream install logs, watching for a SteamCMD app failure. SteamCMD exits 0
@@ -1070,6 +1084,9 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 			return "", id, d.fail(emit, "wait install: "+werr.Error())
 		}
 	case st := <-statusCh:
+		// The run time goes out before the verdict either way: an install that
+		// died at 6m02s and one that died at 2s are different failures.
+		_ = emit(sysLine(fmt.Sprintf("install script ran %s, exit %d", took(scriptBegan), st.StatusCode)))
 		if st.StatusCode != 0 {
 			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d", st.StatusCode))
 		}
@@ -2451,6 +2468,29 @@ func envSlice(m map[string]string) []string {
 
 func logLine(text string) *agentpb.InstallEvent {
 	return &agentpb.InstallEvent{Event: &agentpb.InstallEvent_LogLine{LogLine: text}}
+}
+
+// sysLine is a line the Agent wrote about the pass itself — what the guard
+// removed, how long the script ran — rather than one the installer printed.
+// It is flagged `system` so the Panel's console sets it apart (#392), and it
+// carries the `[kraken] ` prefix so the text still says who wrote it on a
+// Panel that predates the flag. Callers that already prefixed their text (the
+// guard's and the recovery's notes) are left as they are.
+func sysLine(text string) *agentpb.InstallEvent {
+	if !strings.HasPrefix(text, "[kraken] ") {
+		text = "[kraken] " + text
+	}
+	return &agentpb.InstallEvent{Event: &agentpb.InstallEvent_LogLine{LogLine: text}, System: true}
+}
+
+// took renders how long a phase has been running for the step lines on the
+// install console: seconds once it is past one, milliseconds under that.
+func took(since time.Time) string {
+	d := time.Since(since)
+	if d < time.Second {
+		return d.Round(time.Millisecond).String()
+	}
+	return d.Round(time.Second).String()
 }
 
 // dockerStats is a minimal projection of the Docker stats JSON, decoded directly

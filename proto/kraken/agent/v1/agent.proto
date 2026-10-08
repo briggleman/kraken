@@ -628,6 +628,14 @@ message InstallEvent {
   // (#328). A Panel that predates the field ignores it and lands
   // install_failed, as before.
   bool tree_untouched = 5;
+  // Set on a `log_line` the Agent wrote itself — what step the pass is on,
+  // what the guard removed, how long the install script ran — as opposed to a
+  // line the installer printed. The Panel keeps the two apart on the console
+  // (its `system` stream) so an operator can tell what Kraken did from what
+  // SteamCMD said. A Panel that predates the field shows the line as ordinary
+  // installer output, as before; the `[kraken] ` prefix on the text still
+  // says who wrote it.
+  bool system = 6;
 }
 
 message PowerActionRequest {

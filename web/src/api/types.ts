@@ -708,7 +708,9 @@ export interface FileListing {
 }
 
 /** One line of install output, as the console stream writes it: stream is
- *  "install" for ordinary output and "error" for a failure note. */
+ *  "install" for the installer's own output, "system" for a line Kraken wrote
+ *  about the attempt (which step it is on, how long a phase took), and "error"
+ *  for a failure note. */
 export interface InstallLogLine {
   ts: number;
   stream: string;

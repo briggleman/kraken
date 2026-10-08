@@ -677,7 +677,7 @@
           <!-- One console line, whichever log it comes from: the live stream, the
                retained install log, or the previous attempt above it (#381). -->
           {#snippet logLine(line: StreamConsoleLine)}
-            <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else}{line.text}{/if}{#if line.hidden > 0}<button type="button" class="log-more" onclick={() => copyLine(line)}>{copiedSeq === line.seq ? "copied" : `… ${line.hidden.toLocaleString()} more chars — copy line`}</button>{/if}</div>
+            <div class="log-line"><span class="t">{fmtClock(line.ts)}</span>{#if line.stream === "stderr" || line.stream === "error"}<span class="warn">{line.text}</span>{:else if line.stream === "system"}{@const tag = /^\[\w+\]/.exec(line.text)?.[0] ?? ""}<span class="sys">{#if tag}<span class="tag">{tag}</span>{line.text.slice(tag.length)}{:else}{line.text}{/if}</span>{:else}{line.text}{/if}{#if line.hidden > 0}<button type="button" class="log-more" onclick={() => copyLine(line)}>{copiedSeq === line.seq ? "copied" : `… ${line.hidden.toLocaleString()} more chars — copy line`}</button>{/if}</div>
           {/snippet}
           <div class="console-log" id="consoleLog" bind:this={consoleLog} onscroll={onLogScroll}>
             <!-- The attempt this install replaced (#381): a reinstall retrying a

@@ -18,6 +18,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
+	"github.com/briggleman/kraken/internal/shared/steam"
 )
 
 // appInfoOps wraps fakeOps to record what each check container was created
@@ -30,6 +31,7 @@ type appInfoOps struct {
 	cfgs    []*container.Config
 	hosts   []*container.HostConfig
 	events  []string      // "create <name>", "remove <id>"
+	forced  []bool        // RemoveOptions.Force of each removal
 	gate    chan struct{} // when set, ContainerLogs blocks until it is closed
 	entered chan struct{} // when set, signalled as a session's logs are opened
 }
@@ -46,6 +48,7 @@ func (a *appInfoOps) ContainerCreate(ctx context.Context, cfg *container.Config,
 func (a *appInfoOps) ContainerRemove(ctx context.Context, id string, opts container.RemoveOptions) error {
 	a.mu.Lock()
 	a.events = append(a.events, "remove "+id)
+	a.forced = append(a.forced, opts.Force)
 	a.mu.Unlock()
 	return a.fakeOps.ContainerRemove(ctx, id, opts)
 }
@@ -178,8 +181,8 @@ func TestAppBuilds_OneSessionNothingMounted(t *testing.T) {
 	if host.Resources.Memory <= 0 {
 		t.Error("the check container has no memory limit")
 	}
-	if cfg.Labels[labelManaged] != "true" || cfg.Labels[labelServerID] != "" {
-		t.Errorf("labels = %v, want managed and no server id", cfg.Labels)
+	if cfg.Labels[labelManaged] != "true" || cfg.Labels[labelRole] != appInfoRole || cfg.Labels[labelServerID] != "" {
+		t.Errorf("labels = %v, want managed, the appinfo role and no server id", cfg.Labels)
 	}
 	if !slices.Equal(events, []string{"create " + appInfoContainerName, "remove install-1"}) {
 		t.Errorf("events = %v, want one create and its removal", events)
@@ -413,7 +416,7 @@ func TestAppBuilds_ClearsLeftoverButNotStranger(t *testing.T) {
 	d, ops := newAppInfoRuntime(t, session)
 	ops.names = map[string]container.InspectResponse{appInfoContainerName: {
 		ContainerJSONBase: &container.ContainerJSONBase{ID: exitedID, Name: "/" + appInfoContainerName, State: &container.State{Status: container.StateExited}},
-		Config:            &container.Config{Labels: map[string]string{labelManaged: "true"}},
+		Config:            &container.Config{Labels: map[string]string{labelManaged: "true", labelRole: appInfoRole}},
 	}}
 	if _, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010")}); err != nil {
 		t.Fatal(err)
@@ -434,17 +437,121 @@ func TestAppBuilds_ClearsLeftoverButNotStranger(t *testing.T) {
 	}
 }
 
-// The image is made available by the normal pull policy first; a node that
-// cannot have it fails the check as a whole.
-func TestAppBuilds_MissingImageFailsTheCheck(t *testing.T) {
+// A node without the image fails the check at once, whatever the pull policy,
+// and never starts a download on the check's behalf.
+func TestAppBuilds_MissingImageFailsFastWithoutPulling(t *testing.T) {
 	d, ops := newAppInfoRuntime(t)
-	d.images = &fakeImages{}
+	imgs := &fakeImages{}
+	d.images = imgs
+	d.pullPolicy = pullAlways
 	_, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010")})
-	if grpcstatus.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "not present on this node") {
+	if grpcstatus.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "is not on this node") {
 		t.Errorf("want FailedPrecondition naming the missing image, got %v", err)
+	}
+	d.appInfo.wg.Wait()
+	if n := imgs.pullCount(); n != 0 {
+		t.Errorf("the check pulled a missing image %d times", n)
 	}
 	if cfgs, _, _ := ops.snapshot(); len(cfgs) != 0 {
 		t.Errorf("ran %d sessions without an image", len(cfgs))
+	}
+}
+
+// An image that is here is refreshed the way an operator start refreshes it:
+// the check waits startPullBudget for the registry and then runs on the local
+// copy, leaving a moved tag downloading in the background.
+func TestAppBuilds_PresentImageRefreshesWithinTheStartBudget(t *testing.T) {
+	prev := startPullBudget
+	startPullBudget = 50 * time.Millisecond
+	t.Cleanup(func() { startPullBudget = prev })
+
+	d, ops := newAppInfoRuntime(t, append([]string{appInfoPreamble}, appBlock("2394010", branchesBody("25247047"))...))
+	imgs := &fakeImages{local: map[string]image.InspectResponse{testRef: {ID: oldID}}, gate: make(chan struct{})}
+	t.Cleanup(func() {
+		close(imgs.gate) // let the background pull end before the test does
+		waitFor(t, "the background pull", func() bool {
+			d.pullMu.Lock()
+			defer d.pullMu.Unlock()
+			return len(d.pulls) == 0
+		})
+	})
+	d.images = imgs
+	d.pullPolicy = pullAlways
+
+	resp, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010")})
+	if err != nil || resp.GetBuilds()[0].GetBuildId() != "25247047" {
+		t.Fatalf("a stalled registry must not stop the check: %v, %v", resp, err)
+	}
+	if n := imgs.pullCount(); n != 1 {
+		t.Errorf("want the registry asked once, got %d pulls", n)
+	}
+	if cfgs, _, _ := ops.snapshot(); len(cfgs) != 1 {
+		t.Errorf("sessions = %d, want 1", len(cfgs))
+	}
+}
+
+// A session that runs out of time is read for what it printed, its container
+// is force-removed, and no second session is tried: a session that could not
+// finish once would only run out of time again.
+func TestAppBuilds_SessionTimeout(t *testing.T) {
+	prev := appInfoRunTimeout
+	appInfoRunTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { appInfoRunTimeout = prev })
+
+	// Palworld's block arrived whole; Valheim's never started.
+	partial := append([]string{appInfoPreamble}, appBlock("2394010", branchesBody("25247047"))...)
+	d, ops := newAppInfoRuntime(t, partial, partial)
+	ops.waitBlock = true
+
+	resp, err := d.AppBuilds(deadlineCtx(t, time.Minute), &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010", "896660")})
+	if err != nil {
+		t.Fatalf("a timed-out session is a response, not an RPC error: %v", err)
+	}
+	d.appInfo.wg.Wait()
+	b := resp.GetBuilds()
+	if b[0].GetBuildId() != "25247047" || b[0].GetError() != "" {
+		t.Errorf("the block printed before the deadline must be read: %v", b[0])
+	}
+	if b[1].GetBuildId() != "" || !strings.Contains(b[1].GetError(), "did not finish within") {
+		t.Errorf("the app the session never reached: %v", b[1])
+	}
+	cfgs, _, events := ops.snapshot()
+	if len(cfgs) != 1 {
+		t.Errorf("a timed-out session was retried: %d sessions", len(cfgs))
+	}
+	if !slices.Equal(events, []string{"create " + appInfoContainerName, "remove install-1"}) {
+		t.Errorf("events = %v, want the timed-out container removed", events)
+	}
+	ops.mu.Lock()
+	forced := slices.Clone(ops.forced)
+	ops.mu.Unlock()
+	if !slices.Equal(forced, []bool{true}) {
+		t.Errorf("removals forced = %v, want one forced removal (the container may still be running)", forced)
+	}
+}
+
+// An answer that is already in counts even when the caller's context has
+// ended too: with both ready, a plain select would pick either at random.
+func TestAppBuilds_AnswerWinsOverEndedContext(t *testing.T) {
+	d, _ := newAppInfoRuntime(t)
+	done := make(chan struct{})
+	close(done)
+	key := testRef + "|false|2394010"
+	d.appInfo.inflight = map[string]*appInfoFlight{key: {
+		done:  done,
+		apps:  map[string]steam.AppInfo{"2394010": {AppID: "2394010", Branches: map[string]steam.Branch{"public": {BuildID: "25247047"}}}},
+		notes: map[string]string{},
+	}}
+	if got := d.joinAppInfoCheck(testRef, false, []string{"2394010"}); got != d.appInfo.inflight[key] {
+		t.Fatal("the test's key no longer matches joinAppInfoCheck's")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := range 200 {
+		resp, err := d.AppBuilds(ctx, &agentpb.GetAppBuildsRequest{Image: testRef, Apps: queries("2394010")})
+		if err != nil || resp.GetBuilds()[0].GetBuildId() != "25247047" {
+			t.Fatalf("try %d: the ready answer lost to the ended context: %v, %v", i, resp, err)
+		}
 	}
 }
 
@@ -471,10 +578,16 @@ func TestAppInfoScript(t *testing.T) {
 
 // The check's container is managed but belongs to no server, so NodeInfo's
 // roll call leaves it out rather than report a game container with no server.
+// It goes by the role label, not the name: a helper under any name is left out.
 func TestReportManagedContainersOmitsTheBuildCheck(t *testing.T) {
+	helper := managedSummary("", appInfoContainerName, "running")
+	helper.Labels[labelRole] = appInfoRole
+	renamed := managedSummary("", "kraken_some_future_helper", "exited")
+	renamed.Labels[labelRole] = "something-else"
 	ops := &listingOps{containers: []container.Summary{
 		managedSummary("srv-a", "kraken_srv-a", "running"),
-		managedSummary("", appInfoContainerName, "running"),
+		helper,
+		renamed,
 	}}
 	list, live, _ := reportManagedContainers(context.Background(), ops)
 	if live != 1 || len(list) != 1 || list[0].GetServerId() != "srv-a" {

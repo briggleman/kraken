@@ -69,7 +69,7 @@ type AppInfo struct {
 // present but incomplete is reported through AppInfo (Branches nil, Truncated)
 // rather than as an error, so one bad app does not hide the others.
 func ParseAppInfo(output string) (map[string]AppInfo, error) {
-	text := stripAppInfoANSI(output)
+	text := StripANSI(output)
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 
@@ -102,12 +102,14 @@ func ParseAppInfo(output string) (map[string]AppInfo, error) {
 var appInfoHeaderRE = regexp.MustCompile(`(?m)^[ \t]*AppID\s*:\s*(\d+)(?:,\s*change number\s*:\s*(\d+))?[^\n]*$`)
 
 // appInfoANSIRE matches ANSI escape sequences: CSI (`ESC [ … m` and friends),
-// OSC (`ESC ] … BEL`), and the two-byte forms. The same pattern the Panel's
-// install log strips with; it is repeated here rather than shared because the
-// Panel's copy lives in its API package.
+// OSC (`ESC ] … BEL`), and the two-byte forms. It is the pattern the Panel's
+// install log strips with, which is meant to move onto StripANSI.
 var appInfoANSIRE = regexp.MustCompile("\x1b\\[[0-?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)|\x1b[@-Z\\\\-_]")
 
-func stripAppInfoANSI(s string) string {
+// StripANSI removes ANSI escape sequences from s. SteamCMD writes colour
+// resets into its plain stdout, so any text read from it, by this package or
+// by a console, wants them gone before it is matched or shown.
+func StripANSI(s string) string {
 	if !strings.Contains(s, "\x1b") {
 		return s
 	}
@@ -332,12 +334,17 @@ func (lx *appInfoLexer) quoted() (appInfoToken, bool) {
 		case c == '\\' && lx.pos+1 < len(lx.src):
 			escapedQuote = escapedQuote || lx.src[lx.pos+1] == '"'
 			lx.pos += 2
+			// KeyValues escapes only these four. Any other backslash is a
+			// literal one, the separator in a Windows path ("bin\win64").
 			switch e := lx.src[lx.pos-1]; e {
 			case 'n':
 				b.WriteByte('\n')
 			case 't':
 				b.WriteByte('\t')
+			case '"', '\\':
+				b.WriteByte(e)
 			default:
+				b.WriteByte('\\')
 				b.WriteByte(e)
 			}
 		default:

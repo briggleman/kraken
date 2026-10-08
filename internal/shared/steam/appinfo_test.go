@@ -201,6 +201,17 @@ func TestParseAppInfo_EdgeCases(t *testing.T) {
 				t.Errorf("app after a trailing backslash = %+v", a)
 			}
 		},
+	}, {
+		// KeyValues escapes only \" \\ \n \t; any other backslash is literal,
+		// so a Windows path keeps its separators.
+		name: "escapes",
+		output: preamble + "AppID : 1, change number : 1/1, last change : x\n\"1\"\n{\n\t\"common\"\n\t{\n" +
+			"\t\t\"name\"\t\t\"bin\\win64 \\\"q\\\" a\\\\b\"\n\t}\n}\n",
+		check: func(t *testing.T, apps map[string]AppInfo) {
+			if got, want := apps["1"].Name, `bin\win64 "q" a\b`; got != want {
+				t.Errorf("name = %q, want %q", got, want)
+			}
+		},
 	}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,6 +233,19 @@ func TestParseAppInfo_NoAppBlock(t *testing.T) {
 	} {
 		if apps, err := ParseAppInfo(out); err == nil {
 			t.Errorf("ParseAppInfo(%q) = %v, want an error", out, apps)
+		}
+	}
+}
+
+func TestStripANSI(t *testing.T) {
+	for in, want := range map[string]string{
+		"Loading Steam API...\x1b[0mOK":         "Loading Steam API...OK",
+		"\x1b[0mAppID : 2394010":                "AppID : 2394010",
+		"\x1b[1;31mred\x1b[0m \x1b]0;title\x07": "red ",
+		"plain":                                 "plain",
+	} {
+		if got := StripANSI(in); got != want {
+			t.Errorf("StripANSI(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

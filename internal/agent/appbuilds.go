@@ -35,6 +35,11 @@ import (
 // serialized to share it (appInfoChecks.run).
 const appInfoContainerName = "kraken_appinfo"
 
+// appInfoRole is the check container's labelRole value. The label, not the
+// name, is what tells the rest of the Agent this managed container is a
+// helper and not a server's game container.
+const appInfoRole = "appinfo"
+
 // appInfoRunTimeout bounds one SteamCMD session, container start to exit. A
 // session is about 20 seconds on Linux, SteamCMD's own self-update included,
 // plus a second per app; a Hyper-V Windows container adds its boot. Three
@@ -95,8 +100,8 @@ type appInfoFlight struct {
 // Per-app trouble (an unknown app, a branch the anonymous account cannot see,
 // a block SteamCMD cut short) is reported in that app's error, with the end of
 // SteamCMD's output in raw_tail. The returned error is for a check that could
-// not run at all: a bad request, an image that cannot be had, a container that
-// would not start.
+// not run at all: a bad request, an image that is not on this node, a
+// container that would not start.
 func (d *DockerRuntime) AppBuilds(ctx context.Context, req *agentpb.GetAppBuildsRequest) (*agentpb.GetAppBuildsResponse, error) {
 	if len(req.GetApps()) == 0 {
 		return &agentpb.GetAppBuildsResponse{}, nil
@@ -115,12 +120,19 @@ func (d *DockerRuntime) AppBuilds(ctx context.Context, req *agentpb.GetAppBuilds
 	}
 
 	f := d.joinAppInfoCheck(img, windows, ids)
+	// An answer that is already there wins over a context that has also
+	// ended: a select with both ready picks at random, and would throw the
+	// answer away half the time.
 	select {
 	case <-f.done:
-	case <-ctx.Done():
-		// The check itself carries on (it is shared, and bounded on its own);
-		// only this caller stops waiting for it.
-		return nil, fmt.Errorf("waiting for the steam build check: %w", ctx.Err())
+	default:
+		select {
+		case <-f.done:
+		case <-ctx.Done():
+			// The check itself carries on (it is shared, and bounded on its
+			// own); only this caller stops waiting for it.
+			return nil, fmt.Errorf("waiting for the steam build check: %w", ctx.Err())
+		}
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -235,11 +247,11 @@ func (d *DockerRuntime) runAppInfoCheck(img string, windows bool, ids []string, 
 	}
 	defer finish()
 
-	// Outside the run lock: a cold node pulling a multi-gigabyte image must
-	// not hold up a check of another image that is already here.
+	// Outside the run lock, so a slow registry for one image does not hold
+	// up a check of another.
 	imageBegan := time.Now()
-	if err := d.pullImage(context.Background(), img, installPullTimeout, note); err != nil {
-		f.err = grpcstatus.Errorf(codes.FailedPrecondition, "steam build check: %v", err)
+	if err := d.appInfoImage(img); err != nil {
+		f.err = err
 		return
 	}
 	note("image check took " + took(imageBegan))
@@ -283,6 +295,35 @@ func (d *DockerRuntime) runAppInfoCheck(img string, windows bool, ids []string, 
 	d.removeAppInfoContainer(first.id)
 }
 
+// appInfoImage makes sure the check can run on img without turning it into a
+// download.
+//
+// An image that is not on the node fails the check at once. The Panel sends a
+// check to a node that hosts the game, so a missing image means it picked
+// wrong, and pulling on the check's behalf would let a daily fleet check start
+// a multi-gigabyte kraken-steam-win download on a node that never ran the game,
+// holding the in-flight check for as long as that takes.
+//
+// An image that IS here is refreshed the way an operator start refreshes it
+// (refreshImageForStart): the pull policy decides whether to ask the
+// registry, the check waits startPullBudget for an unchanged tag's manifest
+// check, and a tag that really moved finishes downloading in the background
+// while this check runs on the local copy. Build ids come from Steam, not from
+// the image, so an older SteamCMD answers the question just as well.
+func (d *DockerRuntime) appInfoImage(img string) error {
+	ctx := context.Background()
+	if _, err := d.images.ImageInspect(ctx, img); err != nil {
+		return grpcstatus.Errorf(codes.FailedPrecondition,
+			"steam build check: image %s is not on this node; check from a node that hosts the game", img)
+	}
+	// The server id is only a log field there; the container name says
+	// which caller this is.
+	if err := d.refreshImageForStart(ctx, img, appInfoContainerName); err != nil {
+		return grpcstatus.Errorf(codes.FailedPrecondition, "steam build check: %v", err)
+	}
+	return nil
+}
+
 // appInfoResult is one SteamCMD session's outcome.
 type appInfoResult struct {
 	id       string // the container, for removal
@@ -314,7 +355,7 @@ func (d *DockerRuntime) appInfoSession(img string, windows bool, ids []string, n
 		Image:      img,
 		Entrypoint: d.shellEntrypoint(),
 		Cmd:        []string{script},
-		Labels:     map[string]string{labelManaged: "true"},
+		Labels:     map[string]string{labelManaged: "true", labelRole: appInfoRole},
 	}
 	// No Binds, no ports: the check reads nothing of a server's and serves
 	// nothing. See the top of this file.
@@ -359,6 +400,10 @@ func (d *DockerRuntime) appInfoSession(img string, windows bool, ids []string, n
 		return res, grpcstatus.Errorf(codes.Unavailable, "steam build check: stream %s logs: %v", appInfoContainerName, streamErr)
 	}
 
+	// timedOut is set only where the deadline is what ended the wait. An exit
+	// status that arrived right on the deadline is a finished session, so it
+	// is not read off ctx.Err() after the fact: that would suppress the retry
+	// and tell the Panel SteamCMD never finished.
 	statusCh, errCh := d.containers.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
 	select {
 	case st := <-statusCh:
@@ -368,10 +413,14 @@ func (d *DockerRuntime) appInfoSession(img string, windows bool, ids []string, n
 		if ctx.Err() == nil {
 			return res, grpcstatus.Errorf(codes.Unavailable, "steam build check: wait for %s: %v", appInfoContainerName, werr)
 		}
-	case <-ctx.Done():
-	}
-	if ctx.Err() != nil {
+		// The client ends the wait with the context's own error when the
+		// deadline passes: the same timeout as the case below, by another
+		// channel.
 		res.timedOut = true
+	case <-ctx.Done():
+		res.timedOut = true
+	}
+	if res.timedOut {
 		note(fmt.Sprintf("steamcmd did not finish within %s; reading what it printed", appInfoRunTimeout))
 	}
 
@@ -512,8 +561,8 @@ func appBuildFor(q *agentpb.AppBuildQuery, f *appInfoFlight) *agentpb.AppBuild {
 // Within one Agent the run lock means nothing else is using it, so whatever
 // holds it is a leftover: a check whose removal did not land, or one a crashed
 // Agent left running. Either is removed, running or not, since nothing of a
-// server's is mounted in it. A container under that name that the Agent did
-// not label as its own, or that is labelled as a server's, is not ours to
+// server's is mounted in it. A container under that name that does not carry
+// the check's role label, or that is labelled as a server's, is not ours to
 // remove, and the check refuses instead.
 func (d *DockerRuntime) clearAppInfoName(ctx context.Context) error {
 	info, err := d.containers.ContainerInspect(ctx, appInfoContainerName)
@@ -527,7 +576,7 @@ func (d *DockerRuntime) clearAppInfoName(ctx context.Context) error {
 	if info.Config != nil {
 		labels = info.Config.Labels
 	}
-	if labels[labelManaged] != "true" || labels[labelServerID] != "" {
+	if labels[labelManaged] != "true" || labels[labelRole] != appInfoRole || labels[labelServerID] != "" {
 		return fmt.Errorf("container %s holds the build check's name and was not left by a build check; refusing to remove it — rename or remove it", appInfoContainerName)
 	}
 	return d.removeAndAwaitName(ctx, info.ID, appInfoContainerName)

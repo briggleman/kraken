@@ -38,6 +38,10 @@ import (
 const (
 	labelManaged  = "kraken.managed"
 	labelServerID = "kraken.server_id"
+	// labelRole marks a managed container that is a helper, never a game
+	// container: today the Steam build check's (appInfoRole). Game and
+	// install containers carry none.
+	labelRole = "kraken.role"
 )
 
 func containerName(serverID string) string { return "kraken_" + serverID }
@@ -747,10 +751,11 @@ func reportManagedContainers(ctx context.Context, ops containerOps) (list []*age
 		if serverID != "" && name == installContainerName(serverID) {
 			continue
 		}
-		// The Steam build check's container (appbuilds.go) is managed too, but
-		// belongs to no server: reported, it would read as a game container
-		// with no server behind it for the twenty seconds a check runs.
-		if serverID == "" && name == appInfoContainerName {
+		// A helper with a role (the Steam build check's container, see
+		// appbuilds.go) is managed too, but belongs to no server: reported, it
+		// would read as a game container with no server behind it for the
+		// twenty seconds a check runs.
+		if c.Labels[labelRole] != "" {
 			continue
 		}
 		state := strings.ToLower(string(c.State))

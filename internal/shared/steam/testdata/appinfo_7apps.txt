@@ -1,0 +1,1335 @@
+WARNING: setlocale('en_US.UTF-8') failed, using locale: 'C'. International characters may not work.
+Redirecting stderr to '/home/steam/Steam/logs/stderr.txt'
+Logging directory: '/home/steam/Steam/logs'
+[  0%] Checking for available updates...
+[----] Downloading update (58 of 40430 KB)...
+[  0%] Downloading update (1242 of 40430 KB)...
+[  3%] Downloading update (4673 of 40430 KB)...
+[ 11%] Downloading update (8019 of 40430 KB)...
+[ 19%] Downloading update (11397 of 40430 KB)...
+[ 28%] Downloading update (15158 of 40430 KB)...
+[ 37%] Downloading update (17471 of 40430 KB)...
+[ 43%] Downloading update (20010 of 40430 KB)...
+[ 49%] Downloading update (22283 of 40430 KB)...
+[ 55%] Downloading update (24843 of 40430 KB)...
+[ 61%] Downloading update (27305 of 40430 KB)...
+[ 67%] Downloading update (28497 of 40430 KB)...
+[ 70%] Downloading update (29858 of 40430 KB)...
+[ 73%] Downloading update (30984 of 40430 KB)...
+[ 76%] Downloading update (32094 of 40430 KB)...
+[ 79%] Downloading update (33305 of 40430 KB)...
+[ 82%] Downloading update (34343 of 40430 KB)...
+[ 84%] Downloading update (35437 of 40430 KB)...
+[ 87%] Downloading update (36787 of 40430 KB)...
+[ 90%] Downloading update (37817 of 40430 KB)...
+[ 93%] Downloading update (38996 of 40430 KB)...
+[ 96%] Downloading update (40181 of 40430 KB)...
+[ 99%] Downloading update (40430 of 40430 KB)...
+[100%] Download complete.
+[----] Installing update...
+[----] Extracting package...
+[----] Extracting package...
+[----] Extracting package...
+[----] Extracting package...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Installing update...
+[----] Cleaning up...
+[----] Update complete, launching Steamcmd...
+UpdateUI: skip show logo
+WARNING: setlocale('en_US.UTF-8') failed, using locale: 'C'. International characters may not work.
+Redirecting stderr to '/home/steam/Steam/logs/stderr.txt'
+Logging directory: '/home/steam/Steam/logs'
+[  0%] Checking for available updates...
+[----] Verifying installation...
+UpdateUI: skip show logo
+Steam Console Client (c) Valve Corporation - version 1788292693
+-- type 'quit' to exit --
+Loading Steam API...[0mOK
+[0m
+Connecting anonymously to Steam Public...[0mOK
+[0mWaiting for client config...[0mOK
+[0mWaiting for user info...[0mOK
+[0mAppID : 2394010, change number : 39612183/39612183, last change : Thu Oct  8 14:44:02 2026 
+"2394010"
+{
+	"common"
+	{
+		"name"		"Palworld Dedicated Server"
+		"type"		"Tool"
+		"parent"		"1623730"
+		"ReleaseState"		"released"
+		"oslist"		"windows,linux"
+		"osarch"		"64"
+		"osextended"		""
+		"icon"		"606e637a2f0610f3805893e917c0e22d1d043ba6"
+		"clienttga"		"2032a63848f1ab00b518b7e984bd533c1ce0cf07"
+		"clienticon"		"22a20bdaa6d782f60caa45eb7b02fc2411dcd988"
+		"linuxclienticon"		"d26e2c064a36a71a1ae404a0fc9bef6c2182f611"
+		"freetodownload"		"1"
+		"associations"
+		{
+		}
+		"gameid"		"2394010"
+	}
+	"extended"
+	{
+		"gamedir"		"Palworld"
+		"serverbrowsername"		"Palworld"
+	}
+	"config"
+	{
+		"installdir"		"PalServer"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"PalServer.exe"
+				"arguments"		"-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS"
+				"type"		"default"
+				"config"
+				{
+					"oslist"		"windows"
+				}
+			}
+			"1"
+			{
+				"executable"		"PalServer.sh"
+				"arguments"		"EpicApp=PalServer -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS -publiclobby"
+				"type"		"default"
+				"config"
+				{
+					"oslist"		"linux"
+				}
+			}
+			"2"
+			{
+				"executable"		"PalServer.exe"
+				"arguments"		"-publiclobby -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS -publiclobby"
+				"description_loc"
+				{
+					"english"		"Open and start as a community server"
+				}
+				"description"		"Open and start as a community server"
+			}
+		}
+	}
+	"depots"
+	{
+		"1004"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7604377918839582995"
+					"size"		"67863136"
+					"download"		"24251776"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1005"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2135359612286175146"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1006"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4559160656493359681"
+					"size"		"111284048"
+					"download"		"36733840"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"228989"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"depotfromapp"		"228980"
+			"sharedinstall"		"1"
+		}
+		"228990"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"depotfromapp"		"228980"
+			"sharedinstall"		"1"
+		}
+		"2394011"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+				"osarch"		"64"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"1836396121091905196"
+					"size"		"5748666401"
+					"download"		"4672921664"
+				}
+			}
+		}
+		"2394012"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+				"osarch"		"64"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7031055933861146620"
+					"size"		"4820786528"
+					"download"		"4503130048"
+				}
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"25247047"
+				"timeupdated"		"1789441330"
+				"timebuildupdated"		"1789107835"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 896660, change number : 39574486/39574486, last change : Thu Oct  8 14:44:03 2026 
+"896660"
+{
+	"common"
+	{
+		"name"		"Valheim Dedicated Server"
+		"type"		"Tool"
+		"parent"		"892970"
+		"oslist"		"windows,macos,linux"
+		"osarch"		""
+		"icon"		"1aab0586723c8578c7990ced7d443568649d0df2"
+		"logo"		"233d73a1c963515ee4a9b59507bc093d85a4e2dc"
+		"logo_small"		"233d73a1c963515ee4a9b59507bc093d85a4e2dc_thumb"
+		"clienticon"		"c55a6b50b170ac6ed56cf90521273c30dccb5f12"
+		"clienttga"		"35e067b9efc8d03a9f1cdfb087fac4b970a48daf"
+		"ReleaseState"		"released"
+		"osextended"		"macos64,macosapplesilicon,macosnotarized"
+		"freetodownload"		"1"
+		"associations"
+		{
+		}
+		"gameid"		"896660"
+	}
+	"config"
+	{
+		"installdir"		"Valheim dedicated server"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"start_server_xterm.sh"
+				"type"		"server"
+				"config"
+				{
+					"oslist"		"linux"
+				}
+			}
+			"1"
+			{
+				"executable"		"start_headless_server.bat"
+				"type"		"server"
+				"config"
+				{
+					"oslist"		"windows"
+				}
+			}
+			"2"
+			{
+				"executable"		"start_server.command"
+				"type"		"server"
+				"config"
+				{
+					"oslist"		"macos"
+				}
+			}
+		}
+	}
+	"depots"
+	{
+		"1004"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7604377918839582995"
+					"size"		"67863136"
+					"download"		"24251776"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1005"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2135359612286175146"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1006"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4559160656493359681"
+					"size"		"111284048"
+					"download"		"36733840"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"896661"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"3707659388211752971"
+					"size"		"2075366582"
+					"download"		"1874693152"
+				}
+				"default_old"
+				{
+					"gid"		"1285123405092214913"
+					"size"		"2075365216"
+					"download"		"1874687328"
+				}
+				"default_pre1_0"
+				{
+					"gid"		"962159520942340660"
+					"size"		"1648960249"
+					"download"		"1432104384"
+				}
+				"default_preal"
+				{
+					"gid"		"4714844039240581373"
+					"size"		"1809855230"
+					"download"		"928137296"
+				}
+				"default_prebw"
+				{
+					"gid"		"125933883409730605"
+					"size"		"2296358615"
+					"download"		"1244596096"
+				}
+				"default_precta"
+				{
+					"gid"		"3745717239018859798"
+					"size"		"1627054796"
+					"download"		"1355852480"
+				}
+				"default_preml"
+				{
+					"gid"		"6784662710573794961"
+					"size"		"1244390550"
+					"download"		"683682096"
+				}
+			}
+		}
+		"896662"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"6497701753597013477"
+					"size"		"2044200000"
+					"download"		"1866779248"
+				}
+				"default_old"
+				{
+					"gid"		"514907972218181100"
+					"size"		"2044198643"
+					"download"		"1866762656"
+				}
+				"default_pre1_0"
+				{
+					"gid"		"4092019362950122673"
+					"size"		"1572001805"
+					"download"		"1418790672"
+				}
+				"default_preal"
+				{
+					"gid"		"3407001158943500641"
+					"size"		"1728347336"
+					"download"		"909601984"
+				}
+				"default_prebw"
+				{
+					"gid"		"3720669077053597949"
+					"size"		"2214279680"
+					"download"		"1230754128"
+				}
+				"default_precta"
+				{
+					"gid"		"3567185908497052141"
+					"size"		"1545087054"
+					"download"		"1342060160"
+				}
+				"default_preml"
+				{
+					"gid"		"6502590622330440570"
+					"size"		"1129628196"
+					"download"		"667746320"
+				}
+			}
+		}
+		"896663"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2833472542064526674"
+					"size"		"2087237073"
+					"download"		"1862359904"
+				}
+				"default_old"
+				{
+					"gid"		"8063243372596204871"
+					"size"		"2087236219"
+					"download"		"1862375200"
+				}
+				"default_pre1_0"
+				{
+					"gid"		"1988284746012428400"
+					"size"		"1629093763"
+					"download"		"1425572368"
+				}
+				"default_preal"
+				{
+					"gid"		"5549621211050618912"
+					"size"		"0"
+					"download"		"0"
+				}
+				"default_prebw"
+				{
+					"gid"		"1408443316269240087"
+					"size"		"2992022209"
+					"download"		"1569232624"
+				}
+				"default_precta"
+				{
+					"gid"		"4899617364751965308"
+					"size"		"1593747184"
+					"download"		"1340780208"
+				}
+				"default_preml"
+				{
+					"gid"		"5549621211050618912"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"25730807"
+				"timeupdated"		"1791288695"
+				"timebuildupdated"		"1791214462"
+			}
+			"default_old"
+			{
+				"buildid"		"25527701"
+				"description"		"Previous stable"
+				"timeupdated"		"1790338729"
+				"timebuildupdated"		"1790337367"
+			}
+			"default_pre1_0"
+			{
+				"buildid"		"21981590"
+				"description"		"Last stable build before 1.0"
+				"timeupdated"		"1771576792"
+				"timebuildupdated"		"1771406785"
+			}
+			"default_preal"
+			{
+				"buildid"		"20221240"
+				"description"		"Last stable build before Ashlands"
+				"timeupdated"		"1759477966"
+				"timebuildupdated"		"1759402457"
+			}
+			"default_prebw"
+			{
+				"buildid"		"20221628"
+				"description"		"	Last stable build before Bog Witch"
+				"timeupdated"		"1759477997"
+				"timebuildupdated"		"1759404132"
+			}
+			"default_precta"
+			{
+				"buildid"		"20221863"
+				"description"		"Last stable build before Call to Arms"
+				"timeupdated"		"1759478062"
+				"timebuildupdated"		"1759405224"
+			}
+			"default_preml"
+			{
+				"buildid"		"20222098"
+				"description"		"Last stable build before Mistlands"
+				"timeupdated"		"1759478369"
+				"timebuildupdated"		"1759406180"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 4019830, change number : 39619344/39619344, last change : Thu Oct  8 14:44:03 2026 
+"4019830"
+{
+	"common"
+	{
+		"name"		"RuneScape: Dragonwilds Dedicated Server"
+		"type"		"Tool"
+		"parent"		"1374490"
+		"clienticon"		"7c4174eace5814ac816b4a8368e0ab7a28f1d5e4"
+		"icon"		"7c4174eace5814ac816b4a8368e0ab7a28f1d5e4"
+		"ReleaseState"		"released"
+		"oslist"		"windows,linux"
+		"osarch"		"64"
+		"osextended"		""
+		"name_localized"
+		{
+			"english"		"RuneScape Dragonwilds: Dedicated Server"
+		}
+		"freetodownload"		"1"
+		"small_capsule"
+		{
+			"english"		"68c960f6e610cca5105aed430e5dbf16f688a351/capsule_231x87.jpg"
+		}
+		"header_image"
+		{
+			"english"		"990ca0a0fb3bf7d1edc02ba22a7c2c30c4149b6b/header.jpg"
+		}
+		"library_assets"
+		{
+			"library_capsule"		"en"
+			"library_hero"		"en"
+			"library_hero_blur"		"en"
+			"library_logo"		"en"
+			"library_header"		"en"
+			"logo_position"
+			{
+				"pinned_position"		"BottomLeft"
+				"width_pct"		"50"
+				"height_pct"		"50"
+			}
+		}
+		"library_assets_full"
+		{
+			"library_capsule"
+			{
+				"image"
+				{
+					"english"		"f72e5a29377820dd3d1d76e0c2eb5a8fcfa34c7d/library_capsule.jpg"
+				}
+				"image2x"
+				{
+					"english"		"f72e5a29377820dd3d1d76e0c2eb5a8fcfa34c7d/library_capsule_2x.jpg"
+				}
+			}
+			"library_hero"
+			{
+				"image2x"
+				{
+					"english"		"26888710528ba20ab11743212140ca36930569d3/library_hero_2x.jpg"
+				}
+				"image"
+				{
+					"english"		"26888710528ba20ab11743212140ca36930569d3/library_hero.jpg"
+				}
+			}
+			"library_hero_blur"
+			{
+				"image"
+				{
+					"english"		"26888710528ba20ab11743212140ca36930569d3/library_hero_blur.jpg"
+				}
+			}
+			"library_logo"
+			{
+				"image"
+				{
+					"english"		"1c7e836ad92621aa86ae822c73939f3b2918fd49/logo.png"
+				}
+				"image2x"
+				{
+					"english"		"1c7e836ad92621aa86ae822c73939f3b2918fd49/logo_2x.png"
+				}
+				"logo_position"
+				{
+					"pinned_position"		"BottomLeft"
+					"width_pct"		"50"
+					"height_pct"		"50"
+				}
+			}
+			"library_header"
+			{
+				"image"
+				{
+					"english"		"990ca0a0fb3bf7d1edc02ba22a7c2c30c4149b6b/library_header.jpg"
+				}
+				"image2x"
+				{
+					"english"		"990ca0a0fb3bf7d1edc02ba22a7c2c30c4149b6b/library_header_2x.jpg"
+				}
+			}
+		}
+		"store_asset_mtime"		"1786532225"
+		"associations"
+		{
+		}
+		"supported_languages"
+		{
+			"english"
+			{
+				"supported"		"true"
+			}
+		}
+		"steam_release_date"		"1774976400"
+		"gameid"		"4019830"
+		"review_score"		"5"
+		"review_percentage"		"58"
+	}
+	"config"
+	{
+		"installdir"		"RuneScape Dragonwilds Dedicated Server"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"RSDragonwildsServer.exe"
+				"type"		"default"
+				"config"
+				{
+					"oslist"		"windows"
+				}
+			}
+			"1"
+			{
+				"executable"		"RSDragonwildsServer.sh"
+				"type"		"default"
+				"config"
+				{
+					"oslist"		"linux"
+				}
+			}
+		}
+	}
+	"depots"
+	{
+		"4019831"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"5222142871788076515"
+					"size"		"4946450351"
+					"download"		"1669036112"
+				}
+			}
+		}
+		"3501791"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"5736699466634593401"
+					"size"		"5484065195"
+					"download"		"1702236160"
+				}
+			}
+		}
+		"baselanguages"		"brazilian,english,french,german,italian,latam,spanish"
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"25805654"
+				"timeupdated"		"1791468210"
+				"timebuildupdated"		"1791468210"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 2857200, change number : 39524384/39524384, last change : Thu Oct  8 14:44:04 2026 
+"2857200"
+{
+	"common"
+	{
+		"name"		"Abiotic Factor Dedicated Server"
+		"type"		"Tool"
+		"parent"		"427410"
+		"oslist"		"windows"
+		"osarch"		"64"
+		"osextended"		""
+		"icon"		"c043a24f5ba61aeb0a78163b9aee78a930eef1c5"
+		"clienttga"		"4b04fd75bb378c09ebd20774c41bc0733d3e4075"
+		"clienticon"		"8946b7b06708118a53ec49336aa25819ae08f747"
+		"ReleaseState"		"released"
+		"freetodownload"		"1"
+		"gameid"		"2857200"
+	}
+	"config"
+	{
+		"installdir"		"Abiotic Factor Dedicated Server"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"AbioticFactorServer.exe"
+				"arguments"		"-log -newconsole"
+				"type"		"default"
+				"config"
+				{
+					"oslist"		"windows"
+					"osarch"		"64"
+				}
+			}
+		}
+	}
+	"depots"
+	{
+		"228989"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"depotfromapp"		"228980"
+			"sharedinstall"		"1"
+		}
+		"2857201"
+		{
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4667113027278604664"
+					"size"		"3014954555"
+					"download"		"726285440"
+				}
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"24343458"
+				"timeupdated"		"1785179524"
+				"timebuildupdated"		"1784761143"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 2278520, change number : 39609069/39609069, last change : Thu Oct  8 14:44:05 2026 
+"2278520"
+{
+	"common"
+	{
+		"name"		"Enshrouded Dedicated Server"
+		"type"		"Tool"
+		"parent"		"1203620"
+		"oslist"		"windows"
+		"osarch"		"64"
+		"osextended"		""
+		"clienticon"		"b51ff4aa19722a1f3587b35f37f590a998f36a9a"
+		"clienttga"		"fe73371754e5775388602786867295c4c3820fe5"
+		"icon"		"b51ff4aa19722a1f3587b35f37f590a998f36a9a"
+		"ReleaseState"		"released"
+		"freetodownload"		"1"
+		"small_capsule"
+		{
+			"english"		"582baa77ab5beea393b5643649bbab84052ce426/capsule_231x87.jpg"
+		}
+		"header_image"
+		{
+			"english"		"9b0818cd65d728d368403c049b44a869275f1ceb/header.jpg"
+		}
+		"library_assets"
+		{
+			"library_capsule"		"en"
+			"library_hero"		"en"
+			"library_hero_blur"		"en"
+			"library_logo"		"en"
+			"library_header"		"en"
+			"logo_position"
+			{
+				"pinned_position"		"BottomLeft"
+				"width_pct"		"36.2700228832952"
+				"height_pct"		"33.66261473947938"
+			}
+		}
+		"library_assets_full"
+		{
+			"library_capsule"
+			{
+				"image"
+				{
+					"english"		"cec204fa47cd5f20b129ca2711416b3e6614588b/library_capsule.jpg"
+				}
+				"image2x"
+				{
+					"english"		"cec204fa47cd5f20b129ca2711416b3e6614588b/library_capsule_2x.jpg"
+				}
+			}
+			"library_hero"
+			{
+				"image"
+				{
+					"english"		"18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero.jpg"
+				}
+				"image2x"
+				{
+					"english"		"18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero_2x.jpg"
+				}
+			}
+			"library_hero_blur"
+			{
+				"image"
+				{
+					"english"		"18580ba964928c55f96c4d46809d4fa3aa7698d1/library_hero_blur.jpg"
+				}
+			}
+			"library_logo"
+			{
+				"image2x"
+				{
+					"english"		"6f5256cd4c0743c4b09d6caeeebbb846f4a6f4a3/logo_2x.png"
+				}
+				"image"
+				{
+					"english"		"6f5256cd4c0743c4b09d6caeeebbb846f4a6f4a3/logo.png"
+				}
+				"logo_position"
+				{
+					"pinned_position"		"BottomLeft"
+					"width_pct"		"36.2700228832952"
+					"height_pct"		"33.66261473947938"
+				}
+			}
+			"library_header"
+			{
+				"image"
+				{
+					"english"		"a4adb43a7701c717bd6cc2a8c82afda312b479db/library_header.jpg"
+				}
+				"image2x"
+				{
+					"english"		"a4adb43a7701c717bd6cc2a8c82afda312b479db/library_header_2x.jpg"
+				}
+			}
+		}
+		"store_asset_mtime"		"1775799393"
+		"associations"
+		{
+		}
+		"primary_genre"		"0"
+		"genres"
+		{
+			"0"		"37"
+		}
+		"category"
+		{
+		}
+		"steam_release_date"		"1706106600"
+		"gameid"		"2278520"
+		"review_score"		"7"
+		"review_percentage"		"87"
+	}
+	"extended"
+	{
+		"isfreeapp"		"1"
+	}
+	"config"
+	{
+		"installdir"		"EnshroudedServer"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"enshrouded_server.exe"
+			}
+		}
+	}
+	"depots"
+	{
+		"1004"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7604377918839582995"
+					"size"		"67863136"
+					"download"		"24251776"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1005"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2135359612286175146"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1006"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4559160656493359681"
+					"size"		"111284048"
+					"download"		"36733840"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"228989"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"depotfromapp"		"228980"
+			"sharedinstall"		"1"
+		}
+		"2278521"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2174935030716737236"
+					"size"		"8756751690"
+					"download"		"3713826544"
+				}
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"23178631"
+				"timeupdated"		"1778508351"
+				"timebuildupdated"		"1778499607"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 1829350, change number : 38905983/38905983, last change : Thu Oct  8 14:44:06 2026 
+"1829350"
+{
+	"common"
+	{
+		"name"		"V Rising Dedicated Server"
+		"type"		"Tool"
+		"parent"		"1604030"
+		"oslist"		"windows"
+		"osarch"		"64"
+		"osextended"		""
+		"clienttga"		"e19a49b84e23e37a47ab988a262c2e78a8bfbb95"
+		"clienticon"		"fc695ff131562610f3f853256a2b10b8bbfde717"
+		"icon"		"4fd995aacb3d54fe7d50b39824ed55727b897e61"
+		"ReleaseState"		"released"
+		"freetodownload"		"1"
+		"associations"
+		{
+		}
+		"gameid"		"1829350"
+	}
+	"config"
+	{
+		"installdir"		"VRisingDedicatedServer"
+		"launch"
+		{
+			"1"
+			{
+				"executable"		"README.txt"
+				"type"		"manual"
+			}
+		}
+	}
+	"depots"
+	{
+		"1004"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7604377918839582995"
+					"size"		"67863136"
+					"download"		"24251776"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1005"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2135359612286175146"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1006"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4559160656493359681"
+					"size"		"111284048"
+					"download"		"36733840"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1829351"
+		{
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"250813270647323596"
+					"size"		"1956640933"
+					"download"		"273913008"
+				}
+				"ce-1"
+				{
+					"gid"		"4650304158099947898"
+					"size"		"1956715309"
+					"download"		"273726512"
+				}
+				"legacy-0.5.x"
+				{
+					"gid"		"3087409297312015157"
+					"size"		"1657301193"
+					"download"		"636801104"
+				}
+				"legacy-0.6.x"
+				{
+					"gid"		"5409397380115532367"
+					"size"		"1409551350"
+					"download"		"208754432"
+				}
+				"legacy-1.0.x-pc"
+				{
+					"gid"		"5544376196932823653"
+					"size"		"1798507538"
+					"download"		"213552704"
+				}
+				"legacy-1.0.x-ce1"
+				{
+					"gid"		"6520047181884315747"
+					"size"		"1798520077"
+					"download"		"205389648"
+				}
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"25169871"
+				"timeupdated"		"1789121063"
+				"timebuildupdated"		"1788794150"
+			}
+			"ce-1"
+			{
+				"buildid"		"23409187"
+				"description"		"..."
+				"timeupdated"		"1779796781"
+				"timebuildupdated"		"1779780256"
+			}
+			"legacy-0.5.x"
+			{
+				"buildid"		"20267080"
+				"description"		"Initial Early Access version. Originally released: 2022-05-17"
+				"timeupdated"		"1759843146"
+				"timebuildupdated"		"1759739573"
+			}
+			"legacy-0.6.x"
+			{
+				"buildid"		"20268935"
+				"description"		"Gloomrot version - Originally released: 2023-05-17"
+				"timeupdated"		"1759843178"
+				"timebuildupdated"		"1759748246"
+			}
+			"legacy-1.0.x-pc"
+			{
+				"buildid"		"20270055"
+				"description"		"Release (1.0) version - Originally released: 2024-05-08"
+				"timeupdated"		"1759843212"
+				"timebuildupdated"		"1759753300"
+			}
+			"legacy-1.0.x-ce1"
+			{
+				"buildid"		"20271087"
+				"description"		"Release (1.0) version - Originally released: 2024-06-11"
+				"timeupdated"		"1759843307"
+				"timebuildupdated"		"1759758044"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+AppID : 4129620, change number : 39542591/39542591, last change : Thu Oct  8 14:44:06 2026 
+"4129620"
+{
+	"common"
+	{
+		"name"		"Windrose Dedicated Server"
+		"type"		"Tool"
+		"parent"		"3041230"
+		"clienticon"		"f8ae552a1c3eb4a6d3015867a6a4a64c02b9cd8d"
+		"icon"		"f8ae552a1c3eb4a6d3015867a6a4a64c02b9cd8d"
+		"ReleaseState"		"released"
+		"freetodownload"		"1"
+		"gameid"		"4129620"
+	}
+	"config"
+	{
+		"installdir"		"Windrose Dedicated Server"
+		"launch"
+		{
+			"0"
+			{
+				"executable"		"WindroseServer.exe"
+				"arguments"		"-log"
+				"type"		"server"
+				"config"
+				{
+					"oslist"		"windows"
+					"osarch"		"64"
+				}
+			}
+		}
+	}
+	"depots"
+	{
+		"1004"
+		{
+			"config"
+			{
+				"oslist"		"windows"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"7604377918839582995"
+					"size"		"67863136"
+					"download"		"24251776"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1005"
+		{
+			"config"
+			{
+				"oslist"		"macos"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"2135359612286175146"
+					"size"		"0"
+					"download"		"0"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"1006"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"4559160656493359681"
+					"size"		"111284048"
+					"download"		"36733840"
+				}
+			}
+			"depotfromapp"		"1007"
+		}
+		"4129621"
+		{
+			"manifests"
+			{
+				"public"
+				{
+					"gid"		"6608847723523526671"
+					"size"		"3036697175"
+					"download"		"869241344"
+				}
+			}
+		}
+		"4129622"
+		{
+			"config"
+			{
+				"oslist"		"linux"
+			}
+			"manifests"
+			{
+			}
+		}
+		"branches"
+		{
+			"public"
+			{
+				"buildid"		"24913903"
+				"timeupdated"		"1787642432"
+				"timebuildupdated"		"1787600449"
+			}
+		}
+		"privatebranches"		"1"
+	}
+}
+Unloading Steam API...[0mOK
+[0m

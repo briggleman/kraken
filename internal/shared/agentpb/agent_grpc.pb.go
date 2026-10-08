@@ -52,6 +52,7 @@ const (
 	NodeService_StreamStats_FullMethodName          = "/kraken.agent.v1.NodeService/StreamStats"
 	NodeService_ApplyNodeConfig_FullMethodName      = "/kraken.agent.v1.NodeService/ApplyNodeConfig"
 	NodeService_ReplicateBackups_FullMethodName     = "/kraken.agent.v1.NodeService/ReplicateBackups"
+	NodeService_GetAppBuilds_FullMethodName         = "/kraken.agent.v1.NodeService/GetAppBuilds"
 	NodeService_BeginCertRotation_FullMethodName    = "/kraken.agent.v1.NodeService/BeginCertRotation"
 	NodeService_CompleteCertRotation_FullMethodName = "/kraken.agent.v1.NodeService/CompleteCertRotation"
 )
@@ -145,6 +146,15 @@ type NodeServiceClient interface {
 	// target to the configured SFTP remote. Drives the scheduled "replicate"
 	// cron action.
 	ReplicateBackups(ctx context.Context, in *ReplicateBackupsRequest, opts ...grpc.CallOption) (*ReplicateBackupsResponse, error)
+	// GetAppBuilds asks SteamCMD, in one session, for the current build id of
+	// each requested app and branch (#392). The Panel compares them with the
+	// build ids in each server's appmanifest to decide whether a start needs
+	// the install pass at all. The run is a one-shot container from the given
+	// image with NO data dir mounted, so it needs neither the install gate nor
+	// the data-dir guard and cannot touch a server's tree. An Agent that
+	// predates the RPC answers Unimplemented; the Panel then reports the build
+	// as unknown and keeps today's behaviour.
+	GetAppBuilds(ctx context.Context, in *GetAppBuildsRequest, opts ...grpc.CallOption) (*GetAppBuildsResponse, error)
 	// BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
 	// serving cert. The new key is held in memory (single pending slot, short
 	// TTL) until CompleteCertRotation delivers the signed certificate. The Panel
@@ -502,6 +512,16 @@ func (c *nodeServiceClient) ReplicateBackups(ctx context.Context, in *ReplicateB
 	return out, nil
 }
 
+func (c *nodeServiceClient) GetAppBuilds(ctx context.Context, in *GetAppBuildsRequest, opts ...grpc.CallOption) (*GetAppBuildsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAppBuildsResponse)
+	err := c.cc.Invoke(ctx, NodeService_GetAppBuilds_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeServiceClient) BeginCertRotation(ctx context.Context, in *BeginCertRotationRequest, opts ...grpc.CallOption) (*BeginCertRotationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BeginCertRotationResponse)
@@ -611,6 +631,15 @@ type NodeServiceServer interface {
 	// target to the configured SFTP remote. Drives the scheduled "replicate"
 	// cron action.
 	ReplicateBackups(context.Context, *ReplicateBackupsRequest) (*ReplicateBackupsResponse, error)
+	// GetAppBuilds asks SteamCMD, in one session, for the current build id of
+	// each requested app and branch (#392). The Panel compares them with the
+	// build ids in each server's appmanifest to decide whether a start needs
+	// the install pass at all. The run is a one-shot container from the given
+	// image with NO data dir mounted, so it needs neither the install gate nor
+	// the data-dir guard and cannot touch a server's tree. An Agent that
+	// predates the RPC answers Unimplemented; the Panel then reports the build
+	// as unknown and keeps today's behaviour.
+	GetAppBuilds(context.Context, *GetAppBuildsRequest) (*GetAppBuildsResponse, error)
 	// BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
 	// serving cert. The new key is held in memory (single pending slot, short
 	// TTL) until CompleteCertRotation delivers the signed certificate. The Panel
@@ -714,6 +743,9 @@ func (UnimplementedNodeServiceServer) ApplyNodeConfig(context.Context, *ApplyNod
 }
 func (UnimplementedNodeServiceServer) ReplicateBackups(context.Context, *ReplicateBackupsRequest) (*ReplicateBackupsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReplicateBackups not implemented")
+}
+func (UnimplementedNodeServiceServer) GetAppBuilds(context.Context, *GetAppBuildsRequest) (*GetAppBuildsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAppBuilds not implemented")
 }
 func (UnimplementedNodeServiceServer) BeginCertRotation(context.Context, *BeginCertRotationRequest) (*BeginCertRotationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BeginCertRotation not implemented")
@@ -1193,6 +1225,24 @@ func _NodeService_ReplicateBackups_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_GetAppBuilds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAppBuildsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).GetAppBuilds(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_GetAppBuilds_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).GetAppBuilds(ctx, req.(*GetAppBuildsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeService_BeginCertRotation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BeginCertRotationRequest)
 	if err := dec(in); err != nil {
@@ -1319,6 +1369,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicateBackups",
 			Handler:    _NodeService_ReplicateBackups_Handler,
+		},
+		{
+			MethodName: "GetAppBuilds",
+			Handler:    _NodeService_GetAppBuilds_Handler,
 		},
 		{
 			MethodName: "BeginCertRotation",

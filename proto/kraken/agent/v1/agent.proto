@@ -152,6 +152,16 @@ service NodeService {
   // cron action.
   rpc ReplicateBackups(ReplicateBackupsRequest) returns (ReplicateBackupsResponse);
 
+  // GetAppBuilds asks SteamCMD, in one session, for the current build id of
+  // each requested app and branch (#392). The Panel compares them with the
+  // build ids in each server's appmanifest to decide whether a start needs
+  // the install pass at all. The run is a one-shot container from the given
+  // image with NO data dir mounted, so it needs neither the install gate nor
+  // the data-dir guard and cannot touch a server's tree. An Agent that
+  // predates the RPC answers Unimplemented; the Panel then reports the build
+  // as unknown and keeps today's behaviour.
+  rpc GetAppBuilds(GetAppBuildsRequest) returns (GetAppBuildsResponse);
+
   // BeginCertRotation asks the Agent to mint a fresh key + CSR for its mTLS
   // serving cert. The new key is held in memory (single pending slot, short
   // TTL) until CompleteCertRotation delivers the signed certificate. The Panel
@@ -790,4 +800,36 @@ message ReplicateBackupsRequest {
 message ReplicateBackupsResponse {
   int32 mirrored = 1; // archives copied to the remote this run
   int32 skipped = 2;  // archives already present on the remote
+}
+
+// One app and branch to look up (GetAppBuilds).
+message AppBuildQuery {
+  string app_id = 1;  // the SteamCMD app id, e.g. "2394010"
+  string branch = 2;  // the depot branch, "public" unless the spec says otherwise
+}
+
+message GetAppBuildsRequest {
+  // The image that carries SteamCMD for this platform (the spec's image, so
+  // it is already present on a node that hosts the game).
+  string image = 1;
+  // "linux" or "windows": picks steamcmd vs steamcmd.exe and the self-update
+  // guard the Windows binary needs (steamguard.go).
+  string platform_type = 2;
+  repeated AppBuildQuery apps = 3;
+}
+
+// The current build of one app and branch, or why it could not be read.
+message AppBuild {
+  string app_id = 1;
+  string branch = 2;
+  string build_id = 3;      // "" when error is set
+  int64 time_updated = 4;   // Steam's timeupdated for the branch, Unix seconds
+  string error = 5;         // per-app failure: unknown app, no such branch, …
+}
+
+message GetAppBuildsResponse {
+  repeated AppBuild builds = 1; // one per requested app, in request order
+  // The last few KB of SteamCMD's output, for diagnosing a parse failure
+  // without an SSH session to the node.
+  string raw_tail = 2;
 }

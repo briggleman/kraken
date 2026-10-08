@@ -10,6 +10,7 @@ import (
 
 	"github.com/briggleman/kraken/internal/agent"
 	"github.com/briggleman/kraken/internal/panel/store"
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 	"github.com/briggleman/kraken/internal/shared/spec"
 )
 
@@ -68,18 +69,24 @@ func seedOfflineServer(t *testing.T, st interface {
 
 // TestPower_StartRunsUpdatePassByDefault — the headline of #307: an ordinary
 // start re-runs the install script before launching, so the server picks up
-// depot updates instead of staying on its creation-day build. The request
-// returns 202 with the server already installing (which gates a racing start
-// and routes the console to the live install log), and the pass ends running.
+// depot updates instead of staying on its creation-day build. Since #392 the
+// pass runs when there is an update to pick up: here the tree holds build 99
+// and Steam has 100. The request returns 202 with the server already
+// installing (which gates a racing start and routes the console to the live
+// install log), and the pass ends running.
 func TestPower_StartRunsUpdatePassByDefault(t *testing.T) {
 	h, st := newTestServerStore(t)
 	token := login(t, h)
-	addr, rt := startFakeAgentRuntime(t, "node-x")
+	addr, rt := startFakeAgentRuntime(t, "node-x",
+		agent.WithFakeAppBuilds(map[string]agent.FakeAppBuild{"730": {BuildID: "99"}}))
 	nodeID := registerNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "update-default", map[string]any{
 		"script": "steamcmd +login anonymous +app_update {{APP_ID}} validate +quit",
 	})
 	sv := seedOfflineServer(t, st, "sv-update", nodeID, specID, nil)
+	installOnFake(t, rt, sv.ID, "730") // build 99 on disk
+	rt.SetAppBuild("730", agent.FakeAppBuild{BuildID: "100"})
+	before := len(rt.InstallScripts(sv.ID))
 
 	rec := do(t, h, http.MethodPost, "/api/v1/servers/"+sv.ID+"/power", token,
 		map[string]string{"action": "start"})
@@ -88,7 +95,7 @@ func TestPower_StartRunsUpdatePassByDefault(t *testing.T) {
 	}
 	waitForState(t, h, token, sv.ID, "running")
 
-	scripts := rt.InstallScripts(sv.ID)
+	scripts := rt.InstallScripts(sv.ID)[before:]
 	if len(scripts) != 1 {
 		t.Fatalf("install passes: got %d, want 1 (%q)", len(scripts), scripts)
 	}
@@ -96,6 +103,26 @@ func TestPower_StartRunsUpdatePassByDefault(t *testing.T) {
 		t.Errorf("update pass did not render the install script with the server's vars: %q", scripts[0])
 	}
 }
+
+// installOnFake runs an install straight on the fake Agent, which writes the
+// server's appmanifest at the fake's current build for appID — the tree a
+// server has after an earlier install, without going through the Panel.
+func installOnFake(t *testing.T, rt *agent.FakeRuntime, serverID, appID string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := rt.Create(ctx, &agentpb.ServerSpec{ServerId: serverID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Install(ctx, &agentpb.InstallServerRequest{ServerId: serverID, InstallScript: "steamcmd", Env: map[string]string{"APP_ID": appID}},
+		func(*agentpb.InstallEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// legacyUpdateCheck is the update_check block for the specs of tests about the
+// pass itself — its scripts, its step lines, its failures — which opt out of
+// the build check (#392) so every start runs the pass as it did before.
+var legacyUpdateCheck = map[string]any{"method": "none"}
 
 // TestPower_RestartRunsUpdatePass — a restart takes the same path (stop, update,
 // start) rather than the Agent's straight restart.
@@ -178,6 +205,7 @@ func TestPower_UpdatePassExcludesBepInExScript(t *testing.T) {
 	nodeID := registerNode(t, h, token, addr)
 	specID := createSpecWithInstall(t, h, token, "update-bepinex", map[string]any{
 		"script":             "steamcmd +app_update {{APP_ID}} validate +quit",
+		"update_check":       legacyUpdateCheck,
 		"bepinex_compatible": true,
 		"bepinex_script":     "curl -L bepinex.zip | unzip-into /data",
 	})

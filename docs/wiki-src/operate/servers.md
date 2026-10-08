@@ -62,32 +62,60 @@ of them.
 
 ## Update on start
 
-**Since 0.50.0, every operator-initiated start or restart re-runs the spec's
-install script before launching.** For a SteamCMD title that is an
-`app_update … validate` pass, which is how a server picks up a game update at
-all. Before this, a healthy server stayed on the build SteamCMD pulled the day
-it was created, and the only way forward was delete and recreate.
+**Every operator-initiated start or restart checks whether the game has an
+update, and runs the spec's install script before launching when it does.**
+For a SteamCMD title that is an `app_update … validate` pass, which is how a
+server picks up a game update at all. Since 0.50.0 the pass ran on every start;
+it is a few minutes on a large tree, so a start now asks Steam first and skips
+the pass when there is nothing to pull.
+
+### What a start does
+
+After the stop (below), the Panel compares the build in the server's
+appmanifest with the build Steam has on the branch ([the build
+check](#the-build-check)), reusing a check from the last 10 minutes and asking
+Steam otherwise, which takes about twenty seconds. The console says which of
+four things happens:
+
+| the check found | what the start does | console line |
+| --- | --- | --- |
+| the installed build is current | **skips the pass**: re-pushes the spec, re-renders the config and starts | `build 25247047 is current, skipping the update pass` |
+| Steam has a newer build | runs the pass as below, then records the new build | `build 25247047 → 25630937, running the update pass` |
+| nothing to check: the spec is not a Steam install or opts out, or the node's Agent predates the check | runs the pass as below, as every start did before | `this game has no build to check, running the update pass`, or `update check unavailable (…)` |
+| the check failed: Steam unreachable, the manifest missing or unreadable, an error from the node | **starts on the installed tree** without the pass. The reason stays on the server, whose build reads `unknown`. It never lands `install_failed` over a check | `update check failed (<reason>), starting on installed build 25247047` |
+
+A failed check starts on what is there because the tree was good at the last
+start, and a pass that cannot reach Steam is what stranded servers in
+`install_failed` during the 2026-09-25 Steam outage. Reinstall is the way to
+force a pass. Two things run the pass whatever the check says: a launch
+variable edited since the last install (the install script is rendered from
+the variables, so the server's `update_pass_owed` is set until a pass lands),
+and a check the spec or the node cannot do at all. The console also shows
+`build check took 21s` when Steam was asked, and `update pass took` only when a
+pass ran.
 
 The sequence, once you press start and the pass runs:
 
 1. The Panel stops the container if anything is holding the data directory,
    and the Agent confirms the container is really down before reporting the
    stop done.
-2. The Agent checks nothing else still has the data directory: an exited
+2. The Panel checks the build, as above. On a current build, or a failed
+   check, it goes straight to step 5.
+3. The Agent checks nothing else still has the data directory: an exited
    container bound to it is removed, and a running one refuses the pass by
    name, since SteamCMD writing under a live game corrupts the tree. Only the
    stop has happened at that point, so a refusal leaves the server `offline`,
    not `install_failed`, with the container named in `last_error`. Until the
    pass ends the Agent also refuses any start or restart of the server, the
    crash watchdog's included; stop and kill still work.
-3. It runs the install script. The server reads `installing`, the response is a
-   `202` carrying `updating: true`, and the install log streams to the console.
-   A start that skips the pass (the opt-outs and the paths below) is the plain
-   synchronous `200` instead.
-4. It re-renders the config files over the fresh tree. **After** the update, not
+4. It runs the install script. From step 1 on the server reads `installing`,
+   the response is a `202` carrying `updating: true`, and the install log
+   streams to the console. A start that takes none of this path (the opt-outs
+   and the paths below) is the plain synchronous `200` instead.
+5. It re-renders the config files over the fresh tree. **After** the update, not
    before, because the pass can restore a file the depot owns and your settings
    have to win.
-5. It starts the game.
+6. It starts the game.
 
 Where a failed pass leaves the server depends on how far it got, because the
 phases say different things about the install tree:
@@ -180,7 +208,7 @@ the API returns, as `update`:
 | `unknown` | no check has run yet, or the last one could not compare, and `error` says why: the node was offline, its Agent predates the check, the manifest is not there |
 | `unsupported` | the spec has no Steam build to check |
 
-It runs at three moments:
+It runs at four moments:
 
 - **Daily**, for the whole fleet, about five minutes after the Panel starts and
   then every `KRAKEN_UPDATE_CHECK_INTERVAL` (default `24h`, each wait varied by
@@ -194,6 +222,7 @@ It runs at three moments:
   out of time says to try again shortly), and `POST /servers/update-check` starts
   a fleet pass in the background (`202`). Both take `server.power`; the fleet
   pass also takes `server.any`, because it reads every server.
+- **At a start**, as above.
 - **After every install pass that lands**: create, reinstall, revive and the
   update-on-start pass. The pass just pulled the current build, so it records
   that build as both installed and available, and the install log says
@@ -206,8 +235,11 @@ branch. A spec can say otherwise in an `install.update_check` block:
 branch, an `app_id` when the script installs a different app, or
 `{ method: none }` to opt out. Factorio opts out; it is not on Steam.
 
-The check reports. It does not yet change what a start does: update-on-start
-still runs the pass as described above.
+It also runs **at every start** that takes the update path, unless a check from
+the last 10 minutes is on record: that is what decides whether the pass runs
+([What a start does](#what-a-start-does)). The Settings tab's
+`update_skip_reason` reads `current_build` while such a check says the build is
+current, and `update_checked_at` says when it ran.
 
 ## Reinstall as "update now"
 

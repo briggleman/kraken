@@ -484,6 +484,7 @@ func (s *Server) markProvisioned(id string, installedVars map[string]string, at 
 	sv.LastError = ""
 	if maps.Equal(sv.Vars, installedVars) {
 		sv.ProvisionedAt = &at
+		sv.UpdatePassOwed = false // the pass just ran with these values
 	} else {
 		s.logger.Info("not stamping provisioned_at: variables were edited during the install, so the next start re-runs the pass",
 			"id", id)
@@ -1048,6 +1049,11 @@ func (s *Server) updatesOnStart(ctx context.Context, sv *store.Server, sp *spec.
 	switch s.updateSkipFor(ctx, sv, sp, node.ID) {
 	case updateSkipNone:
 		return true
+	case updateSkipCurrentBuild:
+		// Still through updateThenStart: it stops the server, sees the fresh
+		// check and skips the pass, and says so on the install console. The
+		// pass itself does not run.
+		return true
 	case updateSkipFreshInstall:
 		s.logger.Info("skipping update-on-start: the install pass just ran",
 			"server", sv.ID, "provisioned_at", sv.ProvisionedAt)
@@ -1068,7 +1074,41 @@ const (
 	updateSkipPinned       updateSkip = "pinned"        // the operator pinned the build
 	updateSkipFreshInstall updateSkip = "fresh_install" // within freshInstallWindow of an install
 	updateSkipSteamLogin   updateSkip = "steam_login"   // authenticated Steam, no stored credentials
+	// updateSkipCurrentBuild: a build check within buildCheckFresh found the
+	// installed build current (#392). Unlike the others it does not keep a
+	// start off the update path — updateThenStart makes the same decision
+	// there and skips only the pass — but it is what the next start does about
+	// updates, which is what the Settings tab reports.
+	updateSkipCurrentBuild updateSkip = "current_build"
 )
+
+// buildCheckFresh is how long a build check stands in for a new one when a
+// start decides whether to run the update pass (#392). Older, and the start
+// asks Steam again first, which costs one SteamCMD session — about twenty
+// seconds — while the server is stopped.
+const buildCheckFresh = 10 * time.Minute
+
+// freshCurrentBuild reports whether sv's last build check ran within
+// buildCheckFresh of now, compared the two builds, and found them equal —
+// and no variable edit since the last install owes the pass regardless.
+func freshCurrentBuild(sv *store.Server, sp *spec.Spec, now time.Time) bool {
+	if sv.UpdatePassOwed {
+		return false
+	}
+	r := updatecheck.Evaluate(sv, sp)
+	return r.Status == updatecheck.StatusCurrent && checkIsFresh(r.CheckedAt, now)
+}
+
+// checkIsFresh reports whether a check at `at` is inside buildCheckFresh. A
+// stamp in the future (a clock that stepped back) is not: it says nothing
+// about when Steam was last asked.
+func checkIsFresh(at *time.Time, now time.Time) bool {
+	if at == nil {
+		return false
+	}
+	d := now.Sub(*at)
+	return d >= 0 && d < buildCheckFresh
+}
 
 // updateSkipFor is updatesOnStart's decision without its logging, so a read
 // (the Settings tab) can ask what the next start would do without writing a
@@ -1088,16 +1128,26 @@ func (s *Server) updateSkipFor(ctx context.Context, sv *store.Server, sp *spec.S
 			return updateSkipSteamLogin
 		}
 	}
+	if freshCurrentBuild(sv, sp, time.Now()) {
+		return updateSkipCurrentBuild
+	}
 	return updateSkipNone
 }
 
-// updateThenStart runs the pre-start update pass and then starts the server.
-// Runs in its own goroutine with a background context (the pass outlives the
-// request that asked for it); the server is already in `installing`. prev is
-// the state it was in before that, for the phases that leave it untouched.
+// updateThenStart stops the server, decides whether the update pass is owed,
+// runs it when it is, and starts the server. Runs in its own goroutine with a
+// background context (the pass outlives the request that asked for it); the
+// server is already in `installing`. prev is the state it was in before that,
+// for the phases that leave it untouched.
 //
-// The three phases fail differently, and the difference is the whole point
-// (#328):
+// The decision is the build check's (#392, see planUpdatePass): a current
+// build skips the pass, which is most of what a reboot used to cost, and a
+// check that failed starts on the installed tree rather than risk a pass that
+// cannot reach Steam. A skipped pass still re-pushes the spec and re-renders
+// the config before the start, as the pass path does.
+//
+// The three phases of a pass fail differently, and the difference is the
+// whole point (#328):
 //
 //   - Before the install — connecting to the Agent, the pre-update stop —
 //     nothing on the node has been touched, so the server goes back to prev
@@ -1121,7 +1171,7 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	// The same durations go to the Panel log at the end, for the fleet-wide
 	// view a log search gives.
 	began := time.Now()
-	s.installs.AppendSystem(sv.ID, "[panel] updating "+sv.Name+" — re-running the install script before start")
+	s.installs.AppendSystem(sv.ID, "[panel] updating "+sv.Name+" — checking its build before start")
 
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
@@ -1146,27 +1196,42 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	stopTook := took(stopBegan)
 	s.installs.AppendSystem(sv.ID, "[panel] stop took "+stopTook)
 
-	// Vanilla install script only — never the BepInEx overlay (see
-	// installScriptFor).
-	passBegan := time.Now()
-	if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
-		// A pass the Agent refused before touching the tree (a container still
-		// holds the data dir) says nothing about the tree, so it is not
-		// install_failed. It is not prev either: the stop above has already
-		// run and been confirmed, so the server is stopped — offline, with
-		// the refusal as the reason. Anything else may have half-written it.
-		if treeUntouched(err) {
-			s.abortUpdate(sv, store.StateOffline, err.Error())
+	// After the stop, not before: the stop is owed either way, and a restart's
+	// players are already off while SteamCMD is asked.
+	plan, checkTook := s.planUpdatePass(ctx, sv, sp)
+	s.installs.AppendSystem(sv.ID, plan.line)
+
+	passTook := "skipped"
+	if plan.action == startRunPass {
+		// Vanilla install script only — never the BepInEx overlay (see
+		// installScriptFor).
+		passBegan := time.Now()
+		if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
+			// A pass the Agent refused before touching the tree (a container
+			// still holds the data dir) says nothing about the tree, so it is
+			// not install_failed. It is not prev either: the stop above has
+			// already run and been confirmed, so the server is stopped —
+			// offline, with the refusal as the reason. Anything else may have
+			// half-written it.
+			if treeUntouched(err) {
+				s.abortUpdate(sv, store.StateOffline, err.Error())
+				return
+			}
+			s.installs.AppendSystem(sv.ID, "[panel] update pass took "+took(passBegan)+" before it failed")
+			s.failServer(sv, err.Error())
 			return
 		}
-		s.installs.AppendSystem(sv.ID, "[panel] update pass took "+took(passBegan)+" before it failed")
-		s.failServer(sv, err.Error())
-		return
+		passTook = took(passBegan)
+		s.installs.AppendSystem(sv.ID, "[panel] update pass took "+passTook)
+		s.recordInstalledBuild(ctx, sv, sp, node)
+		s.clearUpdatePassOwed(sv.ID)
+		s.installs.AppendSystem(sv.ID, "[panel] update complete — applying config and starting "+sv.Name)
+	} else {
+		// No pass, so nothing re-delivered the spec: the Agent may have lost
+		// it in a restart, and START needs it to recreate the container.
+		s.rePushServerSpec(ctx, client, sv, sp)
+		s.installs.AppendSystem(sv.ID, "[panel] applying config and starting "+sv.Name)
 	}
-	passTook := took(passBegan)
-	s.installs.AppendSystem(sv.ID, "[panel] update pass took "+passTook)
-	s.recordInstalledBuild(ctx, sv, sp, node)
-	s.installs.AppendSystem(sv.ID, "[panel] update complete — applying config and starting "+sv.Name)
 
 	// Config after the update, not before: the pass can restore a file the
 	// depot owns, so the server's settings are re-rendered over the fresh tree.
@@ -1180,22 +1245,153 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	})
 	pcancel()
 	if err != nil {
-		// The update itself succeeded, so this is NOT install_failed: the tree
-		// is good and a plain start can be retried. Land offline with the
-		// reason in the log the operator is already reading.
-		s.installs.AppendError(sv.ID, "[panel] start after update failed: "+err.Error())
+		// The update itself succeeded (or was rightly skipped), so this is NOT
+		// install_failed: the tree is good and a plain start can be retried.
+		// Land offline with the reason in the log the operator is already
+		// reading.
+		after := "update"
+		if plan.action != startRunPass {
+			after = "build check"
+		}
+		s.installs.AppendError(sv.ID, "[panel] start after "+after+" failed: "+err.Error())
 		s.installs.Finish(sv.ID)
 		s.setServerState(sv.ID, store.StateOffline, "")
 		s.logger.Error("start after update failed", "server", sv.ID, "err", err,
-			"stop_took", stopTook, "pass_took", passTook)
+			"stop_took", stopTook, "check_took", checkTook, "pass_took", passTook)
 		return
 	}
 	startTook := took(startBegan)
 	s.installs.AppendSystem(sv.ID, "[panel] start took "+startTook+" — update and start took "+took(began)+" in all")
 	s.installs.Finish(sv.ID)
 	s.setServerState(sv.ID, storeStateFromAgent(resp.State), "")
-	s.logger.Info("server updated and started", "id", sv.ID, "state", resp.State,
-		"stop_took", stopTook, "pass_took", passTook, "start_took", startTook, "took", took(began))
+	s.logger.Info("server updated and started", "id", sv.ID, "state", resp.State, "plan", plan.action.String(),
+		"stop_took", stopTook, "check_took", checkTook, "pass_took", passTook, "start_took", startTook, "took", took(began))
+}
+
+// clearUpdatePassOwed records that the pass a variable edit owed has run. A
+// fresh read and a write of that one field, so nothing else on the row is
+// written back stale.
+func (s *Server) clearUpdatePassOwed(id string) {
+	sv, err := s.store.GetServer(context.Background(), id)
+	if err != nil || !sv.UpdatePassOwed {
+		return
+	}
+	sv.UpdatePassOwed = false
+	if err := s.store.UpdateServer(context.Background(), sv); err != nil {
+		s.logger.Warn("could not clear update_pass_owed", "id", id, "err", err)
+	}
+}
+
+// startAction is what an update-on-start does about the install pass.
+type startAction int
+
+const (
+	// startRunPass runs the pass, as every update-on-start did before #392.
+	startRunPass startAction = iota
+	// startSkipCurrent skips it: the installed build is the branch's current.
+	startSkipCurrent
+	// startSkipCheckFailed skips it because the check could not compare the
+	// builds: the tree was good at the last start, and a pass that cannot
+	// reach Steam is what stranded servers in install_failed on 2026-09-25.
+	// Reinstall is the way to force a pass.
+	startSkipCheckFailed
+)
+
+func (a startAction) String() string {
+	switch a {
+	case startSkipCurrent:
+		return "skip_current"
+	case startSkipCheckFailed:
+		return "skip_check_failed"
+	default:
+		return "run_pass"
+	}
+}
+
+// startPlan is the decision and the system line that says it.
+type startPlan struct {
+	action startAction
+	line   string
+}
+
+// decideUpdatePass turns a build check into what the start does about the
+// pass. It is the whole decision, in one place, with no Agent and no store,
+// so the table test can hold every outcome:
+//
+//   - a launch-variable edit since the last install owes the pass, whatever
+//     the builds say;
+//   - unsupported (the spec has no build to check), or an Agent that
+//     predates the check: run the pass, as before;
+//   - current: skip it;
+//   - available: run it;
+//   - anything else is a check that failed — Steam unreachable, a missing or
+//     unreadable manifest, an Agent error, checkErr from the check itself —
+//     and starts on the installed tree. The failure stays on the row, so the
+//     server's build reads unknown until a check succeeds.
+func decideUpdatePass(sv *store.Server, res updatecheck.Result, checkErr error) startPlan {
+	switch {
+	case sv.UpdatePassOwed:
+		return startPlan{startRunPass, "[panel] launch variables changed since the last install, running the update pass"}
+	case checkErr != nil:
+		return startPlan{startSkipCheckFailed, checkFailedLine(checkErr.Error(), installedBuildOf(sv, res))}
+	case res.Status == updatecheck.StatusUnsupported:
+		return startPlan{startRunPass, "[panel] this game has no build to check, running the update pass"}
+	case res.AgentPredates:
+		return startPlan{startRunPass, "[panel] update check unavailable (" + res.Error + "), running the update pass"}
+	case res.Status == updatecheck.StatusCurrent:
+		return startPlan{startSkipCurrent, "[panel] build " + res.InstalledBuild + " is current, skipping the update pass"}
+	case res.Status == updatecheck.StatusAvailable:
+		return startPlan{startRunPass, "[panel] build " + res.InstalledBuild + " → " + res.AvailableBuild + ", running the update pass"}
+	}
+	reason := res.Error
+	if reason == "" {
+		reason = "no build was recorded"
+	}
+	return startPlan{startSkipCheckFailed, checkFailedLine(reason, installedBuildOf(sv, res))}
+}
+
+func checkFailedLine(reason, build string) string {
+	on := "the installed tree"
+	if build != "" {
+		on = "installed build " + build
+	}
+	return "[panel] update check failed (" + reason + "), starting on " + on
+}
+
+// installedBuildOf is the best-known installed build: the check's, else the
+// row's from an earlier check.
+func installedBuildOf(sv *store.Server, res updatecheck.Result) string {
+	if res.InstalledBuild != "" {
+		return res.InstalledBuild
+	}
+	return sv.Build.InstalledBuild
+}
+
+// planUpdatePass decides what this update-on-start does about the pass, asking
+// Steam first when the server's last check is older than buildCheckFresh,
+// failed, or never ran. A spec with no build to check, and a pass a variable
+// edit owes, need no check at all. It writes the check's own step lines and
+// returns how long the check took ("" when none ran).
+func (s *Server) planUpdatePass(ctx context.Context, sv *store.Server, sp *spec.Spec) (startPlan, string) {
+	if fresh, err := s.store.GetServer(ctx, sv.ID); err == nil {
+		sv = fresh // the row the check wrote last, not the request's copy
+	}
+	if sv.UpdatePassOwed || !sp.UpdateCheckFor(sv.Kind).Steam() {
+		return decideUpdatePass(sv, updatecheck.Evaluate(sv, sp), nil), ""
+	}
+	if r := updatecheck.Evaluate(sv, sp); r.Error == "" && checkIsFresh(r.CheckedAt, time.Now()) &&
+		(r.Status == updatecheck.StatusCurrent || r.Status == updatecheck.StatusAvailable) {
+		s.installs.AppendSystem(sv.ID, "[panel] build checked "+took(*r.CheckedAt)+" ago")
+		return decideUpdatePass(sv, r, nil), ""
+	}
+	s.installs.AppendSystem(sv.ID, "[panel] checking the build against Steam")
+	began := time.Now()
+	cctx, cancel := context.WithTimeout(ctx, updatecheck.ServerCheckTimeout)
+	res, err := s.updates.CheckServer(cctx, sv.ID)
+	cancel()
+	checkTook := took(began)
+	s.installs.AppendSystem(sv.ID, "[panel] build check took "+checkTook)
+	return decideUpdatePass(sv, res, err), checkTook
 }
 
 // handleReinstallServer re-runs the install phase without deleting the server

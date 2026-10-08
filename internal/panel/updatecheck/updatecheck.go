@@ -52,6 +52,20 @@ type Result struct {
 	AvailableBuildAt *time.Time `json:"available_build_at,omitempty"`
 	CheckedAt        *time.Time `json:"checked_at,omitempty"`
 	Error            string     `json:"error,omitempty"`
+	// AgentPredates is set by a check that ran when the node's Agent answered
+	// GetAppBuilds with Unimplemented. The status is still unknown, but a
+	// caller deciding what a start does treats it like unsupported: the check
+	// cannot run there at all, which is not the same as a check that failed.
+	// Not part of the API: it is only known for a check just run.
+	AgentPredates bool `json:"-"`
+}
+
+// agentPredatesError is the builds error of a group whose last answer was an
+// Agent without GetAppBuilds.
+type agentPredatesError struct{ node string }
+
+func (e *agentPredatesError) Error() string {
+	return "the agent on node " + e.node + " predates the build check; update it from the node's page"
 }
 
 // Evaluate derives a server's build-check result from what its row recorded
@@ -467,6 +481,8 @@ func (c *Checker) checkGroup(ctx context.Context, g group, live *liveness) map[s
 			c.logger.Warn("build check: could not record the result", "server", m.sv.ID, "err", err)
 		}
 		r := fromBuild(b)
+		var old *agentPredatesError
+		r.AgentPredates = errors.As(buildsErr, &old)
 		out[m.sv.ID] = r
 		if r.Status == StatusUnknown {
 			c.logger.Info("build check: could not compare builds", "server", m.sv.ID, "name", m.sv.Name, "reason", b.CheckError)
@@ -513,7 +529,7 @@ func (c *Checker) availableBuilds(ctx context.Context, g group, live *liveness) 
 		resp, err := client.GetAppBuilds(cctx, req)
 		cancel()
 		if status.Code(err) == codes.Unimplemented {
-			last = fmt.Errorf("the agent on node %s predates the build check; update it from the node's page", nodeLabel(n))
+			last = &agentPredatesError{node: nodeLabel(n)}
 			continue
 		}
 		if err != nil && timedOut(err) {

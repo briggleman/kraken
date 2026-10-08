@@ -399,6 +399,34 @@ func isLoopbackAddr(addr string) bool {
 	return false
 }
 
+// parseFakeAppBuilds reads KRAKEN_FAKE_APP_BUILDS: comma-separated
+// app=build pairs, the app optionally suffixed @branch. The keys are the ones
+// agent.WithFakeAppBuilds takes. A malformed pair fails the whole value, so a
+// typo is a warning rather than a table missing an app.
+func parseFakeAppBuilds(v string) (map[string]agent.FakeAppBuild, error) {
+	out := map[string]agent.FakeAppBuild{}
+	for _, pair := range strings.Split(v, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		app, build, ok := strings.Cut(pair, "=")
+		app, build = strings.TrimSpace(app), strings.TrimSpace(build)
+		id, branch, hasBranch := strings.Cut(app, "@")
+		if !ok || id == "" || build == "" || (hasBranch && branch == "") {
+			return nil, fmt.Errorf("%q is not app=build or app@branch=build", pair)
+		}
+		if hasBranch && branch == "public" {
+			app = id // the public branch is the bare app id
+		}
+		out[app] = agent.FakeAppBuild{BuildID: build}
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no app=build pairs")
+	}
+	return out, nil
+}
+
 // selectRuntime returns the Docker runtime, or the in-memory fake when the
 // operator asked for one explicitly.
 //
@@ -421,6 +449,19 @@ func selectRuntime(logger *slog.Logger, cfg *config.Config) agent.Runtime {
 				opts = append(opts, agent.WithFakeInstallDelay(d))
 			} else {
 				logger.Warn("ignoring KRAKEN_FAKE_INSTALL_DELAY: not a positive duration", "value", v)
+			}
+		}
+		// Dev-only knob for the fake-live stack, like the delay above: the
+		// builds the fake's SteamCMD reports to the Panel's build check (#392),
+		// as comma-separated app=build pairs ("2394010=25247047,896660=25730807";
+		// "app@branch=build" for a non-public branch). An install writes the
+		// app's build into the server's appmanifest, so restarting the Agent
+		// with a bumped build is how "an update is available" is played.
+		if v := os.Getenv("KRAKEN_FAKE_APP_BUILDS"); v != "" {
+			if builds, err := parseFakeAppBuilds(v); err == nil {
+				opts = append(opts, agent.WithFakeAppBuilds(builds))
+			} else {
+				logger.Warn("ignoring KRAKEN_FAKE_APP_BUILDS", "value", v, "err", err)
 			}
 		}
 		return agent.NewFakeRuntime(cfg.NodeID, cfg.NodeOS, wine, version.Version, opts...)

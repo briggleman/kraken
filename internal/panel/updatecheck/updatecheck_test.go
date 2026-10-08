@@ -206,7 +206,7 @@ func TestCheckServer_OldAgentIsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Status != StatusUnknown || !strings.Contains(r.Error, "predates the build check") || r.InstalledBuild != "100" {
+	if r.Status != StatusUnknown || !strings.Contains(r.Error, "predates the build check") || r.InstalledBuild != "100" || !r.AgentPredates {
 		t.Fatalf("old agent: %+v", r)
 	}
 	if b := h.row("sv1"); !strings.Contains(b.CheckError, "predates") || b.CheckedAt == nil {

@@ -47,14 +47,20 @@ type settingsResponse struct {
 	// NextStartUpdates is the decision the next operator start or restart
 	// through the Panel would make right now: false when the spec opted out,
 	// the build is pinned, the server was installed within the last 30
-	// minutes, or its authenticated-Steam install has no stored credentials.
+	// minutes, its authenticated-Steam install has no stored credentials, or a
+	// build check in the last 10 minutes found its build current (#392).
 	// UpdateSkipReason names which (spec | pinned | fresh_install |
-	// steam_login); empty when it updates. Scheduled restarts and the
+	// steam_login | current_build); empty when it updates. A start whose
+	// check is older asks Steam again and may still skip the pass, which this
+	// cannot know in advance. Scheduled restarts and the
 	// node-scoped power endpoint never run the pass, whatever this says, and it
 	// means nothing while the server is installing or install_failed, where a
 	// start is refused outright.
 	NextStartUpdates bool   `json:"next_start_updates"`
 	UpdateSkipReason string `json:"update_skip_reason,omitempty"`
+	// UpdateCheckedAt is when the server's build was last checked, so the tab
+	// can say how old a current_build reading is; absent when it never was.
+	UpdateCheckedAt *time.Time `json:"update_checked_at,omitempty"`
 }
 
 // variableView is a launch variable surfaced on the Settings tab: the spec's
@@ -106,6 +112,7 @@ func (s *Server) handleGetServerSettings(w http.ResponseWriter, r *http.Request)
 		UpdatesOnStart:   !sp.SkipUpdateOnStartFor(sv.Kind),
 		NextStartUpdates: skip == updateSkipNone,
 		UpdateSkipReason: string(skip),
+		UpdateCheckedAt:  sv.Build.CheckedAt,
 	})
 }
 
@@ -206,6 +213,10 @@ func (s *Server) handleUpdateServerSettings(w http.ResponseWriter, r *http.Reque
 	sv.Settings = merged
 	if varsChanged {
 		sv.ProvisionedAt = nil
+		// The same reason keeps the build check from skipping the pass: a
+		// current build id says nothing about a script rendered from values
+		// the tree was not installed with.
+		sv.UpdatePassOwed = true
 	}
 	// The build pin is a property of the server, not a game setting, but it
 	// lives on the Config tab beside them and saves with them.

@@ -489,16 +489,18 @@
      "updating…" — the way the node band's agent chip says "pushing…" while it
      works. The traversal of light is the one thing that keeps moving: a long
      copy phase can hold the console still for a minute, and that stillness is
-     what made the start read as an invitation. Here the light is the
-     control's own colour at a whisper; it says "working", not the caution
-     colour's "a build is waiting for you". */
+     what made the start read as an invitation. It takes the violet, not the
+     start's own sand: violet is the house's "working on your behalf" voice,
+     the one the node band's agent chip speaks while it pushes, so an operator
+     who has watched one knows the other — and a waiting start can never be
+     mistaken for a dimmed live one. */
   .ctl-wait { position: relative; overflow: hidden; cursor: progress; box-shadow: none; }
   .ctl-wait:hover { filter: none; }
   .ctl-wait:active { transform: none; box-shadow: none; }
-  .ctl-start.ctl-wait { color: rgba(var(--ok-rgb), 0.55); border-color: rgba(var(--ok-rgb), 0.25); background: rgba(var(--ok-rgb), 0.05); }
+  .ctl-start.ctl-wait { color: rgba(var(--caution-rgb), 0.8); border-color: rgba(var(--caution-rgb), 0.4); background: rgba(var(--caution-rgb), 0.08); }
   .ctl-wait::after {
     content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 55%;
-    background: linear-gradient(100deg, rgba(var(--ok-rgb), 0), rgba(var(--ok-rgb), 0.22), rgba(var(--ok-rgb), 0));
+    background: linear-gradient(100deg, rgba(var(--caution-rgb), 0), rgba(var(--caution-rgb), 0.28), rgba(var(--caution-rgb), 0));
     pointer-events: none;
     animation: adSweep 3.6s ease-in-out infinite;
   }

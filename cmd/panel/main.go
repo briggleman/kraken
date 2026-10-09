@@ -176,10 +176,16 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("ensure panel client cert: %w", err)
 	}
+	// Push alerts (#348): a dispatcher that sends through the relay when
+	// KRAKEN_PUSH_RELAY_URL is set, and one that sends nothing when it is not.
+	// Its context ends with the Panel, which ends any delivery still retrying.
+	alertsCtx, stopAlerts := context.WithCancel(ctx)
+	defer stopAlerts()
 	srv := api.New(cfg, st, logger,
 		api.WithCA(caCert, caKey),
 		api.WithClientTLSBytes(panelCertPEM, panelKeyPEM, panelCAPEM),
 		api.WithRestart(requestRestart),
+		api.WithAlerts(buildAlerts(alertsCtx, cfg, st, logger)),
 	)
 	defer func() { _ = srv.Close() }()
 

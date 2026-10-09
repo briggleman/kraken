@@ -1379,13 +1379,19 @@ func (f *FakeRuntime) StreamConsole(ctx context.Context, serverID string, tail i
 	}
 }
 
-// SendCommand accepts anything and does nothing with it, with one exception:
-// the console command "crash" drops the server into the crashed state. Nothing
+// SendCommand accepts anything and does nothing with it, with two exceptions.
+// The console command "crash" drops the server into the crashed state: nothing
 // else on the fake ever crashes, so without it the Panel's crash notice and the
 // fleet's crashed card can only be exercised against a real container runtime.
+// "watchdog" plays the crash watchdog restarting the server on its own
+// (SimulateWatchdogRestart), which is how the push alerts' healed and
+// crash-loop events are tried by hand on the fake stack.
 func (f *FakeRuntime) SendCommand(_ context.Context, serverID string, cmd string) error {
-	if strings.TrimSpace(cmd) == "crash" {
+	switch strings.TrimSpace(cmd) {
+	case "crash":
 		f.setState(serverID, agentpb.ServerState_SERVER_STATE_CRASHED)
+	case "watchdog":
+		f.SimulateWatchdogRestart(serverID)
 	}
 	return nil
 }

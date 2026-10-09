@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/briggleman/kraken/internal/panel/alerts"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -134,6 +135,9 @@ func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
 		writeAgentError(w, err)
 		return
 	}
+	// Nobody reads a backup's outcome but the operator who opens the list, so
+	// a watcher follows it and alerts if it fails.
+	s.watchBackup(sv, b, alerts.BackupManual)
 	// 202 Accepted: archiving has started; the client polls the list for READY.
 	writeJSON(w, http.StatusAccepted, toBackupView(b))
 }

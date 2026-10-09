@@ -1975,6 +1975,30 @@ paths:
           content:
             application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
         '404': { description: "No such user, or that user has no device with this id", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /devices/{id}/test:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [Devices]
+      summary: Send a test alert to one of the caller's devices
+      description: >
+        Sends the alert `test` (class attend, "test alert from" and the host
+        the caller reached the Panel by) to the caller's own device with this
+        id, through the configured relay, and waits for the outcome — at most
+        20 seconds, so a relay in trouble answers `dropped` before a proxy in
+        front of the Panel gives up. The device gets it whatever its rules
+        say, and a device whose token was reported dead is tried again: the
+        test is how its owner finds out. A `token_dead` answer marks the token
+        dead as any delivery's would. Every outcome answers 200; `disabled`
+        means this Panel has no relay (KRAKEN_PUSH_RELAY_URL is unset). The
+        outcome is audited as push.sent, push.failed or push.dropped, like
+        every alert.
+      responses:
+        '200':
+          description: How the delivery went
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceTestOutcome' }
+        '404': { description: "The caller has no device with this id", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /audit:
     get:
       tags: [Audit]
@@ -2166,6 +2190,19 @@ components:
         last_seen_at: { type: string, format: date-time, description: "its most recent registration" }
         last_sent_at: { type: string, format: date-time, nullable: true, description: "when an alert last reached the relay for it" }
         token_invalid_at: { type: string, format: date-time, nullable: true, description: "when the relay reported its token dead; nothing is sent to it until it registers again" }
+    DeviceTestOutcome:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum: [sent, token_dead, rejected, dropped, disabled]
+          description: >
+            sent — the relay accepted it; token_dead — the relay reported the
+            device token dead (APNs 410) and the device gets nothing more until
+            it registers again; rejected — the relay refused the request and a
+            retry would not help; dropped — it did not get through in time;
+            disabled — no relay is configured.
+        reason: { type: string, description: "why, when it did not go; never the token or the payload" }
     BootstrapToken:
       type: object
       properties:

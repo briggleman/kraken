@@ -535,6 +535,7 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 			n.RuntimeError = ""
 			s.saveProbedNode(ctx, n)
 		}
+		s.observeNodeStatus(n, cluster.NodeOffline)
 		return nil, err
 	}
 	changed := false
@@ -561,6 +562,7 @@ func (s *Server) reconcileNode(ctx context.Context, n *cluster.Node) (*agentpb.N
 		n.Status = status
 		changed = true
 	}
+	s.observeNodeStatus(n, status)
 	if n.RuntimeError != runtimeErr {
 		n.RuntimeError = runtimeErr
 		changed = true

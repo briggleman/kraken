@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/briggleman/kraken/internal/panel/alerts"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/scheduler"
 	"github.com/briggleman/kraken/internal/panel/store"
@@ -299,6 +300,7 @@ func (s *Server) runRetire(serverID string) {
 				}
 				outcome = s.attemptFinalBackup(ctx, retry, true, true, "", sv, node)
 				if outcome.status != store.FinalBackupReady {
+					s.noteFinalBackupFailed(sv, outcome)
 					s.abandonRetire(ctx, serverID, "the final backup could not be taken: "+outcome.note+"; nothing was removed", stopped)
 					return
 				}
@@ -309,6 +311,7 @@ func (s *Server) runRetire(serverID string) {
 			return
 		}
 		if outcome.status == store.FinalBackupFailed {
+			s.noteFinalBackupFailed(sv, outcome)
 			s.abandonRetire(ctx, serverID, "the final backup failed: "+outcome.note+"; nothing was removed", stopped)
 			return
 		}
@@ -427,6 +430,17 @@ func (s *Server) attemptFinalBackup(ctx context.Context, client agentpb.NodeServ
 		return finalOutcome{status: store.FinalBackupFailed, note: err.Error(), id: id}
 	}
 	return finalOutcome{status: store.FinalBackupReady, id: id}
+}
+
+// noteFinalBackupFailed sends backup_failed for a final backup that failed,
+// which abandons the retire. A backup that was skipped — the node did not
+// answer, the server could not be stopped — never ran, so it is not a backup
+// failure and the retire's own note says why.
+func (s *Server) noteFinalBackupFailed(sv *store.Server, o finalOutcome) {
+	if o.status != store.FinalBackupFailed {
+		return
+	}
+	s.alerts.Dispatch(alerts.BackupFailed(serverRef(sv), alerts.BackupFinal, o.note, time.Now()))
 }
 
 // mayBeRunning reports whether a server in st may have a container running.

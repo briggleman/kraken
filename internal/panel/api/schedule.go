@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/briggleman/kraken/internal/panel/alerts"
 	"github.com/briggleman/kraken/internal/panel/cron"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -165,9 +166,13 @@ func (s *Server) runScheduleAction(ctx context.Context, task *store.ScheduledTas
 		name := "scheduled-" + time.Now().UTC().Format("2006-01-02-150405")
 		// Same glob resolution as the manual path — the Panel drives every
 		// backup, so there is exactly one place the policy is applied.
-		if _, err := client.CreateBackup(cctx, s.backupRequestFor(ctx, sv, name)); err != nil {
+		b, err := client.CreateBackup(cctx, s.backupRequestFor(ctx, sv, name))
+		if err != nil {
 			return fmt.Errorf("backup: %w", err)
 		}
+		// The schedule's run ends when the node accepts the backup; whether
+		// the archive lands is the watcher's to follow, and to alert on.
+		s.watchBackup(sv, b, alerts.BackupScheduled)
 		return nil
 
 	case store.ScheduleCommand:

@@ -141,20 +141,12 @@ func sessionHashFrom(ctx context.Context) string {
 	return h
 }
 
-// mayAccessServer reports whether the request's user may act on sv. A role with
-// PermServerAny (Owner/Admin, via the "*"/"server.*" wildcards) reaches every
-// server; everyone else is scoped to servers they own. Servers with no owner
-// (created before ownership existed) are reachable only by PermServerAny holders.
+// mayAccessServer reports whether the request's user may act on sv, by the rule
+// in store.MayAccessServer — the same one the push-alert dispatcher applies to
+// a device's user, so a server the API hides is a server the phone never hears
+// about.
 func (s *Server) mayAccessServer(ctx context.Context, sv *store.Server) bool {
-	role := roleFrom(ctx)
-	if role == nil {
-		return false
-	}
-	if role.Has(rbac.PermServerAny) {
-		return true
-	}
-	u := userFrom(ctx)
-	return u != nil && sv.OwnerID != "" && sv.OwnerID == u.ID
+	return store.MayAccessServer(userFrom(ctx), roleFrom(ctx), sv.OwnerID)
 }
 
 // authorizeServer enforces mayAccessServer, writing 404 (not 403 — so we don't

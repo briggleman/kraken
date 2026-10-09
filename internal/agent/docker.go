@@ -56,7 +56,8 @@ type DockerRuntime struct {
 	images imageAPI
 	// containers is the same client again, narrowed to the container calls the
 	// removal, install-guard, stop and name-race paths make (containerOps), so
-	// they can be exercised against a fake (#354, #351). Never nil.
+	// they can be exercised against a fake (#354, #351) — and the crash
+	// watchdog's wait-and-restart, so its restart count can be (#348). Never nil.
 	containers containerOps
 	// pullPolicy is how hard this node tries the registry before using a local
 	// copy of an image (KRAKEN_IMAGE_PULL).
@@ -1257,7 +1258,7 @@ func (d *DockerRuntime) ensureAndStart(ctx context.Context, serverID string, ref
 	if err := d.installs.check(serverID); err != nil {
 		return err
 	}
-	return d.cli.ContainerStart(ctx, containerName(serverID), container.StartOptions{})
+	return d.containers.ContainerStart(ctx, containerName(serverID), container.StartOptions{})
 }
 
 // ensureContainer makes sure a runnable container exists for the server. A
@@ -1454,7 +1455,7 @@ func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.S
 	if st, ok := d.monitorState(serverID); ok {
 		state = st
 		exitCode, exitKnown = d.monitorExit(serverID)
-	} else if insp, err := d.cli.ContainerInspect(ctx, containerName(serverID)); err != nil {
+	} else if insp, err := d.containers.ContainerInspect(ctx, containerName(serverID)); err != nil {
 		// No container → treat as offline.
 		return &agentpb.ServerStatus{ServerId: serverID, State: agentpb.ServerState_SERVER_STATE_OFFLINE}, nil
 	} else {
@@ -1469,6 +1470,14 @@ func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.S
 	status := &agentpb.ServerStatus{
 		ServerId: serverID, State: state,
 		LastExitCode: exitCode, ExitCodeKnown: exitKnown,
+	}
+	// The watchdog's restarts are reported on every poll, whatever the state: a
+	// crash it healed between two polls leaves no other trace, and the Panel
+	// diffs this count to see it. With no watchdog it reads 0, as from an Agent
+	// that predates the field.
+	if n, last := d.monitorRestarts(serverID); n > 0 {
+		status.WatchdogRestarts = int32(n) // #nosec G115 -- bounded by the spec's max_restarts
+		status.LastWatchdogRestartUnixMs = last.UnixMilli()
 	}
 	// Attach the online-player count so the reconciler can surface it fleet-wide
 	// without an open stats stream (TTL-cached, so this poll rarely hits the game).

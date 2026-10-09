@@ -677,6 +677,26 @@ message ServerStatus {
   // exit_code_known separates "exited 0" from "no exit has been observed".
   int64 last_exit_code = 4;
   bool exit_code_known = 5;
+
+  // watchdog_restarts is how many automatic crash restarts the server's current
+  // watchdog has performed since the last operator start or restart. Those
+  // restarts happen inside the Agent and never reach the Panel otherwise, and a
+  // fast one can fall between two status polls, so the Panel diffs this counter
+  // per server to see them (the push alert's "healed" and "crash_loop" events).
+  //
+  // An operator start or restart arms a fresh watchdog, so the counter resets to
+  // 0; so does an Agent restart, which re-adopts running servers with fresh
+  // watchdogs. A drop is a reset, not a negative restart. When the watchdog gives
+  // up (its restart budget is spent and the server is crashed) the counter keeps
+  // its final value until the next operator start replaces the watchdog. 0 when
+  // the server has no watchdog at all, and 0 from an Agent that predates the
+  // field — such an Agent produces no restart alerts, only the crash it gives up
+  // on.
+  //
+  // last_watchdog_restart_unix_ms is when the most recent of those restarts
+  // began, by the Agent's clock; 0 when there has been none.
+  int32 watchdog_restarts = 6;
+  int64 last_watchdog_restart_unix_ms = 7;
 }
 
 message StreamConsoleRequest {

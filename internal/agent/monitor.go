@@ -44,7 +44,15 @@ type monitor struct {
 	mu           sync.Mutex
 	state        agentpb.ServerState
 	expectedDown bool // an operator stop/kill was requested; the next exit is intentional
-	restarts     int
+	// restarts counts the automatic restarts this watchdog has begun, and
+	// lastRestart is when the most recent one began. The count gates the restart
+	// budget, and it is also the only trace of a crash the watchdog healed: the
+	// Panel polls Status every few seconds, a fast restart can land between two
+	// polls, and the Panel diffs this number to see it (push alerts, #348). It is
+	// never reset within a monitor — a fresh one (operator start or restart, or
+	// adoption after an Agent restart) is what starts it over.
+	restarts    int
+	lastRestart time.Time
 	// exitCode is the status of the most recent observed container exit, and
 	// exitKnown says one has been observed at all (0 is a real exit code). The
 	// watchdog is the only thing that sees it: without carrying it out of here
@@ -56,7 +64,8 @@ type monitor struct {
 
 // startMonitor (re)arms the watchdog for a freshly started server. Any prior
 // monitor is cancelled and replaced, which resets the crash-restart counter —
-// so a manual start/restart always gets a clean budget.
+// so a manual start/restart always gets a clean budget, and the restart count
+// Status reports starts over from 0.
 func (d *DockerRuntime) startMonitor(serverID string) {
 	d.armMonitor(serverID, time.Now(), true)
 }
@@ -230,6 +239,24 @@ func (d *DockerRuntime) monitorState(serverID string) (agentpb.ServerState, bool
 	return m.state, true
 }
 
+// monitorRestarts returns how many automatic restarts a server's watchdog has
+// begun and when the latest one began (zero when none). A watchdog that gave up
+// keeps reporting the restarts it made — it stays installed, crashed, until an
+// operator start replaces it — so the Panel sees the final count rather than a
+// drop to zero at the moment the server is lost. No watchdog at all (never
+// started, or removed) reads as none.
+func (d *DockerRuntime) monitorRestarts(serverID string) (count int, last time.Time) {
+	d.monMu.Lock()
+	m := d.monitors[serverID]
+	d.monMu.Unlock()
+	if m == nil {
+		return 0, time.Time{}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.restarts, m.lastRestart
+}
+
 // monitorExit returns the exit code of the last container exit the watchdog
 // observed. known is false when it has seen none (a server that has not stopped
 // since the monitor was armed), which is not the same as an exit code of 0.
@@ -297,7 +324,12 @@ func (m *monitor) run(since time.Time) {
 		m.mu.Lock()
 		canRestart := m.restartOnCrash && m.restarts < m.maxRestarts
 		if canRestart {
+			// Counted, and stamped, as the restart begins rather than once it
+			// succeeds: a Status poll during the restart already sees it, and a
+			// restart that then fails to start has still been attempted — the
+			// count never runs backwards for the Panel to misread as a reset.
 			m.restarts++
+			m.lastRestart = time.Now()
 		}
 		attempt, max := m.restarts, m.maxRestarts
 		m.mu.Unlock()
@@ -367,7 +399,7 @@ func hexExit(code int64) string {
 // waitExit blocks until the server's container is no longer running and returns
 // its exit code. It honors ctx cancellation (monitor shutdown).
 func (d *DockerRuntime) waitExit(ctx context.Context, serverID string) (int64, error) {
-	statusCh, errCh := d.cli.ContainerWait(ctx, containerName(serverID), container.WaitConditionNotRunning)
+	statusCh, errCh := d.containers.ContainerWait(ctx, containerName(serverID), container.WaitConditionNotRunning)
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()

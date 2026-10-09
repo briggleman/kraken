@@ -182,6 +182,10 @@ func (t *RosterTracker) Observe(ref ServerRef, r Roster, now time.Time) (Event, 
 	defer t.mu.Unlock()
 	if !r.Running {
 		t.servers[ref.ID] = &rosterState{names: map[string]bool{}}
+		// Joins still held for the minute go with the players: sent after the
+		// server stopped, "Kestrel joined · 2 online" would describe a game
+		// that is down, right after the alert saying it stopped.
+		delete(t.pending, ref.ID)
 		return Event{}, false
 	}
 	if !r.Known {

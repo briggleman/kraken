@@ -276,6 +276,7 @@ const GROUP_TITLES = {
   LogLevel: "logging",
   AuditRetentionDays: "audit log",
   UpdateCheckInterval: "steam build check",
+  PushRelayURL: "push alerts",
 };
 const LOOSE_GROUPS = { KRAKEN_SECRETS_KEY: { title: "secrets at rest", after: "state on disk" } };
 

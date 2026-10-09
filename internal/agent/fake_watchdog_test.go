@@ -80,3 +80,24 @@ func TestFakeWatchdogRestarts(t *testing.T) {
 		t.Errorf("a removed server has no restarts: %+v", st)
 	}
 }
+
+// The "watchdog" console command is the fake stack's hand trigger for the
+// restart above, the way "crash" is for a crash: it is how the healed and
+// crash-loop alerts are tried in the drill.
+func TestFakeWatchdogConsoleCommand(t *testing.T) {
+	const serverID = "s1"
+	f := NewFakeRuntime("n1", "linux", false, "test")
+	ctx := context.Background()
+	if _, err := f.Power(ctx, serverID, agentpb.PowerAction_POWER_ACTION_START); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 2; i++ {
+		if err := f.SendCommand(ctx, serverID, " watchdog "); err != nil {
+			t.Fatal(err)
+		}
+		st, _ := f.Status(ctx, serverID)
+		if st.WatchdogRestarts != int32(i) || st.State != agentpb.ServerState_SERVER_STATE_RUNNING {
+			t.Fatalf("after %d watchdog commands: %+v", i, st)
+		}
+	}
+}

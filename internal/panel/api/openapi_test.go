@@ -8,6 +8,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/briggleman/kraken/internal/panel/alerts"
+	"github.com/briggleman/kraken/internal/panel/push"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/updatecheck"
 )
@@ -37,12 +39,37 @@ func TestOpenAPISpecValid(t *testing.T) {
 		"/servers/{id}/update-check", "/servers/update-check",
 		"/servers/{id}/schedules", "/specs", "/nodes", "/agents/enroll",
 		"/agents/bootstrap-tokens", "/audit",
-		"/devices", "/devices/{id}/rules", "/devices/{id}",
+		"/devices", "/devices/{id}/rules", "/devices/{id}", "/devices/{id}/test",
 	}
 	for _, p := range want {
 		if _, ok := doc.Paths[p]; !ok {
 			t.Errorf("openapi.yaml missing path %q", p)
 		}
+	}
+}
+
+// The test endpoint's documented outcomes are exactly the ones it can answer:
+// the relay client's four, and disabled.
+func TestOpenAPIDeviceTestOutcomesMatchThePushClient(t *testing.T) {
+	var doc struct {
+		Components struct {
+			Schemas struct {
+				DeviceTestOutcome struct {
+					Properties struct {
+						Outcome struct {
+							Enum []string `json:"enum"`
+						} `json:"outcome"`
+					} `json:"properties"`
+				} `json:"DeviceTestOutcome"`
+			} `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := yaml.Unmarshal(openAPISpec, &doc); err != nil {
+		t.Fatalf("openapi.yaml is not valid YAML: %v", err)
+	}
+	want := []string{push.Sent.String(), push.TokenDead.String(), push.Rejected.String(), push.Dropped.String(), alerts.Disabled}
+	if got := doc.Components.Schemas.DeviceTestOutcome.Properties.Outcome.Enum; !slices.Equal(got, want) {
+		t.Errorf("DeviceTestOutcome.outcome enum = %v, want %v", got, want)
 	}
 }
 

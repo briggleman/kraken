@@ -118,6 +118,11 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	listed := make(map[string]bool, len(servers))
+	for _, sv := range servers {
+		listed[sv.ID] = true
+	}
+	defer s.finishAlertPass(listed)
 	for _, sv := range servers {
 		// A restore job owns its row until it settles it (#361). Checked on the
 		// job, not only the state: the list above may predate the handler's
@@ -176,9 +181,9 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if reconcileWriteHook != nil {
 			reconcileWriteHook(sv.ID)
 		}
-		listed := sv
-		sv, err = s.store.GetServer(ctx, listed.ID)
-		if err != nil || sv.State != listed.State || sv.Retire != nil || sv.Restore != nil {
+		snapshot := sv
+		sv, err = s.store.GetServer(ctx, snapshot.ID)
+		if err != nil || sv.State != snapshot.State || sv.Retire != nil || sv.Restore != nil {
 			continue
 		}
 		if adopt {
@@ -186,6 +191,10 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 			continue
 		}
 		newState := storeStateFromAgent(status.State)
+		// The push-alert diffs see every poll: a watchdog restart or a player
+		// joining can leave everything the row stores exactly as it was.
+		s.observeServerStatus(sv, newState, status)
+		crashedNow := newState == store.StateCrashed && sv.State != store.StateCrashed
 		// Last-known online-player count (for the fleet list, no stream needed).
 		var np, nmax int32
 		var nknown bool
@@ -211,6 +220,9 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if uerr := s.store.UpdateServer(ctx, sv); uerr != nil {
 			s.logger.Warn("reconcile: update server failed", "server", sv.ID, "err", uerr)
 			continue
+		}
+		if crashedNow {
+			s.noteServerCrashed(sv, status)
 		}
 	}
 }

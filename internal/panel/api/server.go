@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/briggleman/kraken/internal/panel/alerts"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/config"
 	"github.com/briggleman/kraken/internal/panel/nodeclient"
@@ -128,6 +129,29 @@ type Server struct {
 	// on-demand checks, and the record an install pass leaves behind (see
 	// updatecheck.go).
 	updates *updatecheck.Checker
+
+	// alerts turns what the reconcilers and the backup paths notice into push
+	// alerts (#348; see alertsources.go). Never nil: without a relay it is a
+	// dispatcher that accepts events and sends nothing. watchdogs, rosters
+	// and nodeFalls are the sources' memory of the last thing they saw.
+	alerts    *alerts.Dispatcher
+	watchdogs *alerts.WatchdogTracker
+	rosters   *alerts.RosterTracker
+	nodeFalls *alerts.NodeTracker
+	// falls holds each node's pending fall confirmation (see
+	// confirmNodeFall): a fall is sent only if the node is still down a
+	// minute later.
+	falls nodeFallTimers
+}
+
+// WithAlerts sets the push-alert dispatcher. Without it the Panel builds one
+// with no relay, which sends nothing.
+func WithAlerts(d *alerts.Dispatcher) Option {
+	return func(s *Server) {
+		if d != nil {
+			s.alerts = d
+		}
+	}
 }
 
 // WithRestart wires a callback the API can use to request a process restart.
@@ -175,6 +199,10 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		installs:   newInstallLog(),
 		telemetry:  newTelemetryCache(),
 		downloads:  newDownloadTokenRegistry(),
+		alerts:     alerts.NewDispatcher(st, nil, logger),
+		watchdogs:  alerts.NewWatchdogTracker(),
+		rosters:    alerts.NewRosterTracker(),
+		nodeFalls:  alerts.NewNodeTracker(),
 
 		downloadLimit: newRateLimiter("download", downloadRedeemPerMinute, downloadRedeemBurst,
 			cfg.DownloadRateLimitsEnabled()),
@@ -356,6 +384,7 @@ func (s *Server) onTunnelSession(nodeID, fingerprint string, connected bool) {
 			s.logger.Warn("tunnel session hook: could not mark node offline", "node", n.Name, "err", err)
 		}
 	}
+	s.observeNodeStatus(n, cluster.NodeOffline)
 }
 
 // StartTunnel runs the reverse-tunnel listener until ctx is canceled. No-op
@@ -430,6 +459,7 @@ func (s *Server) Handler() http.Handler { return s.router }
 
 // Close releases resources held by the server (Agent gRPC connections).
 func (s *Server) Close() error {
+	s.falls.stop()
 	if s.sftpProxy != nil {
 		s.sftpProxy.close()
 	}
@@ -530,6 +560,7 @@ func (s *Server) routes() chi.Router {
 			r.Get("/devices", s.handleListDevices)
 			r.Patch("/devices/{id}/rules", s.handleUpdateDeviceRules)
 			r.Delete("/devices/{id}", s.handleDeleteDevice)
+			r.Post("/devices/{id}/test", s.handleTestDevice)
 
 			// OpenAPI document — any authenticated user; rendered by the in-app
 			// API reference. Not public.

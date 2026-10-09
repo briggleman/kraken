@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -389,6 +390,35 @@ func (s *Server) loadDevice(w http.ResponseWriter, r *http.Request, userID strin
 		return nil, false
 	}
 	return d, true
+}
+
+// handleTestDevice sends a test alert to one of the caller's own devices and
+// answers with how it went: sent, token_dead, rejected or dropped, or disabled
+// when this Panel has no relay. It waits for the outcome — that is the point of
+// a test — but no longer than the dispatcher's test window, so a relay in
+// trouble answers dropped well before a proxy gives up on the request. The
+// device gets it whatever its rules say, and a dead token is tried again: it
+// is how the person finds out.
+func (s *Server) handleTestDevice(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	d, ok := s.loadDevice(w, r, user.ID)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.alerts.SendTest(r.Context(), d, user.Username, panelHost(r)))
+}
+
+// panelHost is the Panel's name as the caller reached it, for the test alert's
+// sentence: the host the phone used is the one its owner will recognise.
+func panelHost(r *http.Request) string {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" {
+		return "the panel"
+	}
+	return host
 }
 
 // revokeOwnDevice deletes the user's device with this id — the sign-out path,

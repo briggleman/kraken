@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.63.0](https://github.com/briggleman/kraken/compare/v0.62.0...v0.63.0) (2026-10-09)
+
+
+### Features
+
+* **agent:** report watchdog restarts in server status ([#415](https://github.com/briggleman/kraken/issues/415)) ([5c8b353](https://github.com/briggleman/kraken/commit/5c8b35303eee413190bae4ebe8b731bb4ea23a84))
+* **panel:** register devices for push alerts ([#418](https://github.com/briggleman/kraken/issues/418)) ([137c847](https://github.com/briggleman/kraken/commit/137c847463e6cd694380b16f9637f155d07937dc))
+* **panel:** seal push alerts to the device and send them through the relay ([#416](https://github.com/briggleman/kraken/issues/416)) ([f2513aa](https://github.com/briggleman/kraken/commit/f2513aac7fda8eaa961dad0ea871f1306d574d23))
+* **panel:** turn fleet events into push alerts ([#419](https://github.com/briggleman/kraken/issues/419)) ([a093c56](https://github.com/briggleman/kraken/commit/a093c56c5d5b32aff163d5f9fdef996f373090e6))
+
+
+### Bug Fixes
+
+* **panel:** drop held player joins when the server stops, and stamp device marks in utc ([#420](https://github.com/briggleman/kraken/issues/420)) ([bd76143](https://github.com/briggleman/kraken/commit/bd7614338aec3c062b3a80b1d16bcb2076e0ae30))
+
 ## [0.62.0](https://github.com/briggleman/kraken/compare/v0.61.0...v0.62.0) (2026-10-09)
 
 

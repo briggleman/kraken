@@ -83,6 +83,7 @@
 <a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
 <a class="nav-link" href="/wiki/operate/players/">Who is online</a>
 <a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+<a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
 </details>
 <details class="nav-sec" open>
 <summary><span class="nav-sec-t">game specs</span></summary>
@@ -578,6 +579,9 @@ clean shutdown. A code between 129 and 164 is reported as the signal that killed
 it, code minus 128, so <code>137</code> reads as signal 9.</p>
 <p>Whether the watchdog restarts after a crash is the spec&#39;s
 <code>startup.restart.on_crash</code>, with its own retry ceiling.</p>
+<p>With <a href="/wiki/operate/alerts/">push alerts</a> on, a crash reaches your phone with
+the same explanation, a watchdog restart is reported as healed, and the third
+restart in an hour is reported as a crash loop.</p>
 <h2 id="settings-that-wait-for-a-restart">Settings that wait for a restart <a class="hlink" href="#settings-that-wait-for-a-restart" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Two kinds of value, two different answers.</p>
 <p><strong>Launch variables</strong> are baked into the start command and the container

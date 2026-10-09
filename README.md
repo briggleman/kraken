@@ -41,6 +41,10 @@ _Screenshots to follow._
   or on cron, with optional off-node mirroring to SFTP or SMB.
 - **BepInEx mod support** for Unity games, as a per-spec capability flag and an
   opt-in toggle at deploy time.
+- **Push alerts** to the iOS companion when a node drops, a server crashes or
+  crash-loops, a backup fails or a player joins — end-to-end encrypted to the
+  phone and off until you configure a relay
+  ([krakenserver.io/wiki/operate/alerts/](https://krakenserver.io/wiki/operate/alerts/)).
 - **Auth and RBAC.** argon2id passwords, four roles, per-server object-level
   authorization, and AES-256-GCM encryption for every secret at rest.
 - **Optional networking automation** with Cloudflare DNS and UniFi port
@@ -69,7 +73,7 @@ _Screenshots to follow._
 |---|---|
 | **Install** | [krakenserver.io/wiki/install/panel/](https://krakenserver.io/wiki/install/panel/) — Panel and Postgres in Docker Compose, Agents on bare metal |
 | **Configure** | [krakenserver.io/wiki/configure/panel/](https://krakenserver.io/wiki/configure/panel/) — every `KRAKEN_*` variable, generated from the source |
-| **Operate** | [krakenserver.io/wiki/operate/fleet/](https://krakenserver.io/wiki/operate/fleet/) — the fleet view, servers, files, backups, mods, the audit log |
+| **Operate** | [krakenserver.io/wiki/operate/fleet/](https://krakenserver.io/wiki/operate/fleet/) — the fleet view, servers, files, backups, mods, the audit log, push alerts |
 | **API** | [krakenserver.io/wiki/reference/api/](https://krakenserver.io/wiki/reference/api/) — generated from the OpenAPI document |
 
 ## Development

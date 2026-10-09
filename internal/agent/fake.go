@@ -148,6 +148,16 @@ type FakeRuntime struct {
 	// watchdog_restarts and when the latest one began. An operator start or
 	// restart arms a fresh watchdog there, so it clears the entry here.
 	watchdog map[string]fakeWatchdog
+	// rosters is each server's online players for a "log" player query,
+	// seeded with two on first read and changed by the join and leave drill
+	// triggers (see SendCommand).
+	rosters map[string][]*agentpb.OnlinePlayer
+	// backupFails makes one server's backups land FAILED with this reason —
+	// the backupfail drill trigger; it wins over backupErr for that server.
+	backupFails map[string]string
+	// runtimeDown makes the node report its container runtime unreachable,
+	// so the Panel reads it partial — the "runtime down" drill trigger.
+	runtimeDown bool
 }
 
 // fakeWatchdog is one server's simulated watchdog restart count.
@@ -433,10 +443,16 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 		}
 		managed = append(managed, &agentpb.ManagedContainer{ServerId: id, ContainerName: "kraken_" + id, State: state})
 	}
+	down := f.runtimeDown
 	f.mu.Unlock()
 	// Map order is random; sort so a test reading the list twice reads it the same
 	// way, and so the Panel's set comparison isn't handed gratuitous churn.
 	sort.Slice(managed, func(i, j int) bool { return managed[i].ServerId < managed[j].ServerId })
+	runtimeStatus, runtimeErr := agentpb.RuntimeStatus_RUNTIME_STATUS_OK, ""
+	if down {
+		runtimeStatus = agentpb.RuntimeStatus_RUNTIME_STATUS_UNAVAILABLE
+		runtimeErr = "the fake container runtime is down (the \"runtime down\" drill trigger)"
+	}
 	return &agentpb.NodeInfo{
 		NodeId:             f.nodeID,
 		Os:                 f.os,
@@ -450,7 +466,8 @@ func (f *FakeRuntime) NodeInfo(_ context.Context) (*agentpb.NodeInfo, error) {
 		Host:               PrimaryIP(),
 		HostAddresses:      CandidateIPs(),
 		ExternalIp:         "203.0.113.10", // documentation IP; lets tests exercise external-IP adoption
-		RuntimeStatus:      agentpb.RuntimeStatus_RUNTIME_STATUS_OK,
+		RuntimeStatus:      runtimeStatus,
+		RuntimeError:       runtimeErr,
 	}, nil
 }
 
@@ -465,20 +482,68 @@ func (f *FakeRuntime) Create(_ context.Context, spec *agentpb.ServerSpec) error 
 	return nil
 }
 
-// fakeRoster is what a "log" player query reads on the fake: two players who
-// have been aboard since shortly after the stream started, so the drill-in's
-// roster pane (names + time aboard) can be exercised without a game.
-func (f *FakeRuntime) fakeRoster(serverID string, since time.Time) (players, cap int32, known bool, names []*agentpb.OnlinePlayer) {
+// fakeRoster is what a "log" player query reads on the fake: the server's
+// roster, seeded on first read with two players who have been aboard a little
+// while, so the drill-in's roster pane (names + time aboard) can be exercised
+// without a game. The join and leave drill triggers change it (see
+// SendCommand), and Status reports it the way the Docker runtime does, so the
+// Panel's player-joined alert can be produced by hand.
+func (f *FakeRuntime) fakeRoster(serverID string, now time.Time) (players, cap int32, known bool, names []*agentpb.OnlinePlayer) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	q := f.queries[serverID]
-	f.mu.Unlock()
 	if q.GetMethod() != "log" {
 		return 0, 0, false, nil
 	}
-	return 2, q.GetMaxPlayers(), true, []*agentpb.OnlinePlayer{
-		{Name: "Kestrel", JoinedUnixMs: since.Add(-3 * time.Minute).UnixMilli()},
-		{Name: "MossVeil", JoinedUnixMs: since.Add(-40 * time.Second).UnixMilli()},
+	roster := f.rosterLocked(serverID, now)
+	out := make([]*agentpb.OnlinePlayer, 0, len(roster))
+	for _, p := range roster {
+		out = append(out, &agentpb.OnlinePlayer{Name: p.GetName(), JoinedUnixMs: p.GetJoinedUnixMs()})
 	}
+	return int32(len(out)), q.GetMaxPlayers(), true, out // #nosec G115 -- a hand-typed drill roster
+}
+
+// rosterLocked returns the server's roster, seeding it on first use. Called
+// with f.mu held.
+func (f *FakeRuntime) rosterLocked(serverID string, now time.Time) []*agentpb.OnlinePlayer {
+	if f.rosters == nil {
+		f.rosters = make(map[string][]*agentpb.OnlinePlayer)
+	}
+	roster, ok := f.rosters[serverID]
+	if !ok {
+		roster = []*agentpb.OnlinePlayer{
+			{Name: "Kestrel", JoinedUnixMs: now.Add(-3 * time.Minute).UnixMilli()},
+			{Name: "MossVeil", JoinedUnixMs: now.Add(-40 * time.Second).UnixMilli()},
+		}
+		f.rosters[serverID] = roster
+	}
+	return roster
+}
+
+// rosterJoin and rosterLeave are the join and leave drill triggers.
+func (f *FakeRuntime) rosterJoin(serverID, name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	roster := f.rosterLocked(serverID, time.Now())
+	for _, p := range roster {
+		if p.GetName() == name {
+			return
+		}
+	}
+	f.rosters[serverID] = append(roster, &agentpb.OnlinePlayer{Name: name, JoinedUnixMs: nowMs()})
+}
+
+func (f *FakeRuntime) rosterLeave(serverID, name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	roster := f.rosterLocked(serverID, time.Now())
+	kept := roster[:0]
+	for _, p := range roster {
+		if p.GetName() != name {
+			kept = append(kept, p)
+		}
+	}
+	f.rosters[serverID] = kept
 }
 
 // FakeRemoval is one RemoveServer the fake received, with the intent it carried.
@@ -592,6 +657,16 @@ func (f *FakeRuntime) SetBackupFailure(reason string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.backupErr = reason
+}
+
+// backupFailure is the reason a backup of serverID fails with, or "": the
+// server's own backupfail drill trigger, else the fake-wide SetBackupFailure.
+// Called with f.mu held.
+func (f *FakeRuntime) backupFailure(serverID string) string {
+	if reason := f.backupFails[serverID]; reason != "" {
+		return reason
+	}
+	return f.backupErr
 }
 
 // Backups returns copies of the archives the fake holds for serverID.
@@ -872,8 +947,8 @@ func (f *FakeRuntime) CreateBackup(_ context.Context, serverID, _, name string, 
 			f.pendingLeft = map[string]int{}
 		}
 		f.pendingLeft[b.Id] = f.backupPending
-	case f.backupErr != "":
-		b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupErr
+	case f.backupFailure(serverID) != "":
+		b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupFailure(serverID)
 	}
 	f.backups[serverID] = append(f.backups[serverID], b)
 	return cloneBackup(b), nil
@@ -894,8 +969,8 @@ func (f *FakeRuntime) ListBackups(_ context.Context, serverID, _ string) ([]*age
 			if left--; left == 0 {
 				delete(f.pendingLeft, b.Id)
 				b.State = agentpb.BackupState_BACKUP_STATE_UNSPECIFIED
-				if f.backupErr != "" {
-					b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, f.backupErr
+				if reason := f.backupFailure(serverID); reason != "" {
+					b.State, b.Error = agentpb.BackupState_BACKUP_STATE_FAILED, reason
 				}
 			} else {
 				f.pendingLeft[b.Id] = left
@@ -1344,6 +1419,16 @@ func (f *FakeRuntime) Status(_ context.Context, serverID string) (*agentpb.Serve
 	w := f.watchdog[serverID]
 	f.mu.Unlock()
 	status.WatchdogRestarts, status.LastWatchdogRestartUnixMs = w.restarts, w.lastMs
+	// A running server with a "log" player query reports its roster, as the
+	// Docker runtime attaches its sampled one, so the Panel's reconciler sees
+	// the join and leave drill triggers.
+	if st == agentpb.ServerState_SERVER_STATE_RUNNING {
+		if players, cap, known, names := f.fakeRoster(serverID, time.Now()); known {
+			status.LastStats = &agentpb.ResourceStats{
+				ServerId: serverID, Players: players, MaxPlayers: cap, PlayersKnown: true, OnlinePlayers: names,
+			}
+		}
+	}
 	return status, nil
 }
 
@@ -1379,19 +1464,62 @@ func (f *FakeRuntime) StreamConsole(ctx context.Context, serverID string, tail i
 	}
 }
 
-// SendCommand accepts anything and does nothing with it, with two exceptions.
-// The console command "crash" drops the server into the crashed state: nothing
-// else on the fake ever crashes, so without it the Panel's crash notice and the
-// fleet's crashed card can only be exercised against a real container runtime.
-// "watchdog" plays the crash watchdog restarting the server on its own
-// (SimulateWatchdogRestart), which is how the push alerts' healed and
-// crash-loop events are tried by hand on the fake stack.
+// SendCommand accepts anything and does nothing with it, except the drill
+// triggers: console commands that make the fake do what a real node does on
+// its own, so every state the Panel reacts to — and every push alert — can be
+// produced by hand on the fake-live stack. They exist only here; the Docker
+// runtime sends a console command to the game.
+//
+//   - "crash" drops the server into the crashed state (exit 0xC0000135).
+//   - "watchdog" plays the crash watchdog restarting the server on its own
+//     (SimulateWatchdogRestart): the healed and crash-loop alerts.
+//   - "join <name>" and "leave <name>" add a player to or remove one from the
+//     server's roster, which a "log"-query spec reports through Status: the
+//     player-joined alert.
+//   - "backupfail <reason>" makes this server's backups land FAILED with the
+//     reason, and "backupfail off" lets them succeed again: the
+//     backup-failed alert.
+//   - "runtime down" makes the node report its container runtime unreachable,
+//     so the Panel reads it partial, and "runtime up" brings it back: the
+//     node-partial alert. It is node-wide, sent through any server's console.
 func (f *FakeRuntime) SendCommand(_ context.Context, serverID string, cmd string) error {
-	switch strings.TrimSpace(cmd) {
+	verb, arg, _ := strings.Cut(strings.TrimSpace(cmd), " ")
+	arg = strings.TrimSpace(arg)
+	switch verb {
 	case "crash":
 		f.setState(serverID, agentpb.ServerState_SERVER_STATE_CRASHED)
 	case "watchdog":
 		f.SimulateWatchdogRestart(serverID)
+	case "join":
+		if arg != "" {
+			f.rosterJoin(serverID, arg)
+		}
+	case "leave":
+		if arg != "" {
+			f.rosterLeave(serverID, arg)
+		}
+	case "backupfail":
+		f.mu.Lock()
+		if f.backupFails == nil {
+			f.backupFails = make(map[string]string)
+		}
+		if arg == "" || arg == "off" {
+			delete(f.backupFails, serverID)
+		} else {
+			f.backupFails[serverID] = arg
+		}
+		f.mu.Unlock()
+	case "runtime":
+		switch arg {
+		case "down":
+			f.mu.Lock()
+			f.runtimeDown = true
+			f.mu.Unlock()
+		case "up":
+			f.mu.Lock()
+			f.runtimeDown = false
+			f.mu.Unlock()
+		}
 	}
 	return nil
 }

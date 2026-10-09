@@ -83,6 +83,7 @@
 <a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
 <a class="nav-link" href="/wiki/operate/players/">Who is online</a>
 <a class="nav-link is-here" href="/wiki/operate/audit/" aria-current="page">The audit log</a>
+<a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
 </details>
 <details class="nav-sec" open>
 <summary><span class="nav-sec-t">game specs</span></summary>
@@ -119,6 +120,7 @@
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
 <a class="toc-link lvl-3" href="#when-the-address-identifies-nobody">when the address identifies nobody</a>
 <a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
+<a class="toc-link lvl-2" href="#push-alerts-leave-one-row-per-phone">Push alerts leave one row per phone</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
 </div></details>
     <article class="prose">
@@ -139,7 +141,7 @@ is a log nobody reads.</p>
 </tr>
 <tr>
 <td><code>actor</code></td>
-<td>the username, or <code>anonymous</code> for a pre-authentication event</td>
+<td>the username, <code>anonymous</code> for a pre-authentication event, or <code>system</code> for something the Panel did on its own</td>
 </tr>
 <tr>
 <td><code>action</code></td>
@@ -151,7 +153,7 @@ is a log nobody reads.</p>
 </tr>
 <tr>
 <td><code>target_type</code> · <code>target_id</code></td>
-<td><code>server</code>, <code>node</code>, <code>spec</code>, <code>user</code> or <code>auth</code>, and the <code>{id}</code> from the route</td>
+<td><code>server</code>, <code>node</code>, <code>spec</code>, <code>user</code>, <code>device</code> or <code>auth</code>, and the <code>{id}</code> from the route</td>
 </tr>
 <tr>
 <td><code>status</code></td>
@@ -279,6 +281,17 @@ everything except the window.</p>
 </aside>
 
 
+<h2 id="push-alerts-leave-one-row-per-phone">Push alerts leave one row per phone <a class="hlink" href="#push-alerts-leave-one-row-per-phone" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Every <a href="/wiki/operate/alerts/">push alert</a> the Panel sends leaves one row per
+phone it went to, written by the Panel itself: actor <code>system</code>, no source
+address, target <code>device</code> and the phone&#39;s id, and the relay&#39;s HTTP status. The
+action is <code>push.sent</code>, <code>push.failed</code> or <code>push.dropped</code>, followed by the event,
+the server or node, and whose phone it was, plus the relay&#39;s reason when it did
+not go:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>push.sent — server_crashed (server dragonwilds-01) to admin
+push.failed — test (test) to admin: the relay reports the device token is no longer valid (410)
+push.dropped — server_crashed (server dragonwilds-01) to admin: the alert would be two minutes old before another attempt, after 7 attempt(s) (the relay answered 503)</code></pre></div>
+<p>No row ever carries the phone&#39;s push token, its key or the alert&#39;s contents.</p>
 <h2 id="getting-at-it">Getting at it <a class="hlink" href="#getting-at-it" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><code>GET /api/v1/audit</code> returns the most recent entries, newest first, and needs the
 <code>audit.view</code> permission, which Owner and Admin hold. The response also carries
@@ -289,7 +302,7 @@ into the copy.</p>
 
     <nav class="pager" aria-label="more pages">
       <a class="pg prev" href="/wiki/operate/players/"><span class="pg-k">previous</span><span class="pg-t">Who is online</span></a>
-      <a class="pg next" href="/wiki/specs/"><span class="pg-k">next</span><span class="pg-t">The spec catalog<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="pg next" href="/wiki/operate/alerts/"><span class="pg-k">next</span><span class="pg-t">Push alerts<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </nav>
 
     <footer class="doc-foot">
@@ -308,6 +321,7 @@ into the copy.</p>
 <a class="toc-link lvl-2" href="#reading-the-source-column">Reading the source column</a>
 <a class="toc-link lvl-3" href="#when-the-address-identifies-nobody">when the address identifies nobody</a>
 <a class="toc-link lvl-2" href="#how-long-entries-are-kept">How long entries are kept</a>
+<a class="toc-link lvl-2" href="#push-alerts-leave-one-row-per-phone">Push alerts leave one row per phone</a>
 <a class="toc-link lvl-2" href="#getting-at-it">Getting at it</a>
     </div>
   </aside>

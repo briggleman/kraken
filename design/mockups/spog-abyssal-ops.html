@@ -115,7 +115,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     gap: clamp(14px, 1.6vh, 24px);
   }
   .depth.open { clip-path: circle(150% at var(--ox, 50%) var(--oy, 50%)); visibility: visible; }
-  .depth-head { display: flex; align-items: center; gap: clamp(16px, 1.6vw, 32px); }
+  .depth-head { display: flex; flex-wrap: wrap; align-items: center; gap: clamp(16px, 1.6vw, 32px); }
   .surface-btn {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 10px 18px;
@@ -134,6 +134,34 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   }
   .depth-meta b { color: var(--ink); font-weight: 500; }
   .depth-meta b.ok-txt { color: var(--ok); }
+  /* The Steam build check (#392, mock round 2026-10-09). The build is its
+     own line closing the drill-in header, right-aligned under the meta it belongs
+     with, so a status as long as "update available · 25805654 · start to
+     apply" never squeezes state/uptime/players/port/ver onto two lines. The
+     status follows the build in plain ink when current and in the violet when
+     a newer build is waiting — the voice the agent-update chip already speaks
+     for "a build is waiting for you". "check" is a .mini-act: a reading with a
+     refresh, never a primary control. The same violet carries the rest of
+     the check across the fleet: a card's meta line ends in "update
+     available", a node band's `updates n available` condition line counts
+     its servers (the act value, since it is waiting on the operator), and
+     the top bar holds the fleet-wide count beside live · ping. */
+  .depth-build {
+    flex-basis: 100%; display: flex; justify-content: flex-end; align-items: baseline; gap: 10px;
+    margin-top: calc(-1 * clamp(8px, 0.9vw, 18px));
+    font-family: var(--mono); font-weight: 300; font-size: clamp(12px, 0.8vw, 16px);
+    color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  .depth-build b { color: var(--ink); font-weight: 500; }
+  .depth-build .bs { color: var(--ink-3); }
+  .depth-build .bs.avail { color: var(--caution); }
+  .depth-build .build-check { align-self: center; }
+  /* On a phone the status may not fit beside the build id: the line wraps and
+     reads left to right from the start of the row instead of pinning right. */
+  @media (max-width: 640px) { .depth-build { flex-wrap: wrap; justify-content: flex-start; row-gap: 4px; } }
+  .srv-meta .srv-upd { color: var(--caution); }
+  .updates-avail .nc-v.act { color: var(--caution); }
+  .top-upd { color: var(--caution); }
   .depth-body {
     display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 1.35fr);
     gap: clamp(16px, 1.6vw, 30px); min-height: 0;
@@ -481,27 +509,19 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   /* A start that is not the operator's to take: the server is mid-install,
      mid-update or mid-restore and boots on its own when the pass lands. The
      control stays where it is (the geometry never changes) but stops being a
-     button: the press travel and the hover brightening go, the colour steps
-     down to say "not yours to click", and the label says what is happening —
-     "updating…" — the way the node band's agent chip says "pushing…" while it
-     works. The traversal of light is the one thing that keeps moving: a long
-     copy phase can hold the console still for a minute, and that stillness is
-     what made the start read as an invitation. It takes the violet, not the
-     start's own sand: violet is the house's "working on your behalf" voice,
-     the one the node band's agent chip speaks while it pushes, so an operator
-     who has watched one knows the other — and a waiting start can never be
-     mistaken for a dimmed live one. */
-  .ctl-wait { position: relative; overflow: hidden; cursor: progress; box-shadow: none; }
+     button: the press travel and the hover brightening go, and the label says
+     what is happening — "updating…" — the way the node band's agent chip says
+     "pushing…" while it works. It takes the violet, not the start's own sand:
+     a dimmed sand start still read as a start, and a long copy phase that holds
+     the console still is exactly when an operator reaches for one. It does NOT
+     sweep. The Violet Pulse Rule gives the sweep to things that are waiting for
+     you; this control is working, and a working control holds still in the
+     semantic colour — the pushing chip stops sweeping for the same reason. The
+     label is what says the work is moving. */
+  .ctl-wait { cursor: progress; box-shadow: none; }
   .ctl-wait:hover { filter: none; }
   .ctl-wait:active { transform: none; box-shadow: none; }
   .ctl-start.ctl-wait { color: rgba(var(--caution-rgb), 0.8); border-color: rgba(var(--caution-rgb), 0.4); background: rgba(var(--caution-rgb), 0.08); }
-  .ctl-wait::after {
-    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 55%;
-    background: linear-gradient(100deg, rgba(var(--caution-rgb), 0), rgba(var(--caution-rgb), 0.28), rgba(var(--caution-rgb), 0));
-    pointer-events: none;
-    animation: adSweep 3.6s ease-in-out infinite;
-  }
-  @media (prefers-reduced-motion: reduce) { .ctl-wait::after { animation: none; opacity: 0; } }
   .ctl-delete {
     background: rgba(var(--crisis-rgb), 0.08); color: var(--crisis); border: 1px solid rgba(var(--crisis-rgb), 0.35);
     display: inline-flex; align-items: center; justify-content: center; gap: 9px;
@@ -2592,6 +2612,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     <span class="wordmark kr-lock"><i class="kr-glyph" aria-hidden="true"></i><b class="kr-word">KRAKEN</b></span>
     <span class="top-sub">single pane · all systems</span>
     <div class="top-right">
+      <span class="top-upd" title="dragonwilds-01 has a newer Steam build waiting">1 update available</span>
       <span><span class="live-dot">●</span> live · ping <span id="ping">2s</span></span>
       <span id="clock">23:47:12</span>
       <button class="prefs-open io" data-sheet-open="apiDocs" title="api reference" aria-label="Open the api reference"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 6.4 2.4 C 4.9 2.4 5.7 7.1 3.4 8 C 5.7 8.9 4.9 13.6 6.4 13.6"/><path d="M 9.6 2.4 C 11.1 2.4 10.3 7.1 12.6 8 C 10.3 8.9 11.1 13.6 9.6 13.6"/></svg></button>
@@ -2615,6 +2636,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
         <span class="nc-sep" aria-hidden="true">&middot;</span><span class="nc-name" title="kraken_f4030778-08c8-47b7-abba-59bbd9cebd08 (f4030778-08c8-47b7-abba-59bbd9cebd08)">kraken_f4030778…</span>
         <button class="nc-go" aria-label="Retire the untracked container kraken_f4030778… on BEHEMOTH — it is stopped and removed, its data untouched">retire</button>
         <span class="nc-fail" title="retire · node behemoth did not answer within the time allowed — the action may still be completing on the node">retire · node did not answer within the time allowed — the action may still be completing</span>
+      </span>
+      <span class="node-meta node-cond updates-avail">
+        <span class="nc-k">updates</span><b class="nc-v act" title="dragonwilds-01 · 25630937 → 25805654">1 available</b>
       </span>
       <span class="node-actions">
         <button class="prefs-open" data-sheet-open="nodeCfg" aria-label="Open node settings">node settings</button>
@@ -2789,7 +2813,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span class="srv-art" style="background-image: url('https://cdn.cloudflare.steamstatic.com/steam/apps/3061810/library_hero.jpg')" aria-hidden="true"></span><span class="srv-shade" aria-hidden="true"></span>
       <span class="srv-id">
         <span class="nd-rack">node 01 <b>behemoth</b></span><span class="srv-name">Dragonwilds</span>
-        <span class="srv-meta">runescape · v1.2.0 · :43594 · stopped 22:58</span>
+        <span class="srv-meta">runescape · v1.2.0 · :43594 · stopped 22:58 · <span class="srv-upd">update available</span></span>
         <span class="chip stop"><i></i>stopped</span>
       </span>
       <span class="players">
@@ -2903,6 +2927,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span>port <b id="dPort">8211</b></span>
       <span>ver <b id="dVer">v0.6.1</b></span>
     </div>
+    <div class="depth-build" id="dBuildWrap">build <b id="dBuild">25247047</b><span class="bs" id="dBuildSt">current · checked 3h ago</span><button class="mini-act build-check" id="dBuildCheck" title="ask Steam for the branch's current build now">check</button></div>
   </div>
   <div class="depth-body">
     <section class="console" aria-label="Server station">
@@ -4742,6 +4767,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   const SERVERS = {
     'Palworld': {
       state: 'running', up: '3d 14h', players: '7/32', port: '8211', ver: 'v0.6.1',
+      build: '25247047', buildSt: 'current · checked 3h ago', buildAvail: false,
       cpuV: 22, memU: 14.2, memM: 16, tickV: 31, worldG: '4.8',
       roster: [['Kestrel','6m'],['MossVeil','1h 12m'],['Brakkus','2h 03m'],['softserve','2h 40m'],['Anchorite','3h 15m'],['Pellet','4h 27m'],['DGRhino','5h 58m']],
       lines: [
@@ -4759,6 +4785,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       // Mid-update: the pre-start pass is running, the console is the install
       // log, and the start control is the .ctl-wait "updating…" above.
       state: 'installing', up: '—', players: '0/16', port: '15636', ver: 'v0.8.3',
+      build: '23178631', buildSt: '→ 23204410 · updating now', buildAvail: true,
       cpuV: 9, memU: 6.8, memM: 12, tickV: 24, worldG: '2.1',
       roster: [],
       lines: [
@@ -4771,6 +4798,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     },
     'Dragonwilds': {
       state: 'stopped', up: '—', players: '0/24', port: '43594', ver: 'v1.2.0',
+      build: '25630937', buildSt: 'update available · 25805654 · start to apply', buildAvail: true,
       cpuV: null, memU: null, memM: 24, tickV: null, worldG: '3.3',
       roster: [],
       lines: [
@@ -4820,6 +4848,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
     st.classList.toggle('ok-txt', s.state === 'running');
     $('dUp').textContent = s.up; $('dPlayers').textContent = s.players;
     $('dPort').textContent = s.port; $('dVer').textContent = s.ver;
+    $('dBuild').textContent = s.build || '—';
+    $('dBuildSt').textContent = s.buildSt || '';
+    $('dBuildSt').classList.toggle('avail', !!s.buildAvail);
     $('stnConsole').checked = true;
     $('cfgName').value = name + ' — behemoth';
     $('cfgMax').value = s.players.split('/')[1] || '32';

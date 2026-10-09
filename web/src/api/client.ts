@@ -29,6 +29,7 @@ import type {
   PermanentDeleteResult,
   ReviveInput,
   Server,
+  ServerUpdate,
   ServerSettings,
   SftpStatus,
   SetupStatus,
@@ -219,6 +220,13 @@ export const api = {
   },
   reinstallServer(id: string, steamGuardCode?: string): Promise<{ state: string }> {
     return request("POST", `/servers/${id}/reinstall`, steamGuardCode ? { steam_guard_code: steamGuardCode } : {});
+  },
+  /** Asks Steam now for the server's current build and compares it with the
+   *  build its install tree holds (#392). Answers when the check is done —
+   *  about twenty seconds on a node that already has the image — with the
+   *  same `update` block GET /servers carries, which the Panel also records. */
+  checkServerBuild(id: string): Promise<ServerUpdate> {
+    return request("POST", `/servers/${id}/update-check`, {});
   },
   /** Retires a server (#360): stop, a final backup unless declined, then its
    *  containers and world go and the row stays, retired. Answers at once with

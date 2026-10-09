@@ -24,6 +24,7 @@
     syncUpdatePass,
     stateLabel,
     startControl,
+    checkBuild,
     powerControls,
     canShowInstallLog,
     consoleRepin,
@@ -36,9 +37,10 @@
     restoreNoteText,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
-  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote } from "@/lib/state.svelte";
+  import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote, ui } from "@/lib/state.svelte";
   import { retireAbandoned, retirePhaseWord } from "@/lib/views.svelte";
   import { hasPerm } from "@/lib/auth.svelte";
+  import { buildLine } from "@/lib/buildcheck";
   import { nodeOf, specOf } from "@/lib/fleet.svelte";
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isFromSpec, isMissing } from "@/lib/required";
@@ -61,6 +63,14 @@
   // as the lines arrive, and can never set the label over a state that has
   // already moved on, because syncUpdatePass checks the state itself.
   const updatePass = $derived(depth.updatePass);
+  // The header's build line (#392), re-read as the clock moves so "checked
+  // 3h ago" does not freeze; null when the server has no build to check.
+  const bl = $derived.by(() => {
+    void ui.clock; // ticks once a second
+    return buildLine(server, updatePass);
+  });
+  // The check is a POST under server.power, the same gate as reinstall.
+  const canCheckBuild = $derived(hasPerm("server.power"));
   $effect(() => {
     syncUpdatePass(server?.state, stream.lines);
   });
@@ -609,6 +619,21 @@
       <span>port <b>{meta.port}</b></span>
       <span>ver <b>{meta.ver}</b></span>
     </div>
+    <!-- The Steam build check (#392): its own line closing the header, so a
+         long status never squeezes the meta onto two lines. Plain when
+         current, Caution Violet when a newer build is waiting; no status word
+         when the last check could not compare (the reason is in the title).
+         "checking…" while a check is out is inherited, not designed. -->
+    {#if bl}
+      <div class="depth-build" id="dBuildWrap" title={bl.title}>
+        build <b>{bl.build}</b>{#if bl.status}<span class="bs" class:avail={bl.avail}>{bl.status}</span>{/if}{#if canCheckBuild}<button
+            class="mini-act build-check"
+            disabled={depth.checkingBuild}
+            title="ask Steam for the branch's current build now"
+            onclick={() => void checkBuild()}>{depth.checkingBuild ? "checking…" : "check"}</button
+          >{/if}
+      </div>
+    {/if}
   </div>
   <div class="depth-body">
     {#key depth.serverId}

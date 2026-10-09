@@ -11,6 +11,7 @@
     serverArt,
     serverMeta,
   } from "@/lib/views.svelte";
+  import { cardUpdateAvailable } from "@/lib/buildcheck";
   import type { Server } from "@/api/types";
 
   // Identity, state, players, ports, and placement are real (from /servers).
@@ -40,7 +41,10 @@
     <span class="nd-rack">{rack.node} <b>{rack.host}</b></span><span class="srv-name"
       >{server.name}</span
     >
-    <span class="srv-meta">{serverMeta(server)}</span>
+    <!-- A server behind its Steam branch says so at the end of its meta line, in
+         Caution Violet (#392, The Old Build Turns Players Away Rule). A current
+         one says nothing: current is the resting state. -->
+    <span class="srv-meta">{serverMeta(server)}{#if cardUpdateAvailable(server)}{" · "}<span class="srv-upd">update available</span>{/if}</span>
     <span class="chip {kind}"><i></i>{server.state.replace("_", " ")}</span>
   </span>
 

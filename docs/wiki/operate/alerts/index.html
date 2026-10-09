@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Push alerts — Kraken wiki</title>
+<meta name="description" content="What the iOS companion is told about your fleet and when — the three alert classes, every event and the sentence it sends, the crash-loop escalation and its quiet hour, why a node has to stay down for a minute before it pages, how devices are registered and revoked, the test alert, and what push.sent, push.failed and push.dropped mean in the audit log." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/alerts/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/alerts/" />
+<meta property="og:title" content="Push alerts — Kraken wiki" />
+<meta property="og:description" content="What the iOS companion is told about your fleet and when — the three alert classes, every event and the sentence it sends, the crash-loop escalation and its quiet hour, why a node has to stay down for a minute before it pages, how devices are registered and revoked, the test alert, and what push.sent, push.failed and push.dropped mean in the audit log." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Push alerts — Kraken wiki" />
+<meta name="twitter:description" content="What the iOS companion is told about your fleet and when — the three alert classes, every event and the sentence it sends, the crash-loop escalation and its quiet hour, why a node has to stay down for a minute before it pages, how devices are registered and revoked, the test alert, and what push.sent, push.failed and push.dropped mean in the audit log." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.62.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+<a class="nav-link is-here" href="/wiki/operate/alerts/" aria-current="page">Push alerts</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Push alerts</span></nav>
+    <h1>Push alerts</h1>
+    <p class="lede">What the iOS companion is told about your fleet and when — the three alert classes, every event and the sentence it sends, the crash-loop escalation and its quiet hour, why a node has to stay down for a minute before it pages, how devices are registered and revoked, the test alert, and what push.sent, push.failed and push.dropped mean in the audit log.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#turning-them-on">Turning them on</a>
+<a class="toc-link lvl-2" href="#what-you-are-told">What you are told</a>
+<a class="toc-link lvl-2" href="#the-crash-loop-escalation">The crash-loop escalation</a>
+<a class="toc-link lvl-2" href="#node-alerts-wait-a-minute">Node alerts wait a minute</a>
+<a class="toc-link lvl-2" href="#devices">Devices</a>
+<a class="toc-link lvl-2" href="#the-test-alert">The test alert</a>
+<a class="toc-link lvl-2" href="#when-alerts-do-not-arrive">When alerts do not arrive</a>
+</div></details>
+    <article class="prose">
+<p>The Kraken iOS companion can tell you when something in the fleet needs you: a
+node dropped off, a server crashed, a backup failed. The Panel decides what is
+worth an alert and who may see it; the phone decides how loudly to say it.</p>
+<p>Push alerts are <strong>off until you configure a relay</strong>. Apple only delivers
+notifications sent with a signing key, and a self-hosted, GPL Panel cannot ship
+one, so the Panel hands each alert to the <strong>Kraken push relay</strong>, which holds the
+key and forwards to Apple. It is the one part of Kraken that talks to a service
+outside your network. A Panel without a relay works exactly as before and loses
+alerts and nothing else.</p>
+<p>The relay never reads an alert. Each one is sealed on the Panel to the phone&#39;s
+own key, and only the phone can open it: the relay sees the phone&#39;s push token,
+a blob of ciphertext and when it was sent — not which server, not what
+happened, not who you are. <a href="/wiki/security/">Security</a> has the full model.</p>
+<h2 id="turning-them-on">Turning them on <a class="hlink" href="#turning-them-on" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Set two variables on the Panel and restart it:</p>
+<div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_PUSH_RELAY_URL=https://push.example.com   # the relay's base URL; unset = off
+KRAKEN_PUSH_RELAY_TOKEN=…                        # only if your relay asks for one</code></pre></div>
+<p>Both are in the <a href="/wiki/configure/panel/#push-alerts">Panel configuration reference</a>.
+The Panel logs one line at startup saying whether alerts are on and which relay
+host it will use — never the token. If a token is set and the URL is plain
+<code>http://</code> to a host that is not this machine or a private address, it also warns
+that the token would cross the network in the clear; use <code>https://</code>.</p>
+<p>Then sign in on the companion app and allow notifications. The app registers
+the phone with the Panel by itself, and keeps the registration fresh every time
+it starts.</p>
+<h2 id="what-you-are-told">What you are told <a class="hlink" href="#what-you-are-told" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Every alert has a <strong>class</strong>, which the phone turns into how it interrupts you:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>class</th>
+<th>how the phone says it</th>
+<th>means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>attend</strong></td>
+<td>time-sensitive</td>
+<td>something needs a human</td>
+</tr>
+<tr>
+<td><strong>healed</strong></td>
+<td>an ordinary notification</td>
+<td>the fleet fixed itself; if these repeat, look</td>
+</tr>
+<tr>
+<td><strong>alive</strong></td>
+<td>quiet, grouped per server</td>
+<td>someone is playing</td>
+</tr>
+</tbody></table>
+</div>
+<p>Each class can be turned off per phone (in the app, which calls
+<code>PATCH /api/v1/devices/&lt;id&gt;/rules</code>), and one server&#39;s player alerts can be
+muted without muting its crashes.</p>
+<p>The events, with the sentence each one sends:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>event</th>
+<th>class</th>
+<th>the sentence</th>
+<th>what to do</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>a node went offline</td>
+<td>attend</td>
+<td><code>node abyss-win went offline — the panel lost its connection to the agent</code></td>
+<td>check the host is up and the Agent is running; a tunnel-mode node may simply have lost its network</td>
+</tr>
+<tr>
+<td>a node can&#39;t reach its runtime</td>
+<td>attend</td>
+<td><code>node abyss-lnx can&#39;t reach Docker</code></td>
+<td>start Docker (or Docker Desktop) on that host; the node reads <code>partial</code> until it can</td>
+</tr>
+<tr>
+<td>a server stopped unexpectedly</td>
+<td>attend</td>
+<td><code>dragonwilds-01 stopped unexpectedly — exit 0xC0000135, a DLL the game needs is missing</code></td>
+<td>open the server: the exit code is explained the same way under <a href="/wiki/operate/servers/#reading-a-crash">Reading a crash</a></td>
+</tr>
+<tr>
+<td>the watchdog restarted a server</td>
+<td>healed</td>
+<td><code>the watchdog restarted palworld-01</code></td>
+<td>nothing, once. Several in an hour becomes the next row</td>
+</tr>
+<tr>
+<td>a server is crash-looping</td>
+<td>attend</td>
+<td><code>palworld-01 is crash-looping: the watchdog has restarted it 3 times in the last hour</code></td>
+<td>read its console and install log; the game is failing on its own and restarting will not fix it</td>
+</tr>
+<tr>
+<td>a backup failed</td>
+<td>attend</td>
+<td><code>the scheduled backup of valheim-01 failed: no space left on device</code> (or <code>the backup of …</code> for one you started)</td>
+<td>the node&#39;s reason is in the sentence; free the space, fix the mirror, or check the backup globs</td>
+</tr>
+<tr>
+<td>a retire&#39;s final backup failed</td>
+<td>attend</td>
+<td><code>the final backup of valheim-01 failed, so its retire was abandoned: …</code></td>
+<td>the server is back where it was and nothing was removed; fix the reason and retire again</td>
+</tr>
+<tr>
+<td>a player joined</td>
+<td>alive</td>
+<td><code>Kestrel joined palworld-01 · 4 online</code></td>
+<td>nothing — it is the good kind</td>
+</tr>
+</tbody></table>
+</div>
+<p>A server whose game only reports how many players are on, not who, says
+<code>a player joined · 4 online</code>. A server sends at most one player alert a minute:
+players who arrive together are folded into one sentence
+(<code>Kestrel and Wren joined palworld-01 · 5 online</code>), and if the server stops
+inside that minute the held joins are dropped rather than announced after its
+crash. Players reconnecting after a crash or a restart count as joining.</p>
+<h2 id="the-crash-loop-escalation">The crash-loop escalation <a class="hlink" href="#the-crash-loop-escalation" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The watchdog restarting a crashed server is good news once and bad news three
+times. So the restart that makes <strong>three in the last hour</strong> for one server is
+sent as <code>attend</code>, &quot;crash-looping&quot;, instead of a third &quot;the watchdog restarted&quot;.</p>
+<p>After that, the server goes <strong>quiet for an hour</strong>: further restarts send
+nothing, because the crash-loop alert already said it, and &quot;the fleet fixed
+itself&quot; right after &quot;it is crash-looping&quot; would contradict it. When the hour is
+up, a restart is reported again — as healed, or as a new crash-loop if it is
+still looping.</p>
+<p>A restart that fails, leaving the server crashed, is reported as the crash, not
+as a heal.</p>
+<h2 id="node-alerts-wait-a-minute">Node alerts wait a minute <a class="hlink" href="#node-alerts-wait-a-minute" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Most of the time a node that drops off is back before you could have done
+anything: an Agent restarting into an update, a network blip, Docker Desktop
+restarting. So a node has to <strong>stay</strong> offline or <code>partial</code> for <strong>60 seconds</strong>
+before its alert is sent; if it is back by then, nothing is sent at all. A node
+that flaps down and up inside that minute is reported only if it is down when
+the minute is up.</p>
+<p><strong>Agent updates do not page.</strong> When you push an Agent update from the Nodes
+page, the Agent restarts into the new build. For that node the Panel waits out
+the update&#39;s own window — ten minutes — instead of one, so a slow Windows
+service restart is not reported as an outage. A node still down when the window
+closes is reported.</p>
+<p>A Panel that has just started does not report the nodes it finds down on its
+first look: a tunnel-mode node has not reconnected yet, and every upgrade would
+otherwise page everyone.</p>
+<h2 id="devices">Devices <a class="hlink" href="#devices" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A phone belongs to the <strong>user who signed in on it</strong>, not to a session — it keeps
+receiving alerts after the session it registered with expires.</p>
+<ul>
+<li><strong>Signing out of the app</strong> revokes that phone.</li>
+<li><strong>Disabling a user</strong> revokes every phone they registered, and <strong>deleting a
+user</strong> deletes them.</li>
+<li><strong>An administrator</strong> (anyone with <code>user.manage</code>) can list another user&#39;s
+devices with <code>GET /api/v1/devices?user=&lt;user id&gt;</code> and remove one with
+<code>DELETE /api/v1/devices/&lt;device id&gt;?user=&lt;user id&gt;</code>.</li>
+<li>One phone signed into two accounts receives both accounts&#39; alerts until it
+signs out of one. Neither account can take over or silence the other&#39;s
+registration.</li>
+</ul>
+<p>Alerts follow <strong>permissions at the moment they are sent</strong>. A server&#39;s alerts go
+to people who can see that server — its owner, or a role that reaches every
+server — and node alerts to anyone whose role can view nodes. Take a server away
+from someone, or change their role, and the very next alert reflects it; nothing
+on their phone has to change. A disabled user gets nothing.</p>
+<h2 id="the-test-alert">The test alert <a class="hlink" href="#the-test-alert" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The app&#39;s &quot;send a test alert&quot; calls <code>POST /api/v1/devices/&lt;id&gt;/test</code>, which
+sends <code>test alert from &lt;your panel&#39;s host&gt;</code> to that phone straight away and
+waits for the relay&#39;s answer, for at most 20 seconds:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>answer</th>
+<th>means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sent</code></td>
+<td>the relay took it; if the phone shows nothing, look at its notification settings</td>
+</tr>
+<tr>
+<td><code>token_dead</code></td>
+<td>Apple no longer knows this phone&#39;s push token (the app was reinstalled, or notifications were reset). Open the app so it registers again</td>
+</tr>
+<tr>
+<td><code>rejected</code></td>
+<td>the relay refused the request; the reason says why</td>
+</tr>
+<tr>
+<td><code>dropped</code></td>
+<td>the relay did not answer in time</td>
+</tr>
+<tr>
+<td><code>disabled</code></td>
+<td>this Panel has no relay configured</td>
+</tr>
+</tbody></table>
+</div>
+<p>The test goes to the phone whatever its alert settings say, so it always tells
+you whether the path works.</p>
+<h2 id="when-alerts-do-not-arrive">When alerts do not arrive <a class="hlink" href="#when-alerts-do-not-arrive" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>No alerts at all.</strong> Check the Panel&#39;s startup line: <code>push alerts off</code> means
+<code>KRAKEN_PUSH_RELAY_URL</code> is not set. Then send a test alert from the app. Then
+look in the <a href="/wiki/operate/audit/">audit log</a> for <code>push.</code> rows — if there are
+none, nothing has happened that you are allowed to hear about (an Operator only
+hears about the servers they own).</p>
+<p><strong>One phone went silent.</strong> Look up its device: if <code>token_invalid_at</code> is set,
+the relay reported its push token dead and the Panel stopped sending to it.
+Opening the app re-registers the phone and clears the mark.</p>
+<p><strong>The audit log.</strong> Every alert to every phone leaves one row, actor <code>system</code>,
+target the device:</p>
+<ul>
+<li><code>push.sent</code> — the relay accepted it.</li>
+<li><code>push.failed</code> — the relay refused it and retrying would not help: a dead
+push token (<code>410</code>), or a request the relay will not take (<code>400</code>). The reason
+is in the row.</li>
+<li><code>push.dropped</code> — the relay could not be reached, or kept answering busy, for
+two minutes. The Panel retries for that long (after 1, 3, 9 and 27 seconds,
+then every 30) and then gives up rather than deliver old news; the row says
+how many attempts it made and what the relay last said.</li>
+</ul>
+<p>A run of <code>push.dropped</code> means the relay is down or unreachable from the Panel;
+a <code>push.failed</code> with <code>410</code> is one phone that needs to open the app.</p>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/audit/"><span class="pg-k">previous</span><span class="pg-t">The audit log</span></a>
+      <a class="pg next" href="/wiki/specs/"><span class="pg-k">next</span><span class="pg-t">The spec catalog<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/alerts.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/alerts.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#turning-them-on">Turning them on</a>
+<a class="toc-link lvl-2" href="#what-you-are-told">What you are told</a>
+<a class="toc-link lvl-2" href="#the-crash-loop-escalation">The crash-loop escalation</a>
+<a class="toc-link lvl-2" href="#node-alerts-wait-a-minute">Node alerts wait a minute</a>
+<a class="toc-link lvl-2" href="#devices">Devices</a>
+<a class="toc-link lvl-2" href="#the-test-alert">The test alert</a>
+<a class="toc-link lvl-2" href="#when-alerts-do-not-arrive">When alerts do not arrive</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.62.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

@@ -50,6 +50,18 @@ encrypted." A server's game settings, including a game's own join password, are
 "low-sensitivity *game config* … not infrastructure credentials", stored in the
 clear and "**accepted as low-risk**".
 
+**Push alerts.** Off until a relay is configured, and then sealed end to end:
+each alert is encrypted with HPKE "to the device's own X25519 public key", and
+"the **device private key is generated on the phone and never leaves it**". The
+relay sees the push token, the ciphertext, the Panel's install id and the timing
+and size of each alert, and cannot see "anything inside the envelope — the
+class, the event, server and node names and ids, the sentence, the user". The
+push token is sealed at rest like the other secrets, and every alert is checked
+against the user's permissions at the moment it is sent, so "a **disabled user
+gets nothing** whatever their devices say". The revocation paths and the
+residual risks are in SECURITY.md's "Push alerts"; the operator's view is
+[Push alerts](/wiki/operate/alerts/).
+
 **SQL and paths.** "every query in `internal/panel/store/postgres` is
 parameterized (`$1,$2,…`); no string-built SQL." The Agent's `safePath()`
 "cleans and prefix-checks against `/data`; `..`, absolute paths, and

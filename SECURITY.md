@@ -943,3 +943,93 @@ Covered by `TestLoginLimiterThrottlesTheEleventhFailureForOneUsername`,
 `TestLoadRefusesAnUnknownRateLimitMode` and
 `TestLoadRejectsAnUnparseableRateLimitSkipEntry`
 (`internal/panel/config`).
+
+## Push alerts (2026-10-09)
+
+The iOS companion's push alerts (**#348**; the wire contract is
+`docs/design/push-alerts.md`) are the one Kraken feature that talks to a service
+outside the operator's network: the Panel hands each alert to the **Kraken push
+relay**, which holds the APNs signing key a GPL Panel cannot ship and forwards
+to Apple. The relay is **off by default** (`KRAKEN_PUSH_RELAY_URL` unset); a
+Panel without it loses alerts and nothing else. Everything below is about what
+crosses that boundary and who can steer it.
+
+- **End-to-end encryption to the device.** Each alert is sealed with **HPKE**
+  (RFC 9180, base mode) — DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 /
+  ChaCha20-Poly1305, `info` = `kraken-push-v1`, no AAD — to the device's own
+  X25519 public key, one seal per device per alert (`internal/panel/push`, Go's
+  stdlib `crypto/hpke`; CryptoKit on the phone). The **device private key is
+  generated on the phone and never leaves it**; the Panel holds only the public
+  half, which it refuses at registration unless it is a usable X25519 point
+  (`push.ValidatePublicKey` — a small-order point would make every seal fail).
+- **What the relay sees:** the device's APNs token and environment, the
+  ciphertext, the Panel's random install id (`X-Kraken-Panel-Id`, minted once
+  per datastore), the time and size of each alert, and the Panel's source
+  address. **What it cannot see:** anything inside the envelope — the class, the
+  event, server and node names and ids, the sentence, the user. The phone's
+  Notification Service Extension decrypts and renders; a failed decryption shows
+  a generic "Kraken alert".
+- **The APNs token is sealed at rest** with the Panel's secrets key
+  (AES-256-GCM, `enc:v1:` marker, as in "Encryption at rest"): with a relay that
+  does not authenticate its callers, a token plus the public key is all it takes
+  to put an alert on a phone. The token and the key are **never returned by the
+  API, logged, or written to the audit log**; neither is an envelope.
+- **RBAC at send time.** Every alert is evaluated per device when it is sent: a
+  server alert needs `server.view` and the API's own ownership rule
+  (`store.MayAccessServer`, shared by the middleware and the dispatcher so they
+  cannot disagree), a node alert needs `node.view`, and a **disabled user gets
+  nothing** whatever their devices say (a registration can race the disable
+  that revoked the rest). Users and roles are read per event, so a demotion
+  applies to the very next alert.
+- **Revocation paths.** Sign-out with `device_id` revokes the caller's own
+  registration of that install; `DELETE /devices/{id}` revokes the caller's
+  device, and an administrator with `user.manage` revokes another user's with
+  `?user=<id>`; disabling a user deletes every device they registered, and
+  deleting a user cascades. A device whose token the relay reports dead
+  (`410`) is skipped until the phone registers again — the mark is made only
+  against the token that was sent, so a fresh registration is never silenced.
+- **No takeover across accounts.** Devices are keyed by **(user, install id)**.
+  Install ids are not secret — they are audit targets — so a second account
+  registering a known id gets a row of its own and cannot re-point or silence
+  the first user's phone. Rules (`PATCH /devices/{id}/rules`) are changeable
+  only by the device's owner; a mute may name only a server the caller can
+  view, and the refusal reads the same for a server that does not exist, so the
+  mute list cannot probe server ids.
+- **Audit.** One entry per alert per device — actor `system`, target the
+  device, the relay's HTTP status — `push.sent`, `push.failed` (a non-retryable
+  refusal or a dead token) or `push.dropped` (out of time), naming the event,
+  the object and the device's user. No token, key or envelope.
+- **Relay authentication** is optional and the relay's decision: with
+  `KRAKEN_PUSH_RELAY_TOKEN` set the Panel sends `Authorization: Bearer <token>`
+  on every request. The token is never logged, and the Panel **warns at
+  startup** when it would cross the network in the clear — a plain `http://`
+  relay URL to a host that is not loopback or a private address (a host name is
+  never assumed private). Redirects from the relay are refused rather than
+  followed, so a relay cannot bounce the install id and token to another host.
+- **Bounded by time.** A delivery is retried (1s, 3s, 9s, 27s, then every 30s)
+  and dropped once it is two minutes old; nothing is queued for later.
+
+**Residual risks, stated plainly.** The relay learns **alert volume and
+timing** per Panel and per device token — when a fleet is in trouble, and
+roughly how much — even though it cannot read a single alert. A **compromised
+Panel can send its registered devices any alert it likes**, since it holds their
+public keys and tokens; the end-to-end encryption protects alerts from the
+relay, not from the Panel that writes them. And the feature **depends on the
+relay being up**: an alert the relay cannot take within two minutes is dropped
+(and audited as such), so push is a convenience, never the only place an
+operator should learn that something failed.
+
+Covered by `internal/panel/push` (seal/open round trips and the published test
+vector, the relay client's retry, drop, `410` and redirect paths),
+`internal/panel/alerts` (`TestDispatchRBACAtSendTime`,
+`TestDispatchSkipsDisabledUsers`, `TestDispatchSkipsADeadToken`,
+`TestDispatchTokenDeadMarksOnlyTheSentToken`,
+`TestDispatchOutcomesMarkTheDeviceAndTheAudit`), `internal/panel/api`
+(`TestRegisterSameIDForAnotherUserLeavesTheFirstAlone`,
+`TestPatchDeviceRules`, `TestDeleteDevice`, `TestLogoutRevokesTheDevice`,
+`TestDisablingOrDeletingAUserRevokesTheirDevices`,
+`TestDeviceRegistrationIsAuditedWithoutTheToken`,
+`TestPushPipelineEndToEnd`), `internal/panel/store/postgres`
+(`TestPostgresDeviceTokenEncryptionAtRest`) and `cmd/panel`
+(`TestInsecureRelayToken`, `TestBuildAlertsLogsTheRelayHostOnly`), and by the
+end-to-end drill on the fake-live stack recorded in the phase 5 PR.

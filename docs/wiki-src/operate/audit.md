@@ -14,10 +14,10 @@ is a log nobody reads.
 | field | what it is |
 | --- | --- |
 | `time` | when the request was handled |
-| `actor` | the username, or `anonymous` for a pre-authentication event |
+| `actor` | the username, `anonymous` for a pre-authentication event, or `system` for something the Panel did on its own |
 | `action` | the method plus the route pattern, plus a detail when the handler added one |
 | `method` · `path` | the HTTP method and the path as requested |
-| `target_type` · `target_id` | `server`, `node`, `spec`, `user` or `auth`, and the `{id}` from the route |
+| `target_type` · `target_id` | `server`, `node`, `spec`, `user`, `device` or `auth`, and the `{id}` from the route |
 | `status` | the response status the request actually ended on |
 | `ip` | the resolved client address |
 | `forwarded_for` | the raw `X-Forwarded-For` as received — only when `ip` identifies nobody, and never trusted |
@@ -160,6 +160,23 @@ Retention is enforced in one place, the pruning job, and nowhere else. No handle
 deletes an audit row, and the API offers no way to — the log is append-only to
 everything except the window.
 :::
+
+## Push alerts leave one row per phone
+
+Every [push alert](/wiki/operate/alerts/) the Panel sends leaves one row per
+phone it went to, written by the Panel itself: actor `system`, no source
+address, target `device` and the phone's id, and the relay's HTTP status. The
+action is `push.sent`, `push.failed` or `push.dropped`, followed by the event,
+the server or node, and whose phone it was, plus the relay's reason when it did
+not go:
+
+```text
+push.sent — server_crashed (server dragonwilds-01) to admin
+push.failed — test (test) to admin: the relay reports the device token is no longer valid (410)
+push.dropped — server_crashed (server dragonwilds-01) to admin: the alert would be two minutes old before another attempt, after 7 attempt(s) (the relay answered 503)
+```
+
+No row ever carries the phone's push token, its key or the alert's contents.
 
 ## Getting at it
 

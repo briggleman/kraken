@@ -334,6 +334,10 @@ it, code minus 128, so `137` reads as signal 9.
 Whether the watchdog restarts after a crash is the spec's
 `startup.restart.on_crash`, with its own retry ceiling.
 
+With [push alerts](/wiki/operate/alerts/) on, a crash reaches your phone with
+the same explanation, a watchdog restart is reported as healed, and the third
+restart in an hour is reported as a crash loop.
+
 ## Settings that wait for a restart
 
 Two kinds of value, two different answers.

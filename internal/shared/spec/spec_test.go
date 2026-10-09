@@ -72,6 +72,11 @@ func TestSpecValidate_Failures(t *testing.T) {
 		{"duplicate variable key", func(s *Spec) {
 			s.Variables = append(s.Variables, Variable{Key: "NAME", Default: "x"})
 		}},
+		// VALIDATE is the Panel's per-pass pseudo-variable (#392); a spec
+		// variable of that name would shadow it.
+		{"reserved VALIDATE variable", func(s *Spec) {
+			s.Variables = append(s.Variables, Variable{Key: ValidateVar, Default: "validate"})
+		}},
 		// query: every failure here is silent at runtime ("players unknown"),
 		// so Validate is where the author finds out.
 		{"query unknown method", func(s *Spec) { s.Query = &PlayerQuery{Method: "rcon", Port: "game"} }},

@@ -30,7 +30,7 @@ platforms:
 
 install:
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 
 startup:
   command: >-
@@ -147,8 +147,9 @@ dropdown you want to show.
 idempotent.** It runs against a fully installed, fully configured data directory
 holding live save games.
 
-`steamcmd … +app_update <id> validate +quit` already satisfies this: a no-op on
-a current tree, a repair on a damaged one, and it only touches depot-manifest
+`steamcmd … +app_update <id> {{VALIDATE}} +quit` already satisfies this: a
+no-op on a current tree, a differential download on an outdated one, a repair
+on a damaged one when the pass validates, and it only touches depot-manifest
 files, so uploaded mods and rendered config survive it.
 
 A script that wipes the data directory, re-seeds a config file the operator has
@@ -170,8 +171,8 @@ which never involves the Panel at all.
 Write `app_update` **twice**.
 
 ```sh
-steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 ```
 
 A fresh SteamCMD fails the first pass against an empty appinfo cache with
@@ -181,6 +182,14 @@ separator matters: `;` under `/bin/sh`, `&` under `cmd.exe`, because both mean
 "run the next one regardless" in their own shell while `&&` does not.
 
 A single manual run that worked is luck rather than proof. Write the two-step.
+
+Write `{{VALIDATE}}` where you would write `validate`. The Panel renders it as
+`validate` on a create, a revive and a reinstall, and as nothing on the
+update-on-start pass, where re-hashing a 10 to 30 GB tree costs minutes and a
+new build only needs its changed chunks ([Update on
+start](/wiki/operate/servers/#validate-on-the-update-pass)). It is a reserved
+name: a spec cannot declare a variable called `VALIDATE`, and a server cannot
+override one. A script that writes `validate` itself validates on every pass.
 
 On a Windows node there is a second problem and **the Agent solves it for you**:
 `steamcmd.exe` never updates itself in place, it spawns the new binary and

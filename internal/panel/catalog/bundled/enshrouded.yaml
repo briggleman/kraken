@@ -22,15 +22,18 @@ platforms:
   - kind: linux-wine
     image: ghcr.io/briggleman/kraken-steam-wine:latest
     install_script: |-
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
     startup_command: wine-headless /data/enshrouded_server.exe
 install:
   # Run app_update twice: SteamCMD can report "Missing configuration" on the
   # first pass against a fresh appinfo cache; the second pass downloads.
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md). The platform scripts above follow the same rule.
   script: >-
-    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   # Run from the data dir so the server finds enshrouded_server.json beside it.
   command: C:\data\enshrouded_server.exe

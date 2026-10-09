@@ -76,7 +76,7 @@ SteamCMD by forcing the platform type:
 
 ```sh
 steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data \
-  +login anonymous +app_update {{APP_ID}} validate +quit
+  +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 ```
 
 Two things about launching under it, both of which the image encodes so specs do

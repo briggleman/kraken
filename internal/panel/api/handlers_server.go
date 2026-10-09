@@ -169,25 +169,51 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go s.provision(server, sp, chosen, req.SteamGuardCode, "")
+	go s.provision(server, sp, chosen, req.SteamGuardCode, "", passCreate)
 
 	s.logger.Info("server scheduled", "id", server.ID, "name", server.Name, "node", chosen.Name, "kind", placement.Kind)
 	writeJSON(w, http.StatusCreated, server)
 }
 
+// passKind is which install pass a script is rendered for. Each caller of
+// runInstallPass names its own rather than having it inferred from the
+// server's state, because the state does not say it: a revive and a create
+// both start from nothing, and a reinstall's previous state is any of three.
+type passKind int
+
+const (
+	// passCreate is the first install of a new server, and of a revived one,
+	// which provisions like a create.
+	passCreate passKind = iota
+	// passReinstall is the operator's explicit "make the tree right".
+	passReinstall
+	// passUpdate is the update-on-start pass (#307), run before a start when
+	// the build check says there is a new build or a variable edit owes it.
+	passUpdate
+)
+
+// validates reports whether the pass renders {{VALIDATE}} as "validate"
+// (#392). A create has nothing to re-hash yet, so validate costs it nothing,
+// and a reinstall is the operator asking for the tree to match the depot. An
+// update-on-start only needs the chunks the new build changed: the tree was
+// good at the last start, and a full re-hash of it is minutes on a large
+// server.
+func (k passKind) validates() bool { return k != passUpdate }
+
 // installScriptFor renders the install script a pass should run: the spec's
 // per-platform script (falling back to the spec-level one) with the server's
-// CURRENT variables substituted, plus — only when withBepInEx — the spec's
-// BepInEx overlay appended after it. The separator is OS-aware: cmd chains with
-// " & ", POSIX shells (incl. the wine image, which is a Linux container) with a
-// newline.
+// CURRENT variables substituted, {{VALIDATE}} rendered for the pass (see
+// spec.RenderInstall), plus — only when withBepInEx — the spec's BepInEx
+// overlay appended after it. The separator is OS-aware: cmd chains with
+// " & ", POSIX shells (incl. the wine image, which is a Linux container) with
+// a newline.
 //
 // withBepInEx is false for the pre-start update pass even on a modded server:
 // the overlay scripts copy files over the tree rather than update them (they
 // would clobber BepInEx/config on every restart) and pull unpinned "latest"
-// builds, while a SteamCMD `validate` leaves the loader files alone. It is
-// re-run only by create and by an explicit reinstall.
-func installScriptFor(sv *store.Server, sp *spec.Spec, withBepInEx bool) string {
+// builds, while a SteamCMD pass leaves the loader files alone. It is re-run
+// only by create and by an explicit reinstall.
+func installScriptFor(sv *store.Server, sp *spec.Spec, pass passKind, withBepInEx bool) string {
 	script := sp.InstallScriptFor(sv.Kind)
 	if withBepInEx && sp.Install.BepInExScript != "" {
 		sep := "\n"
@@ -196,7 +222,7 @@ func installScriptFor(sv *store.Server, sp *spec.Spec, withBepInEx bool) string 
 		}
 		script = script + sep + sp.Install.BepInExScript
 	}
-	return spec.Render(script, sv.Vars)
+	return spec.RenderInstall(script, sv.Vars, pass.validates())
 }
 
 // installPassError is an install failure the Agent reported. treeUntouched is
@@ -228,7 +254,10 @@ func treeUntouched(err error) bool {
 // The buffer is already open when this runs: the handler that started the
 // attempt opened it (installs.Start) before it wrote `installing` (#387), so
 // even a connect-time failure leaves the operator something to read.
-func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, withBepInEx bool) error {
+//
+// pass is which of those callers this is; it decides what {{VALIDATE}}
+// renders as and nothing else.
+func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, pass passKind, withBepInEx bool) error {
 	client, err := s.nodes.Client(node.DialTarget())
 	if err != nil {
 		return fmt.Errorf("connect agent: %w", err)
@@ -253,7 +282,7 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 	stream, err := client.InstallServer(ctx, &agentpb.InstallServerRequest{
 		ServerId:      server.ID,
 		Image:         agentSpec.Image,
-		InstallScript: installScriptFor(server, sp, withBepInEx),
+		InstallScript: installScriptFor(server, sp, pass, withBepInEx),
 		Env:           installEnv,
 		MemoryLimitMb: int64(server.MemoryMB),
 	})
@@ -317,12 +346,16 @@ var provisionHook atomic.Pointer[func(serverID string)]
 // prev; a create or revive has nothing to go back to and lands install_failed.
 // prev also picks the closing line's wording (see installCompleteLine).
 //
+// pass is passCreate for a create or a revive and passReinstall for a
+// reinstall; the caller names it rather than provision reading it off prev,
+// so the script's render never depends on how the state got here.
+//
 // The caller has already opened the attempt's install buffer (installs.Start),
 // synchronously and before the store write that made the row `installing`
 // (#387), so a client that reads the log as soon as it sees that state gets
 // this attempt and not the one before it. failServer closes the buffer out on
 // every failure path; the success path keeps it.
-func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, prev store.ServerState) {
+func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode string, prev store.ServerState, pass passKind) {
 	if hook := provisionHook.Load(); hook != nil {
 		(*hook)(server.ID)
 	}
@@ -336,7 +369,7 @@ func (s *Server) provision(server *store.Server, sp *spec.Spec, node *cluster.No
 	s.installs.AppendSystem(server.ID, "[panel] provisioning "+server.Name+" on "+nodeName)
 
 	began := time.Now()
-	if err := s.runInstallPass(ctx, server, sp, node, steamGuardCode, server.BepInEx); err != nil {
+	if err := s.runInstallPass(ctx, server, sp, node, steamGuardCode, pass, server.BepInEx); err != nil {
 		if prev != "" && treeUntouched(err) {
 			s.abortUpdate(server, prev, err.Error())
 			return
@@ -1031,7 +1064,7 @@ func freshlyProvisioned(sv *store.Server, now time.Time) bool {
 // updatesOnStart reports whether an operator-initiated start/restart of sv
 // should re-run the install pass first (#307). It is on by default — a server
 // that never re-runs its installer stays on its creation-day build forever, and
-// every bundled install script is an idempotent `app_update … validate`.
+// every bundled install script is an idempotent `app_update`.
 //
 // It is off when the spec opts out (per-spec or per-platform
 // skip_update_on_start), when the operator pinned this server's build, when the
@@ -1207,9 +1240,11 @@ func (s *Server) updateThenStart(sv *store.Server, sp *spec.Spec, node *cluster.
 	passTook := "skipped"
 	if plan.action == startRunPass {
 		// Vanilla install script only — never the BepInEx overlay (see
-		// installScriptFor).
+		// installScriptFor) — and without validate where the spec lets the
+		// pass choose (#392): a new build needs its changed chunks, not a
+		// re-hash of a tree that was good at the last start.
 		passBegan := time.Now()
-		if err := s.runInstallPass(ctx, sv, sp, node, "", false); err != nil {
+		if err := s.runInstallPass(ctx, sv, sp, node, "", passUpdate, false); err != nil {
 			// A pass the Agent refused before touching the tree (a container
 			// still holds the data dir) says nothing about the tree, so it is
 			// not install_failed. It is not prev either: the stop above has
@@ -1507,7 +1542,7 @@ func (s *Server) handleReinstallServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Info("server reinstall requested", "id", sv.ID, "name", sv.Name)
-	go s.provision(sv, sp, node, req.SteamGuardCode, prev)
+	go s.provision(sv, sp, node, req.SteamGuardCode, prev, passReinstall)
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": sv.State})
 }
 

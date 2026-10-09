@@ -27,8 +27,8 @@ platforms:
     # against steamcmd.exe's self-update relaunch (prime + wait after each
     # pass, PR #283) — no PowerShell loop belongs in the spec.
     install_script: >-
-      steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
     # Runs via `cmd /S /C`. The docs launch the root PalServer.exe; that is
     # UE's BootstrapPackagedGame, which checks DirectX/VC++ prerequisites and
     # pops a modal dialog nobody can click in Server Core (Dragonwilds sat in
@@ -54,9 +54,12 @@ install:
   # second pass finds the primed config and completes. Use ';' (not '&&') so the
   # second always runs, and its "Success!" line clears the first pass's failure
   # for the agent's exit-0-but-app-failed guard.
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md). The platform scripts above follow the same rule.
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   # Palworld is a UE5 Steam dedicated server: it dlopens steamclient.so from
   # $HOME/.steam/sdk64 (baked into steam-base, so it's present in this fresh

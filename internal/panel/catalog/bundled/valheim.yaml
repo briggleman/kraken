@@ -14,9 +14,12 @@ platforms:
 install:
   # Run app_update twice: a fresh SteamCMD can fail the first pass with "Missing
   # configuration" and exit nonzero; the second pass succeeds (';' so it always runs).
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md).
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
   # Valheim is a Unity (Mono) game → BepInEx 5. When a server opts into mods, this
   # runs after the vanilla install: fetch the Valheim BepInEx pack (ships the
   # Doorstop loader + Linux run_bepinex.sh + unstripped corlib) and unpack it into

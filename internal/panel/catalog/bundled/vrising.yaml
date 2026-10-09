@@ -17,9 +17,12 @@ install:
   # The standard fix is to run the command twice: the first pass primes the app
   # config (and "fails"), the second downloads. Each Kraken install runs in a
   # fresh container, so both passes run every time.
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md).
   script: >-
-    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
   # V Rising is a Unity IL2CPP game → BepInEx 6 (IL2CPP). When a server opts into
   # mods, this runs after the vanilla install: it fetches the latest
   # BepInExPack_V_Rising (drops winhttp.dll + BepInEx/ + dotnet/ at C:\data) plus

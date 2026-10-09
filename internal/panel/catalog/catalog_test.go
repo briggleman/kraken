@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -138,5 +139,43 @@ func TestBundledSpecsResolveTheBuildCheck(t *testing.T) {
 	}
 	if f, ok := Get("factorio"); !ok || f.Spec.Install.UpdateCheck == nil || f.Spec.Install.UpdateCheck.Method != spec.UpdateCheckNone {
 		t.Error("factorio must opt out of the build check explicitly (install.update_check.method: none)")
+	}
+}
+
+// appUpdateArgsRE captures what a SteamCMD `+app_update` is given, up to the
+// next `+command`.
+var appUpdateArgsRE = regexp.MustCompile(`app_update([^+]*)`)
+
+// Every bundled Steam spec leaves validate to the pass (#392): each app_update
+// in each platform's install script carries {{VALIDATE}}, and no bare
+// `validate` is left, so the update-on-start pass downloads a new build's
+// changed chunks instead of re-hashing the whole tree. The BepInEx overlays are
+// not install passes and are not checked.
+func TestBundledSteamSpecsLeaveValidateToThePass(t *testing.T) {
+	entries, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	placeholder := "{{" + spec.ValidateVar + "}}"
+	notSteam := map[string]bool{"factorio": true, "windemo": true}
+	for _, e := range entries {
+		if notSteam[e.ID] {
+			continue
+		}
+		for _, kind := range e.Spec.PlatformKinds() {
+			script := e.Spec.InstallScriptFor(kind)
+			calls := appUpdateArgsRE.FindAllStringSubmatch(script, -1)
+			if len(calls) == 0 {
+				t.Errorf("%s/%s: no app_update in the install script", e.ID, kind)
+			}
+			for _, c := range calls {
+				if !strings.Contains(c[1], placeholder) {
+					t.Errorf("%s/%s: app_update%s has no %s", e.ID, kind, c[1], placeholder)
+				}
+			}
+			if rest := strings.ReplaceAll(script, placeholder, ""); strings.Contains(strings.ToLower(rest), "validate") {
+				t.Errorf("%s/%s: a bare validate is left in the install script: %q", e.ID, kind, script)
+			}
+		}
 	}
 }

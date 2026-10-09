@@ -1000,7 +1000,9 @@ func (s *Server) checkRevivalBackup(ctx context.Context, node *cluster.Node, sv 
 //   - the start, when asked: the checks and the update decision an operator's
 //     start gets (a refusal or a failure lands offline with last_error).
 func (s *Server) runRevive(sv *store.Server, sp *spec.Spec, node *cluster.Node, steamGuardCode, backupID string, start bool) {
-	s.provision(sv, sp, node, steamGuardCode, "")
+	// A revive installs onto a tree the retire left behind or onto nothing,
+	// so it validates the way a create does.
+	s.provision(sv, sp, node, steamGuardCode, "", passCreate)
 	ctx, cancel := context.WithTimeout(context.Background(), restoreDeadline)
 	defer cancel()
 	after, err := s.store.GetServer(ctx, sv.ID)

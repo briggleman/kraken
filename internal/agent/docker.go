@@ -1144,9 +1144,18 @@ var steamInstallFailurePhrases = []string{
 // steamInstallFailureRE matches the SteamCMD lines that signal an app failed to
 // install despite SteamCMD's process exiting 0. steamInstallSuccessRE matches the
 // success line, which clears a prior (transient) failure — see the two-step quirk.
+//
+// Success has two wordings. `app_update <id> validate` always ends "fully
+// installed", because it re-hashes the tree even when the build is current.
+// Without validate — the update-on-start pass of a spec that writes
+// {{VALIDATE}} (#392) — a current build ends "already up to date" instead.
+// The pass still runs on a current build when a variable edit owes it or the
+// build could not be checked, and when its first half fails with the fresh-home
+// "Missing configuration", the second half's "already up to date" is the only
+// success line there is. Missing it would fail a good tree as install_failed.
 var (
 	steamInstallFailureRE = regexp.MustCompile(`(?i)(?:` + strings.Join(steamInstallFailurePhrases, `|`) + `)`)
-	steamInstallSuccessRE = regexp.MustCompile(`(?i)Success! App .* fully installed`)
+	steamInstallSuccessRE = regexp.MustCompile(`(?i)Success! App .* (?:fully installed|already up to date)`)
 )
 
 // steamInstallOutcome folds one SteamCMD log line into the pending install

@@ -25,8 +25,8 @@ platforms:
   - { kind: linux-native, image: ghcr.io/briggleman/kraken-steam-base:latest }
 install:
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 ```
 
 - `;` not `&&`: the second pass must run even though the first exits 8 with `Missing
@@ -155,14 +155,14 @@ platforms:
   - kind: linux-wine
     image: ghcr.io/briggleman/kraken-steam-wine:latest
     install_script: |-
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
     startup_command: >-
       wine-headless /data/<Project>/Binaries/Win64/<Project>Server-Win64-Shipping.exe -log -PORT={{PORT_GAME}}
 install:
   script: >-
-    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   command: >-
     cd /d C:\data\<Project>\Binaries\Win64

@@ -39,8 +39,8 @@ install:
   # SteamCMD's first app_update on a fresh client can fail with "Missing
   # configuration" and exit nonzero — run it twice (the second pass succeeds).
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   command: cd /data && ./YourServer ...   # bind the allocated port: -port={{PORT_GAME}}
 ```

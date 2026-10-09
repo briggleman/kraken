@@ -68,7 +68,8 @@ type Dispatcher struct {
 // Option adjusts a Dispatcher.
 type Option func(*Dispatcher)
 
-// WithClock replaces time.Now for the marks a delivery leaves on a device.
+// WithClock replaces the clock for the marks a delivery leaves on a device. The
+// default is time.Now in UTC, as every other time the Panel stores is.
 func WithClock(now func() time.Time) Option { return func(d *Dispatcher) { d.now = now } }
 
 // WithContext sets the context deliveries run under; cancelling it (the Panel
@@ -79,7 +80,7 @@ func WithContext(ctx context.Context) Option { return func(d *Dispatcher) { d.ba
 // makes it a no-op: push is off.
 func NewDispatcher(st Store, sender Sender, logger *slog.Logger, opts ...Option) *Dispatcher {
 	d := &Dispatcher{
-		st: st, send: sender, log: logger, now: time.Now, base: context.Background(),
+		st: st, send: sender, log: logger, now: func() time.Time { return time.Now().UTC() }, base: context.Background(),
 		slots: make(chan struct{}, maxDeliveries),
 	}
 	for _, o := range opts {

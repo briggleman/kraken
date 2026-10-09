@@ -174,6 +174,22 @@ func TestRosterFoldsJoinsInsideAMinute(t *testing.T) {
 	}
 }
 
+// Joins held for the minute are dropped when the server stops: sent after its
+// crash alert, they would describe a game that is down. (Found in the phase 5
+// drill: "Kestrel and MossVeil joined" arrived nine seconds after the crash.)
+func TestRosterDropsHeldJoinsWhenTheServerStops(t *testing.T) {
+	r := NewRosterTracker()
+	r.Observe(pw, running(), t0)
+	if _, ok := r.Observe(pw, running("Kestrel"), t0.Add(time.Second)); !ok {
+		t.Fatal("the first join is sent at once")
+	}
+	r.Observe(pw, running("Kestrel", "Wren"), t0.Add(10*time.Second)) // held
+	r.Observe(pw, Roster{Running: false}, t0.Add(20*time.Second))     // the crash
+	if got := r.Flush(t0.Add(2 * time.Minute)); len(got) != 0 {
+		t.Fatalf("a held join was sent after the server stopped: %+v", got)
+	}
+}
+
 func TestRosterCountOnly(t *testing.T) {
 	r := NewRosterTracker()
 	count := func(n int32) Roster { return Roster{Running: true, Known: true, Count: n} }

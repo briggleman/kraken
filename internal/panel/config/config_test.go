@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -298,5 +299,51 @@ func TestLoadRejectsAnUnparseableRateLimitSkipEntry(t *testing.T) {
 	}
 	if len(cfg.RateLimitIPSkip) != 2 {
 		t.Fatalf("skip list parsed as %v", cfg.RateLimitIPSkip)
+	}
+}
+
+// Push alerts are off unless a relay is named, and a relay URL the Panel could
+// never post to stops startup instead of leaving push silently broken.
+func TestLoadPushRelay(t *testing.T) {
+	t.Setenv("KRAKEN_PUSH_RELAY_URL", "")
+	t.Setenv("KRAKEN_PUSH_RELAY_TOKEN", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected an unset relay: %v", err)
+	}
+	if cfg.PushEnabled() || cfg.PushRelayURL != "" || cfg.PushRelayToken != "" {
+		t.Fatalf("push is on by default: url %q, token set %v", cfg.PushRelayURL, cfg.PushRelayToken != "")
+	}
+
+	for _, good := range []string{"https://push.example.com", "http://127.0.0.1:8787", " https://relay.example/kraken/ ", "http://127.0.0.1:8787?answer=503"} {
+		t.Setenv("KRAKEN_PUSH_RELAY_URL", good)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load rejected %q: %v", good, err)
+		}
+		if !cfg.PushEnabled() || cfg.PushRelayURL != strings.TrimSpace(good) {
+			t.Errorf("KRAKEN_PUSH_RELAY_URL=%q loaded as %q", good, cfg.PushRelayURL)
+		}
+	}
+
+	t.Setenv("KRAKEN_PUSH_RELAY_TOKEN", " relay-secret ")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PushRelayToken != "relay-secret" {
+		t.Fatal("the relay token was not loaded trimmed")
+	}
+
+	for _, bad := range []string{"push.example.com", "ftp://push.example.com", "https://", "/v1/push", "https//push.example.com", "http://[::1"} {
+		t.Setenv("KRAKEN_PUSH_RELAY_URL", bad)
+		_, err := Load()
+		if err == nil {
+			t.Errorf("Load accepted KRAKEN_PUSH_RELAY_URL=%q", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "KRAKEN_PUSH_RELAY_URL") {
+			t.Errorf("the error for %q does not name the variable: %v", bad, err)
+		}
 	}
 }

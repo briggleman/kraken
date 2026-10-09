@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -179,6 +180,21 @@ type Config struct {
 	// demand and after each install. A negative or unparseable value stops the
 	// Panel at startup.
 	UpdateCheckInterval time.Duration
+
+	// PushRelayURL is the Kraken push relay the Panel hands encrypted alerts
+	// to for the iOS companion: the base URL, to which the Panel adds
+	// `/v1/push`. Unset or empty turns push alerts off, which is the default.
+	// The relay is the one part of Kraken that talks to a service outside
+	// your network, so it is opt-in, and a Panel without it loses alerts and
+	// nothing else. The relay only ever sees ciphertext sealed to each
+	// device's own key and the device's APNs token. When set it must be an
+	// absolute `http://` or `https://` URL, or the Panel refuses to start.
+	PushRelayURL string
+	// PushRelayToken is sent to the relay as `Authorization: Bearer <token>`
+	// on every request, for a relay that asks Panels to identify themselves
+	// beyond their install id. Optional; when unset no Authorization header
+	// is sent at all. It is a secret and never appears in a log line.
+	PushRelayToken string
 }
 
 // The accepted values of KRAKEN_RATE_LIMITS. "on" is accepted too as the
@@ -288,6 +304,24 @@ func validateAuditRetention() error {
 	return nil
 }
 
+// validatePushRelayURL rejects a KRAKEN_PUSH_RELAY_URL that is set but is not
+// an absolute http(s) URL with a host. Unset or blank is fine — that is push
+// alerts turned off.
+func validatePushRelayURL() error {
+	v, ok := os.LookupEnv("KRAKEN_PUSH_RELAY_URL")
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("config: KRAKEN_PUSH_RELAY_URL=%q must be an absolute http:// or https:// URL, such as https://push.example.com (leave it unset to turn push alerts off)", v)
+	}
+	return nil
+}
+
+// PushEnabled reports whether a push relay is configured.
+func (c *Config) PushEnabled() bool { return c.PushRelayURL != "" }
+
 // ValidateCIDRList reports the first entry that is neither a CIDR nor a bare
 // IP. Hostnames are refused on purpose: a name is not source-verifiable, and a
 // list of trusted addresses cannot depend on what DNS says today.
@@ -338,12 +372,20 @@ func Load() (*Config, error) {
 		RateLimitIPSkip:        envList("KRAKEN_RATE_LIMIT_IP_SKIP"),
 		LogLevel:               env("KRAKEN_LOG_LEVEL", "info"),
 		AuditRetentionDays:     envInt("KRAKEN_AUDIT_RETENTION_DAYS", 90),
+		PushRelayURL:           strings.TrimSpace(env("KRAKEN_PUSH_RELAY_URL", "")),
+		PushRelayToken:         strings.TrimSpace(env("KRAKEN_PUSH_RELAY_TOKEN", "")),
 	}
 	// envInt falls back silently on anything it cannot parse, which is the
 	// wrong failure for a retention window: "90d", "ninety" or "-1" would leave
 	// the Panel running and deleting audit rows on a schedule the operator
 	// never chose. Deletion is not recoverable, so a typo here stops startup.
 	if err := validateAuditRetention(); err != nil {
+		return nil, err
+	}
+	// A relay URL the Panel cannot use has to stop startup the same way. The
+	// alternative is a Panel that looks configured for push and quietly sends
+	// nothing, which an operator finds out about the day an alert mattered.
+	if err := validatePushRelayURL(); err != nil {
 		return nil, err
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {

@@ -94,6 +94,13 @@ components:
     textColor: "{colors.caution-violet}"
     rounded: "{rounded.sm}"
     padding: "3px 9px"
+  control-start-waiting:
+    backgroundColor: "rgba(157, 140, 255, 0.08)"
+    textColor: "rgba(157, 140, 255, 0.8)"
+    rounded: "{rounded.md}"
+    padding: "14px 10px"
+  build-status-available:
+    textColor: "{colors.caution-violet}"
 ---
 
 # Design System: Kraken
@@ -147,13 +154,13 @@ A two-family palette: abyssal blue-green grounds and a single living sodium gold
 
 ### Semantic (reserved)
 - **Status Gold** (#d8b46a): healthy-zone data (e.g. RAM under 50%); pairs with position/pattern, never color alone. Also 2xx in the audit log.
-- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading. Also an **agent whose version has fallen behind the panel's**: the node runs, but the panel is holding fixes it cannot execute yet, so something *is* prevented and the test comes out the same way.
+- **Caution Violet** (#9d8cff): warning zone (50%+ RAM, warning events). Also 4xx in the audit log and the api reference, and the `no auth` mark on an unauthenticated route, and a **closed port on a running server** — the one place the panel is not guarding you, which is the same reading. Also an **agent whose version has fallen behind the panel's**: the node runs, but the panel is holding fixes it cannot execute yet, so something *is* prevented and the test comes out the same way. Also a **server whose installed Steam build is behind its branch** (the build check, #392): Steam clients update themselves, so a server on the old build turns away players who already have the new one — prevented again. And the **start control while an install, update or restore runs** (`.ctl-wait`): the press is refused, so the control says so in the semantic colour rather than standing there in the start's sand.
 - **Crisis Magenta** (#ff4d9d): critical zone only (75%+ RAM). Never decorative. Also 5xx in the audit log, and the `DELETE` method in the api reference — the same colour the house already spends on destroying a server.
 - **Spectrum Deep Teal** (#1a7a6d): the cool end of the heat-spectrum gradient (`.occ-ghost` / `.occ-fill` on the server cards' occupancy rail, and the drill-in's cpu/mem `.heat-rail` rows), and the only green on the page. **It is the last survivor of the pre-Kraken teal palette** - every other cool accent migrated to Caution Violet, and this one was missed. Its retirement question got an answer this round: the temp gauge that first carried the spectrum left the node band, and instead of dying with it the gradient moved to the players readout — where the left-to-right scale reading is the whole point (an empty server sits at the cool end; a filling one climbs into the light and past it). The fourth hue keeps its keep.
 
 ### Named Rules
 **The One Light Rule.** Sodium gold is the surface's only light source and always means "alive". Violet and magenta appear only as semantics, never as accents. A stopped thing loses its light; it is never painted crisis-magenta for being off. Losing the light is the whole statement in that case - a stopped server dims and says nothing further. But **a thing that is off is not the same as a thing that blocks something else**: a closed port on a running server is not dim, it is a condition, and it takes Caution Violet. The test is whether anything is prevented. Nothing is prevented by a server you chose to stop; a player is prevented by a closed game port. And a **finished** thing is a third state again: a completed setup step keeps its colour and gives up its glow. It is not live, so it must not pulse; it is not off, so it must not dim. Solid gold with no bloom is what "done" looks like, and it is what lets one glow on the rail mean *here*. And a **resting** reading is the same statement spent on a number rather than an object: a metric whose fresh sample is exactly zero gives up its ink, because an all-zero board of lit numerals reads as a dead fleet when it is only an idle one — see Metric for the three boundaries that keep that honest.
-**The Violet Pulse Rule.** Motion in the gold family means *alive* — a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make "alive" and "attend to me" the same signal. The finished-step clause above is unchanged — a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused` — it has your attention, it can stop asking); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off. A fourth constraint arrived with the chip's states: **the sweep belongs to the idle states only.** "Waiting for you" stops being true the instant the operator acts, so a control that is working, restarting or failed must not still be asking — and the licence is written as a *grant* to the states that sweep, never as a revocation from the ones that don't, because naming two cannot silently miss a third the way un-setting three can. And a fifth arrived when one of those busy states had something to *measure*: **an asking element's quantitative reading gets its own box.** The pushing chip's determinate fill is a second child under the same clip, not the sweep's `::after` doing double duty — one element cannot both ask and measure, and the geometry constraint is satisfied either way because the box that grows is inside the silhouette, not the silhouette itself.
+**The Violet Pulse Rule.** Motion in the gold family means *alive* — a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make "alive" and "attend to me" the same signal. The finished-step clause above is unchanged — a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused` — it has your attention, it can stop asking); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off. A fourth constraint arrived with the chip's states: **the sweep belongs to the idle states only.** (The waiting start control, `.ctl-wait`, is the same statement from the other side: it is working, not asking, so it holds still in violet and lets its label — `updating…` — say the work is moving. Its first build swept; that was this rule broken, and it was taken out.) "Waiting for you" stops being true the instant the operator acts, so a control that is working, restarting or failed must not still be asking — and the licence is written as a *grant* to the states that sweep, never as a revocation from the ones that don't, because naming two cannot silently miss a third the way un-setting three can. And a fifth arrived when one of those busy states had something to *measure*: **an asking element's quantitative reading gets its own box.** The pushing chip's determinate fill is a second child under the same clip, not the sweep's `::after` doing double duty — one element cannot both ask and measure, and the geometry constraint is satisfied either way because the box that grows is inside the silhouette, not the silhouette itself.
 
 **The Warm Light, Cold Water Rule.** The light is the only warm thing on screen; every ground stays abyssal blue-green. Severity moves *away* from the light on the colour wheel, so an alarm can never read as an accent.
 **The Tinted Neutral Rule.** No pure grays anywhere: grounds carry the blue-green hue, text and hairlines carry the warm hue.
@@ -253,8 +260,9 @@ The lines live inside the identity column's cap, so a long one wraps (`.node-con
 anywhere }`) instead of widening the column — see The Instruments Line Up Rule.
 
 A condition is not the node being unwell, which is why none of this touches Status: the node is
-online, and something about it nevertheless needs attention. Three members so far — Agent Drift,
-Container Drift (with its plain form, the stopped count) and Removals Owed below.
+online, and something about it nevertheless needs attention. Four members so far — Agent Drift,
+Container Drift (with its plain form, the stopped count), Removals Owed and Updates Available below
+(see Build Check).
 
 ### Agent Drift (panel newer than the node's agent)
 
@@ -380,6 +388,35 @@ thing there is to do.
 
 **The Pending Is a Reading Rule.** A count of work the Panel is already retrying is a reading, never a control. It wears the plain value ink, offers no chip and takes no Caution Violet: the semantic colour asks for an act, and there is none to ask for. A pending count that turned violet would put the operator to work on something that will finish by itself.
 
+### Build Check (the server's Steam build, #392)
+The Panel compares the build in each server's Steam manifest with the build its branch ships now, and
+says what it found in four places, all in the same two voices: **plain ink when current, Caution
+Violet when a newer build is waiting.**
+
+- **The drill-in's build line** (`.depth-build`): its own line closing the drill-in header,
+  right-aligned under the state/uptime/players/port/ver meta it belongs with, in that meta's mono
+  300 at the same size. `build <b>25630937</b>` (the id in the value ink, `--ink`, 500), then the
+  status in `.bs` — Sand Faint (`--ink-3`) for `current · checked 3h ago`, `.bs.avail` Caution
+  Violet for `update available · 25805654 · start to apply` or the mid-update `→ 23204410 ·
+  updating now` — then a `.mini-act` **check** that asks Steam again. It is a line of its own
+  because the longest status would otherwise squeeze every meta field onto two lines; the header
+  wraps (`.depth-head { flex-wrap: wrap }`) and the line takes `flex-basis: 100%` with a negative
+  top margin of one header gap, so it reads as the meta's second row rather than a new block. At phone width (≤640px) it wraps and starts from the left instead of pinning right.
+- **The server card** ends its `.srv-meta` line in `· update available` (`.srv-upd`, Caution
+  Violet). Nothing on a current server's card: current is the resting state and says nothing.
+- **The node band** carries **Updates Available**, a Node Condition line `updates · 1 available`
+  whose count is the line's one `.nc-v.act` and whose title names the servers and both builds
+  (`dragonwilds-01 · 25630937 → 25805654`). It counts the node's servers that are behind; no line
+  when none are.
+- **The top bar** holds the fleet-wide count, `1 update available` (`.top-upd`, Caution Violet),
+  first in `.top-right` before `live · ping`, with the servers in its title. Absent at zero.
+
+A server whose build cannot be compared (the node was unreachable, the Agent predates the check, the
+spec is not a Steam install) shows no status word at all rather than a third colour: unknown is not
+a condition anyone can act on.
+
+**The Old Build Turns Players Away Rule.** An available build is a condition, not news: Steam clients update themselves, so a server left on the old build refuses the players who already have the new one. That is the One Light Rule's test coming out "prevented", which is why it takes Caution Violet everywhere it appears and why a current build takes nothing — the absence of the word is the all-clear.
+
 ### Locked Node (cordon)
 **"Lock" is the operator's word; `cordon` is the API's.** The panel says lock, `POST
 /nodes/{id}/cordon` says cordon, and that split is deliberate — do not reintroduce "cordon" into
@@ -477,7 +514,7 @@ A bordered lane between `wan` and `lan` endpoint tags; gold packet dots animate 
 Each server card carries its game's key art as `.srv-art` — an absolute paint layer (zero layout impact) in **abyssal duotone**: `grayscale(1) sepia(0.5) hue-rotate(125deg) saturate(1.6) brightness(0.55)` at 0.5 opacity under a `.srv-shade` legibility gradient. Stopped servers desaturate fully and drop to 0.25.
 
 ### Drill-in overlay (server depth)
-Full-screen fixed overlay opening with a circular clip-path plunge from the click point; SURFACE button and Esc return. Layout: live console (left, streaming mono log with severity colors — and a system voice, `.sys`, for the lines Kraken writes about an install or update itself: Sand Faint body with the `[panel]` / `[kraken]` tag alone in Lumen, so the installer's own output stays the louder voice — sharing its tab strip with settings and the file listing) + side column of press-travel controls (stop/restart, or start when stopped; while an install, update or restore runs the start control is `.ctl-wait`: inert, in Violet rather than the start's sand (the house's "working on your behalf" voice, the one the agent-update chip speaks while it pushes), the press travel gone, its label saying what is happening — `updating…` — and a slow violet traversal inside the box saying the work is moving even when the console is not), player roster with kick, vitals, the network ledger, backups, schedules, and the danger block. Per-server data; a stopped server shows a dark room. The file listing is a mono ledger of `.f-row`s — folders in the light, files in Sand Secondary, size and date right-aligned in Sand Faint — with upload in its footer and a revealed `download · delete` pill cluster per row (see Destructive Control, The Revealed Pill Rule).
+Full-screen fixed overlay opening with a circular clip-path plunge from the click point; SURFACE button and Esc return. The header is the SURFACE button, the server's name and the right-aligned meta row, closed by the build line (see Build Check). Layout: live console (left, streaming mono log with severity colors — and a system voice, `.sys`, for the lines Kraken writes about an install or update itself: Sand Faint body with the `[panel]` / `[kraken]` tag alone in Lumen, so the installer's own output stays the louder voice — sharing its tab strip with settings and the file listing) + side column of press-travel controls (stop/restart, or start when stopped; while an install, update or restore runs the start control is `.ctl-wait`: inert and disabled, in Caution Violet rather than the start's sand, the press travel and hover brightening gone, its label saying what is happening — `updating…`, `installing…`, `restoring…` — the way the agent-update chip says `pushing…` while it works, and like that chip it holds still: a working control does not sweep (The Violet Pulse Rule)), player roster with kick, vitals, the network ledger, backups, schedules, and the danger block. Per-server data; a stopped server shows a dark room. The file listing is a mono ledger of `.f-row`s — folders in the light, files in Sand Secondary, size and date right-aligned in Sand Faint — with upload in its footer and a revealed `download · delete` pill cluster per row (see Destructive Control, The Revealed Pill Rule).
 
 ### Solid Button (the one lit control)
 The house's only filled control, and the only place the palette inverts: Abyss Floor text on a

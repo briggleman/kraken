@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-25T00:00:00.000Z",
+  "generatedAt": "2026-10-09T14:12:24.000Z",
   "title": "Design System: Kraken",
   "extensions": {
     "colorMeta": {
@@ -725,6 +725,38 @@
       "description": "The revive sheet's three marks on the deploy grid: a dashed `previous` badge inside the node select's closed face (padding pulled to 3px so the field stays 35px), the same badge at the far edge of the read-only well holding the reused ports, and a .ns-wide row spanning the whole track for the backup-to-restore select, whose options are sentences.",
       "html": "<div class=\"ds-ns-grid\"><div class=\"ds-cfg-row\"><span>node</span><button class=\"ds-cfg-sel ds-has-badge\" aria-label=\"Node: behemoth, the node it was on before\"><span class=\"ds-cfg-sel-val\">behemoth</span><span class=\"ds-cfg-badge ds-env\">previous</span><svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M 2.5 4.5 L 6 8 L 9.5 4.5\"/></svg></button></div><div class=\"ds-cfg-row\"><span>ports</span><span class=\"ds-cfg-ro ds-has-badge\" role=\"status\" aria-label=\"Ports: 28010 and 28011, the ones it had before\"><span>28010 · 28011</span><span class=\"ds-cfg-badge ds-env\">previous</span></span></div><div class=\"ds-cfg-row ds-ns-wide\"><span>from backup</span><select class=\"ds-cfg-in\" aria-label=\"Backup to restore\"><option selected>sep 21 03:00 · final-before-retire · 2.4G — latest</option><option>sep 20 04:00 · nightly · 2.4G</option><option>sep 19 04:00 · nightly · 2.3G</option><option>none — a fresh world</option></select></div></div>",
       "css": ".ds-ns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 24px; align-content: start; max-width: 560px; } .ds-cfg-row { display: grid; gap: 6px; } .ds-cfg-row > span:first-child { font: 600 11px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); } @media (min-width: 640px) { .ds-ns-grid > .ds-cfg-row.ds-ns-wide { grid-column: 1 / -1; } } .ds-cfg-in, .ds-cfg-sel { width: 100%; font: 400 13px var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink, #f5dfc1); background: rgba(5,13,20,0.6); border: 1px solid var(--edge, rgba(255, 194, 102, 0.16)); border-radius: 4px; padding: 9px 12px; transition: border-color 0.15s; } .ds-cfg-in:focus, .ds-cfg-sel:focus-visible { outline: none; border-color: rgba(var(--lumen-rgb, 255, 194, 102), 0.45); } .ds-cfg-sel { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; cursor: pointer; } .ds-cfg-sel.ds-has-badge { padding-block: 3px; } .ds-cfg-sel-val { flex: 1 1 auto; min-width: 0; } .ds-cfg-sel svg { flex: 0 0 auto; color: var(--ink-2, #b6a894); } .ds-cfg-badge { font: 600 9px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; white-space: nowrap; color: var(--ink-3, #7d7160); border: 1px solid rgba(var(--ink-2-rgb, 182, 168, 148), 0.3); } .ds-cfg-badge.ds-env { border-style: dashed; } .ds-cfg-sel.ds-has-badge > .ds-cfg-badge { padding-block: 1px; line-height: 1; } .ds-cfg-ro { font: 300 13px var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); background: rgba(5,13,20,0.6); border: 1px dashed rgba(var(--ink-2-rgb, 182, 168, 148), 0.25); border-radius: 4px; padding: 9px 12px; white-space: nowrap; } .ds-cfg-ro.ds-has-badge { display: flex; align-items: center; justify-content: space-between; gap: 8px; overflow: hidden; }"
+    },
+    {
+      "name": "Build Line",
+      "kind": "custom",
+      "refersTo": "build-status-available",
+      "description": "The drill-in header's closing line: build id in value ink, a status word in Sand Faint when current or Caution Violet when a newer Steam build is waiting, and a .mini-act check.",
+      "html": "<div class=\"ds-build\">build <b>25630937</b><span class=\"ds-bs ds-avail\">update available · 25805654 · start to apply</span><button class=\"ds-mini\" title=\"ask Steam for the branch's current build now\">check</button></div>",
+      "css": ".ds-build { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; font: 300 clamp(12px, 0.8vw, 16px)/1.4 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); font-variant-numeric: tabular-nums; } .ds-build b { color: var(--ink, #f5dfc1); font-weight: 500; } .ds-build .ds-bs { color: var(--ink-3, #7d7160); } .ds-build .ds-bs.ds-avail { color: var(--caution, #9d8cff); } .ds-mini { align-self: center; font: 600 10px/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); padding: 3px 9px; border: 1px solid rgba(182, 168, 148, 0.3); border-radius: 3px; background: none; cursor: pointer; transition: all 0.2s; } .ds-mini:hover { color: var(--lumen, #ffc266); border-color: rgba(255, 194, 102, 0.45); } .ds-mini:focus-visible { outline: 2px solid var(--lumen, #ffc266); outline-offset: 2px; }"
+    },
+    {
+      "name": "Updates Available Condition",
+      "kind": "custom",
+      "refersTo": "build-status-available",
+      "description": "A Node Condition line counting the node's servers whose Steam build is behind; the count is the line's one act value, the servers and both builds are in its title.",
+      "html": "<span class=\"ds-nc\"><span class=\"ds-nc-k\">updates</span><b class=\"ds-nc-v ds-act\" title=\"dragonwilds-01 · 25630937 → 25805654\">1 available</b></span>",
+      "css": ".ds-nc { display: flex; align-items: baseline; gap: 7px; font: 300 clamp(11px, 0.76vw, 15px)/1.4 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); } .ds-nc-k { font-family: var(--ui, Archivo, 'Segoe UI', sans-serif); font-size: 0.8em; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3, #7d7160); } .ds-nc-v.ds-act { color: var(--caution, #9d8cff); }"
+    },
+    {
+      "name": "Waiting Start Control",
+      "kind": "button",
+      "refersTo": "control-start-waiting",
+      "description": "The start control while an install, update or restore runs: inert, Caution Violet, no press travel, its label saying what is happening; it holds still (a working control does not sweep).",
+      "html": "<button class=\"ds-ctl ds-wait\" disabled aria-busy=\"true\" title=\"the server boots on its own once this finishes\">updating…</button>",
+      "css": ".ds-ctl { padding: 14px 10px; font: 600 clamp(11px, 0.8vw, 14px)/1 var(--ui, Archivo, 'Segoe UI', sans-serif); letter-spacing: 0.24em; text-transform: uppercase; border-radius: 4px; text-align: center; } .ds-ctl.ds-wait { color: rgba(157, 140, 255, 0.8); border: 1px solid rgba(157, 140, 255, 0.4); background: rgba(157, 140, 255, 0.08); cursor: progress; box-shadow: none; } .ds-ctl.ds-wait:hover { filter: none; }"
+    },
+    {
+      "name": "Console System Line",
+      "kind": "custom",
+      "refersTo": "build-status-available",
+      "description": "A line Kraken wrote about an install or update itself: Sand Faint body with the [panel] / [kraken] tag alone in Lumen, so the installer's own output stays the louder voice.",
+      "html": "<div class=\"ds-log\"><span class=\"ds-t\">09:57:22</span><span class=\"ds-sys\"><span class=\"ds-tag\">[panel]</span> stop took 12s</span></div>",
+      "css": ".ds-log { font: 300 clamp(12px, 0.8vw, 15px)/1.75 var(--mono, 'Spline Sans Mono', Consolas, monospace); color: var(--ink-2, #b6a894); } .ds-log .ds-t { color: var(--ink-3, #7d7160); margin-right: 10px; } .ds-sys { color: var(--ink-3, #7d7160); } .ds-sys .ds-tag { color: var(--lumen, #ffc266); }"
     }
   ],
   "narrative": {
@@ -749,7 +781,7 @@
       },
       {
         "name": "The Violet Pulse Rule",
-        "body": "Motion in the gold family means *alive* - a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make \"alive\" and \"attend to me\" the same signal. The One Light Rule's finished-step clause is unchanged - a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused`); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off. A fourth constraint arrived with the agent chip's states: **the sweep belongs to the idle states only** — \"waiting for you\" stops being true the instant the operator acts — and the licence is written as a grant to the states that sweep, never as a revocation from the ones that don't, because naming two cannot silently miss a third the way un-setting three can. And a fifth arrived when one of those busy states had something to *measure*: **an asking element's quantitative reading gets its own box.** The pushing chip's determinate fill is a second child under the same clip, not the sweep's `::after` doing double duty - one element cannot both ask and measure, and the geometry constraint is satisfied either way because the box that grows is inside the silhouette, not the silhouette itself.",
+        "body": "Motion in the gold family means *alive* - a live dot, a packet crossing the channel, a meter taking a sample. So a thing that moves to ask for **action** must move in the semantic colour instead, never in the light: the agent-update chip sweeps in Caution Violet, and a gold pulse spent on an errand would make \"alive\" and \"attend to me\" the same signal. The One Light Rule's finished-step clause is unchanged - a completed step is not asking for anything, so it still must not pulse at all. Three constraints come with the licence, and they are what keep an attention pulse from becoming an alarm: the element's **geometry must not change** (light moves across or around it, so the pointer never chases a target that is resizing); pointing at it **settles** it (`animation-play-state: paused`); and it **yields to `prefers-reduced-motion` by holding its lit state**, not by pausing mid-cycle. That last one is the one place the house parts with the ticker family's reduced-motion convention, and deliberately: a ticker paused mid-scroll is still readable, but a sweep frozen mid-pass is just a smear, and the signal has to survive the motion being switched off. A fourth constraint arrived with the agent chip's states: **the sweep belongs to the idle states only** — \"waiting for you\" stops being true the instant the operator acts — and the licence is written as a grant to the states that sweep, never as a revocation from the ones that don't, because naming two cannot silently miss a third the way un-setting three can. And a fifth arrived when one of those busy states had something to *measure*: **an asking element's quantitative reading gets its own box.** The pushing chip's determinate fill is a second child under the same clip, not the sweep's `::after` doing double duty - one element cannot both ask and measure, and the geometry constraint is satisfied either way because the box that grows is inside the silhouette, not the silhouette itself. A control that is working is not asking, so it does not sweep: the waiting start control (`.ctl-wait`) holds still in violet and lets its label — `updating…` — say the work is moving. Its first build swept; that was this rule broken, and it was taken out.",
         "section": "colors"
       },
       {
@@ -890,6 +922,11 @@
       {
         "name": "The Cannot-Be-Undone Rule",
         "body": "The sentence \"it cannot be undone\" is spent only where it is true. A retire keeps every backup and can be revived, so neither its note nor its confirmation says it; of the two lifecycle controls a server has, only the retired group's `delete for good` may. Every other typed confirmation in the house — node, spec, folder, file — says it because it is true there, and the moment a reversible act borrows the phrase the irreversible ones stop being believed.",
+        "section": "components"
+      },
+      {
+        "name": "The Old Build Turns Players Away Rule",
+        "body": "An available build is a condition, not news: Steam clients update themselves, so a server left on the old build refuses the players who already have the new one. That is the One Light Rule's test coming out \"prevented\", which is why it takes Caution Violet everywhere it appears and why a current build takes nothing — the absence of the word is the all-clear.",
         "section": "components"
       }
     ],

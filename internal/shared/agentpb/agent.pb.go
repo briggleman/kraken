@@ -3849,8 +3849,27 @@ type ServerStatus struct {
 	// exit_code_known separates "exited 0" from "no exit has been observed".
 	LastExitCode  int64 `protobuf:"varint,4,opt,name=last_exit_code,json=lastExitCode,proto3" json:"last_exit_code,omitempty"`
 	ExitCodeKnown bool  `protobuf:"varint,5,opt,name=exit_code_known,json=exitCodeKnown,proto3" json:"exit_code_known,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// watchdog_restarts is how many automatic crash restarts the server's current
+	// watchdog has performed since the last operator start or restart. Those
+	// restarts happen inside the Agent and never reach the Panel otherwise, and a
+	// fast one can fall between two status polls, so the Panel diffs this counter
+	// per server to see them (the push alert's "healed" and "crash_loop" events).
+	//
+	// An operator start or restart arms a fresh watchdog, so the counter resets to
+	// 0; so does an Agent restart, which re-adopts running servers with fresh
+	// watchdogs. A drop is a reset, not a negative restart. When the watchdog gives
+	// up (its restart budget is spent and the server is crashed) the counter keeps
+	// its final value until the next operator start replaces the watchdog. 0 when
+	// the server has no watchdog at all, and 0 from an Agent that predates the
+	// field — such an Agent produces no restart alerts, only the crash it gives up
+	// on.
+	//
+	// last_watchdog_restart_unix_ms is when the most recent of those restarts
+	// began, by the Agent's clock; 0 when there has been none.
+	WatchdogRestarts          int32 `protobuf:"varint,6,opt,name=watchdog_restarts,json=watchdogRestarts,proto3" json:"watchdog_restarts,omitempty"`
+	LastWatchdogRestartUnixMs int64 `protobuf:"varint,7,opt,name=last_watchdog_restart_unix_ms,json=lastWatchdogRestartUnixMs,proto3" json:"last_watchdog_restart_unix_ms,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *ServerStatus) Reset() {
@@ -3916,6 +3935,20 @@ func (x *ServerStatus) GetExitCodeKnown() bool {
 		return x.ExitCodeKnown
 	}
 	return false
+}
+
+func (x *ServerStatus) GetWatchdogRestarts() int32 {
+	if x != nil {
+		return x.WatchdogRestarts
+	}
+	return 0
+}
+
+func (x *ServerStatus) GetLastWatchdogRestartUnixMs() int64 {
+	if x != nil {
+		return x.LastWatchdogRestartUnixMs
+	}
+	return 0
 }
 
 type StreamConsoleRequest struct {
@@ -5310,14 +5343,16 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x13PowerActionResponse\x122\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\"5\n" +
 	"\x16GetServerStatusRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xec\x01\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xdb\x02\n" +
 	"\fServerStatus\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x122\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\x12=\n" +
 	"\n" +
 	"last_stats\x18\x03 \x01(\v2\x1e.kraken.agent.v1.ResourceStatsR\tlastStats\x12$\n" +
 	"\x0elast_exit_code\x18\x04 \x01(\x03R\flastExitCode\x12&\n" +
-	"\x0fexit_code_known\x18\x05 \x01(\bR\rexitCodeKnown\"R\n" +
+	"\x0fexit_code_known\x18\x05 \x01(\bR\rexitCodeKnown\x12+\n" +
+	"\x11watchdog_restarts\x18\x06 \x01(\x05R\x10watchdogRestarts\x12@\n" +
+	"\x1dlast_watchdog_restart_unix_ms\x18\a \x01(\x03R\x19lastWatchdogRestartUnixMs\"R\n" +
 	"\x14StreamConsoleRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1d\n" +
 	"\n" +

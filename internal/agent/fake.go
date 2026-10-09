@@ -143,6 +143,17 @@ type FakeRuntime struct {
 	// the moment a test needs to write the Panel's row "while" the Agent is
 	// restarting the server.
 	powerHook func(serverID string, action agentpb.PowerAction)
+	// watchdog plays the Docker runtime's crash watchdog restart counter, per
+	// server (see SimulateWatchdogRestart): what Status reports as
+	// watchdog_restarts and when the latest one began. An operator start or
+	// restart arms a fresh watchdog there, so it clears the entry here.
+	watchdog map[string]fakeWatchdog
+}
+
+// fakeWatchdog is one server's simulated watchdog restart count.
+type fakeWatchdog struct {
+	restarts int32
+	lastMs   int64
 }
 
 // SetPowerHook installs fn to run inside every subsequent power action, before
@@ -540,6 +551,7 @@ func (f *FakeRuntime) Remove(ctx context.Context, serverID string, deleteData bo
 	}
 	delete(f.states, serverID)
 	delete(f.containers, serverID)
+	delete(f.watchdog, serverID) // the removal stops the watchdog with the container
 	if deleteData {
 		delete(f.files, serverID)
 	}
@@ -1276,6 +1288,9 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 	}
 	f.runs[serverID]++
 	if st == agentpb.ServerState_SERVER_STATE_RUNNING {
+		// A start or restart is an operator action, which arms a fresh watchdog
+		// with a clean restart count; a stop or kill leaves the count standing.
+		delete(f.watchdog, serverID)
 		if f.containers == nil {
 			f.containers = make(map[string]bool)
 		}
@@ -1283,6 +1298,30 @@ func (f *FakeRuntime) Power(_ context.Context, serverID string, action agentpb.P
 	}
 	f.mu.Unlock()
 	return st, nil
+}
+
+// SimulateWatchdogRestart plays the Agent's crash watchdog restarting a server
+// on its own: the restart count Status reports goes up by one and is stamped
+// now, the server comes back running, and the run moves on (an open console
+// stream ends, as Docker's follow does when the crashed container stops). The
+// Panel never asked for it, which is the point — it is the restart the Panel
+// can only learn about by diffing the count. An operator start or restart
+// resets the count, as a fresh watchdog does on the Docker runtime.
+func (f *FakeRuntime) SimulateWatchdogRestart(serverID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.watchdog == nil {
+		f.watchdog = make(map[string]fakeWatchdog)
+	}
+	w := f.watchdog[serverID]
+	w.restarts++
+	w.lastMs = nowMs()
+	f.watchdog[serverID] = w
+	f.states[serverID] = agentpb.ServerState_SERVER_STATE_RUNNING
+	if f.runs == nil {
+		f.runs = make(map[string]int)
+	}
+	f.runs[serverID]++
 }
 
 // run returns the server's current run number (see runs).
@@ -1301,6 +1340,10 @@ func (f *FakeRuntime) Status(_ context.Context, serverID string) (*agentpb.Serve
 	if st == agentpb.ServerState_SERVER_STATE_CRASHED {
 		status.LastExitCode, status.ExitCodeKnown = 3221225781, true
 	}
+	f.mu.Lock()
+	w := f.watchdog[serverID]
+	f.mu.Unlock()
+	status.WatchdogRestarts, status.LastWatchdogRestartUnixMs = w.restarts, w.lastMs
 	return status, nil
 }
 

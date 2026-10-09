@@ -1,0 +1,13 @@
+{
+  "comment": "Kraken push alert test vector. HPKE encapsulation is randomized, so this is an open-this vector: opening envelope with private_key must give exactly plaintext_base64. See README.md beside this file.",
+  "suite": "DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 / ChaCha20-Poly1305",
+  "mode": "base",
+  "info": "kraken-push-v1",
+  "private_key": "lVgDFF9MHxaCsLCW7K1FU7Ej4EqiyszdixOt+PoozOs=",
+  "public_key": "QN1vrQ6YrUZZ8p+CDnKIAK5lMflT5pWsj9zIe2RSPWI=",
+  "plaintext": "{\"v\":1,\"class\":\"attend\",\"event\":\"server_crashed\",\"server_id\":\"4866d26c-5b0e-4b8a-9d1e-6f3c2a7b9e01\",\"node_id\":\"bd70f48c-2e4a-4f6b-8c3d-1a9e5f7b2c40\",\"title\":\"dragonwilds-01\",\"body\":\"stopped unexpectedly — exit 0xC0000135, a DLL the game needs is missing\",\"thread\":\"server:4866d26c-5b0e-4b8a-9d1e-6f3c2a7b9e01\",\"ts_ms\":1791555300000}",
+  "plaintext_base64": "eyJ2IjoxLCJjbGFzcyI6ImF0dGVuZCIsImV2ZW50Ijoic2VydmVyX2NyYXNoZWQiLCJzZXJ2ZXJfaWQiOiI0ODY2ZDI2Yy01YjBlLTRiOGEtOWQxZS02ZjNjMmE3YjllMDEiLCJub2RlX2lkIjoiYmQ3MGY0OGMtMmU0YS00ZjZiLThjM2QtMWE5ZTVmN2IyYzQwIiwidGl0bGUiOiJkcmFnb253aWxkcy0wMSIsImJvZHkiOiJzdG9wcGVkIHVuZXhwZWN0ZWRseSDigJQgZXhpdCAweEMwMDAwMTM1LCBhIERMTCB0aGUgZ2FtZSBuZWVkcyBpcyBtaXNzaW5nIiwidGhyZWFkIjoic2VydmVyOjQ4NjZkMjZjLTViMGUtNGI4YS05ZDFlLTZmM2MyYTdiOWUwMSIsInRzX21zIjoxNzkxNTU1MzAwMDAwfQ==",
+  "envelope": "JWmGEsOWq47ghuMfF0jMToziDOqT7WB+yIZwXmTlzAoquw7smfBpQwXyQfF0gFXxLhygxjC8HY/RoctOipEcYkoY4VnZq92LZaoQz+lne/XeitrzVNyocIy5qFOdMNcYed3Jy7OQ+wR+AuM1xI55ArpM5xFyIchTFIwbUt6ciia0rJEHqg4kIxmV4c+kUG8RpiTVqtpcIurPa/HJvPI0wEYfcBWroVEEPL21wIFWtLygIkjh6dXUNJwBtCG7WmqecCixYkjWDT5Ca5OwOgo1+wu2FOy/9XvJwqSwi6FY8rnml5NJut1EnTclgpU3+ms4cpB3QEKrC58rPukV/xtXjrEnbFV8cRVTI2SM6q27HKtndgSIqXdwk4Zzq625mdi1lbuWHQ+xyKZY6WFM8ufhL3tqNaY9qYMjHYFUcaTKhQXmzg0pJ1xDR3CQV4I/UIYUP7WsbvoNx/asi7raa1sIdRRthdI6uJ0Jh4lOyzRGMqA9+ZAiRMrsYcF9rmxojg==",
+  "enc": "JWmGEsOWq47ghuMfF0jMToziDOqT7WB+yIZwXmTlzAo=",
+  "ciphertext": "KrsO7JnwaUMF8kHxdIBV8S4coMYwvB2P0aHLToqRHGJKGOFZ2avdi2WqEM/pZ3v13ora81TcqHCMuahTnTDXGHndycuzkPsEfgLjNcSOeQK6TOcRciHIUxSMG1LenIomtKyRB6oOJCMZleHPpFBvEaYk1araXCLqz2vxybzyNMBGH3AVq6FRBDy9tcCBVrS8oCJI4enV1DScAbQhu1pqnnAosWJI1g0+QmuTsDoKNfsLthTsv/V7ycKksIuhWPK55peTSbrdRJ03JYKVN/prOHKQd0BCqwufKz7pFf8bV46xJ2xVfHEVUyNkjOqtuxyrZ3YEiKl3cJOGc6utuZnYtZW7lh0PscimWOlhTPLn4S97ajWmPamDIx2BVHGkyoUF5s4NKSdcQ0dwkFeCP1CGFD+1rG76Dcf2rIu62mtbCHUUbYXSOridCYeJTss0RjKgPfmQIkTK7GHBfa5saI4="
+}

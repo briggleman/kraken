@@ -1,6 +1,8 @@
 // Command krakenctl is the Kraken admin CLI. Today it generates the mutual-TLS
 // material for Panel↔Agent: a CA plus a Panel client cert and an Agent server
-// cert, all written as PEM files.
+// cert, all written as PEM files — and enrolls an Agent against a Panel. It
+// also carries two development tools for push alerts: a stand-in relay and a
+// test-device key generator.
 package main
 
 import (
@@ -38,6 +40,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
+	case "push-relay-stub":
+		if err := pushRelayStub(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case "push-keygen":
+		if err := pushKeygen(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "version", "-version", "--version":
 		fmt.Println("krakenctl", version.String())
 	default:
@@ -68,6 +80,30 @@ Usage:
       -out          output directory (default ./certs)
       -agent-hosts  extra DNS names / IPs to add to the Agent cert SAN
                     (localhost and 127.0.0.1 are always included)
+
+  krakenctl push-relay-stub [-addr ADDR] [-key B64] [-answer CODE] [-times N]
+                            [-relay-token TOKEN]
+      DEVELOPMENT TOOL. A stand-in for the Kraken push relay: accepts the
+      Panel's POST /v1/push, opens each envelope with a test device's private
+      key and prints the alert as one line. Point the Panel at it with
+      KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:8787. Never run it in front of
+      real devices.
+      -addr         listen address (default 127.0.0.1:8787)
+      -key          the test device's X25519 private key, base64; when empty a
+                    key pair is generated and the public key printed, to
+                    register as the device's public_key
+      -answer       ok (default), 410, 400, 429 or 503: the status to answer
+                    with, to exercise the Panel's token-dead, refused and
+                    retry paths
+      -times        answer -answer for only the next N requests, then 200
+      -relay-token  require Authorization: Bearer TOKEN, as a relay that
+                    checks KRAKEN_PUSH_RELAY_TOKEN would
+      A request's ?answer=CODE query parameter overrides -answer for that
+      request, so KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:8787?answer=503 works.
+
+  krakenctl push-keygen
+      Print a fresh X25519 key pair (base64) for registering a test device.
+
   krakenctl version`)
 }
 

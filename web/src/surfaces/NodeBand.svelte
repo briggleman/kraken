@@ -5,7 +5,8 @@
   import { onDestroy } from "svelte";
   import { api, errMsg } from "@/api/client";
   import { hasPerm } from "@/lib/auth.svelte";
-  import { refreshFleet } from "@/lib/fleet.svelte";
+  import { fleet, refreshFleet } from "@/lib/fleet.svelte";
+  import { nodeUpdatesNote } from "@/lib/buildcheck";
   import { fmtCapacityMB } from "@/lib/fmt";
   import { openSheet, ui } from "@/lib/state.svelte";
   import { TELEMETRY_HISTORY, netMbps, vitalsFor } from "@/lib/telemetry.svelte";
@@ -111,6 +112,8 @@
   // told. A quiet count with the roll call in the title; the panel is already
   // retrying.
   const pending = $derived(pendingRemovalsNote(node));
+  // This node's servers with a newer Steam build waiting (#392).
+  const updates = $derived(nodeUpdatesNote(node, fleet.servers));
   // The line's own title is the roll call only when the names are NOT printed
   // on it — inline, each name already carries its own.
   const driftTitle = $derived(
@@ -337,6 +340,14 @@
            the value's title. -->
       <span class="node-meta node-cond removals-owed">
         <span class="nc-k">removals</span><b class="nc-v" title={pending.title}>{pending.count} pending</b>
+      </span>
+    {/if}
+    {#if updates}
+      <!-- Updates Available (#392): the node's servers whose Steam build is
+           behind their branch. The count is the line's one act value — the
+           operator applies it with a restart — and the roll call is its title. -->
+      <span class="node-meta node-cond updates-avail">
+        <span class="nc-k">updates</span><b class="nc-v act" title={updates.title}>{updates.count} available</b>
       </span>
     {/if}
     {#if drift}

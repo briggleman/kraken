@@ -32,6 +32,9 @@ func (s *Spec) ValidateVarOverrides(overrides map[string]string) error {
 		}
 	}
 	for key, val := range overrides {
+		if key == ValidateVar {
+			return fmt.Errorf("variable %q is reserved: the Panel sets it for each install pass", key)
+		}
 		v, ok := editable[key]
 		if !ok {
 			continue
@@ -126,6 +129,41 @@ func Render(s string, vars map[string]string) string {
 		}
 		return match
 	})
+}
+
+// ValidateVar is the install script's render-time pseudo-variable (#392). A
+// spec writes `+app_update {{APP_ID}} {{VALIDATE}} +quit`, and the Panel
+// decides per pass what it becomes: "validate" for a create, a revive and a
+// reinstall, where re-hashing the whole tree is free or is the point, and
+// nothing for the update-on-start pass, where the tree was good at the last
+// start and a differential download of the changed chunks is all a new build
+// needs. The re-hash is minutes on a 10 to 30 GB tree.
+//
+// It is never stored: not in a server's vars, not on the row. It is reserved
+// so that nothing can shadow it — a spec may not declare a variable of that
+// name and an operator may not override one — and RenderInstall sets it last,
+// over anything a vars map carries.
+const ValidateVar = "VALIDATE"
+
+// RenderInstall renders an install script for one pass: Render with vars, and
+// {{VALIDATE}} as "validate" when validate is true or as nothing when it is
+// false. An empty render leaves a double space on the command line, which
+// SteamCMD's argument parsing ignores. A script without the placeholder
+// renders exactly as Render would.
+//
+// The pseudo-variable is always set here because Render leaves an unknown
+// placeholder untouched, and a literal {{VALIDATE}} would reach SteamCMD as an
+// argument it does not know.
+func RenderInstall(script string, vars map[string]string, validate bool) string {
+	withPass := make(map[string]string, len(vars)+1)
+	for k, v := range vars {
+		withPass[k] = v
+	}
+	withPass[ValidateVar] = ""
+	if validate {
+		withPass[ValidateVar] = "validate"
+	}
+	return Render(script, withPass)
 }
 
 // ResolveVars builds the substitution map for a server: it starts from each

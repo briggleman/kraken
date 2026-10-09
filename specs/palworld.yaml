@@ -15,8 +15,8 @@ install:
   # second always runs, and its "Success!" line clears the first pass's failure
   # for the agent's exit-0-but-app-failed guard.
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   # Palworld is a UE5 Steam dedicated server: it dlopens steamclient.so from
   # $HOME/.steam/sdk64 (baked into steam-base, so it's present in this fresh

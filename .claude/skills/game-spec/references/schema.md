@@ -39,18 +39,20 @@ platforms:                                # scheduler priority order; each kind 
   # - kind: linux-wine
   #   image: ghcr.io/briggleman/kraken-steam-wine:latest
   #   install_script: |-                 # per-platform override of install.script
-  #     steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
-  #     steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+  #     steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+  #     steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
   #   startup_command: wine-headless /data/<Proj>/Binaries/Win64/<Server>-Win64-Shipping.exe -log -Port={{PORT_GAME}}
 
 install:
   # Runs before EVERY start, not just at create time (update-on-start) — so it must be
-  # idempotent against an installed data dir with live saves. `app_update … validate` is.
+  # idempotent against an installed data dir with live saves. `app_update … {{VALIDATE}}` is.
+  # {{VALIDATE}} (reserved, never a variable) renders `validate` on create/revive/reinstall
+  # and nothing on the update-on-start pass, which needs only the new build's changed chunks.
   # Two-step: a fresh SteamCMD fails the first app_update with "Missing configuration";
   # ';' so the second always runs, and its "Success!" line clears the Agent's failure guard.
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
   # skip_update_on_start: true           # LAST RESORT — opt out of the pre-start update pass
                                           # (script then runs at create + reinstall only)
   # requires_steam_login: true           # Panel injects STEAM_USER/STEAM_PASS/STEAM_GUARD into the

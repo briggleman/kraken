@@ -604,6 +604,9 @@ func (s *Spec) Validate() error {
 		if seenVar[v.Key] {
 			return fmt.Errorf("spec %q: duplicate variable key %q", s.Slug, v.Key)
 		}
+		if v.Key == ValidateVar {
+			return fmt.Errorf("spec %q: variable key %q is reserved: the Panel sets {{%s}} for each install pass", s.Slug, v.Key, ValidateVar)
+		}
 		seenVar[v.Key] = true
 	}
 	if s.Resources.MinMemoryMB < 0 {

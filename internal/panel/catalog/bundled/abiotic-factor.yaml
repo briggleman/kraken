@@ -19,8 +19,8 @@ platforms:
   - kind: linux-wine
     image: ghcr.io/briggleman/kraken-steam-wine:latest
     install_script: |-
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
-      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+      steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
     startup_command: >-
       wine-headless /data/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log
       -SteamServerName="{{SERVER_NAME}}" -PORT={{PORT_GAME}} -QueryPort={{PORT_QUERY}}
@@ -28,9 +28,12 @@ platforms:
 install:
   # Run app_update twice: SteamCMD can report "Missing configuration" on the
   # first pass against a fresh appinfo cache; the second pass downloads.
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md). The platform scripts above follow the same rule.
   script: >-
-    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
-    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+    & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   command: >-
     C:\data\AbioticFactorServer.exe -log

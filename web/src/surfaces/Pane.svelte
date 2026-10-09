@@ -6,11 +6,13 @@
   import { rosterEmptyNote } from "@/lib/retired.svelte";
   import { ui, openSheet } from "@/lib/state.svelte";
   import { fleet, fleetHealth, gridServers } from "@/lib/fleet.svelte";
+  import { fleetUpdatesNote } from "@/lib/buildcheck";
   import { logout } from "@/lib/auth.svelte";
   import { fmtAge, fmtHm } from "@/lib/fmt";
 
   // the events floor shows the audit tail — the four most recent entries
   const recent = $derived(fleet.audit.slice(0, 4));
+  const updates = $derived(fleetUpdatesNote(fleet.servers));
 
   // The floor is a ticker. Per the Doubled Set Rule the rail carries the set
   // twice and travels -50%, so the seam lands on an identical frame — which is
@@ -72,6 +74,11 @@
     >
     <span class="top-sub">single pane · all systems</span>
     <div class="top-right">
+      <!-- The fleet-wide build check (#392): servers with a newer Steam build
+           waiting, first in the top bar. Absent at zero. -->
+      {#if updates}
+        <span class="top-upd" title={updates.title}>{updates.label}</span>
+      {/if}
       {#if health.stale}
         <span class="stale" title={fleet.lastError ?? "the panel has not answered"}
           ><span class="live-dot">●</span> stale · <span>{fmtAge(health.ageMs)}</span></span

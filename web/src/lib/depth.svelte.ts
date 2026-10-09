@@ -103,6 +103,8 @@ export const depth = $state({
   // every time the drill-in opens, so one server's "no" is never another's.
   retireFinalBackup: true,
   powerBusy: false,
+  // A build check in flight (#392); see checkBuild.
+  checkingBuild: false,
   error: null as string | null,
   sftp: null as SftpStatus | null,
   sftpOpen: false,
@@ -141,8 +143,9 @@ let backupPoll: ReturnType<typeof setInterval> | undefined;
 let serverGen = 0;
 
 /** Whether two reads of a server agree on everything the drill-in derives from
- *  the row: its state (chip, controls, stream mode, `updating`) and its restore
- *  (the ledger's meter and outcome note). */
+ *  the row: its state (chip, controls, stream mode, `updating`), its restore
+ *  (the ledger's meter and outcome note) and its build check (the header's
+ *  build line). */
 function sameServerView(a: Server | null, b: Server | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -155,7 +158,9 @@ function sameServerView(a: Server | null, b: Server | null): boolean {
     (a.retire_note ?? "") === (b.retire_note ?? "") &&
     (a.last_error ?? "") === (b.last_error ?? "") &&
     JSON.stringify(a.restore ?? null) === JSON.stringify(b.restore ?? null) &&
-    JSON.stringify(a.restore_result ?? null) === JSON.stringify(b.restore_result ?? null)
+    JSON.stringify(a.restore_result ?? null) === JSON.stringify(b.restore_result ?? null) &&
+    // The build check (#392): the header's build line reads it.
+    JSON.stringify(a.update ?? null) === JSON.stringify(b.update ?? null)
   );
 }
 
@@ -729,6 +734,29 @@ export async function power(action: PowerActionName) {
     depth.error = errMsg(e);
   } finally {
     depth.powerBusy = false;
+  }
+}
+
+/** Ask Steam now whether the server's build is current (#392), from the build
+ *  line's "check". Its own busy flag rather than powerBusy: a check reads, it
+ *  does not act, so it must not grey the power controls for the twenty
+ *  seconds it takes. The answer is folded straight onto the open server so
+ *  the line moves at once, then the fleet poll carries it everywhere else
+ *  (the card, the node band, the top bar). */
+export async function checkBuild() {
+  const id = depth.serverId;
+  if (!id || depth.checkingBuild) return;
+  depth.checkingBuild = true;
+  depth.error = null;
+  try {
+    const update = await api.checkServerBuild(id);
+    if (depth.serverId === id && depth.server) setDepthServer({ ...depth.server, update });
+    await refreshFleet();
+    syncDepthFromFleet();
+  } catch (e) {
+    depth.error = errMsg(e);
+  } finally {
+    depth.checkingBuild = false;
   }
 }
 

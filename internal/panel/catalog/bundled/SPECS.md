@@ -87,9 +87,11 @@ the only way forward was delete + recreate.
 So an install script runs against a **fully installed, fully configured data dir
 holding live save games**, and must be safe there:
 
-- `steamcmd … +app_update <id> validate +quit` already is: a no-op on a current
-  tree, a repair on a damaged one, and it only touches depot-manifest files —
-  so an operator's uploaded mods and the Panel's rendered config survive it.
+- `steamcmd … +app_update <id> {{VALIDATE}} +quit` already is: a no-op on a
+  current tree, a differential download on an outdated one, a repair on a
+  damaged one when the pass validates (see [`{{VALIDATE}}`](#validate--a-full-re-hash-only-when-it-is-worth-it)),
+  and it only touches depot-manifest files — so an operator's uploaded mods and
+  the Panel's rendered config survive it.
 - A script that wipes the data dir, re-seeds a config file the operator has
   since edited, or unconditionally re-downloads a large unversioned artifact is
   **not**. Rewrite it (guard the seeding step with `[ -f … ] ||`, probe the
@@ -110,7 +112,7 @@ Two things do NOT re-run:
 - **`bepinex_script`** — the overlay runs at create and reinstall only. Those
   scripts copy over the tree (Valheim's `cp -rf …/. /data/` would clobber
   `BepInEx/config/` on every restart) and pull unpinned `latest` builds, while a
-  SteamCMD `validate` leaves the Doorstop/winhttp files alone anyway.
+  SteamCMD pass leaves the Doorstop/winhttp files alone anyway.
 - **The Agent's crash-restart** — the watchdog restarts the container directly
   and never involves the Panel, so a crash loop can't become a download loop.
 
@@ -315,7 +317,7 @@ Declare the block only to change that:
 ```yaml
 install:
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} -beta experimental validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} -beta experimental {{VALIDATE}} +quit
   update_check: { method: steam, branch: experimental }   # app_id still comes from steam_app_ids
 ```
 
@@ -331,6 +333,46 @@ install:
   whitespace or quotes in it, and `method: steam` on a spec where some platform
   has no app id to check, because each of those reads as `unknown` or
   `unsupported` on every server, forever, without saying why.
+
+## `{{VALIDATE}}` — a full re-hash only when it is worth it
+
+`app_update <id>` on its own compares the installed manifest's build with the
+branch's: on the same build SteamCMD prints `already up to date` and exits in
+seconds, and on a new one it downloads only the chunks that changed. `app_update
+<id> validate` does that **and then** reads and hashes every file in the install
+tree, re-downloading anything that differs. On a 10 to 30 GB server that read is
+minutes, paid on every pass.
+
+So a Steam spec writes the word as a placeholder and lets the pass choose:
+
+```yaml
+install:
+  script: >-
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
+```
+
+| pass | `{{VALIDATE}}` renders as | why |
+| --- | --- | --- |
+| create, and a revive | `validate` | the first install: nothing to re-hash yet, so it is free |
+| reinstall | `validate` | the operator asked for the tree to match the depot |
+| update-on-start | *(nothing)* | the tree was good at the last start; a new build needs only its changed chunks |
+
+- The Panel renders it when it builds the pass's script and nowhere else: it is
+  never a server variable and never stored. It renders in `install.script`, a
+  platform's `install_script` and `bepinex_script`; anywhere else (the startup
+  command, config templates) it is left as written.
+- An empty render leaves a double space on the command line, which SteamCMD
+  ignores, as do the Agent's Windows SteamCMD guard and its recovery.
+- `VALIDATE` is reserved. `Validate` rejects a spec that declares a variable of
+  that name, and the API refuses it as a server's variable override, so nothing
+  can shadow the pass's choice.
+- A spec without the placeholder keeps whatever its script says, on every
+  pass. Every bundled Steam spec uses it, in both passes of the two-step and in
+  every platform's script; the two-step itself stays, since the fresh-home
+  `Missing configuration` it works around has nothing to do with validate.
+- A pass whose stream died is still `install_failed` and still needs a
+  reinstall, which validates.
 
 ## Related
 

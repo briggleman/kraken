@@ -64,7 +64,7 @@ of them.
 
 **Every operator-initiated start or restart checks whether the game has an
 update, and runs the spec's install script before launching when it does.**
-For a SteamCMD title that is an `app_update … validate` pass, which is how a
+For a SteamCMD title that is an `app_update` pass, which is how a
 server picks up a game update at all. Since 0.50.0 the pass ran on every start;
 it is a few minutes on a large tree, so a start now asks Steam first and skips
 the pass when there is nothing to pull.
@@ -80,7 +80,7 @@ these happens:
 | the check found | what the start does | console line |
 | --- | --- | --- |
 | the installed build is current | **skips the pass**: re-pushes the spec, re-renders the config and starts | `build 25247047 is current, skipping the update pass` |
-| Steam has a newer build | runs the pass as below, then records the new build | `build 25247047 → 25630937, running the update pass` |
+| Steam has a newer build | runs the pass as below, without `validate` ([below](#validate-on-the-update-pass)), then records the new build | `build 25247047 → 25630937, running the update pass` |
 | nothing to check: the spec is not a Steam install or opts out, or the node's Agent predates the check | runs the pass as below, as every start did before | `this game has no build to check, running the update pass`, or `update check unavailable (…)` |
 | the node or its Agent could not be reached, the Agent could not run SteamCMD, or the check ran out of time | **starts on the installed tree** without the pass. The reason stays on the server, whose build reads `unknown`, and it never lands `install_failed` over a check | `update check failed (<reason>), starting on installed build 25247047` |
 | the check failed for a reason about the server: the manifest missing or unreadable, an app Steam does not know | runs the pass as before; it records the build when it lands | `update check could not read the installed build (…), running the update pass`, or `… could not get Steam's current build (…)` |
@@ -96,6 +96,26 @@ the variables, so the server's `update_pass_owed` is set until a pass lands),
 and a check the spec or the node cannot do at all. The console also shows
 `build check took 21s` when Steam was asked, and `update pass took` only when a
 pass ran.
+
+### Validate on the update pass
+
+A pass that does run is cheaper than a reinstall. SteamCMD's `validate` reads
+and hashes every file in the install tree after the download, which is minutes
+on a 10 to 30 GB server, and an update does not need it: the tree was good at
+the last start, and a plain `app_update` already replaces every file the new
+build changed. Every bundled Steam spec writes the word as `{{VALIDATE}}`, which
+the Panel renders per pass:
+
+| pass | `{{VALIDATE}}` renders as |
+| --- | --- |
+| create, and a revive | `validate` |
+| reinstall | `validate` |
+| update-on-start | nothing: only the changed chunks are downloaded |
+
+So reinstall stays the way to make a suspect tree match the depot, and a pass
+that failed part-way still lands `install_failed` and still needs one. A spec
+that writes `validate` itself, rather than the placeholder, validates on every
+pass as before.
 
 The sequence, once you press start and the pass runs:
 
@@ -189,7 +209,7 @@ rather than an omission.
 :::warning
 The install script now runs against a fully installed data directory holding
 live save games, so **it has to be idempotent**. `steamcmd … +app_update <id>
-validate +quit` already is. A script that wipes the directory, re-seeds a config
+{{VALIDATE}} +quit` already is. A script that wipes the directory, re-seeds a config
 the operator has since edited, or unconditionally re-downloads a large
 unversioned artifact is not. If you write specs, [Writing a
 spec](/wiki/specs/writing/) is the obligation in full.

@@ -46,9 +46,9 @@ platforms:
     install_script: >-
       steamcmd.exe +quit
       & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
-      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
       & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
-      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} validate +quit
+      & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
       & powershell -NoProfile -NonInteractive -EncodedCommand UwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBTAGUAYwBvAG4AZABzACAAMwA7ACAAdwBoAGkAbABlACAAKABHAGUAdAAtAFAAcgBvAGMAZQBzAHMAIABzAHQAZQBhAG0AYwBtAGQAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAKQAgAHsAIABTAHQAYQByAHQALQBTAGwAZQBlAHAAIAAtAFMAZQBjAG8AbgBkAHMAIAAyACAAfQA=
     # KNOWN GAP (2026-09-12): the Shipping exe statically imports DSOUND.dll
     # (DirectSound), which Windows Server Core does not ship, so on the current
@@ -83,9 +83,12 @@ install:
   # Anonymous SteamCMD; two-step to defeat the "Missing configuration" first-run
   # race (fresh appinfo cache). Second pass' "Success!" clears the agent's exit-0-
   # but-app-failed guard even when the first pass exits nonzero.
+  # {{VALIDATE}} is `validate` on a create, revive or reinstall and nothing on
+  # the update-on-start pass, which needs only the new build's changed chunks
+  # (bundled/SPECS.md). The platform scripts above follow the same rule.
   script: >-
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit;
-    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} validate +quit
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit;
+    steamcmd +force_install_dir /data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
   # UE5 servers dlopen steamclient.so from $HOME/.steam/sdk64 — the palworld pattern.
   # The Shipping binary needs +x since SteamCMD doesn't always preserve the mode

@@ -116,6 +116,7 @@
 <a class="toc-link lvl-2" href="#the-ten-states">The ten states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#what-a-start-does">What a start does</a>
+<a class="toc-link lvl-3" href="#validate-on-the-update-pass">Validate on the update pass</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
 <a class="toc-link lvl-2" href="#the-build-check">The build check</a>
@@ -217,7 +218,7 @@ of them.</p>
 <h2 id="update-on-start">Update on start <a class="hlink" href="#update-on-start" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Every operator-initiated start or restart checks whether the game has an
 update, and runs the spec&#39;s install script before launching when it does.</strong>
-For a SteamCMD title that is an <code>app_update … validate</code> pass, which is how a
+For a SteamCMD title that is an <code>app_update</code> pass, which is how a
 server picks up a game update at all. Since 0.50.0 the pass ran on every start;
 it is a few minutes on a large tree, so a start now asks Steam first and skips
 the pass when there is nothing to pull.</p>
@@ -242,7 +243,7 @@ these happens:</p>
 </tr>
 <tr>
 <td>Steam has a newer build</td>
-<td>runs the pass as below, then records the new build</td>
+<td>runs the pass as below, without <code>validate</code> (<a href="#validate-on-the-update-pass">below</a>), then records the new build</td>
 <td><code>build 25247047 → 25630937, running the update pass</code></td>
 </tr>
 <tr>
@@ -273,6 +274,38 @@ the variables, so the server&#39;s <code>update_pass_owed</code> is set until a 
 and a check the spec or the node cannot do at all. The console also shows
 <code>build check took 21s</code> when Steam was asked, and <code>update pass took</code> only when a
 pass ran.</p>
+<h3 id="validate-on-the-update-pass">Validate on the update pass <a class="hlink" href="#validate-on-the-update-pass" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>A pass that does run is cheaper than a reinstall. SteamCMD&#39;s <code>validate</code> reads
+and hashes every file in the install tree after the download, which is minutes
+on a 10 to 30 GB server, and an update does not need it: the tree was good at
+the last start, and a plain <code>app_update</code> already replaces every file the new
+build changed. Every bundled Steam spec writes the word as <code>{{VALIDATE}}</code>, which
+the Panel renders per pass:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>pass</th>
+<th><code>{{VALIDATE}}</code> renders as</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>create, and a revive</td>
+<td><code>validate</code></td>
+</tr>
+<tr>
+<td>reinstall</td>
+<td><code>validate</code></td>
+</tr>
+<tr>
+<td>update-on-start</td>
+<td>nothing: only the changed chunks are downloaded</td>
+</tr>
+</tbody></table>
+</div>
+<p>So reinstall stays the way to make a suspect tree match the depot, and a pass
+that failed part-way still lands <code>install_failed</code> and still needs one. A spec
+that writes <code>validate</code> itself, rather than the placeholder, validates on every
+pass as before.</p>
 <p>The sequence, once you press start and the pass runs:</p>
 <ol>
 <li>The Panel stops the container if anything is holding the data directory,
@@ -379,7 +412,7 @@ or use reinstall with a Steam Guard code.</li>
 <aside class="callout is-warning">
 <span class="callout-k">warning</span>
 <div class="callout-b"><p>The install script now runs against a fully installed data directory holding
-live save games, so <strong>it has to be idempotent</strong>. <code>steamcmd … +app_update &lt;id&gt; validate +quit</code> already is. A script that wipes the directory, re-seeds a config
+live save games, so <strong>it has to be idempotent</strong>. <code>steamcmd … +app_update &lt;id&gt; {{VALIDATE}} +quit</code> already is. A script that wipes the directory, re-seeds a config
 the operator has since edited, or unconditionally re-downloads a large
 unversioned artifact is not. If you write specs, <a href="/wiki/specs/writing/">Writing a
 spec</a> is the obligation in full.</p>
@@ -695,6 +728,7 @@ way a retire&#39;s removal is owed; the answer carries <code>removal_pending: tr
 <a class="toc-link lvl-2" href="#the-ten-states">The ten states</a>
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#what-a-start-does">What a start does</a>
+<a class="toc-link lvl-3" href="#validate-on-the-update-pass">Validate on the update pass</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
 <a class="toc-link lvl-2" href="#the-build-check">The build check</a>

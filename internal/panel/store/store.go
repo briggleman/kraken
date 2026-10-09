@@ -482,6 +482,120 @@ type Session struct {
 // Expired reports whether the session is past its expiry at time now.
 func (s *Session) Expired(now time.Time) bool { return now.After(s.ExpiresAt) }
 
+// The values a device registration may carry (docs/design/push-alerts.md).
+const (
+	// DevicePlatformIOS is the only platform there is a companion app for.
+	DevicePlatformIOS = "ios"
+	// APNsProduction and APNsSandbox name the APNs gateway the device's token
+	// belongs to: a development build of the app talks to the sandbox, and a
+	// token sent to the other gateway is refused there.
+	APNsProduction = "production"
+	APNsSandbox    = "sandbox"
+)
+
+// Device is a phone registered for push alerts (#348). It belongs to a user,
+// not to a session: sessions expire every day, and a device tied to one would
+// go silent with it. Alerts sent to it are filtered by its user's permissions
+// at the moment they are sent, so a user who loses a server stops hearing about
+// it without any change here.
+type Device struct {
+	// ID is the app's own install id, chosen on the phone and stable across
+	// launches, in its canonical lowercase UUID form. A device is keyed by
+	// (UserID, ID): the same install signed into two accounts is two rows,
+	// and registration is idempotent on the pair.
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+	// Platform is DevicePlatformIOS.
+	Platform string `json:"platform"`
+	// APNsToken is the device token, lowercase hex. It is sealed at rest when
+	// the Panel has a secrets key and never leaves the Panel except to the
+	// relay: not in an API answer, a log line or an audit entry.
+	APNsToken string `json:"-"`
+	// APNsEnvironment is APNsProduction or APNsSandbox.
+	APNsEnvironment string `json:"apns_environment"`
+	// PublicKey is the device's raw 32-byte X25519 public key, which alert
+	// payloads are sealed to.
+	PublicKey []byte `json:"-"`
+	// Name is the device's display name, for a future devices surface.
+	Name  string      `json:"name"`
+	Rules DeviceRules `json:"rules"`
+	// CreatedAt is when the user first registered the device.
+	CreatedAt time.Time `json:"created_at"`
+	// LastSeenAt moves on every registration refresh.
+	LastSeenAt time.Time `json:"last_seen_at"`
+	// LastSentAt is when an alert last reached the relay for it; nil until
+	// one has.
+	LastSentAt *time.Time `json:"last_sent_at,omitempty"`
+	// TokenInvalidAt is set when the relay reports the token dead (APNs 410).
+	// Nothing is sent to the device until it registers again, which clears it.
+	TokenInvalidAt *time.Time `json:"token_invalid_at,omitempty"`
+}
+
+// DeviceRules is what a device has asked to hear about: the three alert
+// classes, and the servers whose `alive` alerts (players joining) it does not
+// want. It is stored as a JSON document.
+type DeviceRules struct {
+	Attend bool `json:"attend"`
+	Healed bool `json:"healed"`
+	Alive  bool `json:"alive"`
+	// AliveMutedServers are server ids. Muting a server silences its `alive`
+	// alerts only; that it crashed still arrives.
+	AliveMutedServers []string `json:"alive_muted_servers"`
+}
+
+// DefaultDeviceRules is what a new registration starts with: every class on,
+// nothing muted. Stores also decode a stored document over it, so a class added
+// after a device registered is on for it rather than silently off.
+func DefaultDeviceRules() DeviceRules {
+	return DeviceRules{Attend: true, Healed: true, Alive: true, AliveMutedServers: []string{}}
+}
+
+// DeviceStore persists device registrations. A device is keyed by its user
+// and its id together, never by the id alone: device ids are not secret, and a
+// write keyed on the id alone would let one user reach another's phone.
+type DeviceStore interface {
+	// UpsertDevice registers d, or refreshes the user's registration of d.ID,
+	// and returns the row as it now stands. A refresh rewrites the token,
+	// environment, key and name, moves LastSeenAt and clears TokenInvalidAt,
+	// and keeps the rules, CreatedAt and LastSentAt. Another user's row with
+	// the same id is never touched.
+	UpsertDevice(ctx context.Context, d *Device) (*Device, error)
+	// GetDevice returns the user's device with this id. ErrNotFound when the
+	// user has none — including when only another user does.
+	GetDevice(ctx context.Context, userID, id string) (*Device, error)
+	// ListDevicesByUser returns the user's devices, oldest first; an unknown
+	// user has none.
+	ListDevicesByUser(ctx context.Context, userID string) ([]*Device, error)
+	// ListDevices returns every device, oldest first — the alert pipeline's
+	// fan-out list.
+	ListDevices(ctx context.Context) ([]*Device, error)
+	// UpdateDeviceRules replaces the rules of the user's device. ErrNotFound
+	// when there is no such device.
+	UpdateDeviceRules(ctx context.Context, userID, id string, r DeviceRules) error
+	// DeleteDevice revokes one of the user's devices. ErrNotFound when there
+	// is no such device.
+	DeleteDevice(ctx context.Context, userID, id string) error
+	// DeleteDevicesByUser revokes every device of the user and reports how
+	// many went.
+	DeleteDevicesByUser(ctx context.Context, userID string) (int64, error)
+	// MarkDeviceTokenInvalid records that the relay reported token dead, but
+	// only while it is still the device's token: a phone that re-registered
+	// with a fresh token between the send and the relay's answer must not be
+	// silenced for the old one. It reports whether the mark was made, and
+	// keeps the first time a token was reported dead.
+	MarkDeviceTokenInvalid(ctx context.Context, userID, id, token string, at time.Time) (bool, error)
+	// TouchDeviceSent records that an alert reached the relay for the user's
+	// device. ErrNotFound when there is no such device.
+	TouchDeviceSent(ctx context.Context, userID, id string, at time.Time) error
+}
+
+// PanelIdentityStore holds the Panel's random install id, which the push relay
+// sees as X-Kraken-Panel-Id. PanelID generates it on first use and returns the
+// same value for the life of the datastore.
+type PanelIdentityStore interface {
+	PanelID(ctx context.Context) (string, error)
+}
+
 // UserStore persists users.
 type UserStore interface {
 	CreateUser(ctx context.Context, u *User) error
@@ -489,6 +603,8 @@ type UserStore interface {
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
 	ListUsers(ctx context.Context) ([]*User, error)
 	UpdateUser(ctx context.Context, u *User) error
+	// DeleteUser deletes the user and, with them, every device they
+	// registered: a deleted user's phone must not go on receiving alerts.
 	DeleteUser(ctx context.Context, id string) error
 	CountUsers(ctx context.Context) (int, error)
 }
@@ -613,4 +729,6 @@ type Store interface {
 	CAStore
 	SettingsStore
 	NodeSettingsStore
+	DeviceStore
+	PanelIdentityStore
 }

@@ -36,6 +36,11 @@ type Store struct {
 
 	// Per-node config keyed by node ID.
 	nodeConfig map[string]*store.NodeConfig
+
+	// Push-alert device registrations keyed by (user, device id), and the
+	// Panel's install id (generated on first read).
+	devices map[deviceKey]*store.Device
+	panelID string
 }
 
 // maxAuditEntries caps the in-memory audit log (dev store only).
@@ -52,6 +57,7 @@ func New() *Store {
 		schedules:  make(map[string]*store.ScheduledTask),
 		sessions:   make(map[string]*store.Session),
 		nodeConfig: make(map[string]*store.NodeConfig),
+		devices:    make(map[deviceKey]*store.Device),
 	}
 }
 
@@ -122,6 +128,13 @@ func (s *Store) DeleteUser(_ context.Context, id string) error {
 		return store.ErrNotFound
 	}
 	delete(s.users, id)
+	// Postgres cascades the delete to the user's devices; this store has no
+	// foreign key to do it, so it does the same here, under the same lock.
+	for k := range s.devices {
+		if k.userID == id {
+			delete(s.devices, k)
+		}
+	}
 	return nil
 }
 

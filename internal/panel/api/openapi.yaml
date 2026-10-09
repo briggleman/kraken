@@ -20,6 +20,7 @@ tags:
   - name: Backups
   - name: Schedules
   - name: Users & Roles
+  - name: Devices
   - name: Enrollment
   - name: Setup
   - name: Settings
@@ -56,6 +57,20 @@ paths:
     post:
       tags: [Auth]
       summary: Invalidate the current session
+      description: >
+        Ends the session. The companion app also names the install it is
+        signing out of in `device_id`, and that device's push registration is
+        revoked with the session — when it is the caller's own; an id that is
+        unknown, malformed or another user's is ignored. The body is optional
+        and nothing in it can fail the request: a sign-out always signs out.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_id: { type: string, format: uuid, description: "the push device (POST /devices) to revoke with the session" }
       responses:
         '200': { description: Logged out }
   /auth/me:
@@ -1695,8 +1710,19 @@ paths:
       responses: { '201': { description: Created } }
   /users/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
-    put: { tags: [Users & Roles], summary: Update a user, responses: { '200': { description: Updated } } }
-    delete: { tags: [Users & Roles], summary: Delete a user, responses: { '204': { description: Deleted } } }
+    put:
+      tags: [Users & Roles]
+      summary: Update a user
+      description: >
+        Disabling a user also revokes every push device they registered. A
+        disable whose revoke could not be written answers 500 with the user
+        already disabled; sending it again retries the revoke.
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [Users & Roles]
+      summary: Delete a user
+      description: Deletes the user's push devices with them.
+      responses: { '204': { description: Deleted } }
   /users/{id}/password:
     parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
     post: { tags: [Users & Roles], summary: Reset a user's password, responses: { '200': { description: Reset } } }
@@ -1846,6 +1872,109 @@ paths:
         '409': { $ref: '#/components/responses/ServerHeld' }
         '502': { description: UniFi API error }
         '503': { description: UniFi not configured }
+  /devices:
+    post:
+      tags: [Devices]
+      summary: Register a phone for push alerts, or refresh its registration
+      description: >
+        The companion app calls this on every launch and whenever APNs gives
+        it a new token. A device is the caller and `id` (the app's own install
+        id) together, and registration is idempotent on that pair: a refresh
+        rewrites the token, environment, key and name in place, moves
+        `last_seen_at` and clears `token_invalid_at`, and keeps the device's
+        rules. Another user's registration of the same id is a separate
+        device and is never touched — device ids are not secret, and keying
+        on the id alone would let anyone who learned one silence its owner's
+        phone. An install signed into two accounts therefore receives both
+        users' alerts until it signs out of one (POST /auth/logout with
+        `device_id`). The answer is 200 either way. The device belongs to the
+        caller, not to the session, so it outlives the session; it is revoked
+        by DELETE /devices/{id}, by sign-out naming it, or by disabling or
+        deleting the user. Unknown fields in the body are ignored, so a newer
+        app can register with an older Panel. Neither the token nor the key is
+        ever returned, logged or audited. See docs/design/push-alerts.md for
+        the alert contract.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceRegistration' }
+      responses:
+        '200':
+          description: The device as it now stands, with its rules
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [Devices]
+      summary: List push devices
+      description: >
+        The caller's own devices, oldest first. `user` lists another user's,
+        which takes user.manage.
+      parameters:
+        - { name: user, in: query, required: false, schema: { type: string, format: uuid }, description: "a user id; another user's devices need user.manage" }
+      responses:
+        '200':
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices: { type: array, items: { $ref: '#/components/schemas/Device' } }
+        '403':
+          description: "`user` names another user and the caller lacks user.manage (`code: forbidden`)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /devices/{id}/rules:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    patch:
+      tags: [Devices]
+      summary: Change what a device is alerted about
+      description: >
+        Acts on the caller's own device with this id; there is no way to
+        change another user's rules — a user with user.manage revokes a device
+        instead. Fields left out keep their value; `alive_muted_servers`, when
+        present, replaces the list. Every muted server must be one the caller
+        can view (server.view, and ownership unless the role holds
+        server.any); a server that does not exist is refused the same way as
+        one the caller cannot see. Duplicates are dropped. Unknown fields are
+        ignored, so a newer app can talk to an older Panel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceRulesPatch' }
+      responses:
+        '200':
+          description: The device with its new rules
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: "The caller has no device with this id", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /devices/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    delete:
+      tags: [Devices]
+      summary: Revoke a push device
+      description: >
+        Revokes the caller's own device with this id, or — with `user` naming
+        another user, which takes user.manage — that user's device with this
+        id. Another user's registration of the same install id is a separate
+        device and is never touched by the caller's revoke. Nothing is sent to
+        the device again until it registers again.
+      parameters:
+        - { name: user, in: query, required: false, schema: { type: string, format: uuid }, description: "the device's user, when it is not the caller; needs user.manage" }
+      responses:
+        '204': { description: Revoked }
+        '403':
+          description: "`user` names another user and the caller lacks user.manage (`code: forbidden`)"
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/CodedError' } }
+        '404': { description: "No such user, or that user has no device with this id", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /audit:
     get:
       tags: [Audit]
@@ -1998,6 +2127,45 @@ components:
         role_id: { type: string }
         disabled: { type: boolean }
         must_change_password: { type: boolean }
+    DeviceRegistration:
+      type: object
+      description: Unknown fields are ignored, so a newer app can register with an older Panel.
+      required: [id, platform, apns_token, apns_environment, public_key]
+      properties:
+        id: { type: string, format: uuid, description: "the app's own stable install id; any case, stored lowercase; not the nil UUID" }
+        platform: { type: string, enum: [ios] }
+        apns_token: { type: string, description: "the APNs device token in hex, 64 to 200 digits" }
+        apns_environment: { type: string, enum: [production, sandbox], description: "the APNs gateway the token belongs to; a development build uses the sandbox" }
+        public_key: { type: string, format: byte, description: "the device's X25519 public key, the raw 32 bytes in standard base64; alert payloads are sealed to it" }
+        name: { type: string, maxLength: 100, description: "the device's display name" }
+    DeviceRules:
+      type: object
+      properties:
+        attend: { type: boolean, description: "something needs a human: a node offline or partial, a server stopped unexpectedly, a failed backup, a crash loop" }
+        healed: { type: boolean, description: "the watchdog restarted a server" }
+        alive: { type: boolean, description: "a player joined" }
+        alive_muted_servers: { type: array, items: { type: string }, description: "servers whose alive alerts this device does not want" }
+    DeviceRulesPatch:
+      type: object
+      properties:
+        attend: { type: boolean }
+        healed: { type: boolean }
+        alive: { type: boolean }
+        alive_muted_servers: { type: array, items: { type: string }, description: "replaces the list; each a server the caller can view" }
+    Device:
+      type: object
+      description: A phone registered for push alerts, identified by its user and its id together. The APNs token and the public key are never returned.
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, description: the owner }
+        platform: { type: string, enum: [ios] }
+        apns_environment: { type: string, enum: [production, sandbox] }
+        name: { type: string }
+        rules: { $ref: '#/components/schemas/DeviceRules' }
+        created_at: { type: string, format: date-time, description: "when its user first registered it" }
+        last_seen_at: { type: string, format: date-time, description: "its most recent registration" }
+        last_sent_at: { type: string, format: date-time, nullable: true, description: "when an alert last reached the relay for it" }
+        token_invalid_at: { type: string, format: date-time, nullable: true, description: "when the relay reported its token dead; nothing is sent to it until it registers again" }
     BootstrapToken:
       type: object
       properties:

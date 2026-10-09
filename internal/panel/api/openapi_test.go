@@ -37,6 +37,7 @@ func TestOpenAPISpecValid(t *testing.T) {
 		"/servers/{id}/update-check", "/servers/update-check",
 		"/servers/{id}/schedules", "/specs", "/nodes", "/agents/enroll",
 		"/agents/bootstrap-tokens", "/audit",
+		"/devices", "/devices/{id}/rules", "/devices/{id}",
 	}
 	for _, p := range want {
 		if _, ok := doc.Paths[p]; !ok {

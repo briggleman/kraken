@@ -126,7 +126,7 @@ func TestRegisterDevice(t *testing.T) {
 	if strings.Contains(body, tokenA) || strings.Contains(body, "apns_token") || strings.Contains(body, "public_key") {
 		t.Fatalf("the answer carries the token or the key: %s", rec.Body.String())
 	}
-	stored, err := st.GetDevice(context.Background(), deviceA)
+	stored, err := st.GetDevice(context.Background(), adminID(t, st), deviceA)
 	if err != nil || stored.APNsToken != tokenA || len(stored.PublicKey) != 32 {
 		t.Fatalf("stored device = %+v err=%v; want the lowercase token and a 32-byte key", stored, err)
 	}
@@ -144,7 +144,7 @@ func TestRegisterDeviceRefreshRotatesToken(t *testing.T) {
 	if rec := do(t, h, http.MethodPatch, "/api/v1/devices/"+deviceA+"/rules", tok, map[string]any{"healed": false}); rec.Code != http.StatusOK {
 		t.Fatalf("patch rules: %d %s", rec.Code, rec.Body.String())
 	}
-	if ok, err := st.MarkDeviceTokenInvalid(ctx, deviceA, tokenA, time.Now()); !ok || err != nil {
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, adminID(t, st), deviceA, tokenA, time.Now()); !ok || err != nil {
 		t.Fatalf("mark invalid: %v %v", ok, err)
 	}
 	time.Sleep(2 * time.Millisecond)
@@ -168,7 +168,7 @@ func TestRegisterDeviceRefreshRotatesToken(t *testing.T) {
 	if _, all := listDevices(t, h, tok, ""); len(all) != 1 {
 		t.Fatalf("devices after a refresh = %d, want the one row", len(all))
 	}
-	stored, _ := st.GetDevice(ctx, deviceA)
+	stored, _ := st.GetDevice(ctx, adminID(t, st), deviceA)
 	if stored.APNsToken != tokenA2 {
 		t.Fatal("the rotated token was not stored")
 	}
@@ -194,7 +194,6 @@ func TestRegisterDeviceRejectsWhatTheContractDoesNot(t *testing.T) {
 		"key low-order point":  func(m map[string]any) { m["public_key"] = zero },
 		"name too long":        func(m map[string]any) { m["name"] = strings.Repeat("x", 101) },
 		"name control chars":   func(m map[string]any) { m["name"] = "phone\x00" },
-		"unknown field":        func(m map[string]any) { m["push_to_talk"] = true },
 		"key as base64url raw": func(m map[string]any) { m["public_key"] = "____________________________________________" },
 	}
 	for name, mutate := range cases {
@@ -215,11 +214,33 @@ func TestRegisterDeviceRejectsWhatTheContractDoesNot(t *testing.T) {
 	}
 }
 
-// The install id belongs to whoever registered it last: a second user can only
-// present it from the same install, which the first signed out of. The device
-// starts afresh for them.
-func TestRegisterDeviceTakeover(t *testing.T) {
+// The app ships through the App Store on its own schedule while each Panel is
+// upgraded whenever its operator gets to it, so a field a newer app sends must
+// not cost it its registration or its rules on an older Panel.
+func TestDeviceBodiesIgnoreUnknownFields(t *testing.T) {
+	h := newTestServer(t)
+	tok := login(t, h)
+	reg := registration(t, deviceA, tokenA)
+	reg["push_to_talk"] = true
+	if rec := do(t, h, http.MethodPost, "/api/v1/devices", tok, reg); rec.Code != http.StatusOK {
+		t.Fatalf("register with an unknown field: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := do(t, h, http.MethodPatch, "/api/v1/devices/"+deviceA+"/rules", tok, map[string]any{"alive": false, "maintenance": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch with an unknown field: %d %s", rec.Code, rec.Body.String())
+	}
+	if d := decodeDevice(t, rec); d.Rules.Alive {
+		t.Fatalf("the known field was not applied: %+v", d.Rules)
+	}
+}
+
+// A device is its user and its id together. Device ids are not secret, so a
+// second account registering the same id — the same install signed into two
+// accounts, or anyone who learned the id — gets a row of its own and leaves
+// the first user's row, token and rules exactly as they were.
+func TestRegisterSameIDForAnotherUserLeavesTheFirstAlone(t *testing.T) {
 	h, st := newTestServerStore(t)
+	ctx := context.Background()
 	adminTok := login(t, h)
 	bobTok := seedUser(t, st, "bob", rbac.RoleReadOnly)
 
@@ -227,16 +248,38 @@ func TestRegisterDeviceTakeover(t *testing.T) {
 	if rec := do(t, h, http.MethodPatch, "/api/v1/devices/"+deviceA+"/rules", bobTok, map[string]any{"alive": false}); rec.Code != http.StatusOK {
 		t.Fatalf("bob patch: %d %s", rec.Code, rec.Body.String())
 	}
+	before, err := st.GetDevice(ctx, "bob", deviceA)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	rec := do(t, h, http.MethodPost, "/api/v1/devices", adminTok, registration(t, deviceA, tokenA2))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("takeover: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("admin registering the same id: %d %s", rec.Code, rec.Body.String())
 	}
-	d := decodeDevice(t, rec)
-	if d.UserID != adminID(t, st) || !d.Rules.Alive {
-		t.Fatalf("taken-over device = %+v; want the new owner and default rules", d)
+	if d := decodeDevice(t, rec); d.UserID != adminID(t, st) || !d.Rules.Alive {
+		t.Fatalf("the admin's row = %+v; want their own, with default rules", d)
 	}
-	if _, bobs := listDevices(t, h, bobTok, ""); len(bobs) != 0 {
-		t.Fatalf("bob still lists %d devices", len(bobs))
+	after, err := st.GetDevice(ctx, "bob", deviceA)
+	if err != nil {
+		t.Fatalf("bob's row is gone: %v", err)
+	}
+	if after.APNsToken != tokenA || after.Rules.Alive || !after.LastSeenAt.Equal(before.LastSeenAt) ||
+		!after.CreatedAt.Equal(before.CreatedAt) || string(after.PublicKey) != string(before.PublicKey) {
+		t.Fatalf("bob's row changed: before %+v, after %+v", before, after)
+	}
+	if _, bobs := listDevices(t, h, bobTok, ""); len(bobs) != 1 {
+		t.Fatalf("bob lists %d devices, want his one", len(bobs))
+	}
+	if _, admins := listDevices(t, h, adminTok, ""); len(admins) != 1 {
+		t.Fatalf("the admin lists %d devices, want their one", len(admins))
+	}
+	// Each user's routes reach only their own row with that id.
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceA, adminTok, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("admin revoking their own: %d", rec.Code)
+	}
+	if _, err := st.GetDevice(ctx, "bob", deviceA); err != nil {
+		t.Fatal("revoking the admin's row took bob's")
 	}
 }
 
@@ -304,9 +347,13 @@ func TestPatchDeviceRules(t *testing.T) {
 		t.Fatalf("rules after clearing the mutes = %+v", d.Rules)
 	}
 
-	// The rules are the owner's: not even an administrator changes them.
-	if rec := do(t, h, http.MethodPatch, path, adminTok, map[string]any{"attend": false}); rec.Code != http.StatusForbidden {
-		t.Fatalf("admin patching bob's device: %d, want 403", rec.Code)
+	// The route reaches only the caller's own row: an administrator has none
+	// with this id, and there is no way to name bob's.
+	if rec := do(t, h, http.MethodPatch, path, adminTok, map[string]any{"attend": false}); rec.Code != http.StatusNotFound {
+		t.Fatalf("admin patching bob's device: %d, want 404", rec.Code)
+	}
+	if rec := do(t, h, http.MethodPatch, path+"?user=bob", adminTok, map[string]any{"attend": false}); rec.Code != http.StatusNotFound {
+		t.Fatalf("admin patching bob's device by naming him: %d, want 404", rec.Code)
 	}
 	if rec := do(t, h, http.MethodPatch, "/api/v1/devices/"+deviceA+"/rules", bobTok, map[string]any{"attend": false}); rec.Code != http.StatusNotFound {
 		t.Fatalf("patching an unknown device: %d, want 404", rec.Code)
@@ -321,8 +368,17 @@ func TestDeleteDevice(t *testing.T) {
 	do(t, h, http.MethodPost, "/api/v1/devices", adminTok, registration(t, deviceA, tokenA))
 	do(t, h, http.MethodPost, "/api/v1/devices", bobTok, registration(t, deviceB, tokenA2))
 
-	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceA, bobTok, nil); rec.Code != http.StatusForbidden {
+	admin := adminID(t, st)
+	// Bob's own row with the admin's id does not exist, and naming the admin
+	// takes user.manage.
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceA, bobTok, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("bob revoking the admin's device id as his own: %d, want 404", rec.Code)
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceA+"?user="+admin, bobTok, nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("bob revoking the admin's device: %d, want 403", rec.Code)
+	}
+	if _, err := st.GetDevice(context.Background(), admin, deviceA); err != nil {
+		t.Fatal("the admin's device went")
 	}
 	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+strings.ToUpper(deviceB), bobTok, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("bob revoking his own: %d %s", rec.Code, rec.Body.String())
@@ -331,30 +387,46 @@ func TestDeleteDevice(t *testing.T) {
 		t.Fatalf("revoking it twice: %d, want 404", rec.Code)
 	}
 	do(t, h, http.MethodPost, "/api/v1/devices", bobTok, registration(t, deviceB, tokenA2))
-	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceB, adminTok, nil); rec.Code != http.StatusNoContent {
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceB, adminTok, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("an admin revoking bob's without naming him: %d, want 404", rec.Code)
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceB+"?user=bob", adminTok, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin revoking bob's: %d", rec.Code)
+	}
+	if _, err := st.GetDevice(context.Background(), "bob", deviceB); err == nil {
+		t.Fatal("bob's device survived the admin's revoke")
+	}
+	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/"+deviceB+"?user=nobody", adminTok, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("naming an unknown user: %d, want 404", rec.Code)
 	}
 	if rec := do(t, h, http.MethodDelete, "/api/v1/devices/not-a-uuid", adminTok, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("a malformed id: %d, want 404", rec.Code)
 	}
 }
 
-// Sign-out revokes the install it names, when that install is the user's own,
-// and never fails for what the body says.
+// Sign-out revokes the user's own registration of the install it names — never
+// another user's registration of the same install — and never fails for what
+// the body says.
 func TestLogoutRevokesTheDevice(t *testing.T) {
 	h, st := newTestServerStore(t)
 	ctx := context.Background()
 	bobTok := seedUser(t, st, "bob", rbac.RoleReadOnly)
 	adminTok := login(t, h)
+	admin := adminID(t, st)
 	do(t, h, http.MethodPost, "/api/v1/devices", adminTok, registration(t, deviceA, tokenA))
 	do(t, h, http.MethodPost, "/api/v1/devices", bobTok, registration(t, deviceB, tokenA2))
+	// The same install signed into bob's account too.
+	do(t, h, http.MethodPost, "/api/v1/devices", bobTok, registration(t, deviceA, tokenA))
 
-	// Bob names the admin's device: his session ends, the admin's phone stays.
+	// Bob signs out of that install: his registration goes, the admin's stays.
 	if rec := do(t, h, http.MethodPost, "/api/v1/auth/logout", bobTok, map[string]string{"device_id": deviceA}); rec.Code != http.StatusOK {
 		t.Fatalf("logout: %d", rec.Code)
 	}
-	if _, err := st.GetDevice(ctx, deviceA); err != nil {
-		t.Fatal("bob's sign-out revoked somebody else's device")
+	if _, err := st.GetDevice(ctx, "bob", deviceA); err == nil {
+		t.Fatal("bob's registration of the install he signed out of is still there")
+	}
+	if _, err := st.GetDevice(ctx, admin, deviceA); err != nil {
+		t.Fatal("bob's sign-out revoked the admin's registration")
 	}
 	if _, err := st.GetSession(ctx, bobTok); err == nil {
 		t.Fatal("bob's session survived his sign-out")
@@ -364,7 +436,7 @@ func TestLogoutRevokesTheDevice(t *testing.T) {
 	if rec := do(t, h, http.MethodPost, "/api/v1/auth/logout", adminTok, map[string]string{"device_id": strings.ToUpper(deviceA)}); rec.Code != http.StatusOK {
 		t.Fatalf("logout: %d", rec.Code)
 	}
-	if _, err := st.GetDevice(ctx, deviceA); err == nil {
+	if _, err := st.GetDevice(ctx, admin, deviceA); err == nil {
 		t.Fatal("the device named at sign-out is still registered")
 	}
 
@@ -387,7 +459,7 @@ func TestLogoutRevokesTheDevice(t *testing.T) {
 			t.Fatalf("%s: the session survived", name)
 		}
 	}
-	if _, err := st.GetDevice(ctx, deviceB); err != nil {
+	if _, err := st.GetDevice(ctx, "bob", deviceB); err != nil {
 		t.Fatal("bob's device went with sign-outs that did not name it")
 	}
 }
@@ -412,10 +484,10 @@ func TestDisablingOrDeletingAUserRevokesTheirDevices(t *testing.T) {
 	if rec := do(t, h, http.MethodDelete, "/api/v1/users/carol", adminTok, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete carol: %d", rec.Code)
 	}
-	if _, err := st.GetDevice(ctx, deviceC); err == nil {
+	if _, err := st.GetDevice(ctx, "carol", deviceC); err == nil {
 		t.Fatal("a deleted user's device is still registered")
 	}
-	if _, err := st.GetDevice(ctx, deviceA); err != nil {
+	if _, err := st.GetDevice(ctx, adminID(t, st), deviceA); err != nil {
 		t.Fatal("the admin's device went with somebody else's account")
 	}
 }

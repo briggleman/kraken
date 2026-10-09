@@ -500,8 +500,9 @@ const (
 // it without any change here.
 type Device struct {
 	// ID is the app's own install id, chosen on the phone and stable across
-	// launches, in its canonical lowercase UUID form. Registration is
-	// idempotent on it.
+	// launches, in its canonical lowercase UUID form. A device is keyed by
+	// (UserID, ID): the same install signed into two accounts is two rows,
+	// and registration is idempotent on the pair.
 	ID     string `json:"id"`
 	UserID string `json:"user_id"`
 	// Platform is DevicePlatformIOS.
@@ -518,7 +519,7 @@ type Device struct {
 	// Name is the device's display name, for a future devices surface.
 	Name  string      `json:"name"`
 	Rules DeviceRules `json:"rules"`
-	// CreatedAt is when the device was first registered by its current user.
+	// CreatedAt is when the user first registered the device.
 	CreatedAt time.Time `json:"created_at"`
 	// LastSeenAt moves on every registration refresh.
 	LastSeenAt time.Time `json:"last_seen_at"`
@@ -549,31 +550,31 @@ func DefaultDeviceRules() DeviceRules {
 	return DeviceRules{Attend: true, Healed: true, Alive: true, AliveMutedServers: []string{}}
 }
 
-// DeviceStore persists device registrations.
+// DeviceStore persists device registrations. A device is keyed by its user
+// and its id together, never by the id alone: device ids are not secret, and a
+// write keyed on the id alone would let one user reach another's phone.
 type DeviceStore interface {
-	// UpsertDevice registers d, or refreshes the registration with its id,
-	// and returns the row as it now stands. A refresh by the same user
-	// rewrites the token, environment, key and name, moves LastSeenAt and
-	// clears TokenInvalidAt, and keeps the rules, CreatedAt and LastSentAt. A
-	// different user registering an id that exists takes the device over: the
-	// id is the app's install id, and the only way a second user can present
-	// it is from that install, which the first user has signed out of. The
-	// takeover starts afresh — d's rules and CreatedAt, nothing sent — so the
-	// new owner inherits none of the old one's mutes.
+	// UpsertDevice registers d, or refreshes the user's registration of d.ID,
+	// and returns the row as it now stands. A refresh rewrites the token,
+	// environment, key and name, moves LastSeenAt and clears TokenInvalidAt,
+	// and keeps the rules, CreatedAt and LastSentAt. Another user's row with
+	// the same id is never touched.
 	UpsertDevice(ctx context.Context, d *Device) (*Device, error)
-	GetDevice(ctx context.Context, id string) (*Device, error)
+	// GetDevice returns the user's device with this id. ErrNotFound when the
+	// user has none — including when only another user does.
+	GetDevice(ctx context.Context, userID, id string) (*Device, error)
 	// ListDevicesByUser returns the user's devices, oldest first; an unknown
 	// user has none.
 	ListDevicesByUser(ctx context.Context, userID string) ([]*Device, error)
 	// ListDevices returns every device, oldest first — the alert pipeline's
 	// fan-out list.
 	ListDevices(ctx context.Context) ([]*Device, error)
-	// UpdateDeviceRules replaces the device's rules. ErrNotFound when there
+	// UpdateDeviceRules replaces the rules of the user's device. ErrNotFound
+	// when there is no such device.
+	UpdateDeviceRules(ctx context.Context, userID, id string, r DeviceRules) error
+	// DeleteDevice revokes one of the user's devices. ErrNotFound when there
 	// is no such device.
-	UpdateDeviceRules(ctx context.Context, id string, r DeviceRules) error
-	// DeleteDevice revokes one device. ErrNotFound when there is no such
-	// device.
-	DeleteDevice(ctx context.Context, id string) error
+	DeleteDevice(ctx context.Context, userID, id string) error
 	// DeleteDevicesByUser revokes every device of the user and reports how
 	// many went.
 	DeleteDevicesByUser(ctx context.Context, userID string) (int64, error)
@@ -582,10 +583,10 @@ type DeviceStore interface {
 	// with a fresh token between the send and the relay's answer must not be
 	// silenced for the old one. It reports whether the mark was made, and
 	// keeps the first time a token was reported dead.
-	MarkDeviceTokenInvalid(ctx context.Context, id, token string, at time.Time) (bool, error)
-	// TouchDeviceSent records that an alert reached the relay for the device.
-	// ErrNotFound when there is no such device.
-	TouchDeviceSent(ctx context.Context, id string, at time.Time) error
+	MarkDeviceTokenInvalid(ctx context.Context, userID, id, token string, at time.Time) (bool, error)
+	// TouchDeviceSent records that an alert reached the relay for the user's
+	// device. ErrNotFound when there is no such device.
+	TouchDeviceSent(ctx context.Context, userID, id string, at time.Time) error
 }
 
 // PanelIdentityStore holds the Panel's random install id, which the push relay

@@ -16,43 +16,46 @@ import (
 const deviceCols = `id, user_id, platform, apns_token, apns_environment, public_key, name, rules,
 	created_at, last_seen_at, last_sent_at, token_invalid_at`
 
-// UpsertDevice is one statement, so two registrations of the same install
-// racing each other cannot interleave a read and a write. Whether the row is a
-// refresh or a takeover is decided inside it, against the row as it stands.
+// UpsertDevice is one statement keyed on (user_id, id), so two registrations
+// of the same install racing each other cannot interleave a read and a write,
+// and another user's row with the same id is never in reach of it.
 func (s *Store) UpsertDevice(ctx context.Context, d *store.Device) (*store.Device, error) {
 	rules, err := marshalRules(d.Rules)
 	if err != nil {
 		return nil, err
 	}
 	return s.scanDevice(s.pool.QueryRow(ctx,
-		`INSERT INTO device_registrations AS cur
+		`INSERT INTO device_registrations
 		   (id, user_id, platform, apns_token, apns_environment, public_key, name, rules, created_at, last_seen_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
-		 ON CONFLICT (id) DO UPDATE SET
+		 ON CONFLICT (user_id, id) DO UPDATE SET
 		   platform=excluded.platform,
 		   apns_token=excluded.apns_token,
 		   apns_environment=excluded.apns_environment,
 		   public_key=excluded.public_key,
 		   name=excluded.name,
 		   last_seen_at=excluded.last_seen_at,
-		   token_invalid_at=NULL,
-		   rules=CASE WHEN cur.user_id=excluded.user_id THEN cur.rules ELSE excluded.rules END,
-		   created_at=CASE WHEN cur.user_id=excluded.user_id THEN cur.created_at ELSE excluded.created_at END,
-		   last_sent_at=CASE WHEN cur.user_id=excluded.user_id THEN cur.last_sent_at ELSE NULL END,
-		   user_id=excluded.user_id
+		   token_invalid_at=NULL
 		 RETURNING `+deviceCols,
 		d.ID, d.UserID, d.Platform, s.sealToken(d.APNsToken), d.APNsEnvironment, d.PublicKey, d.Name, rules,
 		d.CreatedAt, d.LastSeenAt))
 }
 
-func (s *Store) GetDevice(ctx context.Context, id string) (*store.Device, error) {
-	return s.scanDevice(s.pool.QueryRow(ctx, `SELECT `+deviceCols+` FROM device_registrations WHERE id=$1`, id))
+// validUser reports whether userID can name anybody. user_id is a uuid column:
+// a malformed id would be a 22P02 error, and it names nobody, so it owns no
+// devices — and inside a transaction the error would abort it.
+func validUser(userID string) bool { return uuid.Validate(userID) == nil }
+
+func (s *Store) GetDevice(ctx context.Context, userID, id string) (*store.Device, error) {
+	if !validUser(userID) {
+		return nil, store.ErrNotFound
+	}
+	return s.scanDevice(s.pool.QueryRow(ctx,
+		`SELECT `+deviceCols+` FROM device_registrations WHERE user_id=$1 AND id=$2`, userID, id))
 }
 
 func (s *Store) ListDevicesByUser(ctx context.Context, userID string) ([]*store.Device, error) {
-	// user_id is a uuid column: a malformed id would be a 22P02 error, and it
-	// names nobody, so it has no devices.
-	if uuid.Validate(userID) != nil {
+	if !validUser(userID) {
 		return []*store.Device{}, nil
 	}
 	rows, err := s.pool.Query(ctx,
@@ -64,19 +67,23 @@ func (s *Store) ListDevicesByUser(ctx context.Context, userID string) ([]*store.
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]*store.Device, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+deviceCols+` FROM device_registrations ORDER BY created_at, id`)
+	rows, err := s.pool.Query(ctx, `SELECT `+deviceCols+` FROM device_registrations ORDER BY created_at, id, user_id`)
 	if err != nil {
 		return nil, err
 	}
 	return s.scanDevices(rows)
 }
 
-func (s *Store) UpdateDeviceRules(ctx context.Context, id string, r store.DeviceRules) error {
+func (s *Store) UpdateDeviceRules(ctx context.Context, userID, id string, r store.DeviceRules) error {
+	if !validUser(userID) {
+		return store.ErrNotFound
+	}
 	rules, err := marshalRules(r)
 	if err != nil {
 		return err
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE device_registrations SET rules=$2::jsonb WHERE id=$1`, id, rules)
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE device_registrations SET rules=$3::jsonb WHERE user_id=$1 AND id=$2`, userID, id, rules)
 	if err != nil {
 		return err
 	}
@@ -86,8 +93,11 @@ func (s *Store) UpdateDeviceRules(ctx context.Context, id string, r store.Device
 	return nil
 }
 
-func (s *Store) DeleteDevice(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM device_registrations WHERE id=$1`, id)
+func (s *Store) DeleteDevice(ctx context.Context, userID, id string) error {
+	if !validUser(userID) {
+		return store.ErrNotFound
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM device_registrations WHERE user_id=$1 AND id=$2`, userID, id)
 	if err != nil {
 		return err
 	}
@@ -98,7 +108,7 @@ func (s *Store) DeleteDevice(ctx context.Context, id string) error {
 }
 
 func (s *Store) DeleteDevicesByUser(ctx context.Context, userID string) (int64, error) {
-	if uuid.Validate(userID) != nil {
+	if !validUser(userID) {
 		return 0, nil
 	}
 	tag, err := s.pool.Exec(ctx, `DELETE FROM device_registrations WHERE user_id=$1`, userID)
@@ -112,11 +122,15 @@ func (s *Store) DeleteDevicesByUser(ctx context.Context, userID string) (int64, 
 // holds the row: the stored token is sealed with a fresh nonce each time, so
 // SQL cannot compare it, and the lock keeps a registration from landing
 // between the comparison and the write.
-func (s *Store) MarkDeviceTokenInvalid(ctx context.Context, id, token string, at time.Time) (bool, error) {
+func (s *Store) MarkDeviceTokenInvalid(ctx context.Context, userID, id, token string, at time.Time) (bool, error) {
+	if !validUser(userID) {
+		return false, nil
+	}
 	marked := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var stored string
-		err := tx.QueryRow(ctx, `SELECT apns_token FROM device_registrations WHERE id=$1 FOR UPDATE`, id).Scan(&stored)
+		err := tx.QueryRow(ctx,
+			`SELECT apns_token FROM device_registrations WHERE user_id=$1 AND id=$2 FOR UPDATE`, userID, id).Scan(&stored)
 		if notFoundErr(err) {
 			return nil
 		}
@@ -127,7 +141,8 @@ func (s *Store) MarkDeviceTokenInvalid(ctx context.Context, id, token string, at
 			return nil
 		}
 		if _, err := tx.Exec(ctx,
-			`UPDATE device_registrations SET token_invalid_at=COALESCE(token_invalid_at, $2) WHERE id=$1`, id, at); err != nil {
+			`UPDATE device_registrations SET token_invalid_at=COALESCE(token_invalid_at, $3) WHERE user_id=$1 AND id=$2`,
+			userID, id, at); err != nil {
 			return err
 		}
 		marked = true
@@ -136,8 +151,12 @@ func (s *Store) MarkDeviceTokenInvalid(ctx context.Context, id, token string, at
 	return marked, err
 }
 
-func (s *Store) TouchDeviceSent(ctx context.Context, id string, at time.Time) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE device_registrations SET last_sent_at=$2 WHERE id=$1`, id, at)
+func (s *Store) TouchDeviceSent(ctx context.Context, userID, id string, at time.Time) error {
+	if !validUser(userID) {
+		return store.ErrNotFound
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE device_registrations SET last_sent_at=$3 WHERE user_id=$1 AND id=$2`, userID, id, at)
 	if err != nil {
 		return err
 	}

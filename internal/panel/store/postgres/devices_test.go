@@ -44,15 +44,15 @@ func upsertDevice(t *testing.T, st *postgres.Store, id, user, token string, at t
 	return d
 }
 
-// Push-alert devices (#348) through Postgres: the upsert's refresh and takeover
-// branches, the token-guarded dead mark, the rules document, and the cascade
-// from users.
+// Push-alert devices (#348) through Postgres: the upsert's refresh, another
+// user's registration of the same id as a row of its own, the token-guarded
+// dead mark, the rules document, and the cascade from users. The devices go
+// with their users when the test's cleanup deletes them.
 func TestPostgresDevices(t *testing.T) {
 	st := testDB(t)
 	ctx := context.Background()
 	ann, bob := mkDeviceUser(t, st), mkDeviceUser(t, st)
 	d1, d2 := uuid.NewString(), uuid.NewString()
-	t.Cleanup(func() { _ = st.DeleteDevice(ctx, d1); _ = st.DeleteDevice(ctx, d2) })
 
 	t0 := time.Now().UTC().Truncate(time.Microsecond) // Postgres keeps microseconds
 	got := upsertDevice(t, st, d1, ann, "aa", t0)
@@ -64,20 +64,26 @@ func TestPostgresDevices(t *testing.T) {
 	upsertDevice(t, st, d2, ann, "cc", t0.Add(time.Second))
 
 	muted := store.DeviceRules{Attend: true, Healed: true, AliveMutedServers: []string{"s1"}}
-	if err := st.UpdateDeviceRules(ctx, d1, muted); err != nil {
+	if err := st.UpdateDeviceRules(ctx, ann, d1, muted); err != nil {
 		t.Fatalf("UpdateDeviceRules: %v", err)
 	}
 	sent := t0.Add(time.Minute)
-	if err := st.TouchDeviceSent(ctx, d1, sent); err != nil {
+	if err := st.TouchDeviceSent(ctx, ann, d1, sent); err != nil {
 		t.Fatalf("TouchDeviceSent: %v", err)
 	}
-	if ok, err := st.MarkDeviceTokenInvalid(ctx, d1, "stale", t0); ok || err != nil {
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, ann, d1, "stale", t0); ok || err != nil {
 		t.Fatalf("marking a token that is not the device's: %v %v", ok, err)
 	}
-	if ok, err := st.MarkDeviceTokenInvalid(ctx, d1, "aa", t0); !ok || err != nil {
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, bob, d1, "aa", t0); ok || err != nil {
+		t.Fatalf("marking through another user: %v %v", ok, err)
+	}
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, "not-a-uuid", d1, "aa", t0); ok || err != nil {
+		t.Fatalf("marking through a malformed user id: %v %v", ok, err)
+	}
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, ann, d1, "aa", t0); !ok || err != nil {
 		t.Fatalf("marking the device's own token: %v %v", ok, err)
 	}
-	if got, _ = st.GetDevice(ctx, d1); got.TokenInvalidAt == nil || !got.TokenInvalidAt.Equal(t0) {
+	if got, _ = st.GetDevice(ctx, ann, d1); got.TokenInvalidAt == nil || !got.TokenInvalidAt.Equal(t0) {
 		t.Fatalf("token_invalid_at = %v, want %v", got.TokenInvalidAt, t0)
 	}
 
@@ -96,10 +102,18 @@ func TestPostgresDevices(t *testing.T) {
 		t.Fatalf("a malformed user id: %+v %v, want none", ds, err)
 	}
 
-	// Another user's registration takes the install over, afresh.
-	got = upsertDevice(t, st, d1, bob, "dd", t1)
-	if got.UserID != bob || !got.Rules.Alive || len(got.Rules.AliveMutedServers) != 0 || got.LastSentAt != nil || !got.CreatedAt.Equal(t1) {
-		t.Fatalf("takeover = %+v", got)
+	// Another user's registration of the same id is a row of its own, and
+	// the first user's row is untouched.
+	t2 := t1.Add(time.Hour)
+	got = upsertDevice(t, st, d1, bob, "dd", t2)
+	if got.UserID != bob || !got.Rules.Alive || len(got.Rules.AliveMutedServers) != 0 || got.LastSentAt != nil || !got.CreatedAt.Equal(t2) {
+		t.Fatalf("bob's registration = %+v", got)
+	}
+	if a, err := st.GetDevice(ctx, ann, d1); err != nil || a.APNsToken != "bb" || a.Rules.Alive || !a.LastSeenAt.Equal(t1) || a.LastSentAt == nil {
+		t.Fatalf("bob's registration changed ann's row: %+v err=%v", a, err)
+	}
+	if _, err := st.GetDevice(ctx, "not-a-uuid", d1); err != store.ErrNotFound {
+		t.Fatalf("GetDevice with a malformed user id = %v, want ErrNotFound", err)
 	}
 	all, err := st.ListDevices(ctx)
 	if err != nil {
@@ -111,30 +125,33 @@ func TestPostgresDevices(t *testing.T) {
 			seen++
 		}
 	}
-	if seen != 2 {
-		t.Fatalf("ListDevices holds %d of the two devices", seen)
+	if seen != 3 {
+		t.Fatalf("ListDevices holds %d of the three rows", seen)
 	}
 
 	// Deleting a user cascades to their devices.
 	if err := st.DeleteUser(ctx, ann); err != nil {
 		t.Fatalf("DeleteUser: %v", err)
 	}
-	if _, err := st.GetDevice(ctx, d2); err != store.ErrNotFound {
+	if _, err := st.GetDevice(ctx, ann, d2); err != store.ErrNotFound {
 		t.Fatalf("a deleted user's device: %v, want ErrNotFound", err)
+	}
+	if _, err := st.GetDevice(ctx, bob, d1); err != nil {
+		t.Fatalf("deleting ann took bob's registration of the same id: %v", err)
 	}
 	if n, err := st.DeleteDevicesByUser(ctx, bob); err != nil || n != 1 {
 		t.Fatalf("DeleteDevicesByUser = %d %v, want 1", n, err)
 	}
-	if err := st.DeleteDevice(ctx, d1); err != store.ErrNotFound {
+	if err := st.DeleteDevice(ctx, bob, d1); err != store.ErrNotFound {
 		t.Fatalf("DeleteDevice of a gone device = %v", err)
 	}
-	if err := st.UpdateDeviceRules(ctx, d1, muted); err != store.ErrNotFound {
+	if err := st.UpdateDeviceRules(ctx, bob, d1, muted); err != store.ErrNotFound {
 		t.Fatalf("UpdateDeviceRules of a gone device = %v", err)
 	}
-	if err := st.TouchDeviceSent(ctx, d1, sent); err != store.ErrNotFound {
+	if err := st.TouchDeviceSent(ctx, bob, d1, sent); err != store.ErrNotFound {
 		t.Fatalf("TouchDeviceSent of a gone device = %v", err)
 	}
-	if ok, err := st.MarkDeviceTokenInvalid(ctx, d1, "dd", t1); ok || err != nil {
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, bob, d1, "dd", t1); ok || err != nil {
 		t.Fatalf("marking a gone device: %v %v", ok, err)
 	}
 }
@@ -168,7 +185,6 @@ func TestPostgresDeviceTokenEncryptionAtRest(t *testing.T) {
 	const token = "740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad"
 	user := mkDeviceUser(t, st)
 	id := uuid.NewString()
-	t.Cleanup(func() { _ = st.DeleteDevice(ctx, id) })
 	if got := upsertDevice(t, st, id, user, token, time.Now().UTC()); got.APNsToken != token {
 		t.Fatalf("the upsert's answer = %q, want the clear token", got.APNsToken)
 	}
@@ -179,10 +195,10 @@ func TestPostgresDeviceTokenEncryptionAtRest(t *testing.T) {
 	if strings.Contains(stored, token) || !strings.HasPrefix(stored, "enc:v1:") {
 		t.Fatalf("token at rest = %q, want it sealed", stored)
 	}
-	if got, err := st.GetDevice(ctx, id); err != nil || got.APNsToken != token {
+	if got, err := st.GetDevice(ctx, user, id); err != nil || got.APNsToken != token {
 		t.Fatalf("GetDevice token = %q err=%v", got.APNsToken, err)
 	}
-	if ok, err := st.MarkDeviceTokenInvalid(ctx, id, token, time.Now()); !ok || err != nil {
+	if ok, err := st.MarkDeviceTokenInvalid(ctx, user, id, token, time.Now()); !ok || err != nil {
 		t.Fatalf("marking the sealed token dead: %v %v", ok, err)
 	}
 }

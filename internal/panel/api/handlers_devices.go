@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/ecdh"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/briggleman/kraken/internal/panel/push"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
 )
@@ -25,6 +24,11 @@ import (
 // registered it and is reached only through that user's session — there is no
 // device credential — so every route here is session-authenticated, and an
 // alert is filtered by the owner's permissions at the moment it is sent.
+//
+// A device is the pair (user, install id), never the id alone. Device ids are
+// not secret — they are audit targets — so nothing here acts on an id without
+// also naming whose: a route acts on the caller's own row with that id, and an
+// administrator reaches another user's only by naming the user.
 
 // The bounds a registration is held to.
 const (
@@ -80,20 +84,29 @@ func toDeviceView(d *store.Device) deviceView {
 	}
 }
 
-// handleRegisterDevice registers a phone, or refreshes its registration. The
-// app calls it on every launch and whenever APNs hands it a new token, so it is
-// idempotent on the install id and the answer is the same 200 either way: the
-// device as it now stands, with its rules.
+// decodeClientJSON is decodeJSON without the unknown-field refusal, for the two
+// bodies the companion app sends: registration and rules. Everywhere else the
+// Panel and its client ship together, so a field the Panel does not know is a
+// mistake worth a 400. These come from an app released through the App Store
+// on its own schedule, talking to Panels that are self-hosted and upgraded
+// whenever their operators get to it; the first app release to add a field
+// would be refused by every older Panel, and the phone would silently stop
+// hearing anything. The size cap is the same.
+func decodeClientJSON(r *http.Request, v any) error {
+	return json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxJSONBody)).Decode(v)
+}
+
+// handleRegisterDevice registers the caller's phone, or refreshes their
+// registration of it. The app calls it on every launch and whenever APNs hands
+// it a new token, so it is idempotent on the install id and the answer is the
+// same 200 either way: the device as it now stands, with its rules.
 //
-// An id another user registered is taken over, not refused. The id is the
-// app's install id, so the only way a second user can present it is from that
-// install, after the first user signed out of it — and that sign-out may not
-// have reached the Panel (no network, the app deleted and reinstalled). The
-// takeover starts the device afresh: the new owner gets default rules, never
-// the old owner's mutes.
+// Another user's registration of the same install id is a separate row and is
+// never touched: an install signed into two accounts hears both until it signs
+// out of one, and sign-out names the install so that it can.
 func (s *Server) handleRegisterDevice(w http.ResponseWriter, r *http.Request) {
 	var req registerDeviceRequest
-	if err := decodeJSON(r, &req); err != nil {
+	if err := decodeClientJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -109,21 +122,19 @@ func (s *Server) handleRegisterDevice(w http.ResponseWriter, r *http.Request) {
 	d.Rules = store.DefaultDeviceRules()
 	d.CreatedAt, d.LastSeenAt = now, now
 
-	prev, err := s.store.GetDevice(ctx, d.ID)
+	_, err := s.store.GetDevice(ctx, user.ID, d.ID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusInternalServerError, "could not load device")
 		return
 	}
+	isNew := err != nil
 	got, err := s.store.UpsertDevice(ctx, d)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not register device")
 		return
 	}
-	switch {
-	case prev == nil:
+	if isNew {
 		s.logger.Info("push device registered", "device", got.ID, "user", user.Username)
-	case prev.UserID != user.ID:
-		s.logger.Info("push device moved to another user", "device", got.ID, "from_user_id", prev.UserID, "user", user.Username)
 	}
 	writeJSON(w, http.StatusOK, toDeviceView(got))
 }
@@ -165,7 +176,8 @@ func validateDeviceRegistration(req registerDeviceRequest) (*store.Device, strin
 // parseDeviceID accepts a UUID in any form uuid.Parse does and returns it
 // canonical: iOS spells a UUID in upper case, and the same install must be the
 // same row however it is spelled. The nil UUID is refused — an app that failed
-// to mint its id would send it, and every such install would share one row.
+// to mint its id would send it, and every such install of one user would
+// collapse into one row.
 func parseDeviceID(s string) (string, bool) {
 	u, err := uuid.Parse(strings.TrimSpace(s))
 	if err != nil || u == uuid.Nil {
@@ -174,25 +186,12 @@ func parseDeviceID(s string) (string, bool) {
 	return u.String(), true
 }
 
-// parseDevicePublicKey decodes the device's X25519 key and proves it usable.
-// crypto/ecdh checks only the length of an X25519 key, so it is also put
-// through one key agreement with a throwaway key: a low-order point (all
-// zeros, or one of the handful of others) yields the all-zero secret, which
-// ecdh refuses. Sealing to such a key would produce alerts anybody could open.
+// parseDevicePublicKey decodes the device's X25519 key and holds it to the
+// same test the seal applies (push.ValidatePublicKey), so a key accepted here
+// is one every alert can be sealed to — one definition, not two that drift.
 func parseDevicePublicKey(s string) ([]byte, bool) {
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s))
-	if err != nil || len(raw) != 32 {
-		return nil, false
-	}
-	pub, err := ecdh.X25519().NewPublicKey(raw)
-	if err != nil {
-		return nil, false
-	}
-	probe, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, false
-	}
-	if _, err := probe.ECDH(pub); err != nil {
+	if err != nil || push.ValidatePublicKey(raw) != nil {
 		return nil, false
 	}
 	return raw, true
@@ -202,26 +201,11 @@ func parseDevicePublicKey(s string) ([]byte, bool) {
 // which takes user.manage — the same permission that disables or deletes that
 // user, and with it their devices.
 func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	userID := userFrom(ctx).ID
-	if q := r.URL.Query().Get("user"); q != "" && q != userID {
-		if !roleFrom(ctx).Has(rbac.PermUserManage) {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "missing permission: " + string(rbac.PermUserManage), "code": "forbidden",
-			})
-			return
-		}
-		if _, err := s.store.GetUser(ctx, q); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "user not found")
-				return
-			}
-			writeError(w, http.StatusInternalServerError, "could not load user")
-			return
-		}
-		userID = q
+	userID, ok := s.deviceOwner(w, r)
+	if !ok {
+		return
 	}
-	devices, err := s.store.ListDevicesByUser(ctx, userID)
+	devices, err := s.store.ListDevicesByUser(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list devices")
 		return
@@ -233,6 +217,33 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"devices": views})
 }
 
+// deviceOwner resolves whose devices a request means: the caller's, or — with
+// `?user=` naming somebody else — that user's, which takes user.manage and a
+// user who exists. It writes the refusal itself.
+func (s *Server) deviceOwner(w http.ResponseWriter, r *http.Request) (string, bool) {
+	ctx := r.Context()
+	self := userFrom(ctx).ID
+	q := r.URL.Query().Get("user")
+	if q == "" || q == self {
+		return self, true
+	}
+	if !roleFrom(ctx).Has(rbac.PermUserManage) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": "missing permission: " + string(rbac.PermUserManage), "code": "forbidden",
+		})
+		return "", false
+	}
+	if _, err := s.store.GetUser(ctx, q); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return "", false
+		}
+		writeError(w, http.StatusInternalServerError, "could not load user")
+		return "", false
+	}
+	return q, true
+}
+
 type deviceRulesRequest struct {
 	Attend            *bool     `json:"attend"`
 	Healed            *bool     `json:"healed"`
@@ -240,25 +251,21 @@ type deviceRulesRequest struct {
 	AliveMutedServers *[]string `json:"alive_muted_servers"`
 }
 
-// handleUpdateDeviceRules changes what a device hears about. Only its owner may:
-// the rules are a person's choice about their own phone, and an administrator
-// who wants a device silent revokes it instead. Fields left out keep their
-// value; alive_muted_servers, when present, replaces the list.
+// handleUpdateDeviceRules changes what one of the caller's own devices hears
+// about. There is no `?user=` here: the rules are a person's choice about their
+// own phone, and an administrator who wants a device silent revokes it
+// instead. Fields left out keep their value; alive_muted_servers, when
+// present, replaces the list.
 func (s *Server) handleUpdateDeviceRules(w http.ResponseWriter, r *http.Request) {
 	var req deviceRulesRequest
-	if err := decodeJSON(r, &req); err != nil {
+	if err := decodeClientJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	ctx := r.Context()
-	d, ok := s.loadDevice(w, r)
+	userID := userFrom(ctx).ID
+	d, ok := s.loadDevice(w, r, userID)
 	if !ok {
-		return
-	}
-	if d.UserID != userFrom(ctx).ID {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "only the device's owner can change its rules", "code": "forbidden",
-		})
 		return
 	}
 	rules := d.Rules
@@ -279,7 +286,7 @@ func (s *Server) handleUpdateDeviceRules(w http.ResponseWriter, r *http.Request)
 		}
 		rules.AliveMutedServers = mutes
 	}
-	if err := s.store.UpdateDeviceRules(ctx, d.ID, rules); err != nil {
+	if err := s.store.UpdateDeviceRules(ctx, userID, d.ID, rules); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "device not found")
 			return
@@ -341,40 +348,38 @@ func quoteForMessage(s string) string {
 	return string(b)
 }
 
-// handleDeleteDevice revokes a device: its owner can, and so can a user with
-// user.manage, who can already disable the owner and revoke every device they
-// have. The device stops receiving alerts at once; the app learns it on its
-// next registration, which simply registers it again if the user is still
-// signed in.
+// handleDeleteDevice revokes one of the caller's devices or, with `?user=`
+// and user.manage, one of another user's — the permission that can already
+// disable that user and revoke every device they have. The device stops
+// receiving alerts at once; the app learns it on its next registration, which
+// simply registers it again if the user is still signed in.
 func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	d, ok := s.loadDevice(w, r)
+	userID, ok := s.deviceOwner(w, r)
 	if !ok {
 		return
 	}
-	if d.UserID != userFrom(ctx).ID && !roleFrom(ctx).Has(rbac.PermUserManage) {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "missing permission: " + string(rbac.PermUserManage), "code": "forbidden",
-		})
+	d, ok := s.loadDevice(w, r, userID)
+	if !ok {
 		return
 	}
-	if err := s.store.DeleteDevice(ctx, d.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+	if err := s.store.DeleteDevice(r.Context(), userID, d.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusInternalServerError, "could not revoke device")
 		return
 	}
-	s.logger.Info("push device revoked", "device", d.ID, "by", userFrom(ctx).Username)
+	s.logger.Info("push device revoked", "device", d.ID, "user_id", userID, "by", userFrom(r.Context()).Username)
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// loadDevice resolves the {id} path parameter, writing the 404 itself when there
-// is no such device. A malformed id is a 404 too: it names no device.
-func (s *Server) loadDevice(w http.ResponseWriter, r *http.Request) (*store.Device, bool) {
+// loadDevice resolves the {id} path parameter to the user's device with that
+// id, writing the 404 itself when there is none. A malformed id is a 404 too:
+// it names no device.
+func (s *Server) loadDevice(w http.ResponseWriter, r *http.Request, userID string) (*store.Device, bool) {
 	id, ok := parseDeviceID(chi.URLParam(r, "id"))
 	if !ok {
 		writeError(w, http.StatusNotFound, "device not found")
 		return nil, false
 	}
-	d, err := s.store.GetDevice(r.Context(), id)
+	d, err := s.store.GetDevice(r.Context(), userID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return nil, false
@@ -386,23 +391,22 @@ func (s *Server) loadDevice(w http.ResponseWriter, r *http.Request) (*store.Devi
 	return d, true
 }
 
-// revokeOwnDevice deletes the device with this id when it belongs to userID —
-// the sign-out path, where the app names the install it is signing out of. An
-// id that is malformed, unknown or somebody else's is ignored: sign-out must
-// succeed whatever the app sends, and must never revoke another user's phone.
+// revokeOwnDevice deletes the user's device with this id — the sign-out path,
+// where the app names the install it is signing out of. An id that is
+// malformed or unknown is ignored, and another user's registration of the same
+// install is out of reach by the key: sign-out must succeed whatever the app
+// sends, and must never revoke another user's phone.
 func (s *Server) revokeOwnDevice(r *http.Request, userID, rawID string) {
 	id, ok := parseDeviceID(rawID)
 	if !ok {
 		return
 	}
-	ctx := r.Context()
-	d, err := s.store.GetDevice(ctx, id)
-	if err != nil || d.UserID != userID {
-		return
-	}
-	if err := s.store.DeleteDevice(ctx, id); err != nil && !errors.Is(err, store.ErrNotFound) {
+	err := s.store.DeleteDevice(r.Context(), userID, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+	case err != nil:
 		s.logger.Warn("sign-out: could not revoke push device", "device", id, "err", err)
-		return
+	default:
+		s.logger.Info("push device revoked at sign-out", "device", id)
 	}
-	s.logger.Info("push device revoked at sign-out", "device", id)
 }

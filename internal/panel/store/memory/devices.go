@@ -13,29 +13,32 @@ import (
 
 // ---- Push-alert devices ----
 
+// deviceKey is a device's identity: its user and its id together, as the
+// Postgres primary key has it (see store.DeviceStore).
+type deviceKey struct{ userID, id string }
+
 func (s *Store) UpsertDevice(_ context.Context, d *store.Device) (*store.Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	k := deviceKey{d.UserID, d.ID}
 	next := cloneDevice(d)
 	next.TokenInvalidAt = nil
-	if cur, ok := s.devices[d.ID]; ok && cur.UserID == d.UserID {
+	if cur, ok := s.devices[k]; ok {
 		// A refresh: the device's own choices and history stay.
 		next.Rules = cloneRules(cur.Rules)
 		next.CreatedAt = cur.CreatedAt
 		next.LastSentAt = cloneTime(cur.LastSentAt)
 	} else {
-		// A new device, or another user's install taken over: it starts
-		// afresh (see store.DeviceStore).
 		next.LastSentAt = nil
 	}
-	s.devices[d.ID] = next
+	s.devices[k] = next
 	return cloneDevice(next), nil
 }
 
-func (s *Store) GetDevice(_ context.Context, id string) (*store.Device, error) {
+func (s *Store) GetDevice(_ context.Context, userID, id string) (*store.Device, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	d, ok := s.devices[id]
+	d, ok := s.devices[deviceKey{userID, id}]
 	if !ok {
 		return nil, store.ErrNotFound
 	}
@@ -46,8 +49,8 @@ func (s *Store) ListDevicesByUser(_ context.Context, userID string) ([]*store.De
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*store.Device, 0)
-	for _, d := range s.devices {
-		if d.UserID == userID {
+	for k, d := range s.devices {
+		if k.userID == userID {
 			out = append(out, cloneDevice(d))
 		}
 	}
@@ -66,10 +69,10 @@ func (s *Store) ListDevices(_ context.Context) ([]*store.Device, error) {
 	return out, nil
 }
 
-func (s *Store) UpdateDeviceRules(_ context.Context, id string, r store.DeviceRules) error {
+func (s *Store) UpdateDeviceRules(_ context.Context, userID, id string, r store.DeviceRules) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	d, ok := s.devices[id]
+	d, ok := s.devices[deviceKey{userID, id}]
 	if !ok {
 		return store.ErrNotFound
 	}
@@ -77,13 +80,14 @@ func (s *Store) UpdateDeviceRules(_ context.Context, id string, r store.DeviceRu
 	return nil
 }
 
-func (s *Store) DeleteDevice(_ context.Context, id string) error {
+func (s *Store) DeleteDevice(_ context.Context, userID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.devices[id]; !ok {
+	k := deviceKey{userID, id}
+	if _, ok := s.devices[k]; !ok {
 		return store.ErrNotFound
 	}
-	delete(s.devices, id)
+	delete(s.devices, k)
 	return nil
 }
 
@@ -91,19 +95,19 @@ func (s *Store) DeleteDevicesByUser(_ context.Context, userID string) (int64, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var n int64
-	for id, d := range s.devices {
-		if d.UserID == userID {
-			delete(s.devices, id)
+	for k := range s.devices {
+		if k.userID == userID {
+			delete(s.devices, k)
 			n++
 		}
 	}
 	return n, nil
 }
 
-func (s *Store) MarkDeviceTokenInvalid(_ context.Context, id, token string, at time.Time) (bool, error) {
+func (s *Store) MarkDeviceTokenInvalid(_ context.Context, userID, id, token string, at time.Time) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	d, ok := s.devices[id]
+	d, ok := s.devices[deviceKey{userID, id}]
 	if !ok || d.APNsToken != token {
 		return false, nil
 	}
@@ -113,10 +117,10 @@ func (s *Store) MarkDeviceTokenInvalid(_ context.Context, id, token string, at t
 	return true, nil
 }
 
-func (s *Store) TouchDeviceSent(_ context.Context, id string, at time.Time) error {
+func (s *Store) TouchDeviceSent(_ context.Context, userID, id string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	d, ok := s.devices[id]
+	d, ok := s.devices[deviceKey{userID, id}]
 	if !ok {
 		return store.ErrNotFound
 	}
@@ -136,13 +140,17 @@ func (s *Store) PanelID(_ context.Context) (string, error) {
 }
 
 // sortDevices orders devices oldest first, as the Postgres store does, with
-// the id to break a tie so the order never depends on map iteration.
+// the id and then the user to break a tie so the order never depends on map
+// iteration.
 func sortDevices(ds []*store.Device) {
 	slices.SortFunc(ds, func(a, b *store.Device) int {
 		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
 			return c
 		}
-		return cmp.Compare(a.ID, b.ID)
+		if c := cmp.Compare(a.ID, b.ID); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.UserID, b.UserID)
 	})
 }
 

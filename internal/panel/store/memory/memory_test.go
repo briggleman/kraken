@@ -110,7 +110,8 @@ func TestServerBuildRoundTripAndUpdateServerLeavesIt(t *testing.T) {
 }
 
 // Push-alert devices (#348) round-trip, a refresh keeps the device's own
-// choices while a takeover by another user starts afresh, a dead token is
+// choices, another user's registration of the same id is a row of its own that
+// leaves the first untouched, a dead token is
 // marked only while it is still the device's token, and deleting a user takes
 // their devices with them — the cascade Postgres gets from its foreign key.
 func TestDeviceRoundTrip(t *testing.T) {
@@ -138,17 +139,20 @@ func TestDeviceRoundTrip(t *testing.T) {
 	reg("d1", "ann", "aa", t0)
 	reg("d2", "ann", "cc", t0.Add(time.Second))
 	muted := store.DeviceRules{Attend: true, AliveMutedServers: []string{"s1"}}
-	if err := st.UpdateDeviceRules(ctx, "d1", muted); err != nil {
+	if err := st.UpdateDeviceRules(ctx, "ann", "d1", muted); err != nil {
 		t.Fatal(err)
 	}
 	sent := t0.Add(time.Minute)
-	if err := st.TouchDeviceSent(ctx, "d1", sent); err != nil {
+	if err := st.TouchDeviceSent(ctx, "ann", "d1", sent); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "d1", "stale", t0); ok {
+	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "ann", "d1", "stale", t0); ok {
 		t.Fatal("a token that is no longer the device's was marked dead")
 	}
-	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "d1", "aa", t0); !ok {
+	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "bob", "d1", "aa", t0); ok {
+		t.Fatal("another user's id marked ann's device dead")
+	}
+	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "ann", "d1", "aa", t0); !ok {
 		t.Fatal("the device's own token was not marked dead")
 	}
 
@@ -162,7 +166,7 @@ func TestDeviceRoundTrip(t *testing.T) {
 	// A reader's copy is its own.
 	d.Rules.AliveMutedServers[0] = "x"
 	d.PublicKey[0] = 9
-	if again, _ := st.GetDevice(ctx, "d1"); again.Rules.AliveMutedServers[0] != "s1" || again.PublicKey[0] != 0 {
+	if again, _ := st.GetDevice(ctx, "ann", "d1"); again.Rules.AliveMutedServers[0] != "s1" || again.PublicKey[0] != 0 {
 		t.Fatal("editing a read device changed the stored one")
 	}
 
@@ -170,31 +174,38 @@ func TestDeviceRoundTrip(t *testing.T) {
 		t.Fatalf("ann's devices = %+v, want d1 then d2", ds)
 	}
 
-	// Another user's registration of the same install takes it over afresh.
-	d = reg("d1", "bob", "dd", t1)
-	if d.UserID != "bob" || !d.Rules.Alive || len(d.Rules.AliveMutedServers) != 0 || d.LastSentAt != nil || !d.CreatedAt.Equal(t1) {
-		t.Fatalf("takeover = %+v", d)
+	// Another user's registration of the same id is a row of its own.
+	t2 := t1.Add(time.Hour)
+	d = reg("d1", "bob", "dd", t2)
+	if d.UserID != "bob" || !d.Rules.Alive || len(d.Rules.AliveMutedServers) != 0 || d.LastSentAt != nil || !d.CreatedAt.Equal(t2) {
+		t.Fatalf("bob's registration = %+v", d)
 	}
-	if all, _ := st.ListDevices(ctx); len(all) != 2 {
-		t.Fatalf("all devices = %d, want 2", len(all))
+	if ann, _ := st.GetDevice(ctx, "ann", "d1"); ann.APNsToken != "bb" || ann.Rules.Alive || !ann.LastSeenAt.Equal(t1) {
+		t.Fatalf("bob's registration changed ann's row: %+v", ann)
+	}
+	if all, _ := st.ListDevices(ctx); len(all) != 3 {
+		t.Fatalf("all devices = %d, want 3", len(all))
 	}
 
 	if err := st.DeleteUser(ctx, "ann"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetDevice(ctx, "d2"); err != store.ErrNotFound {
+	if _, err := st.GetDevice(ctx, "ann", "d2"); err != store.ErrNotFound {
 		t.Fatalf("a deleted user's device: %v, want ErrNotFound", err)
+	}
+	if _, err := st.GetDevice(ctx, "bob", "d1"); err != nil {
+		t.Fatalf("deleting ann took bob's registration of the same id: %v", err)
 	}
 	if n, _ := st.DeleteDevicesByUser(ctx, "bob"); n != 1 {
 		t.Fatalf("DeleteDevicesByUser = %d, want 1", n)
 	}
-	if err := st.DeleteDevice(ctx, "d1"); err != store.ErrNotFound {
+	if err := st.DeleteDevice(ctx, "bob", "d1"); err != store.ErrNotFound {
 		t.Fatalf("DeleteDevice of a gone device = %v", err)
 	}
-	if err := st.UpdateDeviceRules(ctx, "d1", muted); err != store.ErrNotFound {
+	if err := st.UpdateDeviceRules(ctx, "bob", "d1", muted); err != store.ErrNotFound {
 		t.Fatalf("UpdateDeviceRules of a gone device = %v", err)
 	}
-	if err := st.TouchDeviceSent(ctx, "d1", sent); err != store.ErrNotFound {
+	if err := st.TouchDeviceSent(ctx, "bob", "d1", sent); err != store.ErrNotFound {
 		t.Fatalf("TouchDeviceSent of a gone device = %v", err)
 	}
 }

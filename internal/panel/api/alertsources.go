@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/briggleman/kraken/internal/panel/alerts"
@@ -73,22 +74,128 @@ func (s *Server) finishAlertPass(listed map[string]bool) {
 	s.rosters.Retain(listed)
 }
 
-// observeNodeStatus is told every status a probe finds for a node, and sends
-// node_offline or node_partial on a fall from online or cordoned. It is called
-// where the status is decided — every probe of a node goes through
-// reconcileNode, and a tunnel that drops marks its node offline directly — so
-// a fall is caught whichever path noticed it, once.
+// observeNodeStatus is told every status a probe finds for a node, and on a
+// fall from online or cordoned to offline or partial it schedules the alert's
+// confirmation. It is called where the status is decided — every probe of a
+// node goes through reconcileNode, and a tunnel that drops marks its node
+// offline directly — so a fall is caught whichever path noticed it, once.
 func (s *Server) observeNodeStatus(n *cluster.Node, next cluster.NodeStatus) {
 	if !s.nodeFalls.Observe(n.ID, next) {
 		return
 	}
+	s.falls.schedule(n.ID, s.nodeFallDelay(n.ID), func() { s.confirmNodeFall(n.ID) })
+}
+
+// nodeFallConfirm is how long a node has to stay down before its fall is
+// sent. Most falls are not news: an Agent restarting into an update, a network
+// blip, Docker Desktop restarting (partial) — each heals in seconds, and an
+// alert for it teaches the operator to ignore the next one.
+var nodeFallConfirm = 60 * time.Second
+
+// agentUpdateRestartWindow is how long a node may stay down after this Panel
+// pushed it an Agent update before the fall counts: the update job's own
+// deadline. A Windows Agent restarts through the service manager, which can
+// take minutes, and an update the operator just pressed is not an outage.
+var agentUpdateRestartWindow = agentUpdateTimeout
+
+// nodeFallDelay is how long to wait before confirming a node's fall: a minute,
+// or — when this Panel is pushing the node an Agent update or has just told it
+// to restart into one — until that update's window ends, if that is later.
+func (s *Server) nodeFallDelay(nodeID string) time.Duration {
+	delay := nodeFallConfirm
+	job, ok := s.agentJobs.latest(nodeID)
+	if !ok {
+		return delay
+	}
+	var until time.Time
+	switch job.Phase {
+	case agentUpdatePushing:
+		until = time.Now().Add(agentUpdateRestartWindow)
+	case agentUpdateRestarting:
+		until = job.FinishedAt.Add(agentUpdateRestartWindow)
+	}
+	if wait := time.Until(until); wait > delay {
+		delay = wait
+	}
+	return delay
+}
+
+// confirmNodeFall sends the node's fall if it is still down now, read from the
+// store — the record every probe writes — rather than from the tracker, whose
+// memory is only what the last probe that reached it said. A node that came
+// back in the meantime sends nothing. The alert is stamped now, not at the
+// fall: the relay's two-minute window runs from the event's time, and a fall
+// confirmed after an update's ten-minute window would otherwise be dropped as
+// stale the moment it was sent.
+func (s *Server) confirmNodeFall(nodeID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	n, err := s.store.GetNode(ctx, nodeID)
+	if err != nil {
+		return // deleted while down: nothing left to page about
+	}
 	now := time.Now()
-	switch next {
+	switch n.Status {
 	case cluster.NodeOffline:
 		s.alerts.Dispatch(alerts.NodeOffline(n.ID, n.Name, now))
 	case cluster.NodePartial:
 		s.alerts.Dispatch(alerts.NodePartial(n.ID, n.Name, now))
 	}
+}
+
+// nodeFallTimers holds one pending confirmation per node. A second fall while
+// one is pending does not start another: the pending one reads the node's
+// status when it fires, which already answers for both.
+type nodeFallTimers struct {
+	mu      sync.Mutex
+	pending map[string]*time.Timer
+	closed  bool
+}
+
+func (t *nodeFallTimers) schedule(nodeID string, delay time.Duration, confirm func()) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
+	if t.pending == nil {
+		t.pending = map[string]*time.Timer{}
+	}
+	if _, waiting := t.pending[nodeID]; waiting {
+		return
+	}
+	t.pending[nodeID] = time.AfterFunc(delay, func() {
+		t.mu.Lock()
+		closed := t.closed
+		t.mu.Unlock()
+		if !closed {
+			confirm()
+		}
+		// Only now is the node's confirmation over: a fall observed while
+		// confirm ran is the same fall, and waiting() must not report zero
+		// while an alert is still being handed over.
+		t.mu.Lock()
+		delete(t.pending, nodeID)
+		t.mu.Unlock()
+	})
+}
+
+// stop cancels every pending confirmation; the Panel is shutting down.
+func (t *nodeFallTimers) stop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	for id, timer := range t.pending {
+		timer.Stop()
+		delete(t.pending, id)
+	}
+}
+
+// waiting reports how many confirmations are pending — for tests.
+func (t *nodeFallTimers) waiting() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.pending)
 }
 
 // Backup watching. Every backup the Panel starts answers PENDING and archives

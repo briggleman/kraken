@@ -17,6 +17,12 @@ import (
 	"github.com/briggleman/kraken/internal/shared/version"
 )
 
+// agentUpdateTimeout bounds an Agent update push. The push alerts reuse it as
+// the window a node may be down after this Panel told it to restart into the
+// update (agentUpdateRestartWindow), so a slow restart is not paged as an
+// outage.
+const agentUpdateTimeout = 10 * time.Minute
+
 // updateChunkSize is how much of the agent binary rides in each gRPC message.
 // Well under the 4MB default message cap, big enough that a ~17MB binary is
 // a few dozen messages.
@@ -98,7 +104,7 @@ func (s *Server) handleNodeAgentUpdateStatus(w http.ResponseWriter, r *http.Requ
 // Its own deadline is generous: 17MB over a slow WAN is minutes, and the old
 // 2-minute bound was itself part of the problem.
 func (s *Server) runAgentUpdate(jobID, nodeID, nodeName string, plan *agentUpdatePlan) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), agentUpdateTimeout)
 	defer cancel()
 
 	stream, err := plan.client.UpdateAgent(ctx)

@@ -247,6 +247,7 @@ func (p *pipeline) expect(step string, want ...string) {
 
 func TestPushPipelineEndToEnd(t *testing.T) {
 	defer setBackupWatchForTest(5*time.Millisecond, 5*time.Second)()
+	defer setNodeFallForTest(20*time.Millisecond, 20*time.Millisecond)()
 	p := newPipeline(t)
 	p.roster.setRoster("Kestrel")
 
@@ -307,11 +308,13 @@ func TestPushPipelineEndToEnd(t *testing.T) {
 		t.Fatalf("backup payload = %+v", got)
 	}
 
-	// The node's Agent goes away: one node_offline, however many passes see it.
+	// The node's Agent goes away and stays away: one node_offline once the
+	// fall is confirmed, however many passes see it.
 	p.srv.ReconcileNodesOnceForTest(context.Background()) // baseline: online
 	p.grpc.Stop()
 	p.srv.ReconcileNodesOnceForTest(context.Background())
 	p.srv.ReconcileNodesOnceForTest(context.Background())
+	waitFor(t, func() bool { return len(p.relay.events()) == 7 && p.srv.falls.waiting() == 0 })
 	p.srv.alerts.Wait()
 	p.expect("everything", push.EventServerCrashed, push.EventWatchdogRestart, push.EventWatchdogRestart,
 		push.EventCrashLoop, push.EventPlayerJoined, push.EventBackupFailed, push.EventNodeOffline)
@@ -419,14 +422,108 @@ func TestBackupWatcher(t *testing.T) {
 // fails — the probe afterwards finds it offline already. The fall is caught
 // there, once.
 func TestTunnelDropIsOneNodeOffline(t *testing.T) {
+	defer setNodeFallForTest(20*time.Millisecond, 20*time.Millisecond)()
 	p := newPipeline(t)
 	ctx := context.Background()
 	p.srv.ReconcileNodesOnceForTest(ctx) // baseline: online
 	p.grpc.Stop()
 	p.srv.onTunnelSession(pipeNode, "", false)
 	p.srv.ReconcileNodesOnceForTest(ctx)
+	waitFor(t, func() bool { return len(p.relay.events()) == 1 && p.srv.falls.waiting() == 0 })
 	p.srv.alerts.Wait()
 	p.expect("tunnel drop", push.EventNodeOffline)
+}
+
+// setNodeStatus writes a node's status the way a probe does — the record
+// first, then the observation — so a confirmation reads what the probe found.
+func (p *pipeline) setNodeStatus(status cluster.NodeStatus) {
+	p.t.Helper()
+	ctx := context.Background()
+	n, err := p.st.GetNode(ctx, pipeNode)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	n.Status = status
+	if err := p.st.UpdateNode(ctx, n); err != nil {
+		p.t.Fatal(err)
+	}
+	p.srv.observeNodeStatus(n, status)
+}
+
+// settle waits out every pending fall confirmation and the alerts it sent.
+func (p *pipeline) settle() {
+	p.t.Helper()
+	waitFor(p.t, func() bool { return p.srv.falls.waiting() == 0 })
+	p.srv.alerts.Wait()
+}
+
+// A node that falls and is back inside the confirmation window is not news:
+// an Agent restarting, a network blip, Docker Desktop restarting.
+func TestNodeFallThatRecoversSendsNothing(t *testing.T) {
+	defer setNodeFallForTest(150*time.Millisecond, 150*time.Millisecond)()
+	p := newPipeline(t)
+	p.setNodeStatus(cluster.NodeOnline) // baseline
+	p.setNodeStatus(cluster.NodeOffline)
+	p.setNodeStatus(cluster.NodeOnline)
+	p.setNodeStatus(cluster.NodePartial)
+	p.setNodeStatus(cluster.NodeOnline)
+	p.settle()
+	p.expect("falls that recovered")
+}
+
+func TestNodeFallThatHoldsSendsOne(t *testing.T) {
+	defer setNodeFallForTest(30*time.Millisecond, 30*time.Millisecond)()
+	p := newPipeline(t)
+	p.setNodeStatus(cluster.NodeOnline)
+	p.setNodeStatus(cluster.NodePartial)
+	p.settle()
+	p.expect("a fall that held", push.EventNodePartial)
+	if got := p.relay.last().Body; got != "node abyss-lnx can't reach Docker" {
+		t.Fatalf("partial body = %q", got)
+	}
+	// Still down on the next probes: nothing more.
+	p.setNodeStatus(cluster.NodePartial)
+	p.setNodeStatus(cluster.NodeOffline)
+	p.settle()
+	p.expect("still down", push.EventNodePartial)
+}
+
+// Two falls inside one window are one confirmation and one alert.
+func TestTwoNodeFallsInOneWindowSendOne(t *testing.T) {
+	defer setNodeFallForTest(150*time.Millisecond, 150*time.Millisecond)()
+	p := newPipeline(t)
+	p.setNodeStatus(cluster.NodeOnline)
+	p.setNodeStatus(cluster.NodeOffline)
+	p.setNodeStatus(cluster.NodeOnline)
+	p.setNodeStatus(cluster.NodeOffline)
+	if n := p.srv.falls.waiting(); n != 1 {
+		t.Fatalf("%d confirmations pending, want 1", n)
+	}
+	p.settle()
+	p.expect("two falls", push.EventNodeOffline)
+}
+
+// A node this Panel just told to restart into an Agent update gets the update's
+// window to come back, not a minute: a Windows service restart can be slow.
+func TestNodeFallDuringAnAgentUpdateWaitsForTheUpdate(t *testing.T) {
+	defer setNodeFallForTest(20*time.Millisecond, 400*time.Millisecond)()
+	p := newPipeline(t)
+	job := p.srv.agentJobs.start(pipeNode, "abyss-lnx", "0.61.0", "0.62.0", 1)
+	p.srv.agentJobs.finish(job.ID, agentUpdateRestarting, "")
+
+	p.setNodeStatus(cluster.NodeOnline)
+	p.setNodeStatus(cluster.NodeOffline) // the Agent restarting into the update
+	time.Sleep(100 * time.Millisecond)   // well past the plain confirmation
+	p.srv.alerts.Wait()
+	p.expect("restarting into an update")
+	p.setNodeStatus(cluster.NodeOnline) // back on the new build
+	p.settle()
+	p.expect("an update-driven restart")
+
+	// An update that leaves the node down is still news, once its window is up.
+	p.setNodeStatus(cluster.NodeOffline)
+	p.settle()
+	p.expect("an update that did not come back", push.EventNodeOffline)
 }
 
 // A retire's final backup that failed abandons the retire and is worth an
@@ -441,6 +538,12 @@ func TestFinalBackupFailureAlerts(t *testing.T) {
 	if got := p.relay.last().Body; got != "the final backup of palworld-01 failed, so its retire was abandoned: tar: write error" {
 		t.Fatalf("final backup body = %q", got)
 	}
+}
+
+func setNodeFallForTest(confirm, update time.Duration) func() {
+	oldConfirm, oldUpdate := nodeFallConfirm, agentUpdateRestartWindow
+	nodeFallConfirm, agentUpdateRestartWindow = confirm, update
+	return func() { nodeFallConfirm, agentUpdateRestartWindow = oldConfirm, oldUpdate }
 }
 
 func setBackupWatchForTest(interval, timeout time.Duration) func() {

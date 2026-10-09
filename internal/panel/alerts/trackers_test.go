@@ -63,10 +63,10 @@ func TestWatchdogEscalatesOncePerWindow(t *testing.T) {
 		{1, 1, true, false, 1},
 		{2, 10, true, false, 2},
 		{3, 20, false, true, 3},  // the third in the hour
-		{4, 30, true, false, 4},  // not again on the fourth...
-		{5, 40, true, false, 5},  // ...or the fifth
-		{6, 75, true, false, 4},  // 1 and 10 have slid out; still inside an hour of the last crash_loop
-		{7, 81, false, true, 4},  // an hour after the last crash_loop, still looping: once more
+		{4, 30, false, false, 4}, // the crash_loop already said it: nothing on the fourth...
+		{5, 40, false, false, 5}, // ...or the fifth
+		{6, 75, false, false, 4}, // 1 and 10 have slid out; still inside an hour of the crash_loop
+		{7, 81, false, true, 4},  // an hour after the crash_loop and still looping: once more
 		{8, 200, true, false, 1}, // a quiet two hours later, one restart is just healed
 	}
 	for _, s := range steps {
@@ -75,6 +75,25 @@ func TestWatchdogEscalatesOncePerWindow(t *testing.T) {
 			t.Fatalf("restart %d at +%dm = %+v, want healed %v crash_loop %v in window %d",
 				s.count, s.minute, v, s.healed, s.loop, s.inWindow)
 		}
+	}
+}
+
+// After a crash_loop the server's restarts are silent for an hour; once the
+// hour is up, a restart that is not part of a new loop is healed again.
+func TestWatchdogSilentAfterCrashLoopThenHealedAgain(t *testing.T) {
+	w := NewWatchdogTracker()
+	w.Observe("s", 0, false, t0)
+	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
+	w.Observe("s", 1, false, at(0))
+	w.Observe("s", 2, false, at(1))
+	if v := w.Observe("s", 3, false, at(2)); !v.CrashLoop {
+		t.Fatalf("third = %+v, want crash_loop", v)
+	}
+	if v := w.Observe("s", 4, false, at(30)); v.Healed || v.CrashLoop {
+		t.Fatalf("a restart inside the crash_loop's hour = %+v, want nothing", v)
+	}
+	if v := w.Observe("s", 5, false, at(62)); !v.Healed || v.CrashLoop || v.InWindow != 2 {
+		t.Fatalf("a restart after the hour = %+v, want healed with two in the window", v)
 	}
 }
 

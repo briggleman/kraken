@@ -138,6 +138,10 @@ type Server struct {
 	watchdogs *alerts.WatchdogTracker
 	rosters   *alerts.RosterTracker
 	nodeFalls *alerts.NodeTracker
+	// falls holds each node's pending fall confirmation (see
+	// confirmNodeFall): a fall is sent only if the node is still down a
+	// minute later.
+	falls nodeFallTimers
 }
 
 // WithAlerts sets the push-alert dispatcher. Without it the Panel builds one
@@ -455,6 +459,7 @@ func (s *Server) Handler() http.Handler { return s.router }
 
 // Close releases resources held by the server (Agent gRPC connections).
 func (s *Server) Close() error {
+	s.falls.stop()
 	if s.sftpProxy != nil {
 		s.sftpProxy.close()
 	}

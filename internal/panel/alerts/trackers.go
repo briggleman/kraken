@@ -33,7 +33,7 @@ type WatchdogVerdict struct {
 	Healed bool
 	// CrashLoop replaces Healed when this increase brought the restarts in the
 	// last hour to CrashLoopAt or more and no crash_loop has gone out for the
-	// past hour.
+	// past hour. While one has, neither is set: the crash_loop already said it.
 	CrashLoop bool
 	// InWindow is how many restarts the last hour holds, for the sentence.
 	InWindow int
@@ -70,7 +70,12 @@ func NewWatchdogTracker() *WatchdogTracker {
 //     toward the window.
 //   - Otherwise one healed alert per increase, however many restarts it
 //     spans, except the escalation: the increase that brings the last hour to
-//     CrashLoopAt restarts is sent as crash_loop instead, once per hour.
+//     CrashLoopAt restarts is sent as crash_loop instead.
+//   - For an hour after a crash_loop, further restarts send nothing. The phone
+//     has been told the server is crash-looping; "the fleet fixed itself" on
+//     the next restart would contradict it. Once that hour has passed, a
+//     restart is healed again — or, if the server is still looping, the next
+//     crash_loop.
 func (t *WatchdogTracker) Observe(serverID string, count int32, crashed bool, now time.Time) WatchdogVerdict {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -90,10 +95,10 @@ func (t *WatchdogTracker) Observe(serverID string, count int32, crashed bool, no
 	cutoff := now.Add(-CrashLoopWindow)
 	st.restarts = slices.DeleteFunc(st.restarts, func(at time.Time) bool { return !at.After(cutoff) })
 	v := WatchdogVerdict{InWindow: len(st.restarts)}
-	if crashed {
+	if crashed || (!st.loopAt.IsZero() && now.Sub(st.loopAt) < CrashLoopWindow) {
 		return v
 	}
-	if v.InWindow >= CrashLoopAt && (st.loopAt.IsZero() || now.Sub(st.loopAt) >= CrashLoopWindow) {
+	if v.InWindow >= CrashLoopAt {
 		st.loopAt = now
 		v.CrashLoop = true
 		return v

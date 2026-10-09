@@ -128,6 +128,19 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update user")
 		return
 	}
+	// A disabled user's phones stop receiving alerts now, not when the alert
+	// pipeline next notices the account. Run on every disable, not only the
+	// transition, so a request that failed here can simply be sent again.
+	if u.Disabled {
+		n, err := s.store.DeleteDevicesByUser(ctx, u.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "user disabled, but their push devices could not be revoked; disable again to retry")
+			return
+		}
+		if n > 0 {
+			s.logger.Info("push devices revoked: user disabled", "username", u.Username, "devices", n)
+		}
+	}
 	writeJSON(w, http.StatusOK, toUserView(u))
 }
 

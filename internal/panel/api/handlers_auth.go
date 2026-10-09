@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -98,7 +99,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: sess.ExpiresAt, User: toUserView(user)})
 }
 
+// logoutRequest is the optional body of POST /auth/logout. device_id names the
+// install the user is signing out of, whose push registration goes with the
+// session (docs/design/push-alerts.md).
+type logoutRequest struct {
+	DeviceID string `json:"device_id"`
+}
+
+// maxLogoutBody bounds the one field the logout body carries.
+const maxLogoutBody = 4 << 10
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// The body is read leniently, and nothing in it can fail the request: a
+	// sign-out that answered 400 would leave a session alive that the person
+	// believes is gone. A body that does not parse revokes no device and still
+	// ends the session.
+	var req logoutRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxLogoutBody)).Decode(&req)
+	}
+	if req.DeviceID != "" {
+		if u := userFrom(r.Context()); u != nil {
+			s.revokeOwnDevice(r, u.ID, req.DeviceID)
+		}
+	}
 	if token := bearerToken(r); token != "" {
 		_ = s.store.DeleteSession(r.Context(), token)
 	}

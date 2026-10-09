@@ -108,3 +108,105 @@ func TestServerBuildRoundTripAndUpdateServerLeavesIt(t *testing.T) {
 		t.Fatalf("UpdateServerBuild on a missing server = %v, want ErrNotFound", err)
 	}
 }
+
+// Push-alert devices (#348) round-trip, a refresh keeps the device's own
+// choices while a takeover by another user starts afresh, a dead token is
+// marked only while it is still the device's token, and deleting a user takes
+// their devices with them — the cascade Postgres gets from its foreign key.
+func TestDeviceRoundTrip(t *testing.T) {
+	st := memory.New()
+	ctx := context.Background()
+	t0 := time.Now().UTC()
+	for _, u := range []string{"ann", "bob"} {
+		if err := st.CreateUser(ctx, &store.User{ID: u, Username: u, RoleID: "owner", CreatedAt: t0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := func(id, user, token string, at time.Time) *store.Device {
+		t.Helper()
+		d, err := st.UpsertDevice(ctx, &store.Device{
+			ID: id, UserID: user, Platform: store.DevicePlatformIOS, APNsToken: token,
+			APNsEnvironment: store.APNsProduction, PublicKey: make([]byte, 32), Name: "phone",
+			Rules: store.DefaultDeviceRules(), CreatedAt: at, LastSeenAt: at,
+		})
+		if err != nil {
+			t.Fatalf("UpsertDevice: %v", err)
+		}
+		return d
+	}
+
+	reg("d1", "ann", "aa", t0)
+	reg("d2", "ann", "cc", t0.Add(time.Second))
+	muted := store.DeviceRules{Attend: true, AliveMutedServers: []string{"s1"}}
+	if err := st.UpdateDeviceRules(ctx, "d1", muted); err != nil {
+		t.Fatal(err)
+	}
+	sent := t0.Add(time.Minute)
+	if err := st.TouchDeviceSent(ctx, "d1", sent); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "d1", "stale", t0); ok {
+		t.Fatal("a token that is no longer the device's was marked dead")
+	}
+	if ok, _ := st.MarkDeviceTokenInvalid(ctx, "d1", "aa", t0); !ok {
+		t.Fatal("the device's own token was not marked dead")
+	}
+
+	// A refresh by the owner: new token, rules and history kept, mark cleared.
+	t1 := t0.Add(time.Hour)
+	d := reg("d1", "ann", "bb", t1)
+	if d.APNsToken != "bb" || d.TokenInvalidAt != nil || !d.LastSeenAt.Equal(t1) || !d.CreatedAt.Equal(t0) ||
+		d.Rules.Alive || len(d.Rules.AliveMutedServers) != 1 || d.LastSentAt == nil || !d.LastSentAt.Equal(sent) {
+		t.Fatalf("refresh = %+v", d)
+	}
+	// A reader's copy is its own.
+	d.Rules.AliveMutedServers[0] = "x"
+	d.PublicKey[0] = 9
+	if again, _ := st.GetDevice(ctx, "d1"); again.Rules.AliveMutedServers[0] != "s1" || again.PublicKey[0] != 0 {
+		t.Fatal("editing a read device changed the stored one")
+	}
+
+	if ds, _ := st.ListDevicesByUser(ctx, "ann"); len(ds) != 2 || ds[0].ID != "d1" || ds[1].ID != "d2" {
+		t.Fatalf("ann's devices = %+v, want d1 then d2", ds)
+	}
+
+	// Another user's registration of the same install takes it over afresh.
+	d = reg("d1", "bob", "dd", t1)
+	if d.UserID != "bob" || !d.Rules.Alive || len(d.Rules.AliveMutedServers) != 0 || d.LastSentAt != nil || !d.CreatedAt.Equal(t1) {
+		t.Fatalf("takeover = %+v", d)
+	}
+	if all, _ := st.ListDevices(ctx); len(all) != 2 {
+		t.Fatalf("all devices = %d, want 2", len(all))
+	}
+
+	if err := st.DeleteUser(ctx, "ann"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.GetDevice(ctx, "d2"); err != store.ErrNotFound {
+		t.Fatalf("a deleted user's device: %v, want ErrNotFound", err)
+	}
+	if n, _ := st.DeleteDevicesByUser(ctx, "bob"); n != 1 {
+		t.Fatalf("DeleteDevicesByUser = %d, want 1", n)
+	}
+	if err := st.DeleteDevice(ctx, "d1"); err != store.ErrNotFound {
+		t.Fatalf("DeleteDevice of a gone device = %v", err)
+	}
+	if err := st.UpdateDeviceRules(ctx, "d1", muted); err != store.ErrNotFound {
+		t.Fatalf("UpdateDeviceRules of a gone device = %v", err)
+	}
+	if err := st.TouchDeviceSent(ctx, "d1", sent); err != store.ErrNotFound {
+		t.Fatalf("TouchDeviceSent of a gone device = %v", err)
+	}
+}
+
+// The install id is minted once and is the same on every read.
+func TestPanelIDIsStable(t *testing.T) {
+	st := memory.New()
+	a, err := st.PanelID(context.Background())
+	if err != nil || a == "" {
+		t.Fatalf("PanelID = %q, %v", a, err)
+	}
+	if b, _ := st.PanelID(context.Background()); b != a {
+		t.Fatalf("PanelID changed: %q then %q", a, b)
+	}
+}

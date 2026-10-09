@@ -524,6 +524,13 @@ func (s *Server) routes() chi.Router {
 				r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/setup/database", s.handleConnectDatabase)
 			})
 
+			// Push-alert devices (#348). Any signed-in user may register their
+			// own phone; the handlers decide ownership and user.manage.
+			r.Post("/devices", s.handleRegisterDevice)
+			r.Get("/devices", s.handleListDevices)
+			r.Patch("/devices/{id}/rules", s.handleUpdateDeviceRules)
+			r.Delete("/devices/{id}", s.handleDeleteDevice)
+
 			// OpenAPI document — any authenticated user; rendered by the in-app
 			// API reference. Not public.
 			r.Get("/openapi.yaml", s.handleOpenAPISpec)

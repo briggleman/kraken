@@ -171,6 +171,8 @@ func targetType(short string) string {
 		return "spec"
 	case strings.HasPrefix(short, "/users"):
 		return "user"
+	case strings.HasPrefix(short, "/devices"):
+		return "device"
 	case strings.HasPrefix(short, "/auth"):
 		return "auth"
 	default:

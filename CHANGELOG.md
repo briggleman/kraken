@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.62.0](https://github.com/briggleman/kraken/compare/v0.61.0...v0.62.0) (2026-10-09)
+
+
+### Features
+
+* **specs:** drop validate from the update-on-start pass with a {{VALIDATE}} placeholder ([#408](https://github.com/briggleman/kraken/issues/408)) ([5d22c87](https://github.com/briggleman/kraken/commit/5d22c8763420babbea8bd3f2575253b9e982f922))
+* **web:** show the steam build check — build line, card, node band and fleet count ([#410](https://github.com/briggleman/kraken/issues/410)) ([4459ec2](https://github.com/briggleman/kraken/commit/4459ec262c598424ace719003baf0bbe20884935))
+
+
+### Bug Fixes
+
+* **web:** the start control waits, dimmed and labelled, while an install, update or restore runs ([#404](https://github.com/briggleman/kraken/issues/404)) ([abdf13a](https://github.com/briggleman/kraken/commit/abdf13a3a46fc299296b45dd2f4e3e2e91b9600b))
+* **web:** the waiting start control takes the violet, not a dimmed sand ([#406](https://github.com/briggleman/kraken/issues/406)) ([526385a](https://github.com/briggleman/kraken/commit/526385abb17f40d1870edd65804117c88f7c96eb))
+
 ## [0.61.0](https://github.com/briggleman/kraken/compare/v0.60.0...v0.61.0) (2026-10-08)
 
 

@@ -46,7 +46,7 @@ func TestRelayStubOpensWhatThePanelSends(t *testing.T) {
 	stub.mu.Lock()
 	line := out.String()
 	stub.mu.Unlock()
-	if !strings.Contains(line, "200  attend  server_crashed  dragonwilds-01 — stopped unexpectedly") {
+	if !strings.Contains(line, "200  attend  server_crashed  dragonwilds-01: stopped unexpectedly") {
 		t.Fatalf("the stub printed %q", line)
 	}
 

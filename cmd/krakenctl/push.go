@@ -89,7 +89,7 @@ func (s *relayStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.printf("%s  %d  could not open the envelope: %v\n", now, status, err)
 	} else {
-		s.printf("%s  %d  %s  %s  %s — %s\n", now, status, p.Class, p.Event, p.Title, p.Body)
+		s.printf("%s  %d  %s  %s  %s: %s\n", now, status, p.Class, p.Event, p.Title, p.Body)
 	}
 	w.WriteHeader(status)
 }

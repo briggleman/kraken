@@ -303,6 +303,27 @@ func TestDispatchTokenDeadMarksOnlyTheSentToken(t *testing.T) {
 	}
 }
 
+// The marks a delivery leaves on a device are UTC, like every other time the
+// Panel stores. (Found in the phase 5 drill: token_invalid_at read
+// 13:48:08-04:00 beside a created_at in Z.)
+func TestDispatchStampsTheDeviceInUTC(t *testing.T) {
+	f := newFixture(t)
+	f.d = NewDispatcher(f.st, f.send, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	f.user("ann", rbac.RoleOwner)
+	f.device("ann", "a-ok", nil)
+	dead := f.device("ann", "b-dead", nil)
+	f.send.answer[dead] = push.TokenDead
+	f.dispatch(NodeOffline("n1", "abyss-win", t0))
+	ok, _ := f.st.GetDevice(context.Background(), "ann", "a-ok")
+	gone, _ := f.st.GetDevice(context.Background(), "ann", "b-dead")
+	if ok.LastSentAt == nil || ok.LastSentAt.Location() != time.UTC {
+		t.Fatalf("last_sent_at = %v, want UTC", ok.LastSentAt)
+	}
+	if gone.TokenInvalidAt == nil || gone.TokenInvalidAt.Location() != time.UTC {
+		t.Fatalf("token_invalid_at = %v, want UTC", gone.TokenInvalidAt)
+	}
+}
+
 func TestDispatchDisabledDoesNothing(t *testing.T) {
 	st := memory.New()
 	d := NewDispatcher(st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))

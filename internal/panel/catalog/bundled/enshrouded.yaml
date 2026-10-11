@@ -62,106 +62,201 @@ query:
   max_players_setting: slotCount
   max_players: 16
 
-# The custom gameSettings block below is only APPLIED by the game when
-# gameSettingsPreset == "Custom". Any other preset (Default/Relaxed/Hard/Survival)
-# silently loads a bundled preset and ignores these values. The Settings tab
-# still lets you tweak them for later use.
+# The gameplay groups follow the config's own sections (player stats, combat,
+# resources, day/night, survival, progression, other), ranges from the official
+# Dedicated Server Configuration article. The custom gameSettings block is only
+# APPLIED by the game when gameSettingsPreset == "Custom". Any other preset
+# (Default/Relaxed/Hard/Survival) silently loads a bundled preset and ignores
+# these values. The Settings tab still lets you tweak them for later use.
 settings:
   groups:
     - id: server
-      label: Server
+      label: Server identity
       fields:
-        - { key: name, label: Server name, type: string, default: "Kraken Enshrouded" }
-        - { key: slotCount, label: Player slots, type: int, default: "16", min: 1, max: 16 }
-    - id: access
-      label: Access — role passwords
-      description: >-
-        Enshrouded has no single server password: the password a player enters
-        when joining selects their role. A role with a blank password here is
-        left out of the server config entirely (nobody can join through it) —
-        set a password on every role you want usable, and at least one or the
-        server cannot be joined at all.
-      fields:
-        - { key: adminPassword, label: Admin password — kick/ban, chests, building, base extension, type: password, default: "" }
-        - { key: friendPassword, label: Friend password — chests, building; no base extension, type: password, default: "" }
-        - { key: guestPassword, label: Guest password — explore and fight; no chests or building, type: password, default: "" }
-        - { key: visitorPassword, label: Visitor password — look around only; no world changes, type: password, default: "" }
-    - id: chat
-      label: Chat
-      fields:
+        - { key: name, label: Server name, type: string, default: "Kraken Enshrouded", help: "Shown in the server browser." }
+        - { key: slotCount, label: Player slots, type: int, default: "16", min: 1, max: 16, help: "Every extra player adds CPU and memory load; matching this to the group you actually have keeps a small node responsive." }
         - { key: enableTextChat, label: Text chat, type: bool, default: "true" }
         - { key: enableVoiceChat, label: Voice chat, type: bool, default: "true" }
         - { key: voiceChatMode, label: Voice chat mode, type: enum, options: [Proximity, Global], default: Proximity }
     - id: preset
       label: Difficulty preset
       description: >-
-        Custom settings below only take effect when this is set to Custom.
-        Any other value loads a bundled preset and silently ignores them.
+        Default is the standard experience; Relaxed has fewer enemies and more
+        loot; Hard has more, more aggressive enemies and tighter resources;
+        Survival adds the starving debuff and harsher death penalties. Custom
+        is the only preset that applies the Custom — … groups below; any other
+        value ignores them.
       fields:
         - { key: gameSettingsPreset, label: Preset, type: enum, options: [Default, Relaxed, Hard, Survival, Custom], default: Default }
+# Enshrouded has no single server password: the password a player enters when
+# joining selects their user group, and the group's flags are what that player
+# may do. The four built-in roles carry the game's own default flags; the two
+# custom slots exist because the schema has no add-a-row field type, so a group
+# beyond the four needs a slot of its own. Give every group a DIFFERENT
+# password — the password is how the server tells the groups apart.
+    - id: group-admin
+      label: Player group — Admin
+      description: >-
+        Full control: kick and ban, open chests, build, and extend bases.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: adminName, label: Group name, type: string, default: "Admin", required: true }
+        - { key: adminPassword, label: Password, type: password, default: "" }
+        - { key: adminCanKickBan, label: Kick and ban players, type: bool, default: "true" }
+        - { key: adminCanAccessInventories, label: Open chests and storage, type: bool, default: "true" }
+        - { key: adminCanEditWorld, label: Edit the world, type: bool, default: "true" }
+        - { key: adminCanEditBase, label: Build in bases, type: bool, default: "true" }
+        - { key: adminCanExtendBase, label: Extend bases, type: bool, default: "true" }
+        - { key: adminReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
+    - id: group-friend
+      label: Player group — Friend
+      description: >-
+        Trusted players: open chests and build, but not extend bases or moderate.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: friendName, label: Group name, type: string, default: "Friend", required: true }
+        - { key: friendPassword, label: Password, type: password, default: "" }
+        - { key: friendCanKickBan, label: Kick and ban players, type: bool, default: "false" }
+        - { key: friendCanAccessInventories, label: Open chests and storage, type: bool, default: "true" }
+        - { key: friendCanEditWorld, label: Edit the world, type: bool, default: "true" }
+        - { key: friendCanEditBase, label: Build in bases, type: bool, default: "true" }
+        - { key: friendCanExtendBase, label: Extend bases, type: bool, default: "false" }
+        - { key: friendReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
+    - id: group-guest
+      label: Player group — Guest
+      description: >-
+        Explore and fight; no chests and no base building.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: guestName, label: Group name, type: string, default: "Guest", required: true }
+        - { key: guestPassword, label: Password, type: password, default: "" }
+        - { key: guestCanKickBan, label: Kick and ban players, type: bool, default: "false" }
+        - { key: guestCanAccessInventories, label: Open chests and storage, type: bool, default: "false" }
+        - { key: guestCanEditWorld, label: Edit the world, type: bool, default: "true" }
+        - { key: guestCanEditBase, label: Build in bases, type: bool, default: "false" }
+        - { key: guestCanExtendBase, label: Extend bases, type: bool, default: "false" }
+        - { key: guestReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
+    - id: group-visitor
+      label: Player group — Visitor
+      description: >-
+        Look around only; no changes to the world.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: visitorName, label: Group name, type: string, default: "Visitor", required: true }
+        - { key: visitorPassword, label: Password, type: password, default: "" }
+        - { key: visitorCanKickBan, label: Kick and ban players, type: bool, default: "false" }
+        - { key: visitorCanAccessInventories, label: Open chests and storage, type: bool, default: "false" }
+        - { key: visitorCanEditWorld, label: Edit the world, type: bool, default: "false" }
+        - { key: visitorCanEditBase, label: Build in bases, type: bool, default: "false" }
+        - { key: visitorCanExtendBase, label: Extend bases, type: bool, default: "false" }
+        - { key: visitorReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
+    - id: group-custom1
+      label: Player group — Custom group 1
+      description: >-
+        An extra group with its own password, for a tier the four built-in roles do not cover. Off until it has a password.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: custom1Name, label: Group name, type: string, default: "Custom 1", required: true }
+        - { key: custom1Password, label: Password, type: password, default: "" }
+        - { key: custom1CanKickBan, label: Kick and ban players, type: bool, default: "false" }
+        - { key: custom1CanAccessInventories, label: Open chests and storage, type: bool, default: "false" }
+        - { key: custom1CanEditWorld, label: Edit the world, type: bool, default: "false" }
+        - { key: custom1CanEditBase, label: Build in bases, type: bool, default: "false" }
+        - { key: custom1CanExtendBase, label: Extend bases, type: bool, default: "false" }
+        - { key: custom1ReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
+    - id: group-custom2
+      label: Player group — Custom group 2
+      description: >-
+        A second extra group. Off until it has a password.
+        Blank password = the group is left out of the server config and
+        nobody can join through it.
+      fields:
+        - { key: custom2Name, label: Group name, type: string, default: "Custom 2", required: true }
+        - { key: custom2Password, label: Password, type: password, default: "" }
+        - { key: custom2CanKickBan, label: Kick and ban players, type: bool, default: "false" }
+        - { key: custom2CanAccessInventories, label: Open chests and storage, type: bool, default: "false" }
+        - { key: custom2CanEditWorld, label: Edit the world, type: bool, default: "false" }
+        - { key: custom2CanEditBase, label: Build in bases, type: bool, default: "false" }
+        - { key: custom2CanExtendBase, label: Extend bases, type: bool, default: "false" }
+        - { key: custom2ReservedSlots, label: Reserved slots, type: int, default: "0", min: 0, max: 16, help: "Player slots held back for this group, so its members can join a full server." }
     - id: player
-      label: Custom — Player
+      label: Custom — Player stats
       fields:
         - { key: playerHealthFactor, label: Player health, type: float, default: "1", min: 0.25, max: 4 }
         - { key: playerManaFactor, label: Player mana, type: float, default: "1", min: 0.25, max: 4 }
         - { key: playerStaminaFactor, label: Player stamina, type: float, default: "1", min: 0.25, max: 4 }
-        - { key: playerBodyHeatFactor, label: Body heat, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: playerDivingTimeFactor, label: Diving time, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: foodBuffDurationFactor, label: Food buff duration, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: shroudTimeFactor, label: Shroud tolerance, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: enableDurability, label: Item durability, type: bool, default: "true" }
-        - { key: enableStarvingDebuff, label: Starving debuff, type: bool, default: "false" }
-        - { key: enableGliderTurbulences, label: Glider turbulences, type: bool, default: "true" }
+        - { key: playerBodyHeatFactor, label: Body heat, type: float, default: "1", min: 0.5, max: 2, help: "Cold resistance; higher loses heat more slowly." }
+        - { key: playerDivingTimeFactor, label: Diving time, type: float, default: "1", min: 0.5, max: 2, help: "How long a player can stay under water." }
     - id: enemies
-      label: Custom — Enemies
+      label: Custom — Combat and enemies
       fields:
-        - { key: enemyDamageFactor, label: Enemy damage, type: float, default: "1", min: 0.25, max: 5 }
-        - { key: enemyHealthFactor, label: Enemy health, type: float, default: "1", min: 0.25, max: 4 }
-        - { key: enemyStaminaFactor, label: Enemy stamina, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: enemyPerceptionRangeFactor, label: Enemy perception range, type: float, default: "1", min: 0.5, max: 2 }
-        - { key: threatBonus, label: Threat bonus, type: float, default: "1", min: 0.25, max: 4 }
+        - { key: enemyDamageFactor, label: Enemy damage, type: float, default: "1", min: 0.25, max: 5, help: "Bosses excluded; see Boss damage." }
+        - { key: enemyHealthFactor, label: Enemy health, type: float, default: "1", min: 0.25, max: 4, help: "Bosses excluded; see Boss health." }
+        - { key: enemyStaminaFactor, label: Enemy stamina, type: float, default: "1", min: 0.5, max: 2, help: "How hard enemies are to stun." }
+        - { key: enemyPerceptionRangeFactor, label: Enemy perception range, type: float, default: "1", min: 0.5, max: 2, help: "How far away enemies notice you." }
+        - { key: threatBonus, label: Threat bonus, type: float, default: "1", min: 0.25, max: 4, help: "How often enemies attack." }
+        - { key: randomSpawnerAmount, label: Enemy spawns, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
+        - { key: aggroPoolAmount, label: Enemies attacking at once, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
         - { key: bossDamageFactor, label: Boss damage, type: float, default: "1", min: 0.2, max: 5 }
         - { key: bossHealthFactor, label: Boss health, type: float, default: "1", min: 0.2, max: 5 }
-        - { key: randomSpawnerAmount, label: Random spawner amount, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
-        - { key: aggroPoolAmount, label: Aggro pool size, type: enum, options: [Few, Normal, Many, Extreme], default: Normal }
-        - { key: pacifyAllEnemies, label: Pacify all enemies, type: bool, default: "false" }
-    - id: world
-      label: Custom — World
+        - { key: pacifyAllEnemies, label: Pacify all enemies, type: bool, default: "false", help: "Enemies never attack. Bosses still do." }
+    - id: resources
+      label: Custom — Resources and crafting
       fields:
-        - { key: weatherFrequency, label: Weather frequency, type: enum, options: [Disabled, Rare, Normal, Often], default: Normal }
-        - { key: fishingDifficulty, label: Fishing difficulty, type: enum, options: [VeryEasy, Easy, Normal, Hard, VeryHard], default: Normal }
-        - { key: curseModifier, label: Curse modifier, type: enum, options: [Easy, Normal, Hard], default: Normal }
-        - { key: tombstoneMode, label: Tombstone mode, type: enum, options: [AddBackpackMaterials, Everything, NoTombstone], default: AddBackpackMaterials }
-        - { key: tamingStartleRepercussion, label: Taming startle penalty, type: enum, options: [KeepProgress, LoseSomeProgress, LoseAllProgress], default: LoseSomeProgress }
-        - { key: miningDamageFactor, label: Mining damage, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: miningDamageFactor, label: Mining yield, type: float, default: "1", min: 0.5, max: 2, help: "Resources gained per mining hit." }
         - { key: plantGrowthSpeedFactor, label: Plant growth speed, type: float, default: "1", min: 0.25, max: 2 }
         - { key: resourceDropStackAmountFactor, label: Resource drop stacks, type: float, default: "1", min: 0.25, max: 2 }
-        - { key: factoryProductionSpeedFactor, label: Factory production speed, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: factoryProductionSpeedFactor, label: Crafting station speed, type: float, default: "1", min: 0.25, max: 2 }
+        - { key: perkUpgradeRecyclingFactor, label: Rune recycling yield, type: float, default: "0.5", min: 0, max: 1, help: "Runes returned when recycling an upgraded weapon." }
+        - { key: perkCostFactor, label: Rune upgrade cost, type: float, default: "1", min: 0.25, max: 2 }
     - id: time
-      label: Custom — Day / Night / Hunger
+      label: Custom — Day / night cycle
       description: >-
-        Values are entered in seconds; Enshrouded stores them internally in
-        nanoseconds, which the template appends automatically.
+        Entered in seconds (1800 = 30 min); the game stores nanoseconds, which
+        the template appends. The default cycle is a 30-minute day and a
+        12-minute night.
       fields:
-        - { key: dayTimeDurationSeconds, label: Day duration (seconds), type: int, default: "1800", min: 120, max: 3600 }
-        - { key: nightTimeDurationSeconds, label: Night duration (seconds), type: int, default: "720", min: 120, max: 3600 }
-        - { key: fromHungerToStarvingSeconds, label: Hunger → starving (seconds), type: int, default: "600", min: 300, max: 1200 }
+        - { key: dayTimeDurationSeconds, label: Day length (seconds), type: int, default: "1800", min: 120, max: 3600 }
+        - { key: nightTimeDurationSeconds, label: Night length (seconds), type: int, default: "720", min: 120, max: 3600 }
+    - id: survival
+      label: Custom — Survival and environment
+      fields:
+        - { key: enableDurability, label: Item durability, type: bool, default: "true", help: "Whether equipment wears out and breaks." }
+        - { key: enableStarvingDebuff, label: Starving debuff, type: bool, default: "false", help: "Health penalty for not eating." }
+        - { key: foodBuffDurationFactor, label: Food buff duration, type: float, default: "1", min: 0.5, max: 2 }
+        - { key: fromHungerToStarvingSeconds, label: Hunger → starving (seconds), type: int, default: "600", min: 300, max: 1200, help: "Time before starvation sets in, once Starving debuff is on." }
+        - { key: shroudTimeFactor, label: Shroud tolerance, type: float, default: "1", min: 0.5, max: 2, help: "How long a player survives inside the Shroud." }
+        - { key: tombstoneMode, label: Tombstone mode, type: enum, options: [AddBackpackMaterials, Everything, NoTombstone], default: AddBackpackMaterials, help: "What drops on death: backpack materials only, the whole inventory, or nothing." }
+        - { key: enableGliderTurbulences, label: Glider turbulence, type: bool, default: "true" }
+        - { key: weatherFrequency, label: Weather frequency, type: enum, options: [Disabled, Rare, Normal, Often], default: Normal }
     - id: progression
       label: Custom — Progression
       fields:
         - { key: experienceCombatFactor, label: Combat XP, type: float, default: "1", min: 0.25, max: 2 }
         - { key: experienceMiningFactor, label: Mining XP, type: float, default: "1", min: 0, max: 2 }
         - { key: experienceExplorationQuestsFactor, label: Exploration / quest XP, type: float, default: "1", min: 0.25, max: 2 }
-        - { key: perkCostFactor, label: Perk cost, type: float, default: "1", min: 0.25, max: 2 }
-        - { key: perkUpgradeRecyclingFactor, label: Perk upgrade recycling, type: float, default: "0.5", min: 0, max: 1 }
+    - id: other
+      label: Custom — Other
+      fields:
+        - { key: tamingStartleRepercussion, label: Taming startle penalty, type: enum, options: [KeepProgress, LoseSomeProgress, LoseAllProgress], default: LoseSomeProgress, help: "Taming progress lost when the animal is startled." }
+        - { key: curseModifier, label: Curse difficulty, type: enum, options: [Easy, Normal, Hard], default: Normal }
+        - { key: fishingDifficulty, label: Fishing difficulty, type: enum, options: [VeryEasy, Easy, Normal, Hard, VeryHard], default: Normal }
 
 # The document mirrors the official 0.9.0.0 default enshrouded_server.json.
 # The legacy top-level "password" is GONE — current server builds ignore it,
-# which read as "the password doesn't work"; access is per-role userGroups,
-# rendered below only for roles whose password is set. Permission flags per
-# role are the game's own defaults. Note: settings saves overwrite this file,
-# so hand-edits (including bans added while it ran) will not persist — the
-# "bans" list resets to empty on every save.
+# which read as "the password doesn't work"; access is per-group userGroups,
+# rendered below only for groups whose password is set. Free-text values (the
+# server name, group names, passwords) go through printf "%q", which emits a
+# quoted, escaped string: a raw " or \ in one used to produce invalid JSON, and
+# the game answers invalid JSON by silently regenerating the file with
+# defaults. Note: settings saves overwrite this file, so hand-edits (including
+# bans added while it ran) will not persist — the "bans" list resets to empty
+# on every save.
   # Logical /data root (not C:\data): safePath maps it to C:\data on a Windows
   # node and leaves it at /data on a Linux/Wine node, so one path is correct on
   # both — a literal C:\… path would land under /data/C:/… on Linux.
@@ -170,7 +265,7 @@ config_files:
     format: template
     template: |
       {
-        "name": "{{.settings.name}}",
+        "name": {{printf "%q" .settings.name}},
         "saveDirectory": "./savegame",
         "logDirectory": "./logs",
         "ip": "0.0.0.0",
@@ -224,57 +319,86 @@ config_files:
       {{- $prev := false}}
       {{- if .settings.adminPassword}}
           {
-            "name": "Admin",
-            "password": "{{.settings.adminPassword}}",
-            "canKickBan": true,
-            "canAccessInventories": true,
-            "canEditWorld": true,
-            "canEditBase": true,
-            "canExtendBase": true,
-            "reservedSlots": 0
+            "name": {{printf "%q" .settings.adminName}},
+            "password": {{printf "%q" .settings.adminPassword}},
+            "canKickBan": {{.settings.adminCanKickBan}},
+            "canAccessInventories": {{.settings.adminCanAccessInventories}},
+            "canEditWorld": {{.settings.adminCanEditWorld}},
+            "canEditBase": {{.settings.adminCanEditBase}},
+            "canExtendBase": {{.settings.adminCanExtendBase}},
+            "reservedSlots": {{.settings.adminReservedSlots}}
           }
       {{- $prev = true}}
       {{- end}}
       {{- if .settings.friendPassword}}
       {{- if $prev}},{{end}}
           {
-            "name": "Friend",
-            "password": "{{.settings.friendPassword}}",
-            "canKickBan": false,
-            "canAccessInventories": true,
-            "canEditWorld": true,
-            "canEditBase": true,
-            "canExtendBase": false,
-            "reservedSlots": 0
+            "name": {{printf "%q" .settings.friendName}},
+            "password": {{printf "%q" .settings.friendPassword}},
+            "canKickBan": {{.settings.friendCanKickBan}},
+            "canAccessInventories": {{.settings.friendCanAccessInventories}},
+            "canEditWorld": {{.settings.friendCanEditWorld}},
+            "canEditBase": {{.settings.friendCanEditBase}},
+            "canExtendBase": {{.settings.friendCanExtendBase}},
+            "reservedSlots": {{.settings.friendReservedSlots}}
           }
       {{- $prev = true}}
       {{- end}}
       {{- if .settings.guestPassword}}
       {{- if $prev}},{{end}}
           {
-            "name": "Guest",
-            "password": "{{.settings.guestPassword}}",
-            "canKickBan": false,
-            "canAccessInventories": false,
-            "canEditWorld": true,
-            "canEditBase": false,
-            "canExtendBase": false,
-            "reservedSlots": 0
+            "name": {{printf "%q" .settings.guestName}},
+            "password": {{printf "%q" .settings.guestPassword}},
+            "canKickBan": {{.settings.guestCanKickBan}},
+            "canAccessInventories": {{.settings.guestCanAccessInventories}},
+            "canEditWorld": {{.settings.guestCanEditWorld}},
+            "canEditBase": {{.settings.guestCanEditBase}},
+            "canExtendBase": {{.settings.guestCanExtendBase}},
+            "reservedSlots": {{.settings.guestReservedSlots}}
           }
       {{- $prev = true}}
       {{- end}}
       {{- if .settings.visitorPassword}}
       {{- if $prev}},{{end}}
           {
-            "name": "Visitor",
-            "password": "{{.settings.visitorPassword}}",
-            "canKickBan": false,
-            "canAccessInventories": false,
-            "canEditWorld": false,
-            "canEditBase": false,
-            "canExtendBase": false,
-            "reservedSlots": 0
+            "name": {{printf "%q" .settings.visitorName}},
+            "password": {{printf "%q" .settings.visitorPassword}},
+            "canKickBan": {{.settings.visitorCanKickBan}},
+            "canAccessInventories": {{.settings.visitorCanAccessInventories}},
+            "canEditWorld": {{.settings.visitorCanEditWorld}},
+            "canEditBase": {{.settings.visitorCanEditBase}},
+            "canExtendBase": {{.settings.visitorCanExtendBase}},
+            "reservedSlots": {{.settings.visitorReservedSlots}}
           }
+      {{- $prev = true}}
+      {{- end}}
+      {{- if .settings.custom1Password}}
+      {{- if $prev}},{{end}}
+          {
+            "name": {{printf "%q" .settings.custom1Name}},
+            "password": {{printf "%q" .settings.custom1Password}},
+            "canKickBan": {{.settings.custom1CanKickBan}},
+            "canAccessInventories": {{.settings.custom1CanAccessInventories}},
+            "canEditWorld": {{.settings.custom1CanEditWorld}},
+            "canEditBase": {{.settings.custom1CanEditBase}},
+            "canExtendBase": {{.settings.custom1CanExtendBase}},
+            "reservedSlots": {{.settings.custom1ReservedSlots}}
+          }
+      {{- $prev = true}}
+      {{- end}}
+      {{- if .settings.custom2Password}}
+      {{- if $prev}},{{end}}
+          {
+            "name": {{printf "%q" .settings.custom2Name}},
+            "password": {{printf "%q" .settings.custom2Password}},
+            "canKickBan": {{.settings.custom2CanKickBan}},
+            "canAccessInventories": {{.settings.custom2CanAccessInventories}},
+            "canEditWorld": {{.settings.custom2CanEditWorld}},
+            "canEditBase": {{.settings.custom2CanEditBase}},
+            "canExtendBase": {{.settings.custom2CanExtendBase}},
+            "reservedSlots": {{.settings.custom2ReservedSlots}}
+          }
+      {{- $prev = true}}
       {{- end}}
         ],
         "bans": []

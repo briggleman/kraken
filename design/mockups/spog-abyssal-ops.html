@@ -1074,6 +1074,44 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   select.cfg-in:disabled::picker-icon { opacity: 0.4; }
   .tgl input:disabled ~ i { opacity: 0.5; }
   .tgl.is-locked { cursor: not-allowed; color: var(--ink-3); }
+  /* settings sections - a spec's settings groups. Each group is a chapter of the panel's
+     two-column form: it spans both columns, opens on a hairline rule with its own label, and
+     carries its fields on the same 14 x 28 grid, so a forty-field game reads as five titled
+     blocks instead of one undifferentiated list. A sub-section (a group with a parent) hangs
+     off its parent on a left rail, label a step quieter, so the eye reads it as belonging to
+     the chapter above rather than starting a new one. */
+  .cfg-sec {
+    grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px 28px; align-content: start; padding-top: 18px; border-top: 1px solid var(--edge);
+  }
+  .cfg > .cfg-sec:first-child { padding-top: 0; border-top: none; }
+  .cfg-sec-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cfg-sec-head h4 {
+    margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  /* the description is its own row under the head, across both columns - a flex item
+     in the head it would sit beside a short label and read as a caption to it. Keep it
+     to a sentence: the section label already says what the block is. */
+  .cfg-sec > .cfg-desc { grid-column: 1 / -1; margin-top: -6px; }
+  .cfg-sec > .cfg-help, .cfg-sec > .cfg-sec { grid-column: 1 / -1; }
+  /* a field beside one with help text must not stretch its input away from its label */
+  .cfg-sec .cfg-row { align-content: start; }
+  .cfg-sec.sub { padding: 2px 0 4px 16px; border-top: none; border-left: 1px solid rgba(var(--ink-3-rgb), 0.5); }
+  /* sibling sub-sections part on a dashed rule - quieter than the solid one between
+     chapters, so the hierarchy still reads at a glance */
+  .cfg-sec.sub + .cfg-sec.sub { margin-top: 4px; padding-top: 16px; border-top: 1px dashed rgba(var(--ink-3-rgb), 0.3); }
+  .cfg-sec.sub .cfg-sec-head h4 { font-size: 10px; letter-spacing: 0.22em; color: var(--ink-3); }
+  /* a locked section is enabled_when unmet: its values stay on screen in the dashed
+     "real but not yours to change" idiom of a disabled field, and the head says what
+     unlocks it - greyed-out with no reason given reads as broken. */
+  .cfg-sec.is-locked .cfg-sec-head h4 { color: rgba(var(--ink-3-rgb), 0.8); }
+  .cfg-sec.is-locked .cfg-row > span, .cfg-sec.is-locked .tgl { color: rgba(var(--ink-3-rgb), 0.8); }
+  .cfg-sec.is-locked .cfg-help { opacity: 0.6; }
+  /* a bool with help text: the toggle and its sentence travel as one cell */
+  .cfg-tgl-row { display: grid; gap: 4px; align-self: end; }
+  .cfg-tgl-row > .tgl { padding-bottom: 0; }
+  @media (max-width: 640px) { .cfg-sec { grid-template-columns: minmax(0, 1fr); } }
   .cfg-actions { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--edge); }
   .cfg-actions .cfg-note { align-self: center; }
   /* action-leads variant: the button sits first (in the DOM too, so focus order matches) and the
@@ -2513,6 +2551,26 @@ FINISH: mock for direction comparison; the chosen direction's production build e
   .spec-drop { align-self: center; }
   .spec-full { grid-column: 1 / -1; }
   .cfg-head .spec-add { margin-left: auto; }
+  /* settings groups in the spec form: one block per group - its head strip (id, label,
+     parent), its lock strip (description, locked-unless), then its fields on a left rail,
+     the same rail the Settings tab hangs a sub-section on, so a group and its fields read
+     as one unit. A nested group's whole block takes the rail's indent too. */
+  .spec-grp { display: grid; gap: 8px; }
+  .spec-grp.nested { margin-left: 18px; padding-left: 14px; border-left: 1px solid rgba(var(--ink-3-rgb), 0.35); }
+  .spec-rows > .spec-grp:not(.nested):not(:first-child) { margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--edge); }
+  .spec-sub.grps { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(150px, max-content) max-content; }
+  .spec-sub.grp-more { grid-template-columns: minmax(0, 2fr) minmax(150px, max-content) minmax(0, 1fr); }
+  .spec-flds { display: grid; gap: 6px; margin-left: 14px; padding-left: 12px; border-left: 1px dashed rgba(var(--ink-3-rgb), 0.3); }
+  .spec-sub.flds {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(92px, max-content) minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1.3fr) max-content max-content;
+    padding: 8px 12px; background: rgba(5, 13, 20, 0.2);
+  }
+  .spec-rng { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .spec-flds > .mini-act { justify-self: start; }
+  @media (max-width: 1100px) {
+    .spec-sub.flds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+    .spec-sub.grps, .spec-sub.grp-more { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  }
   /* the form view is capped at a reading measure because it IS a form; the document view is
      not one, so switching to code lifts the cap. Without this the block stays 1240 wide no
      matter what width it asks for - a child cannot out-width a capped ancestor. */
@@ -2953,16 +3011,32 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </div>
       <div class="stn-panel p-settings">
         <div class="cfg">
-          <label class="cfg-row"><span>server name</span><input class="cfg-in" id="cfgName" type="text" value="Palworld — behemoth"></label>
-          <label class="cfg-row"><span>join password</span><input class="cfg-in" type="password" value="deepwater"></label>
-          <label class="cfg-row"><span>max players</span><input class="cfg-in" id="cfgMax" type="text" value="32"></label>
-          <label class="cfg-row"><span>difficulty</span><input class="cfg-in" type="text" value="normal"></label>
-          <label class="cfg-row"><span>xp rate</span><input class="cfg-in" type="text" value="1.0"></label>
-          <label class="cfg-row"><span>day / night speed</span><input class="cfg-in" type="text" value="1.0 / 1.0"></label>
-          <label class="tgl"><input type="checkbox" checked><i></i>pvp enabled</label>
-          <label class="tgl"><input type="checkbox" checked><i></i>show map markers</label>
-          <label class="tgl"><input type="checkbox"><i></i>hardcore drops</label>
-          <label class="tgl"><input type="checkbox" checked><i></i>autosave every 15 min</label>
+          <!-- a spec's settings groups render as sections: a hairline rule and a label open each
+               one; a group with a parent hangs off it on a left rail; a group whose enabled_when
+               is unmet keeps its values on screen, disabled, and its head says what unlocks it. -->
+          <section class="cfg-sec" aria-label="Server">
+            <div class="cfg-sec-head"><h4>server</h4></div>
+            <label class="cfg-row"><span>server name</span><input class="cfg-in" id="cfgName" type="text" value="Palworld — behemoth"></label>
+            <label class="cfg-row"><span>join password</span><input class="cfg-in" type="password" value="deepwater"></label>
+            <label class="cfg-row"><span>max players</span><input class="cfg-in" id="cfgMax" type="text" value="32"></label>
+            <label class="tgl"><input type="checkbox" checked><i></i>autosave every 15 min</label>
+          </section>
+          <section class="cfg-sec" aria-label="World">
+            <div class="cfg-sec-head"><h4>world</h4></div>
+            <p class="cfg-desc">normal and hard use the game's own values. pick custom to edit the sections below.</p>
+            <div class="cfg-row"><span>difficulty</span><select class="cfg-in"><option selected>normal</option><option>hard</option><option>custom</option></select></div>
+            <section class="cfg-sec sub is-locked" aria-label="Rates">
+              <div class="cfg-sec-head"><h4>rates</h4><span class="cfg-badge env">locked until difficulty is custom</span></div>
+              <label class="cfg-row"><span>xp rate</span><input class="cfg-in" type="text" value="1.0" disabled></label>
+              <label class="cfg-row"><span>day / night speed</span><input class="cfg-in" type="text" value="1.0 / 1.0" disabled></label>
+            </section>
+            <section class="cfg-sec sub is-locked" aria-label="Rules">
+              <div class="cfg-sec-head"><h4>rules</h4><span class="cfg-badge env">locked until difficulty is custom</span></div>
+              <label class="tgl is-locked"><input type="checkbox" checked disabled><i></i>pvp enabled</label>
+              <div class="cfg-tgl-row"><label class="tgl is-locked"><input type="checkbox" disabled><i></i>hardcore drops</label><p class="cfg-help">a death drops the whole inventory, not just the backpack.</p></div>
+              <label class="tgl is-locked"><input type="checkbox" checked disabled><i></i>show map markers</label>
+            </section>
+          </section>
         </div>
         <div class="cfg-foot">
           <span class="cfg-note">changes apply on next restart</span>
@@ -3448,10 +3522,32 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       </section>
 
       <section class="prefs-group" aria-label="Settings groups">
-        <div class="cfg-head"><h3 class="pane-label">settings groups</h3><span class="cfg-badge env">none</span><button class="cfg-btn ghost spec-add">add group</button></div>
+        <div class="cfg-head"><h3 class="pane-label">settings groups</h3><span class="cfg-badge env">2 defined</span><button class="cfg-btn ghost spec-add">add group</button></div>
         <div class="cfg">
           <label class="tgl"><input type="checkbox"><i></i>hot reload — the game re-reads its config files live, so saved settings apply without a restart</label>
-          <p class="cfg-help">no settings groups yet. these render game options into config files. config file bindings and templates are kept but can only be edited in the code view.</p>
+          <p class="cfg-help">2 groups — they render game options into config files. config file bindings and templates are kept but can only be edited in the code view.</p>
+        </div>
+        <div class="ns-pad">
+          <!-- one block per group: head strip, lock strip, then its fields on a rail. a nested
+               group (parent set) takes the rail's indent as a whole. -->
+          <div class="spec-rows">
+            <div class="spec-grp">
+              <div class="spec-sub grps"><label class="cfg-row"><span>id</span><input class="cfg-in" type="text" value="world"></label><label class="cfg-row"><span>label</span><input class="cfg-in" type="text" value="world"></label><div class="cfg-row"><span>nested under</span><select class="cfg-in"><option selected>— top level —</option></select></div><button class="mini-act del spec-drop">drop</button></div>
+              <div class="spec-sub grp-more"><label class="cfg-row"><span>description</span><input class="cfg-in" type="text" value="normal and hard load the game&#39;s own values"></label><div class="cfg-row"><span>locked unless</span><select class="cfg-in"><option selected>— always editable —</option><option>difficulty</option></select></div><label class="cfg-row"><span>is one of</span><input class="cfg-in" type="text" value="" placeholder="—" disabled></label></div>
+              <div class="spec-flds">
+                <div class="spec-sub flds"><label class="cfg-row"><span>key</span><input class="cfg-in" type="text" value="difficulty"></label><label class="cfg-row"><span>label</span><input class="cfg-in" type="text" value="difficulty"></label><div class="cfg-row"><span>type</span><select class="cfg-in"><option>string</option><option>text</option><option>password</option><option>int</option><option>float</option><option>bool</option><option selected>enum</option></select></div><label class="cfg-row"><span>default</span><input class="cfg-in" type="text" value="normal"></label><label class="cfg-row"><span>options</span><input class="cfg-in" type="text" value="normal, hard, custom"></label><label class="cfg-row"><span>help</span><input class="cfg-in" type="text" value=""></label><label class="tgl"><input type="checkbox"><i></i>required</label><button class="mini-act del spec-drop">drop</button></div>
+                <button class="mini-act">add field</button>
+              </div>
+            </div>
+            <div class="spec-grp nested">
+              <div class="spec-sub grps"><label class="cfg-row"><span>id</span><input class="cfg-in" type="text" value="rates"></label><label class="cfg-row"><span>label</span><input class="cfg-in" type="text" value="rates"></label><div class="cfg-row"><span>nested under</span><select class="cfg-in"><option>— top level —</option><option selected>world</option></select></div><button class="mini-act del spec-drop">drop</button></div>
+              <div class="spec-sub grp-more"><label class="cfg-row"><span>description</span><input class="cfg-in" type="text" value=""></label><div class="cfg-row"><span>locked unless</span><select class="cfg-in"><option>— always editable —</option><option selected>difficulty</option></select></div><label class="cfg-row"><span>is one of</span><input class="cfg-in" type="text" value="custom" placeholder="—"></label></div>
+              <div class="spec-flds">
+                <div class="spec-sub flds"><label class="cfg-row"><span>key</span><input class="cfg-in" type="text" value="xp_rate"></label><label class="cfg-row"><span>label</span><input class="cfg-in" type="text" value="xp rate"></label><div class="cfg-row"><span>type</span><select class="cfg-in"><option>string</option><option>text</option><option>password</option><option>int</option><option selected>float</option><option>bool</option><option>enum</option></select></div><label class="cfg-row"><span>default</span><input class="cfg-in" type="text" value="1.0"></label><div class="cfg-row"><span>min · max</span><span class="spec-rng"><input class="cfg-in" type="text" value="0.1" aria-label="min"><input class="cfg-in" type="text" value="5" aria-label="max"></span></div><label class="cfg-row"><span>help</span><input class="cfg-in" type="text" value=""></label><label class="tgl"><input type="checkbox"><i></i>required</label><button class="mini-act del spec-drop">drop</button></div>
+                <button class="mini-act">add field</button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

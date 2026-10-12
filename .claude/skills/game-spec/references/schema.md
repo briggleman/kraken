@@ -98,6 +98,12 @@ settings:                                 # config-file games: groups become tab
         - { key: pvp, label: PvP, type: bool, default: "false" }
         - { key: preset, label: Difficulty, type: enum, options: [Easy, Normal, Hard], default: Normal }
         - { key: publicPort, label: Public port, type: int, default: "7777", read_only: true }
+    - id: rates                           # a sub-section of `server`, locked until preset is Hard
+      label: Rates
+      parent: server                      # an EARLIER top-level group; one level only
+      enabled_when: { setting: preset, in: [Hard] }   # fields show disabled until it holds
+      fields:
+        - { key: xpRate, label: XP rate, type: float, default: "1", min: 0.1, max: 5 }
 
 config_files:
   # Logical /data root (never C:\data): safePath maps it per node OS.
@@ -243,6 +249,12 @@ non-Steam games; `{{APP_ID}}` then stays unrendered, so do not reference it.
 - Every `default` is validated against its own field (`"true"`/`"false"` for bool, a listed
   option for enum, within bounds for numerics) or the spec fails `Validate()`.
 - `hot_reload: true` only changes what the UI says after a save; files are pushed either way.
+- Groups render as Settings-tab sections. `parent` nests a group under an earlier top-level
+  group (one level). `enabled_when: { setting, in: [...] }` shows the group's fields disabled
+  until that setting holds a listed value — for values a game ignores unless some mode is on
+  (Enshrouded's Custom preset). It never changes what is stored or rendered. `Validate()`
+  rejects a later-declared parent, a lock on a field inside its own group, and a lock value the
+  setting can't hold (e.g. not one of an enum's options).
 - `config_files[].path` must be absolute under the logical `/data` root. `format`:
   - `template` — Go `text/template`, data = `{settings, vars, ports}` maps, `missingkey=zero`.
     Required `template` body. A `.json` path must render valid JSON with defaults **and** with

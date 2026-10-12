@@ -45,7 +45,7 @@
   import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isFromSpec, isMissing } from "@/lib/required";
   import { lastRun } from "@/lib/schedules";
-  import type { FileEntry, ScheduleAction } from "@/api/types";
+  import type { FileEntry, ScheduleAction, SettingField, SettingGroup } from "@/api/types";
   import type { StreamConsoleLine } from "@/lib/stream.svelte";
 
   const server = $derived(depth.server);
@@ -398,6 +398,26 @@
   const specUpdatesOnStart = $derived(depth.settings?.updates_on_start !== false);
   function fieldValue(key: string, fallback: string | undefined): string {
     return edited[key] ?? depth.settings?.values[key] ?? fallback ?? "";
+  }
+  // The spec's groups as the Settings tab draws them: each top-level group a
+  // section, its children (groups naming it as parent) nested inside. A child
+  // whose parent is missing is drawn at the top level rather than dropped.
+  const settingSections = $derived.by(() => {
+    const gs = depth.settings?.groups ?? [];
+    const ids = new Set(gs.map((g) => g.id));
+    return gs
+      .filter((g) => !g.parent || !ids.has(g.parent))
+      .map((g) => ({ group: g, children: gs.filter((c) => c.parent === g.id) }));
+  });
+  // Why a group is locked, or null when it is editable. Read off the edited
+  // value too, so switching the preset to Custom unlocks its sections before
+  // anything is saved.
+  function lockReason(g: SettingGroup): string | null {
+    const c = g.enabled_when;
+    if (!c) return null;
+    const f = depth.settings?.groups.flatMap((x) => x.fields).find((x) => x.key === c.setting);
+    if (c.in.includes(fieldValue(c.setting, f?.default))) return null;
+    return `locked until ${(f?.label || c.setting).toLowerCase()} is ${c.in.join(" or ").toLowerCase()}`;
   }
   async function applySettings() {
     settingsNote = await settingsApply({ ...edited }, { ...editedVars }, editedPin ?? undefined);
@@ -787,53 +807,89 @@
               </p>
             {/if}
             {#if depth.settings}
-              {#each depth.settings.groups as group (group.id)}
-                {#each group.fields as field (field.key)}
-                  {#if field.type === "bool"}
-                    <label class="tgl{field.read_only ? ' is-locked' : ''}">
+              {#snippet settingField(field: SettingField, locked: boolean)}
+                {@const off = field.read_only || locked}
+                {#if field.type === "bool"}
+                  {#if field.help}
+                    <div class="cfg-tgl-row">
+                      <label class="tgl{off ? ' is-locked' : ''}">
+                        <input
+                          type="checkbox"
+                          checked={fieldValue(field.key, field.default) === "true"}
+                          disabled={off}
+                          onchange={(e) => (edited[field.key] = e.currentTarget.checked ? "true" : "false")}
+                        /><i></i>{field.label || field.key}</label
+                      ><p class="cfg-help">{field.help}</p>
+                    </div>
+                  {:else}
+                    <label class="tgl{off ? ' is-locked' : ''}">
                       <input
                         type="checkbox"
                         checked={fieldValue(field.key, field.default) === "true"}
-                        disabled={field.read_only}
+                        disabled={off}
                         onchange={(e) => (edited[field.key] = e.currentTarget.checked ? "true" : "false")}
                       /><i></i>{field.label || field.key}</label
                     >
-                  {:else if field.type === "enum"}
-                    <label class="cfg-row"
-                      ><span>{field.label || field.key}{#if field.required}<em
-                        class="cfg-req"
-                        class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
-                        >· required</em
-                      >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
-                          class="cfg-req">· from spec</em
-                        >{/if}{/if}</span><select
-                        class="cfg-in"
-                        disabled={field.read_only}
-                        aria-required={field.required || undefined}
-                        value={fieldValue(field.key, field.default)}
-                        onchange={(e) => (edited[field.key] = e.currentTarget.value)}
-                        >{#each field.options ?? [] as opt}<option value={opt}>{opt}</option>{/each}</select
-                      ></label
-                    >
-                  {:else}
-                    <label class="cfg-row"
-                      ><span>{field.label || field.key}{#if field.required}<em
-                        class="cfg-req"
-                        class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
-                        >· required</em
-                      >{#if isFromSpec(field, depth.settings.from_spec, edited[field.key])}<em
-                          class="cfg-req">· from spec</em
-                        >{/if}{/if}</span><input
-                        class="cfg-in"
-                        type={field.type === "password" ? "password" : "text"}
-                        disabled={field.read_only}
-                        aria-required={field.required || undefined}
-                        value={fieldValue(field.key, field.default)}
-                        oninput={(e) => (edited[field.key] = e.currentTarget.value)}
-                      />{#if field.help}<p class="cfg-help">{field.help}</p>{/if}</label
-                    >
                   {/if}
-                {/each}
+                {:else if field.type === "enum"}
+                  <label class="cfg-row"
+                    ><span>{field.label || field.key}{#if field.required}<em
+                      class="cfg-req"
+                      class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
+                      >· required</em
+                    >{#if isFromSpec(field, depth.settings?.from_spec, edited[field.key])}<em
+                        class="cfg-req">· from spec</em
+                      >{/if}{/if}</span><select
+                      class="cfg-in"
+                      disabled={off}
+                      aria-required={field.required || undefined}
+                      value={fieldValue(field.key, field.default)}
+                      onchange={(e) => (edited[field.key] = e.currentTarget.value)}
+                      >{#each field.options ?? [] as opt}<option value={opt}>{opt}</option>{/each}</select
+                    >{#if field.help}<p class="cfg-help">{field.help}</p>{/if}</label
+                  >
+                {:else}
+                  <label class="cfg-row"
+                    ><span>{field.label || field.key}{#if field.required}<em
+                      class="cfg-req"
+                      class:is-missing={isMissing(field, fieldValue(field.key, field.default))}
+                      >· required</em
+                    >{#if isFromSpec(field, depth.settings?.from_spec, edited[field.key])}<em
+                        class="cfg-req">· from spec</em
+                      >{/if}{/if}</span><input
+                      class="cfg-in"
+                      type={field.type === "password" ? "password" : "text"}
+                      disabled={off}
+                      aria-required={field.required || undefined}
+                      value={fieldValue(field.key, field.default)}
+                      oninput={(e) => (edited[field.key] = e.currentTarget.value)}
+                    />{#if field.help}<p class="cfg-help">{field.help}</p>{/if}</label
+                  >
+                {/if}
+              {/snippet}
+              {#snippet settingSection(group: SettingGroup, sub: boolean, children: SettingGroup[])}
+                {@const lock = lockReason(group)}
+                <section
+                  class="cfg-sec"
+                  class:sub
+                  class:is-locked={!!lock}
+                  aria-label={group.label || group.id}
+                >
+                  <div class="cfg-sec-head">
+                    <h4>{(group.label || group.id).toLowerCase()}</h4>
+                    {#if lock}<span class="cfg-badge env">{lock}</span>{/if}
+                  </div>
+                  {#if group.description}<p class="cfg-desc">{group.description}</p>{/if}
+                  {#each group.fields as field (field.key)}
+                    {@render settingField(field, !!lock)}
+                  {/each}
+                  {#each children as child (child.id)}
+                    {@render settingSection(child, true, [])}
+                  {/each}
+                </section>
+              {/snippet}
+              {#each settingSections as sec (sec.group.id)}
+                {@render settingSection(sec.group, false, sec.children)}
               {/each}
               {#each depth.settings.variables ?? [] as v (v.key)}
                 <label class="cfg-row"

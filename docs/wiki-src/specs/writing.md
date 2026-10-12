@@ -118,6 +118,19 @@ until the operator types one of their own, and clearing the field hands it back
 to the spec's default. Settings that are not required keep a
 blank as a blank, because an operator may have cleared one on purpose.
 
+Each settings group is a section of the Settings tab, opened by a rule and its
+`label`. A group can name an earlier top-level group as its `parent`, and the
+tab draws it as a sub-section of that one; nesting goes one level deep. A group
+can also be locked behind another setting with `enabled_when`, such as
+`{ setting: gameSettingsPreset, in: [Custom] }`. Until that setting holds one
+of the listed values, the group's fields show disabled, with a note saying what
+unlocks them. Enshrouded uses this for its custom gameplay values, which the
+game ignores under any other preset. A lock never changes what is stored or
+written to the config file; it only tells the operator that editing those
+values does nothing yet. `Validate()` rejects a parent declared after its child,
+a lock on a setting inside the group it locks, and a lock value the setting
+cannot hold.
+
 `settings.hot_reload` declares that the game re-reads its config while running.
 It changes only what the Panel tells the operator after a save. The files are
 written either way.

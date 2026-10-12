@@ -69,6 +69,30 @@ Panel unit takes. Two details are load-bearing:
   have to add them here with `systemctl edit kraken-agent`, or the write fails
   at runtime.
 
+### who owns the server files
+
+The Agent and the game container are different users. The Agent runs as
+`kraken` here (as root in the [Docker](#docker) setup below), while the steam
+images run their game as `steam`, uid 1000. Both write the same data folder:
+the game installs into it and saves there, and the Agent writes rendered config,
+restores saves, takes Files-tab and SFTP edits, and deletes the folder when a
+server is retired.
+
+They share it through the Agent's group:
+
+- Before every install and every start the Agent makes the server's folder
+  group-writable and setgid, so whatever is created in it carries the Agent's
+  group. It also opens up anything it wrote itself since the last start.
+- Linux game containers keep their image's user, get the Agent's group as an
+  extra group, and run with `umask 0002`, so what the game creates stays
+  editable by the Agent.
+
+You don't need to set anything up for this. If a folder still isn't writable
+(say a data root on a filesystem without POSIX permissions), the install stops
+at once with exit code `73` and names the uid it ran as. It no longer reports a
+successful install that wrote nothing. See
+[Troubleshooting](/wiki/reference/troubleshooting/#an-install-succeeds-and-the-first-start-exits-53).
+
 ### enroll after the fact
 
 Installed without a token, or the token expired? Mint a fresh one, then either

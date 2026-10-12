@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Troubleshooting — Kraken wiki</title>
-<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, an install that succeeds into a folder the game cannot write, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <link rel="canonical" href="https://krakenserver.io/wiki/reference/troubleshooting/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/reference/troubleshooting/" />
 <meta property="og:title" content="Troubleshooting — Kraken wiki" />
-<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta property="og:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, an install that succeeds into a folder the game cannot write, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Troubleshooting — Kraken wiki" />
-<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
+<meta name="twitter:description" content="Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, an install that succeeds into a folder the game cannot write, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -111,10 +111,11 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>reference</span><i aria-hidden="true">/</i><span aria-current="page">Troubleshooting</span></nav>
     <h1>Troubleshooting</h1>
-    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.</p>
+    <p class="lede">Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, an install that succeeds into a folder the game cannot write, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-3" href="#after-a-reinstall-or-update-the-node-shows-no-container-for-the-server">After a reinstall or update the node shows no container for the server</a>
+<a class="toc-link lvl-2" href="#an-install-succeeds-and-the-first-start-exits-53">An install succeeds and the first start exits <code>53</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
 <a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>
@@ -259,6 +260,30 @@ attempt back: the console shows a <code>previous attempt</code> row above the cu
 output, with when it started and how it ended, and <code>show</code> opens its lines in
 place. That is where a failed update&#39;s cause is, when the reinstall is what
 cleared it.</p>
+<h2 id="an-install-succeeds-and-the-first-start-exits-53">An install succeeds and the first start exits <code>53</code> <a class="hlink" href="#an-install-succeeds-and-the-first-start-exits-53" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Symptom.</strong> On a Linux node, SteamCMD ends the pass with
+<code>Success! App &#39;…&#39; fully installed</code> and the Panel says the server is ready.
+The first start then crashes at once with exit code <code>53</code> (a Wine game) or a
+missing-binary error, and the Files tab shows nothing but the config the Panel
+rendered and any save you restored. An Agent with the fix fails the install
+instead:</p>
+<div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>[kraken] /data is not writable by this container (uid 1000, groups 1000 989); nothing can install into it
+install exited with code 73: the install container cannot write this server's data dir (…)</code></pre></div>
+<p><strong>Cause.</strong> The game container can&#39;t write the server&#39;s data folder. The steam
+images run as uid 1000, and the Agent creates the folder as its own user:
+<code>kraken</code> from <code>install.sh</code>, or root in a Compose install. Older Agents gave the
+game no access, and SteamCMD doesn&#39;t fail when its install directory is
+read-only. It reports success over an empty folder.</p>
+<p><strong>Fix.</strong> Upgrade the Agent to the latest release, then reinstall the server. The
+Agent now shares each folder through its group before every install and start
+(<a href="/wiki/install/agent/#who-owns-the-server-files">who owns the server files</a>),
+so existing folders are fixed on their next pass without anything to run by
+hand.</p>
+<p>If exit <code>73</code> persists after the upgrade, the data root itself is the problem.
+Typical causes are a filesystem without POSIX permissions (<code>/mnt/c</code> under WSL, a
+CIFS mount), or a folder owned by a user the Agent no longer runs as, which it
+can&#39;t change. Keep the data root on a native Linux filesystem, owned by the
+Agent&#39;s user.</p>
 <h2 id="every-node-goes-offline-at-once">Every node goes offline at once <a class="hlink" href="#every-node-goes-offline-at-once" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p><strong>Symptom.</strong> The whole fleet reads <code>offline</code> at the same moment, which is not
 how real outages usually arrive. The Panel is up and serving the UI. A node&#39;s
@@ -426,6 +451,7 @@ firing while your tab is out of date.</p>
     <div class="toc">
 <a class="toc-link lvl-2" href="#every-install-ends-with-state-is-0x6-or-0x602">Every install ends with <code>state is 0x6</code> or <code>0x602</code></a>
 <a class="toc-link lvl-3" href="#after-a-reinstall-or-update-the-node-shows-no-container-for-the-server">After a reinstall or update the node shows no container for the server</a>
+<a class="toc-link lvl-2" href="#an-install-succeeds-and-the-first-start-exits-53">An install succeeds and the first start exits <code>53</code></a>
 <a class="toc-link lvl-2" href="#every-node-goes-offline-at-once">Every node goes offline at once</a>
 <a class="toc-link lvl-2" href="#containers-n-running-1-untracked-that-will-not-clear"><code>containers N running · 1 untracked</code> that will not clear</a>
 <a class="toc-link lvl-3" href="#a-row-exists-the-server-reads-install_failed-or-offline">A row exists: the server reads <code>install_failed</code> or <code>offline</code></a>

@@ -23,14 +23,26 @@ func TestShareDataWithGame(t *testing.T) {
 		gid       int
 		groupOK   bool
 		install   bool
+		imageUser string
+		known     bool
+		wantUser  string
 		wantGroup []string
 		wantProbe bool
 	}{
-		{name: "linux install as the kraken user", osType: "linux", gid: 989, groupOK: true, install: true, wantGroup: []string{"989"}, wantProbe: true},
-		{name: "linux runtime", osType: "linux", gid: 989, groupOK: true, wantGroup: []string{"989"}},
-		{name: "linux install as root", osType: "linux", gid: 0, groupOK: true, install: true, wantGroup: []string{"0"}, wantProbe: true},
-		{name: "windows node", osType: "windows", gid: 989, groupOK: true, install: true},
-		{name: "agent on a windows host", osType: "linux", groupOK: false, install: true},
+		{name: "linux install as the kraken user", osType: "linux", gid: 989, groupOK: true, install: true,
+			imageUser: "steam", known: true, wantUser: "steam:989", wantProbe: true},
+		{name: "linux runtime", osType: "linux", gid: 989, groupOK: true,
+			imageUser: "steam", known: true, wantUser: "steam:989"},
+		{name: "image names a group of its own", osType: "linux", gid: 989, groupOK: true,
+			imageUser: "1000:1000", known: true, wantUser: "1000:989"},
+		{name: "root image", osType: "linux", gid: 989, groupOK: true,
+			imageUser: "", known: true, wantUser: "0:989"},
+		{name: "linux install as root", osType: "linux", gid: 0, groupOK: true, install: true,
+			imageUser: "steam", known: true, wantUser: "steam:0", wantProbe: true},
+		{name: "image not inspectable", osType: "linux", gid: 989, groupOK: true, install: true,
+			wantGroup: []string{"989"}, wantProbe: true},
+		{name: "windows node", osType: "windows", gid: 989, groupOK: true, install: true, imageUser: "steam", known: true},
+		{name: "agent on a windows host", osType: "linux", groupOK: false, install: true, imageUser: "steam", known: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -38,13 +50,16 @@ func TestShareDataWithGame(t *testing.T) {
 			d := &DockerRuntime{osType: tc.osType}
 			cfg := &container.Config{Cmd: []string{script}}
 			host := &container.HostConfig{}
-			d.shareDataWithGame(cfg, host, "/data", tc.install)
+			d.shareDataWithGame(cfg, host, "/data", tc.install, tc.imageUser, tc.known)
 
+			if cfg.User != tc.wantUser {
+				t.Fatalf("User = %q, want %q", cfg.User, tc.wantUser)
+			}
 			if strings.Join(host.GroupAdd, ",") != strings.Join(tc.wantGroup, ",") {
 				t.Fatalf("GroupAdd = %v, want %v", host.GroupAdd, tc.wantGroup)
 			}
 			cmd := cfg.Cmd[0]
-			if tc.wantGroup == nil {
+			if tc.wantUser == "" && tc.wantGroup == nil {
 				if cmd != script {
 					t.Fatalf("command changed where nothing is shared:\n%s", cmd)
 				}

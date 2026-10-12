@@ -200,6 +200,10 @@ Agent now shares each folder through its group before every install and start
 so existing folders are fixed on their next pass without anything to run by
 hand.
 
+**0.64.1 is the exception.** Its first version of this fix needed a setgid bit
+that the shipped systemd unit refuses, so on an `install.sh` node every install
+stops with exit `73`. Upgrade past it.
+
 If exit `73` persists after the upgrade, the data root itself is the problem.
 Typical causes are a filesystem without POSIX permissions (`/mnt/c` under WSL, a
 CIFS mount), or a folder owned by a user the Agent no longer runs as, which it

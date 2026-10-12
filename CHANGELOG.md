@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.0](https://github.com/briggleman/kraken/compare/v0.63.0...v0.64.0) (2026-10-12)
+
+
+### Features
+
+* grouped, preset-locked game settings and a settings-groups editor in the spec form ([#423](https://github.com/briggleman/kraken/issues/423)) ([50028a8](https://github.com/briggleman/kraken/commit/50028a8f42b042ede1db74c40de38d150e2f30dc))
+
 ## [0.63.0](https://github.com/briggleman/kraken/compare/v0.62.0...v0.63.0) (2026-10-09)
 
 

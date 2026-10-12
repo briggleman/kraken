@@ -214,12 +214,13 @@ restores saves, takes Files-tab and SFTP edits, and deletes the folder when a
 server is retired.</p>
 <p>They share it through the Agent&#39;s group:</p>
 <ul>
+<li>Linux game containers keep their image&#39;s user but run with the Agent&#39;s group
+as their primary group (<code>steam:&lt;the Agent&#39;s gid&gt;</code>), under <code>umask 0002</code>. So
+everything the game creates is in the Agent&#39;s group and editable by it.</li>
 <li>Before every install and every start the Agent makes the server&#39;s folder
-group-writable and setgid, so whatever is created in it carries the Agent&#39;s
-group. It also opens up anything it wrote itself since the last start.</li>
-<li>Linux game containers keep their image&#39;s user, get the Agent&#39;s group as an
-extra group, and run with <code>umask 0002</code>, so what the game creates stays
-editable by the Agent.</li>
+group-writable. It also opens up anything it wrote itself since the last
+start. It never sets setgid, which the unit&#39;s <code>RestrictSUIDSGID=true</code> would
+refuse.</li>
 </ul>
 <p>You don&#39;t need to set anything up for this. If a folder still isn&#39;t writable
 (say a data root on a filesystem without POSIX permissions), the install stops

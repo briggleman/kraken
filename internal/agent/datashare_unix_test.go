@@ -44,8 +44,8 @@ func TestShareDataTree_OpensWhatTheAgentOwns(t *testing.T) {
 	}
 
 	for p, want := range map[string]fs.FileMode{
-		root: fs.ModeDir | fs.ModeSetgid | 0o775,
-		save: fs.ModeDir | fs.ModeSetgid | 0o775,
+		root: fs.ModeDir | 0o775,
+		save: fs.ModeDir | 0o775,
 		cfg:  0o664,
 		slot: 0o660, // adds group bits, never other
 		exe:  0o775,
@@ -86,6 +86,32 @@ func TestShareDataTree_LeavesOtherOwnersAlone(t *testing.T) {
 	}
 }
 
+// A setgid entry cannot be chmodded under the unit's RestrictSUIDSGID=true, so
+// it is reported and left alone rather than failing the rest of the tree.
+func TestShareDataTree_LeavesSetgidEntriesAlone(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sg := filepath.Join(root, "sg")
+	if err := os.Mkdir(sg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sg, fs.ModeSetgid|0o755); err != nil {
+		t.Skipf("cannot set setgid here: %v", err)
+	}
+	err := shareDataTree(root, os.Geteuid(), os.Getegid())
+	if err == nil || !strings.Contains(err.Error(), "setgid") {
+		t.Fatalf("err = %v, want the setgid entry reported", err)
+	}
+	if info, _ := os.Lstat(sg); info.Mode() != fs.ModeDir|fs.ModeSetgid|0o755 {
+		t.Fatalf("setgid entry changed to %v", info.Mode())
+	}
+	if info, _ := os.Lstat(root); info.Mode() != fs.ModeDir|0o775 {
+		t.Fatalf("the rest of the tree was not shared: root %v", info.Mode())
+	}
+}
+
 func TestShareDataTree_MissingRootIsAnError(t *testing.T) {
 	err := shareDataTree(filepath.Join(t.TempDir(), "nope"), os.Geteuid(), os.Getegid())
 	if !errors.Is(err, fs.ErrNotExist) {
@@ -107,7 +133,7 @@ func TestShareDataWithGame_PrefixRuns(t *testing.T) {
 	run := func(dir string) (string, int) {
 		d := &DockerRuntime{osType: "linux"}
 		cfg := &container.Config{Cmd: []string{"echo script-ran; umask"}}
-		d.shareDataWithGame(cfg, &container.HostConfig{}, dir, true)
+		d.shareDataWithGame(cfg, &container.HostConfig{}, dir, true, "", false)
 		out, err := exec.Command("sh", "-c", cfg.Cmd[0]).CombinedOutput()
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {

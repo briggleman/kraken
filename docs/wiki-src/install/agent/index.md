@@ -80,12 +80,13 @@ server is retired.
 
 They share it through the Agent's group:
 
+- Linux game containers keep their image's user but run with the Agent's group
+  as their primary group (`steam:<the Agent's gid>`), under `umask 0002`. So
+  everything the game creates is in the Agent's group and editable by it.
 - Before every install and every start the Agent makes the server's folder
-  group-writable and setgid, so whatever is created in it carries the Agent's
-  group. It also opens up anything it wrote itself since the last start.
-- Linux game containers keep their image's user, get the Agent's group as an
-  extra group, and run with `umask 0002`, so what the game creates stays
-  editable by the Agent.
+  group-writable. It also opens up anything it wrote itself since the last
+  start. It never sets setgid, which the unit's `RestrictSUIDSGID=true` would
+  refuse.
 
 You don't need to set anything up for this. If a folder still isn't writable
 (say a data root on a filesystem without POSIX permissions), the install stops

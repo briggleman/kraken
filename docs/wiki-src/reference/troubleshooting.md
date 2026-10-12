@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.
+description: Real incidents as symptom, cause and fix — the SteamCMD state that repeats forever, an install that succeeds into a folder the game cannot write, the whole fleet going offline at once, a container the Panel lost track of, a removal a node still owes, and the Cloudflare 400 that is not about a certificate being invalid.
 section: reference
 order: 64
 ---
@@ -173,6 +173,38 @@ attempt back: the console shows a `previous attempt` row above the current
 output, with when it started and how it ended, and `show` opens its lines in
 place. That is where a failed update's cause is, when the reinstall is what
 cleared it.
+
+## An install succeeds and the first start exits `53`
+
+**Symptom.** On a Linux node, SteamCMD ends the pass with
+`Success! App '…' fully installed` and the Panel says the server is ready.
+The first start then crashes at once with exit code `53` (a Wine game) or a
+missing-binary error, and the Files tab shows nothing but the config the Panel
+rendered and any save you restored. An Agent with the fix fails the install
+instead:
+
+```text
+[kraken] /data is not writable by this container (uid 1000, groups 1000 989); nothing can install into it
+install exited with code 73: the install container cannot write this server's data dir (…)
+```
+
+**Cause.** The game container can't write the server's data folder. The steam
+images run as uid 1000, and the Agent creates the folder as its own user:
+`kraken` from `install.sh`, or root in a Compose install. Older Agents gave the
+game no access, and SteamCMD doesn't fail when its install directory is
+read-only. It reports success over an empty folder.
+
+**Fix.** Upgrade the Agent to the latest release, then reinstall the server. The
+Agent now shares each folder through its group before every install and start
+([who owns the server files](/wiki/install/agent/#who-owns-the-server-files)),
+so existing folders are fixed on their next pass without anything to run by
+hand.
+
+If exit `73` persists after the upgrade, the data root itself is the problem.
+Typical causes are a filesystem without POSIX permissions (`/mnt/c` under WSL, a
+CIFS mount), or a folder owned by a user the Agent no longer runs as, which it
+can't change. Keep the data root on a native Linux filesystem, owned by the
+Agent's user.
 
 ## Every node goes offline at once
 

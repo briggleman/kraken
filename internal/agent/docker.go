@@ -937,6 +937,9 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	if err := os.MkdirAll(d.localDir(req.ServerId), 0o755); err != nil {
 		return d.fail(emit, "create data dir: "+err.Error())
 	}
+	// Linux: the install container runs as the image's user, not the Agent's.
+	// See datashare.go.
+	d.shareDataDirOrWarn(req.ServerId, func(line string) { _ = emit(sysLine(line)) })
 
 	// Every line the Agent writes about the pass — here and in the guard, the
 	// recovery and the script run — goes out as a system line (#392), so the
@@ -982,6 +985,7 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 		host.Resources.Memory = req.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
+	d.shareDataWithGame(cfg, host, dataPath, true)
 
 	// One pass, or two: a retryable SteamCMD failure that left orphaned staging
 	// files behind is cleaned up and run once more if the deadline allows. See
@@ -1103,6 +1107,10 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 		// The run time goes out before the verdict either way: an install that
 		// died at 6m02s and one that died at 2s are different failures.
 		_ = emit(sysLine(fmt.Sprintf("install script ran %s, exit %d", took(scriptBegan), st.StatusCode)))
+		if st.StatusCode == exitDataDirNotWritable && len(host.GroupAdd) > 0 {
+			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d: the install container cannot write this server's data dir (%s on the node). Check that dir's owner, group and mode",
+				st.StatusCode, d.localDir(serverID)))
+		}
 		if st.StatusCode != 0 {
 			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d", st.StatusCode))
 		}
@@ -1409,6 +1417,11 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 		host.Resources.Memory = spec.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
+	// Every start recreates the container, so this is also where a restore, a
+	// rendered config or a Files-tab edit made while the server was stopped is
+	// opened to the game. See datashare.go.
+	d.shareDataDirOrWarn(spec.ServerId, nil)
+	d.shareDataWithGame(cfg, host, dataPath, false)
 	_, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, containerName(spec.ServerId))
 	return err
 }

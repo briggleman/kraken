@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.2](https://github.com/briggleman/kraken/compare/v0.64.1...v0.64.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **agent:** share the data dir without setgid, which the systemd unit refuses ([#429](https://github.com/briggleman/kraken/issues/429)) ([1421e2c](https://github.com/briggleman/kraken/commit/1421e2c0c9f0fdfd3c344ccbdd5c2bf1dbc51308))
+
 ## [0.64.1](https://github.com/briggleman/kraken/compare/v0.64.0...v0.64.1) (2026-10-12)
 
 

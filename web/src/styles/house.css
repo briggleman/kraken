@@ -1077,6 +1077,44 @@
   select.cfg-in:disabled::picker-icon { opacity: 0.4; }
   .tgl input:disabled ~ i { opacity: 0.5; }
   .tgl.is-locked { cursor: not-allowed; color: var(--ink-3); }
+  /* settings sections - a spec's settings groups. Each group is a chapter of the panel's
+     two-column form: it spans both columns, opens on a hairline rule with its own label, and
+     carries its fields on the same 14 x 28 grid, so a forty-field game reads as five titled
+     blocks instead of one undifferentiated list. A sub-section (a group with a parent) hangs
+     off its parent on a left rail, label a step quieter, so the eye reads it as belonging to
+     the chapter above rather than starting a new one. */
+  .cfg-sec {
+    grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px 28px; align-content: start; padding-top: 18px; border-top: 1px solid var(--edge);
+  }
+  .cfg > .cfg-sec:first-child { padding-top: 0; border-top: none; }
+  .cfg-sec-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cfg-sec-head h4 {
+    margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  /* the description is its own row under the head, across both columns - a flex item
+     in the head it would sit beside a short label and read as a caption to it. Keep it
+     to a sentence: the section label already says what the block is. */
+  .cfg-sec > .cfg-desc { grid-column: 1 / -1; margin-top: -6px; }
+  .cfg-sec > .cfg-help, .cfg-sec > .cfg-sec { grid-column: 1 / -1; }
+  /* a field beside one with help text must not stretch its input away from its label */
+  .cfg-sec .cfg-row { align-content: start; }
+  .cfg-sec.sub { padding: 2px 0 4px 16px; border-top: none; border-left: 1px solid rgba(var(--ink-3-rgb), 0.5); }
+  /* sibling sub-sections part on a dashed rule - quieter than the solid one between
+     chapters, so the hierarchy still reads at a glance */
+  .cfg-sec.sub + .cfg-sec.sub { margin-top: 4px; padding-top: 16px; border-top: 1px dashed rgba(var(--ink-3-rgb), 0.3); }
+  .cfg-sec.sub .cfg-sec-head h4 { font-size: 10px; letter-spacing: 0.22em; color: var(--ink-3); }
+  /* a locked section is enabled_when unmet: its values stay on screen in the dashed
+     "real but not yours to change" idiom of a disabled field, and the head says what
+     unlocks it - greyed-out with no reason given reads as broken. */
+  .cfg-sec.is-locked .cfg-sec-head h4 { color: rgba(var(--ink-3-rgb), 0.8); }
+  .cfg-sec.is-locked .cfg-row > span, .cfg-sec.is-locked .tgl { color: rgba(var(--ink-3-rgb), 0.8); }
+  .cfg-sec.is-locked .cfg-help { opacity: 0.6; }
+  /* a bool with help text: the toggle and its sentence travel as one cell */
+  .cfg-tgl-row { display: grid; gap: 4px; align-self: end; }
+  .cfg-tgl-row > .tgl { padding-bottom: 0; }
+  @media (max-width: 640px) { .cfg-sec { grid-template-columns: minmax(0, 1fr); } }
   .cfg-actions { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--edge); }
   .cfg-actions .cfg-note { align-self: center; }
   /* action-leads variant: the button sits first (in the DOM too, so focus order matches) and the
@@ -2516,6 +2554,26 @@
   .spec-drop { align-self: center; }
   .spec-full { grid-column: 1 / -1; }
   .cfg-head .spec-add { margin-left: auto; }
+  /* settings groups in the spec form: one block per group - its head strip (id, label,
+     parent), its lock strip (description, locked-unless), then its fields on a left rail,
+     the same rail the Settings tab hangs a sub-section on, so a group and its fields read
+     as one unit. A nested group's whole block takes the rail's indent too. */
+  .spec-grp { display: grid; gap: 8px; }
+  .spec-grp.nested { margin-left: 18px; padding-left: 14px; border-left: 1px solid rgba(var(--ink-3-rgb), 0.35); }
+  .spec-rows > .spec-grp:not(.nested):not(:first-child) { margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--edge); }
+  .spec-sub.grps { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(150px, max-content) max-content; }
+  .spec-sub.grp-more { grid-template-columns: minmax(0, 2fr) minmax(150px, max-content) minmax(0, 1fr); }
+  .spec-flds { display: grid; gap: 6px; margin-left: 14px; padding-left: 12px; border-left: 1px dashed rgba(var(--ink-3-rgb), 0.3); }
+  .spec-sub.flds {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(92px, max-content) minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1.3fr) max-content max-content;
+    padding: 8px 12px; background: rgba(5, 13, 20, 0.2);
+  }
+  .spec-rng { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .spec-flds > .mini-act { justify-self: start; }
+  @media (max-width: 1100px) {
+    .spec-sub.flds { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+    .spec-sub.grps, .spec-sub.grp-more { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  }
   /* the form view is capped at a reading measure because it IS a form; the document view is
      not one, so switching to code lifts the cap. Without this the block stays 1240 wide no
      matter what width it asks for - a child cannot out-width a capped ancestor. */

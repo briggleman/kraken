@@ -61,10 +61,27 @@ type SettingField struct {
 
 // SettingGroup is a labeled cluster of fields (a UI section/tab).
 type SettingGroup struct {
-	ID          string         `json:"id"`
-	Label       string         `json:"label,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Fields      []SettingField `json:"fields"`
+	ID          string `json:"id"`
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Parent nests this group under an EARLIER top-level group (by id), which
+	// the Settings tab draws as a sub-section of it. One level only: a parent
+	// cannot itself have a parent. Purely presentational — keys stay flat.
+	Parent string `json:"parent,omitempty"`
+	// EnabledWhen locks the group's fields (rendered disabled) unless another
+	// setting currently holds one of the listed values — Enshrouded's custom
+	// gameplay values only apply when the preset is Custom. The values are
+	// still stored and rendered into config files either way; this only tells
+	// the operator that editing them changes nothing until the condition holds.
+	EnabledWhen *SettingCondition `json:"enabled_when,omitempty"`
+	Fields      []SettingField    `json:"fields"`
+}
+
+// SettingCondition is satisfied when the setting Key's effective value is one
+// of In.
+type SettingCondition struct {
+	Setting string   `json:"setting"`
+	In      []string `json:"in"`
 }
 
 // Settings is the game's editable configuration surface.
@@ -373,6 +390,9 @@ func (s *Spec) validateSettings() error {
 			}
 		}
 	}
+	if err := s.validateGroupLayout(); err != nil {
+		return err
+	}
 	for ci, cf := range s.ConfigFiles {
 		if cf.Path == "" {
 			return fmt.Errorf("spec %q: config_files[%d]: path is required", s.Slug, ci)
@@ -392,6 +412,59 @@ func (s *Spec) validateSettings() error {
 				return fmt.Errorf("spec %q: config_files[%d]: binding %q references unknown setting %q", s.Slug, ci, outKey, bind.From)
 			}
 		}
+	}
+	return nil
+}
+
+// validateGroupLayout checks the presentational links between groups: unique
+// ids, parents that name an earlier top-level group, and enabled_when
+// conditions that name a setting outside the group they lock, with values that
+// setting can actually hold.
+func (s *Spec) validateGroupLayout() error {
+	seen := make(map[string]SettingGroup)
+	fieldOf := make(map[string]SettingField)
+	groupOf := make(map[string]string)
+	for _, g := range s.Settings.Groups {
+		for _, f := range g.Fields {
+			fieldOf[f.Key] = f
+			groupOf[f.Key] = g.ID
+		}
+	}
+	for _, g := range s.Settings.Groups {
+		if _, dup := seen[g.ID]; dup {
+			return fmt.Errorf("spec %q: duplicate settings group id %q", s.Slug, g.ID)
+		}
+		if g.Parent != "" {
+			p, ok := seen[g.Parent]
+			switch {
+			case g.Parent == g.ID:
+				return fmt.Errorf("spec %q: group %q cannot be its own parent", s.Slug, g.ID)
+			case !ok:
+				return fmt.Errorf("spec %q: group %q: parent %q must be a group declared before it", s.Slug, g.ID, g.Parent)
+			case p.Parent != "":
+				return fmt.Errorf("spec %q: group %q: parent %q is itself nested; groups nest one level only", s.Slug, g.ID, g.Parent)
+			}
+		}
+		if c := g.EnabledWhen; c != nil {
+			f, ok := fieldOf[c.Setting]
+			switch {
+			case c.Setting == "":
+				return fmt.Errorf("spec %q: group %q: enabled_when.setting is required", s.Slug, g.ID)
+			case !ok:
+				return fmt.Errorf("spec %q: group %q: enabled_when references unknown setting %q", s.Slug, g.ID, c.Setting)
+			case groupOf[c.Setting] == g.ID:
+				// The switch would lock itself: once off, nothing could turn it back on.
+				return fmt.Errorf("spec %q: group %q: enabled_when setting %q is inside the group it locks", s.Slug, g.ID, c.Setting)
+			case len(c.In) == 0:
+				return fmt.Errorf("spec %q: group %q: enabled_when.in needs at least one value", s.Slug, g.ID)
+			}
+			for _, v := range c.In {
+				if err := ValidateFieldValue(f, v); err != nil {
+					return fmt.Errorf("spec %q: group %q: enabled_when value %q: %w", s.Slug, g.ID, v, err)
+				}
+			}
+		}
+		seen[g.ID] = g
 	}
 	return nil
 }

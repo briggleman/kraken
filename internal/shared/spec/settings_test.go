@@ -370,3 +370,51 @@ func TestValidateSettings_RejectsRequiredBool(t *testing.T) {
 		t.Fatalf("an optional bool must validate: %v", err)
 	}
 }
+
+func TestValidateSettings_GroupLayout(t *testing.T) {
+	preset := SettingGroup{ID: "world", Fields: []SettingField{
+		{Key: "preset", Type: FieldEnum, Options: []string{"Default", "Custom"}, Default: "Default"},
+	}}
+	sub := func(mut func(*SettingGroup)) SettingGroup {
+		g := SettingGroup{ID: "stats", Parent: "world",
+			EnabledWhen: &SettingCondition{Setting: "preset", In: []string{"Custom"}},
+			Fields:      []SettingField{{Key: "hp", Type: FieldFloat, Default: "1"}}}
+		if mut != nil {
+			mut(&g)
+		}
+		return g
+	}
+	cases := []struct {
+		name   string
+		groups []SettingGroup
+		want   string // "" = valid
+	}{
+		{"nested and gated", []SettingGroup{preset, sub(nil)}, ""},
+		{"duplicate id", []SettingGroup{preset, sub(func(g *SettingGroup) { g.ID = "world"; g.Parent = "" })}, "duplicate settings group id"},
+		{"parent declared later", []SettingGroup{sub(nil), preset}, "declared before it"},
+		{"own parent", []SettingGroup{preset, sub(func(g *SettingGroup) { g.Parent = "stats" })}, "its own parent"},
+		{"two levels", []SettingGroup{preset, sub(nil), sub(func(g *SettingGroup) {
+			g.ID, g.Parent, g.Fields = "deeper", "stats", []SettingField{{Key: "mp", Type: FieldFloat}}
+		})}, "nest one level only"},
+		{"unknown setting", []SettingGroup{preset, sub(func(g *SettingGroup) { g.EnabledWhen.Setting = "nope" })}, "unknown setting"},
+		{"locks itself", []SettingGroup{preset, sub(func(g *SettingGroup) { g.EnabledWhen.Setting = "hp"; g.EnabledWhen.In = []string{"1"} })}, "inside the group it locks"},
+		{"empty in", []SettingGroup{preset, sub(func(g *SettingGroup) { g.EnabledWhen.In = nil })}, "at least one value"},
+		{"value not an option", []SettingGroup{preset, sub(func(g *SettingGroup) { g.EnabledWhen.In = []string{"Hard"} })}, "not one of the allowed options"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := validSpec()
+			s.Settings = Settings{Groups: tc.groups}
+			err := s.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("expected valid, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

@@ -576,6 +576,35 @@ carry them back into the app chrome, where Caution Violet and Crisis Magenta are
 string painted violet in a node band would read as a warning. The exception is sound precisely
 because a code editor is stateless; it is not licence to loosen the semantics anywhere a state exists.
 
+### Spec Settings Groups Editor (the spec form's settings groups)
+The form view's "settings groups" section edits what Settings Sections render, and it is built to
+**look like the thing it produces**. One `.spec-grp` per group (`display: grid; gap: 8px`) holds
+three strips on the house `.spec-sub` ground (`rgba(5,13,20,0.35)`, a 1px Ink-3 0.2 border, 4px
+radius, `12px 14px` padding, mono fields at 12px under 9px labels):
+
+- **head strip** (`.spec-sub.grps`) — id, label, `nested under` select, drop:
+  `minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(150px, max-content) max-content`.
+- **lock strip** (`.spec-sub.grp-more`) — description, `locked unless` select, `is one of`:
+  `minmax(0, 2fr) minmax(150px, max-content) minmax(0, 1fr)`. `is one of` is disabled — dashed —
+  while `locked unless` reads `— always editable —`, because a value list for no condition is
+  nothing to fill in.
+- **fields** (`.spec-flds`) — the group's own fields on a **dashed left rail** (14px margin, 12px
+  padding, 1px dashed Ink-3 at 0.3, rows at a 6px gap), each a `.spec-sub.flds` strip of key,
+  label, type, default, options *or* `min · max`, help, required toggle and drop
+  (`minmax(0, 0.9fr) minmax(0, 1fr) minmax(92px, max-content) minmax(0, 0.7fr) minmax(0, 1fr)
+  minmax(0, 1.3fr) max-content max-content`), on a lighter `rgba(5,13,20,0.2)` ground with `8px 12px`
+  padding so a field row reads as inside its group rather than beside it. A numeric field's
+  `min · max` is one cell split into two equal inputs (`.spec-rng`, 6px gap). An `add field`
+  mini-act closes the rail, `justify-self: start`.
+
+Top-level groups part on a solid Edge rule (`.spec-rows > .spec-grp:not(.nested):not(:first-child)`:
+10px margin, 18px padding). A **nested group** (`.spec-grp.nested`, `nested under` set) takes the
+whole block onto a rail instead — `margin-left: 18px`, `padding-left: 14px`, a 1px Ink-3 0.35
+border-left — the same left-rail grammar Settings Sections uses for a sub-section, so the editor's
+shape and the rendered panel's shape agree, and a nested group's block never shows a top rule of
+its own. Under 1100px the field strip folds to three equal columns and the head and lock strips to
+two; the section's `cfg-badge.env` counts what is defined (`2 defined`).
+
 ### Sheet (full-screen overlay family)
 The house's one navigation mechanism, since there are no routes. A sheet is `position: fixed; inset: 0` at `z-index: 35`, opening with the same circular `clip-path` plunge from the click point that a drill-in uses (`circle(0%)` → `circle(150%)` at `--ox/--oy`, 0.65s), over a ground of its own: a violet-tinted radial rising from below the fold on the abyssal gradient, so a sheet reads as *deeper* than the pane rather than stacked on it. Two rows, `auto 1fr`: a title bar that stays, and a `.sheet-body` scroller with the house thin gold scrollbar. The body reads a `--measure` token set on the sheet — 1040px by default, 1240 for the spec sheets, 1280 for new server, 1640 for the audit log, and 2000 while the spec code view is open — and is centred in it with `margin-inline: auto`. **The title bar is not capped.** It keeps the full width it has on `.prefs`, the one multi-column sheet, so `surface` and the sheet name land in the same place on every page no matter how wide that page’s content column is: the bar is page chrome, and chrome does not move because the content beneath it got narrower. Centring uses auto margins and never `justify-self: center`, which would size the column shrink-to-fit and let its content decide the measure. `.prefs` takes no measure at all: a two-column split is not a single-column view. Escape dismisses, focus lands only once the plunge finishes, and each sheet remembers what opened it so closing returns there rather than to the pane. Membership in this family *is* the Escape behavior — the login screen is deliberately not a member.
 
@@ -782,6 +811,44 @@ the light, not the track.** That is the One Light Rule at control scale: a switc
 one small bright thing in it, and a switch that is off has none, so a column of them scans as a
 count of what is live without reading a single label. Only the ground, border, knob position and
 knob colour move; the pill never changes size.
+
+### Settings Sections (a spec's settings groups on the Settings tab)
+A Game Spec's settings groups render as **chapters of the two-column form** (`.cfg-sec`). Each
+section spans both columns (`grid-column: 1 / -1`) and re-declares the panel's own grid inside
+itself — two `minmax(0, 1fr)` columns on the same `14px 28px` gap — so its fields sit exactly where
+loose fields would, and a forty-field game reads as five titled blocks instead of one
+undifferentiated list. A section opens on a solid 1px Edge hairline with 18px above its fields;
+the first section in the form drops both, because the panel's own top edge is already the rule.
+The head (`.cfg-sec-head`) is a wrapping flex row at a 10px gap holding the label — an `h4` at 12px,
+600, `0.28em` tracking, uppercase, Sand Secondary — and anything that qualifies the section, such
+as a badge. The label is the section's name, not ornament: it is the one heading the block has.
+
+The section **description is its own row**, across both columns, under the head (`.cfg-sec >
+.cfg-desc`, `margin-top: -6px` to tuck it toward the label it explains). Left as a flex item in the
+head it sat beside a short label and read as a caption to it. Keep it to one sentence; the label
+already says what the block is. Fields inside a section take `align-content: start`, so a field
+whose neighbour carries help text does not stretch its input away from its own label.
+
+A **sub-section** (`.cfg-sec.sub`, a group with a `parent`) hangs off its parent on a left rail
+rather than starting a new chapter: no top rule, `padding: 2px 0 4px 16px`, and a 1px border-left
+in Ink-3 at 0.5. Its label steps down to 10px, `0.22em`, Sand Faint, so the eye files it under the
+chapter above. Sibling sub-sections part on a **dashed** rule (`border-top: 1px dashed`, Ink-3 at
+0.3, 16px above, 4px margin) — quieter than the solid rule between chapters, so the hierarchy reads
+at a glance: solid parts chapters, dashed parts the rooms inside one. Under 640px a section
+collapses to one column, the same as the form.
+
+A **bool with help text** travels as `.cfg-tgl-row`: the Toggle Switch and its `.cfg-help` sentence
+in one grid cell (`gap: 4px`, `align-self: end`, the toggle's own bottom padding removed), so the
+sentence stays attached to its switch instead of wrapping into the next column.
+
+**The Locked Says Why Rule.** A section whose `enabled_when` condition is unmet is locked
+(`.cfg-sec.is-locked`), and a locked section keeps its values on screen — disabled fields in Form
+Field's dashed "real but not yours to change here" idiom, locked toggles at `.tgl.is-locked` —
+with its labels and toggle text at Ink-3 0.8 and its help at 0.6 opacity. Its head then carries a
+dashed `.cfg-badge.env` saying what unlocks it: `locked until difficulty is custom`. Greyed out with
+no reason given reads as broken, and hiding the section would hide the values the server is
+actually running on. The dashed edge already says *fixed*; the badge says *by what*, and the
+control that lifts the lock sits in the parent section directly above it.
 
 ### Command Block
 A `<pre>` of mono 300 at 12px on the deepest well in the house (`rgba(2,9,14,0.6)`), holding an

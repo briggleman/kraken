@@ -5,7 +5,7 @@
   import { api, errMsg } from "@/api/client";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { highlightLines } from "@/lib/spechl";
-  import type { Spec } from "@/api/types";
+  import type { FieldType, SettingField, SettingGroup, Spec } from "@/api/types";
   import YAML from "yaml";
   import { untrack } from "svelte";
 
@@ -14,9 +14,9 @@
     "deleting this spec leaves servers built from it running, but nothing can be reinstalled or redeployed from it. it cannot be undone.";
 
   // The lean Spec type omits the settings block, but the document itself
-  // carries it: the code view round-trips it verbatim, and the form shows
-  // its count and the hot-reload flag.
-  type SpecDoc = Spec & { settings?: { hot_reload?: boolean; groups?: unknown[] } };
+  // carries it: the code view round-trips it verbatim, and the form edits its
+  // groups and fields. Config files (bindings, templates) stay code-view only.
+  type SpecDoc = Spec & { settings?: { hot_reload?: boolean; groups?: SettingGroup[] } };
 
   let spec = $state<SpecDoc | null>(null);
   let codeText = $state("");
@@ -121,7 +121,9 @@
   const plats = $derived(spec?.platforms ?? []);
   const vars = $derived(spec?.variables ?? []);
   const ports = $derived(spec?.ports ?? []);
-  const groupCount = $derived(spec?.settings?.groups?.length ?? 0);
+  const groups = $derived(spec?.settings?.groups ?? []);
+  const groupCount = $derived(groups.length);
+  const FIELD_TYPES: FieldType[] = ["string", "text", "password", "int", "float", "bool", "enum"];
 
   // The form and the code view are two editors over the same document, and
   // only one is live at a time: switching away from the one you were typing
@@ -226,6 +228,69 @@
 
   const getHotReload = () => !!spec?.settings?.hot_reload;
   const setHotReload = (on: boolean) => { if (spec) spec.settings = { ...(spec.settings ?? {}), hot_reload: on }; };
+
+  // -- settings groups: the document's own objects, edited in place. Optional
+  //    keys are deleted rather than left blank so the saved document reads the
+  //    way a hand-written spec would.
+
+  function specGroups(): SettingGroup[] {
+    if (!spec) return [];
+    spec.settings ??= {};
+    spec.settings.groups ??= [];
+    return spec.settings.groups;
+  }
+  function addGroup() {
+    specGroups().push({ id: "", label: "", fields: [] });
+  }
+  // A dropped group takes its nesting with it: children fall back to the top
+  // level instead of naming a parent that no longer exists.
+  function dropGroup(i: number) {
+    const gs = specGroups();
+    const [gone] = gs.splice(i, 1);
+    if (gone?.id) for (const g of gs) if (g.parent === gone.id) delete g.parent;
+  }
+  // A group can nest under a top-level group declared before it (the panel
+  // validates the same rule on save).
+  const parentChoices = (i: number) => groups.slice(0, i).filter((g) => g.id && !g.parent).map((g) => g.id);
+  function setParent(g: SettingGroup, v: string) {
+    if (v) g.parent = v;
+    else delete g.parent;
+  }
+  // The switch for a lock can be any field outside the group it locks.
+  const lockChoices = (g: SettingGroup) =>
+    groups.filter((x) => x !== g).flatMap((x) => x.fields.map((f) => f.key)).filter(Boolean);
+  function setLockSetting(g: SettingGroup, v: string) {
+    if (!v) delete g.enabled_when;
+    else g.enabled_when = { setting: v, in: g.enabled_when?.in ?? [] };
+  }
+  const csv = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+  function setLockIn(g: SettingGroup, v: string) {
+    if (g.enabled_when) g.enabled_when.in = csv(v);
+  }
+  function setOptional(o: { description?: string; help?: string }, k: "description" | "help", v: string) {
+    if (v) o[k] = v;
+    else delete o[k];
+  }
+  function setOptions(f: SettingField, v: string) {
+    const o = csv(v);
+    if (o.length) f.options = o;
+    else delete f.options;
+  }
+  function setBound(f: SettingField, k: "min" | "max", v: string) {
+    const n = Number(v);
+    if (v.trim() === "" || !Number.isFinite(n)) delete f[k];
+    else f[k] = n;
+  }
+  function setRequired(f: SettingField, on: boolean) {
+    if (on) f.required = true;
+    else delete f.required;
+  }
+  function addField(g: SettingGroup) {
+    g.fields.push({ key: "", label: "", type: "string", default: "" });
+  }
+  function dropField(g: SettingGroup, i: number) {
+    g.fields.splice(i, 1);
+  }
 
   function addPlatform() {
     if (spec) spec.platforms = [...spec.platforms, { kind: "linux-native", image: "" }];
@@ -393,11 +458,53 @@
         </section>
 
         <section class="prefs-group" aria-label="Settings groups">
-          <div class="cfg-head"><h3 class="pane-label">settings groups</h3><span class="cfg-badge env">{groupCount === 0 ? "none" : `${groupCount} defined`}</span><button class="cfg-btn ghost spec-add">add group</button></div>
+          <div class="cfg-head"><h3 class="pane-label">settings groups</h3><span class="cfg-badge env">{groupCount === 0 ? "none" : `${groupCount} defined`}</span><button class="cfg-btn ghost spec-add" onclick={addGroup}>add group</button></div>
           <div class="cfg">
             <label class="tgl"><input type="checkbox" checked={!!spec.settings?.hot_reload} onchange={(e) => setHotReload(e.currentTarget.checked)} /><i></i>hot reload — the game re-reads its config files live, so saved settings apply without a restart</label>
             <p class="cfg-help">{groupCount === 0 ? "no settings groups yet. these" : `${groupCount} group${groupCount === 1 ? "" : "s"} — they`} render game options into config files. config file bindings and templates are kept but can only be edited in the code view.</p>
           </div>
+          {#if groupCount}
+            <div class="ns-pad">
+              <div class="spec-rows">
+                {#each groups as g, gi (gi)}
+                  <div class="spec-grp" class:nested={!!g.parent}>
+                    <div class="spec-sub grps">
+                      <label class="cfg-row"><span>id</span><input class="cfg-in" type="text" bind:value={g.id} /></label>
+                      <label class="cfg-row"><span>label</span><input class="cfg-in" type="text" bind:value={g.label} /></label>
+                      <div class="cfg-row"><span>nested under</span><select class="cfg-in" bind:value={() => g.parent ?? "", (v) => setParent(g, v)}><option value="">— top level —</option>{#each parentChoices(gi) as pid (pid)}<option value={pid}>{pid}</option>{/each}</select></div>
+                      <button class="mini-act del spec-drop" onclick={() => dropGroup(gi)}>drop</button>
+                    </div>
+                    <div class="spec-sub grp-more">
+                      <label class="cfg-row"><span>description</span><input class="cfg-in" type="text" bind:value={() => g.description ?? "", (v) => setOptional(g, "description", v)} /></label>
+                      <div class="cfg-row"><span>locked unless</span><select class="cfg-in" bind:value={() => g.enabled_when?.setting ?? "", (v) => setLockSetting(g, v)}><option value="">— always editable —</option>{#each lockChoices(g) as k (k)}<option value={k}>{k}</option>{/each}</select></div>
+                      <label class="cfg-row"><span>is one of</span><input class="cfg-in" type="text" placeholder="—" disabled={!g.enabled_when} bind:value={() => (g.enabled_when?.in ?? []).join(", "), (v) => setLockIn(g, v)} /></label>
+                    </div>
+                    <div class="spec-flds">
+                      {#each g.fields as f, fi (fi)}
+                        <div class="spec-sub flds">
+                          <label class="cfg-row"><span>key</span><input class="cfg-in" type="text" bind:value={f.key} /></label>
+                          <label class="cfg-row"><span>label</span><input class="cfg-in" type="text" bind:value={f.label} /></label>
+                          <div class="cfg-row"><span>type</span><select class="cfg-in" bind:value={f.type}>{#each FIELD_TYPES as t (t)}<option value={t}>{t}</option>{/each}</select></div>
+                          <label class="cfg-row"><span>default</span><input class="cfg-in" type="text" bind:value={f.default} /></label>
+                          {#if f.type === "enum"}
+                            <label class="cfg-row"><span>options</span><input class="cfg-in" type="text" bind:value={() => (f.options ?? []).join(", "), (v) => setOptions(f, v)} /></label>
+                          {:else if f.type === "int" || f.type === "float"}
+                            <div class="cfg-row"><span>min · max</span><span class="spec-rng"><input class="cfg-in" type="text" aria-label="min" bind:value={() => (f.min === undefined ? "" : String(f.min)), (v) => setBound(f, "min", v)} /><input class="cfg-in" type="text" aria-label="max" bind:value={() => (f.max === undefined ? "" : String(f.max)), (v) => setBound(f, "max", v)} /></span></div>
+                          {:else}
+                            <label class="cfg-row"><span>rules</span><input class="cfg-in" type="text" placeholder="—" disabled /></label>
+                          {/if}
+                          <label class="cfg-row"><span>help</span><input class="cfg-in" type="text" bind:value={() => f.help ?? "", (v) => setOptional(f, "help", v)} /></label>
+                          <label class="tgl"><input type="checkbox" disabled={f.type === "bool"} checked={!!f.required} onchange={(e) => setRequired(f, e.currentTarget.checked)} /><i></i>required</label>
+                          <button class="mini-act del spec-drop" onclick={() => dropField(g, fi)}>drop</button>
+                        </div>
+                      {/each}
+                      <button class="mini-act" onclick={() => addField(g)}>add field</button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </section>
 
         <div class="cfg-actions">

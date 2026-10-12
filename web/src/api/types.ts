@@ -669,6 +669,12 @@ export interface SettingGroup {
   id: string;
   label?: string;
   description?: string;
+  /** Nests this group under an earlier top-level group (by id) — the Settings
+   *  tab draws it as a sub-section. Presentational only. */
+  parent?: string;
+  /** Locks the group's fields (shown disabled) unless `setting`'s current
+   *  value is one of `in`. Values are still stored and rendered either way. */
+  enabled_when?: { setting: string; in: string[] };
   fields: SettingField[];
 }
 

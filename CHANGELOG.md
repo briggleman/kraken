@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.1](https://github.com/briggleman/kraken/compare/v0.64.0...v0.64.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **agent:** share each server's data dir with linux game containers ([#427](https://github.com/briggleman/kraken/issues/427)) ([4904046](https://github.com/briggleman/kraken/commit/49040469784604e9d5b902ae4bed452336ea401e))
+
 ## [0.64.0](https://github.com/briggleman/kraken/compare/v0.63.0...v0.64.0) (2026-10-12)
 
 

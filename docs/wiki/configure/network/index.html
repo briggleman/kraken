@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Ports and firewall — Kraken wiki</title>
-<meta name="description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<meta name="description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline — plus transparent networking for Windows game servers that open their own ports." />
 <link rel="canonical" href="https://krakenserver.io/wiki/configure/network/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/configure/network/" />
 <meta property="og:title" content="Ports and firewall — Kraken wiki" />
-<meta property="og:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<meta property="og:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline — plus transparent networking for Windows game servers that open their own ports." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Ports and firewall — Kraken wiki" />
-<meta name="twitter:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline." />
+<meta name="twitter:description" content="Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline — plus transparent networking for Windows game servers that open their own ports." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -111,12 +111,13 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Ports and firewall</span></nav>
     <h1>Ports and firewall</h1>
-    <p class="lede">Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline.</p>
+    <p class="lede">Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline — plus transparent networking for Windows game servers that open their own ports.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#the-rules-that-matter">The rules that matter</a>
 <a class="toc-link lvl-2" href="#direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule</a>
 <a class="toc-link lvl-2" href="#or-skip-inbound-ports-entirely">Or skip inbound ports entirely</a>
 <a class="toc-link lvl-2" href="#game-ports-end-to-end">Game ports, end to end</a>
+<a class="toc-link lvl-2" href="#transparent-networking-for-windows-game-servers">Transparent networking for Windows game servers</a>
 </div></details>
     <article class="prose">
 <p>Four listeners and a pool. Game traffic sits apart from all of it and goes
@@ -252,6 +253,73 @@ range when you register the node and the whole class of confusion goes away.</p>
 <a href="/wiki/assets/shots/node-port-pool.webp"><img src="/wiki/assets/shots/node-port-pool.webp" alt="reef-01's node settings: the schedulable memory and the game-port pool the scheduler allocates from. Each server card on the fleet view shows the port it drew from that pool, :27000 and :27002 on this node." width="1440" height="810" loading="lazy" decoding="async" /></a>
 <figcaption>reef-01's node settings: the schedulable memory and the game-port pool the scheduler allocates from. Each server card on the fleet view shows the port it drew from that pool, :27000 and :27002 on this node.</figcaption>
 </figure>
+
+
+<h2 id="transparent-networking-for-windows-game-servers">Transparent networking for Windows game servers <a class="hlink" href="#transparent-networking-for-windows-game-servers" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>By default a Windows node runs every game container behind Windows NAT, with
+the container&#39;s ports published on the node&#39;s address. That&#39;s fine for most
+games, but not for one that opens <strong>extra UDP ports for player sessions</strong> on
+the fly. Enshrouded does this through Steam networking. Windows NAT can&#39;t
+publish a port nobody knew about in advance, so Steam falls back to its relay,
+most of what players send is lost, and they sit on the loading screen.</p>
+<p><strong>Transparent</strong> mode fixes that by giving each game container its own address
+on your LAN. Every port the game opens is then reachable, and nothing needs
+publishing.</p>
+<p><strong>Set it up:</strong></p>
+<ol>
+<li><strong>Give the game servers a network.</strong> A separate VLAN keeps them away from
+your other machines. On UniFi, create a network (for example &quot;Kraken Games&quot;,
+VLAN 20, its own subnet, DHCP on) in the <strong>DMZ</strong> zone. DMZ&#39;s default
+policies already do what you want:<ul>
+<li>your LAN can reach it;</li>
+<li>it can reach the internet;</li>
+<li>it can&#39;t start connections into your LAN.</li>
+</ul>
+</li>
+<li><strong>Let the node&#39;s switch port carry that VLAN tagged.</strong> UniFi&#39;s default,
+&quot;Allow All&quot;, already does.</li>
+<li><strong>In the node&#39;s settings, set container network to transparent</strong>, with:<ul>
+<li>the host adapter the traffic leaves through, as <code>Get-NetAdapter</code> names it;</li>
+<li>the VLAN id, or blank for untagged.</li>
+</ul>
+</li>
+</ol>
+<p><strong>What happens next:</strong></p>
+<ul>
+<li><strong>The node drops offline for up to a minute.</strong> The Agent creates the
+network, binding a Hyper-V switch to the adapter, and while Windows moves the
+host&#39;s address onto that switch, the host&#39;s connections drop. It comes back
+on its own. The Agent never removes the network, because removing it drops
+the host the same way.</li>
+<li><strong>Each server moves on its next start</strong>, never while running. Node settings
+lists the servers still waiting.</li>
+<li><strong>The server takes an address by DHCP</strong>, which its NETWORK card shows as
+<strong>lan address</strong>. With UniFi configured, the Panel pins that address to the
+server&#39;s MAC, so it gets the same one after every restart, and points the
+server&#39;s port forward at it. Without UniFi, reserve it yourself.</li>
+</ul>
+<p><strong>How things change for the node&#39;s servers:</strong></p>
+<ul>
+<li><strong>Windows Firewall doesn&#39;t apply to them.</strong> A transparent container has its
+own network card, outside the host. Access control is your router&#39;s
+firewall.</li>
+<li><strong>Public DNS still points at your WAN address</strong>, and SFTP still runs on the
+node, so neither changes.</li>
+</ul>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>WSL in mirrored mode loses the LAN once the switch exists.</strong> Mirrored
+networking doesn&#39;t mirror a Hyper-V virtual adapter, and that&#39;s where the host&#39;s
+address moves. If the same machine also runs a Linux node under WSL, give WSL its
+own network card in <strong>bridged</strong> mode before you switch, or the Linux node goes
+offline.</p>
+</div>
+</aside>
+
+
+<p>To go back, set container network to nat. Servers return behind NAT on their
+next start. Remove the network yourself (<code>docker network rm</code>) once nothing uses
+it, and expect the same one-minute drop.</p>
     </article>
 
     <nav class="pager" aria-label="more pages">
@@ -272,6 +340,7 @@ range when you register the node and the whole class of confusion goes away.</p>
 <a class="toc-link lvl-2" href="#direct-mode-nodes-need-an-inbound-rule">Direct-mode nodes need an inbound rule</a>
 <a class="toc-link lvl-2" href="#or-skip-inbound-ports-entirely">Or skip inbound ports entirely</a>
 <a class="toc-link lvl-2" href="#game-ports-end-to-end">Game ports, end to end</a>
+<a class="toc-link lvl-2" href="#transparent-networking-for-windows-game-servers">Transparent networking for Windows game servers</a>
     </div>
   </aside>
 </div>

@@ -584,6 +584,7 @@ func (s *Server) completeRetire(ctx context.Context, sv *store.Server, notes []s
 	fresh.Ports = map[string]int{}
 	// Everything below described a server on a node, with a tree.
 	fresh.DNS, fresh.Forwards = nil, nil
+	fresh.ContainerIP, fresh.Reservation = "", nil
 	fresh.Players, fresh.MaxPlayers, fresh.PlayersKnown = 0, 0, false
 	fresh.LastExitCode, fresh.LastExitCodeKnown = 0, false
 	fresh.LastError = ""

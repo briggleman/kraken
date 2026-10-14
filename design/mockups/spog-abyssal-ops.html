@@ -3089,6 +3089,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
                       <div class="kv net-kv"><span>game port</span><b><span id="netGamePort">8211</span></b><i class="nu">udp</i><input type="checkbox" class="ns-r" id="nsGamePort" checked aria-label="game port"><label class="net-state" for="nsGamePort"><span class="ns-stack"><span class="ns-w on">open</span><span class="ns-w off">closed</span></span></label></div>
                       <div class="kv net-kv"><span>query port</span><b>27015</b><i class="nu">udp</i><input type="checkbox" class="ns-r" id="nsQueryPort" checked aria-label="query port"><label class="net-state" for="nsQueryPort"><span class="ns-stack"><span class="ns-w on">open</span><span class="ns-w off">closed</span></span></label></div>
                       <div class="kv net-kv"><span>rcon</span><b>25575</b><i class="nu">local</i><input type="checkbox" class="ns-r" id="nsRcon" aria-label="rcon"><label class="net-state" for="nsRcon"><span class="ns-stack"><span class="ns-w on">on</span><span class="ns-w off">off</span></span></label></div>
+                      <div class="kv net-kv"><span>lan address</span><b>192.168.20.182</b><i class="nu">own</i></div>
                       <div class="kv net-kv"><span>endpoint</span><b id="netPublic">72.14.201.88:8211</b><i class="nu" aria-hidden="true"></i><button class="mini-act res copy-act" data-copy="72.14.201.88:8211"><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
                       <div class="dns-sep"></div>
                       <div class="kv net-kv"><span>hostname</span><input class="dns-ed" value="palworld.zerooneone.io" placeholder="game.example.com" spellcheck="false" aria-label="hostname"><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" checked aria-label="dns published"><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
@@ -3670,6 +3671,29 @@ FINISH: mock for direction comparison; the chosen direction's production build e
           <input class="cfg-in" type="text" value="28999">
           <p class="cfg-help">game ports the scheduler allocates from. changing the range never touches running servers — their ports stay reserved. nodes sharing one ip need non-overlapping ranges.</p>
         </label>
+      </div>
+    </section>
+
+    <section class="prefs-group" aria-label="Container network">
+      <div class="cfg-head"><h3 class="pane-label">container network</h3><span class="cfg-badge ok">transparent</span></div>
+      <div class="cfg">
+        <p class="cfg-desc">how game servers on this node reach the network. transparent gives each game server its own lan address — needed by games that open extra udp ports for player sessions, which windows nat can't forward.</p>
+        <label class="cfg-row">
+          <span>mode</span>
+          <select class="cfg-in"><option>nat — ports published on the node's address</option><option selected>transparent — each server gets its own address</option></select>
+          <p class="cfg-help">a change moves each server on its next start, never a running one. the first switch to transparent takes this node offline for up to a minute while windows moves its address onto a new virtual switch.</p>
+        </label>
+        <label class="cfg-row">
+          <span>adapter</span>
+          <input class="cfg-in" type="text" value="Ethernet 3">
+          <p class="cfg-help">the host network adapter the game servers' traffic leaves through — its name as windows shows it (<code>Get-NetAdapter</code>).</p>
+        </label>
+        <label class="cfg-row">
+          <span>vlan (optional)</span>
+          <input class="cfg-in" type="text" value="20">
+          <p class="cfg-help">tags game-server traffic onto this vlan — the switch port must carry it tagged. with unifi configured, each server's address is reserved for it automatically.</p>
+        </label>
+        <p class="cfg-help">waiting for their next start to move: dragonwilds-01.</p>
       </div>
     </section>
 

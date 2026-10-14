@@ -1154,6 +1154,9 @@
               {/if}
             </div>
           {/each}
+          {#if depth.dns?.container_ip}
+            <div class="kv net-kv"><span>lan address</span><b>{depth.dns.container_ip}</b><i class="nu">own</i></div>
+          {/if}
           <div class="kv net-kv"><span>endpoint</span><b>{endpoint}</b><i class="nu" aria-hidden="true"></i><button class="mini-act res copy-act{copied ? ' did' : ''}" onclick={copyEndpoint}><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
           {#if depth.dns?.cloudflare_configured}
             <div class="dns-sep"></div>

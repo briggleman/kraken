@@ -48,8 +48,10 @@ startup:
 # template only reads .ports.game.
 ports:
   - { name: game, protocol: udp, default: 15637, required: true }
-# Enshrouded's UDP port answers no A2S, so the roster comes from the server
-# log (lines observed live 2026-09-14):
+# The roster comes from the server log, which names each player — A2S would
+# give a count only. (The game port does answer A2S_INFO: verified directly on
+# 2026-10-12, despite what this comment used to say.) Lines observed live
+# 2026-09-14:
 #   [server] Player 'GHETTO.CHiLD' logged in with Permissions: …
 #   [server] Remove Entity for Player 'GHETTO.CHiLD'
 # The name is the only identity the log gives, so it is the key. The cap is

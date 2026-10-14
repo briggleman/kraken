@@ -1,6 +1,6 @@
 ---
 title: Ports and firewall
-description: Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline.
+description: Every port Kraken uses, who is allowed to reach it, and the firewall rules for Linux and Windows — including the one that is the most common reason a freshly enrolled node reads offline — plus transparent networking for Windows game servers that open their own ports.
 section: configure
 order: 23
 ---
@@ -119,3 +119,65 @@ range when you register the node and the whole class of confusion goes away.
 :::shot node-port-pool
 reef-01's node settings: the schedulable memory and the game-port pool the scheduler allocates from. Each server card on the fleet view shows the port it drew from that pool, :27000 and :27002 on this node.
 :::
+
+## Transparent networking for Windows game servers
+
+By default a Windows node runs every game container behind Windows NAT, with
+the container's ports published on the node's address. That's fine for most
+games, but not for one that opens **extra UDP ports for player sessions** on
+the fly. Enshrouded does this through Steam networking. Windows NAT can't
+publish a port nobody knew about in advance, so Steam falls back to its relay,
+most of what players send is lost, and they sit on the loading screen.
+
+**Transparent** mode fixes that by giving each game container its own address
+on your LAN. Every port the game opens is then reachable, and nothing needs
+publishing.
+
+**Set it up:**
+
+1. **Give the game servers a network.** A separate VLAN keeps them away from
+   your other machines. On UniFi, create a network (for example "Kraken Games",
+   VLAN 20, its own subnet, DHCP on) in the **DMZ** zone. DMZ's default
+   policies already do what you want:
+   - your LAN can reach it;
+   - it can reach the internet;
+   - it can't start connections into your LAN.
+2. **Let the node's switch port carry that VLAN tagged.** UniFi's default,
+   "Allow All", already does.
+3. **In the node's settings, set container network to transparent**, with:
+   - the host adapter the traffic leaves through, as `Get-NetAdapter` names it;
+   - the VLAN id, or blank for untagged.
+
+**What happens next:**
+
+- **The node drops offline for up to a minute.** The Agent creates the
+  network, binding a Hyper-V switch to the adapter, and while Windows moves the
+  host's address onto that switch, the host's connections drop. It comes back
+  on its own. The Agent never removes the network, because removing it drops
+  the host the same way.
+- **Each server moves on its next start**, never while running. Node settings
+  lists the servers still waiting.
+- **The server takes an address by DHCP**, which its NETWORK card shows as
+  **lan address**. With UniFi configured, the Panel pins that address to the
+  server's MAC, so it gets the same one after every restart, and points the
+  server's port forward at it. Without UniFi, reserve it yourself.
+
+**How things change for the node's servers:**
+
+- **Windows Firewall doesn't apply to them.** A transparent container has its
+  own network card, outside the host. Access control is your router's
+  firewall.
+- **Public DNS still points at your WAN address**, and SFTP still runs on the
+  node, so neither changes.
+
+:::warning
+**WSL in mirrored mode loses the LAN once the switch exists.** Mirrored
+networking doesn't mirror a Hyper-V virtual adapter, and that's where the host's
+address moves. If the same machine also runs a Linux node under WSL, give WSL its
+own network card in **bridged** mode before you switch, or the Linux node goes
+offline.
+:::
+
+To go back, set container network to nat. Servers return behind NAT on their
+next start. Remove the network yourself (`docker network rm`) once nothing uses
+it, and expect the same one-minute drop.

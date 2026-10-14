@@ -262,7 +262,10 @@ func (s *Server) runInstallPass(ctx context.Context, server *store.Server, sp *s
 	if err != nil {
 		return fmt.Errorf("connect agent: %w", err)
 	}
-	agentSpec := toAgentSpec(server, sp)
+	agentSpec, err := s.agentSpecFor(ctx, server, sp)
+	if err != nil {
+		return err
+	}
 	if _, err := client.CreateServer(ctx, &agentpb.CreateServerRequest{Spec: agentSpec}); err != nil {
 		return fmt.Errorf("agent create: %w", err)
 	}
@@ -837,7 +840,15 @@ func (s *Server) serverResponseWith(sv *store.Server, sp *spec.Spec) *serverJSON
 func (s *Server) rePushServerSpec(ctx context.Context, client agentpb.NodeServiceClient, sv *store.Server, sp *spec.Spec) {
 	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	if _, err := client.CreateServer(cctx, &agentpb.CreateServerRequest{Spec: toAgentSpec(sv, sp)}); err != nil {
+	// Without the node's config the network can't be stamped, and pushing the
+	// spec unstamped would move a transparent server back behind NAT on this
+	// start. Skip the push: the Agent keeps the spec it already has.
+	as, err := s.agentSpecFor(cctx, sv, sp)
+	if err != nil {
+		s.logger.Warn("spec re-push before start skipped", "server", sv.ID, "err", err)
+		return
+	}
+	if _, err := client.CreateServer(cctx, &agentpb.CreateServerRequest{Spec: as}); err != nil {
 		s.logger.Warn("spec re-push before start failed", "server", sv.ID, "err", err)
 	}
 }

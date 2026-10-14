@@ -213,6 +213,19 @@ message ServerSpec {
   int32 max_restarts = 12;           // cap on consecutive crash-restarts (0 → agent default)
   PlayerQuery player_query = 13;     // how the Agent counts online players (nil → none)
   SftpAccess sftp = 14;              // per-server SFTP credentials (nil/disabled → no SFTP)
+
+  // network_mode is the network this server's game container joins, stamped by
+  // the Panel from its node's config when the spec is pushed: "" or "nat" is the
+  // default Docker network with every port published on the node's address;
+  // "transparent" (Windows nodes only, #426) is the node's transparent network,
+  // where the container takes its own LAN address and publishes nothing. It is
+  // per server rather than read from the node's config at create time so that a
+  // node switching modes moves each server on its next start, never under it.
+  string network_mode = 15;
+  // mac_address is the container's MAC on a transparent network: stable per
+  // server (derived from its id), so the router's DHCP reservation follows the
+  // server across recreates. Empty on "nat".
+  string mac_address = 16;
 }
 
 // SftpAccess carries a server's SFTP credentials so the Agent's SFTP server can
@@ -697,6 +710,12 @@ message ServerStatus {
   // began, by the Agent's clock; 0 when there has been none.
   int32 watchdog_restarts = 6;
   int64 last_watchdog_restart_unix_ms = 7;
+
+  // container_ip is the game container's own address on a transparent network
+  // (#426): where players, the Agent's player query and the Panel's port
+  // forward reach it. Empty for a container on the default network, which is
+  // reached on the node's address, and while no address has been leased yet.
+  string container_ip = 8;
 }
 
 message StreamConsoleRequest {
@@ -792,6 +811,18 @@ message NodeConfig {
   // to the SMB remote, regardless of the primary target. Mutually exclusive with
   // replicate_to_sftp — one mirror destination per node.
   bool replicate_to_smb = 22;
+
+  // Container networking for game servers on a Windows node (#426).
+  // container_network is "" / "nat" (the default) or "transparent". With
+  // "transparent" the Agent ensures a Docker transparent network bound to
+  // transparent_adapter (a host adapter name, e.g. "Ethernet 3"), tagging
+  // traffic with transparent_vlan when non-zero (1-4094). Creating that network
+  // moves the host's own address onto a Hyper-V vEthernet adapter, which cuts
+  // the host's connections for up to a minute, so the Agent answers this RPC
+  // before it builds the network and never removes one.
+  string container_network = 23;
+  string transparent_adapter = 24;
+  int32 transparent_vlan = 25;
 }
 
 message ApplyNodeConfigRequest {

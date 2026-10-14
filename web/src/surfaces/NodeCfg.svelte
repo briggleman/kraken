@@ -71,6 +71,11 @@
   let replicateSmb = $state(false);
   let steamUser = $state("");
   let steamPass = $state("");
+  // container network (#426) — Windows nodes only
+  let netMode = $state<"nat" | "transparent">("nat");
+  let netAdapter = $state("");
+  let netVlan = $state("");
+  const showNetwork = $derived(node?.os === "windows" || cfg?.container_network === "transparent");
 
   // One mirror destination per node — the panel rejects both flags, so the two
   // toggles are exclusive here rather than letting the operator hit a 400.
@@ -103,6 +108,9 @@
     smbBase = c.smb_base_path ?? "";
     replicateSmb = c.replicate_to_smb;
     steamUser = c.steam_username ?? "";
+    netMode = c.container_network === "transparent" ? "transparent" : "nat";
+    netAdapter = c.transparent_adapter ?? "";
+    netVlan = c.transparent_vlan ? String(c.transparent_vlan) : "";
   }
 
   async function load(id: string) {
@@ -199,6 +207,17 @@
     if (smbBase !== (cfg?.smb_base_path ?? "")) input.smb_base_path = smbBase;
     if (replicateSmb !== (cfg?.replicate_to_smb ?? false)) input.replicate_to_smb = replicateSmb;
     if (steamUser !== (cfg?.steam_username ?? "")) input.steam_username = steamUser;
+    if (netMode !== (cfg?.container_network ?? "nat")) input.container_network = netMode;
+    if (netAdapter !== (cfg?.transparent_adapter ?? "")) input.transparent_adapter = netAdapter;
+    const vlan = netVlan.trim() === "" ? 0 : Number(netVlan.trim());
+    if (vlan !== (cfg?.transparent_vlan ?? 0)) {
+      if (!Number.isInteger(vlan) || vlan < 0 || vlan > 4094) {
+        res = { cls: "bad", text: "vlan must be blank (untagged) or a whole number from 1 to 4094." };
+        busy = false;
+        return;
+      }
+      input.transparent_vlan = vlan;
+    }
     if (sftpPassword) input.sftp_password = sftpPassword;
     if (sftpKey) input.sftp_private_key = sftpKey;
     if (smbPassword) input.smb_password = smbPassword;
@@ -278,6 +297,35 @@
         </label>
       </div>
     </section>
+
+    {#if showNetwork}
+      <section class="prefs-group" aria-label="Container network">
+        <div class="cfg-head"><h3 class="pane-label">container network</h3>{#if cfg?.container_network === "transparent"}<span class="cfg-badge ok">transparent</span>{/if}</div>
+        <div class="cfg">
+          <p class="cfg-desc">how game servers on this node reach the network. transparent gives each game server its own lan address — needed by games that open extra udp ports for player sessions, which windows nat can't forward.</p>
+          <label class="cfg-row">
+            <span>mode</span>
+            <select class="cfg-in" bind:value={netMode}><option value="nat">nat — ports published on the node's address</option><option value="transparent">transparent — each server gets its own address</option></select>
+            <p class="cfg-help">a change moves each server on its next start, never a running one. the first switch to transparent takes this node offline for up to a minute while windows moves its address onto a new virtual switch.</p>
+          </label>
+          {#if netMode === "transparent"}
+            <label class="cfg-row">
+              <span>adapter</span>
+              <input class="cfg-in" type="text" placeholder="Ethernet 3" autocomplete="off" spellcheck="false" bind:value={netAdapter} />
+              <p class="cfg-help">the host network adapter the game servers' traffic leaves through — its name as windows shows it (<code>Get-NetAdapter</code>).</p>
+            </label>
+            <label class="cfg-row">
+              <span>vlan (optional)</span>
+              <input class="cfg-in" type="text" inputmode="numeric" placeholder="untagged" bind:value={netVlan} />
+              <p class="cfg-help">tags game-server traffic onto this vlan — the switch port must carry it tagged. with unifi configured, each server's address is reserved for it automatically.</p>
+            </label>
+          {/if}
+          {#if cfg?.network_pending?.length}
+            <p class="cfg-help">waiting for their next start to move: {cfg.network_pending.join(", ")}.</p>
+          {/if}
+        </div>
+      </section>
+    {/if}
 
     <section class="prefs-group" aria-label="Backups">
       <div class="cfg-head"><h3 class="pane-label">backups</h3></div>

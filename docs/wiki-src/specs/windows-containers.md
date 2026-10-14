@@ -1,12 +1,12 @@
 ---
 title: Windows containers
-description: What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you.
+description: What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, the SteamCMD self-update trap the Agent handles for you, and the games Windows NAT can't serve.
 section: game specs
 order: 43
 ---
 
 A Windows node runs Windows containers, which are a different animal from Linux
-ones in four specific ways. Everything else about a `windows-native` placement
+ones in five specific ways. Everything else about a `windows-native` placement
 is the same: the same lifecycle, the same bind-mounted data directory, the same
 file and backup paths.
 
@@ -93,6 +93,17 @@ having done nothing at all and said nothing about it. It has to go through
 `powershell -NoProfile -NonInteractive -EncodedCommand <UTF-16LE base64>`, which
 carries no quotes. Put the decoded command in a comment beside it.
 :::
+
+## Windows NAT and games that open their own ports
+
+Behind Windows container NAT, only the ports a spec declares are published. A
+game that opens another UDP port at run time is a problem here. Enshrouded does
+this, for Steam-networking session traffic. Players connect, then sit on the
+loading screen while Steam relays and drops their traffic.
+
+No spec setting fixes it, because the port is random. The fix is on the node:
+[transparent networking](/wiki/configure/network/#transparent-networking-for-windows-game-servers)
+gives each game container its own LAN address.
 
 ## Writing a Windows startup command
 

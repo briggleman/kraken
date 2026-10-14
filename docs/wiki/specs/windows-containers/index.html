@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Windows containers — Kraken wiki</title>
-<meta name="description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<meta name="description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, the SteamCMD self-update trap the Agent handles for you, and the games Windows NAT can't serve." />
 <link rel="canonical" href="https://krakenserver.io/wiki/specs/windows-containers/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/specs/windows-containers/" />
 <meta property="og:title" content="Windows containers — Kraken wiki" />
-<meta property="og:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<meta property="og:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, the SteamCMD self-update trap the Agent handles for you, and the games Windows NAT can't serve." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Windows containers — Kraken wiki" />
-<meta name="twitter:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you." />
+<meta name="twitter:description" content="What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, the SteamCMD self-update trap the Agent handles for you, and the games Windows NAT can't serve." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -111,17 +111,18 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><a href="/wiki/specs/">The spec catalog</a><i aria-hidden="true">/</i><span aria-current="page">Windows containers</span></nav>
     <h1>Windows containers</h1>
-    <p class="lede">What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, and the SteamCMD self-update trap the Agent handles for you.</p>
+    <p class="lede">What is genuinely different about running a game server in a Windows container — Hyper-V isolation and why, the bind-mount form that works, missing-DLL crashes and where to fix them, the SteamCMD self-update trap the Agent handles for you, and the games Windows NAT can't serve.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#hyper-v-isolation-by-default">Hyper-V isolation, by default</a>
 <a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
 <a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
 <a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
+<a class="toc-link lvl-2" href="#windows-nat-and-games-that-open-their-own-ports">Windows NAT and games that open their own ports</a>
 <a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>
 </div></details>
     <article class="prose">
 <p>A Windows node runs Windows containers, which are a different animal from Linux
-ones in four specific ways. Everything else about a <code>windows-native</code> placement
+ones in five specific ways. Everything else about a <code>windows-native</code> placement
 is the same: the same lifecycle, the same bind-mounted data directory, the same
 file and backup paths.</p>
 <p>The data root is mounted at <code>C:\data</code> rather than <code>/data</code>. Specs still write the
@@ -195,6 +196,14 @@ carries no quotes. Put the decoded command in a comment beside it.</p>
 </aside>
 
 
+<h2 id="windows-nat-and-games-that-open-their-own-ports">Windows NAT and games that open their own ports <a class="hlink" href="#windows-nat-and-games-that-open-their-own-ports" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Behind Windows container NAT, only the ports a spec declares are published. A
+game that opens another UDP port at run time is a problem here. Enshrouded does
+this, for Steam-networking session traffic. Players connect, then sit on the
+loading screen while Steam relays and drops their traffic.</p>
+<p>No spec setting fixes it, because the port is random. The fix is on the node:
+<a href="/wiki/configure/network/#transparent-networking-for-windows-game-servers">transparent networking</a>
+gives each game container its own LAN address.</p>
 <h2 id="writing-a-windows-startup-command">Writing a Windows startup command <a class="hlink" href="#writing-a-windows-startup-command" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
 <li><strong>One line, <code>cmd</code> syntax.</strong> <code>&amp;</code> to chain. Do not rely on <code>&amp;&amp;</code> across newlines.</li>
@@ -230,6 +239,7 @@ signal name is dead weight on a Linux Agent.</li>
 <a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
 <a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
 <a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
+<a class="toc-link lvl-2" href="#windows-nat-and-games-that-open-their-own-ports">Windows NAT and games that open their own ports</a>
 <a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>
     </div>
   </aside>

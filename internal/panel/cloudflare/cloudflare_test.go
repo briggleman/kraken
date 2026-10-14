@@ -136,9 +136,110 @@ func TestCreateSRVRecord(t *testing.T) {
 	if got.Type != "SRV" || got.Name != "_minecraft._tcp.play.example.com" {
 		t.Fatalf("unexpected SRV name/type: %+v", got)
 	}
-	if got.Data == nil || got.Data.Port != 25565 || got.Data.Target != "play.example.com" ||
-		got.Data.Service != "_minecraft" || got.Data.Proto != "_tcp" {
+	if got.Data == nil || got.Data.Port != 25565 || got.Data.Target != "play.example.com" {
 		t.Fatalf("unexpected SRV data: %+v", got.Data)
+	}
+}
+
+func TestNormalizeService(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                  "",
+		"enshrouded":        "enshrouded",
+		"_enshrouded":       "enshrouded",
+		"_enshrouded._udp":  "enshrouded", // what the old placeholder suggested
+		" Enshrouded._TCP ": "enshrouded",
+		"my-game":           "my-game",
+	} {
+		got, err := NormalizeService(in)
+		if err != nil || got != want {
+			t.Errorf("NormalizeService(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"two words", "a.b", "-lead", "trail-", "x_y"} {
+		if _, err := NormalizeService(bad); err == nil {
+			t.Errorf("NormalizeService(%q) should fail", bad)
+		}
+	}
+}
+
+// A record already at the name — left by a publish that failed half-way, or
+// made by hand — is updated in place. Creating a second one is what Cloudflare
+// refused, which used to fail every publish after the first failure.
+func TestEnsureHostRecord(t *testing.T) {
+	cases := []struct {
+		name        string
+		existing    string
+		wantMethod  string
+		wantCreated bool
+		wantID      string
+	}{
+		{name: "adopts an existing A record", existing: `[{"id":"old","type":"A","name":"play.example.com"}]`, wantMethod: http.MethodPut, wantID: "old"},
+		{name: "adopts a CNAME, ignoring a TXT", existing: `[{"id":"t","type":"TXT","name":"play.example.com"},{"id":"c","type":"CNAME","name":"play.example.com"}]`, wantMethod: http.MethodPut, wantID: "c"},
+		{name: "creates when none", existing: `[]`, wantMethod: http.MethodPost, wantCreated: true, wantID: "new"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var method, query string
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					query = r.URL.Query().Get("name")
+					_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":`+tc.existing+`}`)
+					return
+				}
+				method = r.Method
+				writeEnvelope(w, map[string]string{"id": "new"})
+			})
+			id, created, err := c.EnsureHostRecord(context.Background(), "z1", "play.example.com", "107.221.197.247")
+			if err != nil {
+				t.Fatalf("EnsureHostRecord: %v", err)
+			}
+			if query != "play.example.com" || method != tc.wantMethod || created != tc.wantCreated || id != tc.wantID {
+				t.Fatalf("query %q, %s, created=%v, id %q; want %s created=%v id %q", query, method, created, id, tc.wantMethod, tc.wantCreated, tc.wantID)
+			}
+		})
+	}
+}
+
+func TestEnsureSRVRecordUpdatesInPlace(t *testing.T) {
+	var method, path, query string
+	var got dnsRecord
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			query = r.URL.Query().Get("name")
+			_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":[{"id":"s1","type":"SRV","name":"_enshrouded._udp.play.example.com"}]}`)
+			return
+		}
+		method, path = r.Method, r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		writeEnvelope(w, map[string]string{"id": "s1"})
+	})
+	id, created, err := c.EnsureSRVRecord(context.Background(), "z1", "enshrouded", "udp", "play.example.com", 28000)
+	if err != nil || id != "s1" || created {
+		t.Fatalf("got %q created=%v err=%v", id, created, err)
+	}
+	if query != "_enshrouded._udp.play.example.com" || method != http.MethodPut || path != "/zones/z1/dns_records/s1" {
+		t.Fatalf("looked up %q, wrote %s %s", query, method, path)
+	}
+	if got.Name != "_enshrouded._udp.play.example.com" || got.Data == nil || got.Data.Port != 28000 {
+		t.Fatalf("record %+v", got)
+	}
+}
+
+// Zones past the first page are found: a token with more than 50 zones used
+// to miss every one after the 50th.
+func TestListZonesPages(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		zone := `{"id":"z-` + page + `","name":"zone` + page + `.com"}`
+		_, _ = io.WriteString(w, `{"success":true,"errors":[],"result":[`+zone+`],"result_info":{"page":`+page+`,"total_pages":3}}`)
+	})
+	zones, err := c.ListZones(context.Background())
+	if err != nil || len(zones) != 3 || zones[2].ID != "z-3" {
+		t.Fatalf("got %+v, %v; want three pages of zones", zones, err)
+	}
+	if z, err := c.ZoneFor(context.Background(), "play.zone3.com"); err != nil || z.ID != "z-3" {
+		t.Fatalf("ZoneFor on page 3: %+v %v", z, err)
 	}
 }
 

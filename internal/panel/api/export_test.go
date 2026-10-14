@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"time"
+
+	"github.com/briggleman/kraken/internal/panel/cloudflare"
 )
 
 // ReconcileOnceForTest runs a single pass of the server reconciler, which the
@@ -96,4 +98,12 @@ func SetRestoreClaimHookForTest(fn func(serverID string)) func() {
 func SetProvisionHookForTest(fn func(serverID string)) func() {
 	provisionHook.Store(&fn)
 	return func() { provisionHook.Store(nil) }
+}
+
+// SetCloudflareBaseForTest points every Cloudflare call at base (a fake API)
+// until the returned func restores the real one.
+func SetCloudflareBaseForTest(base string) (restore func()) {
+	prev := newCloudflare
+	newCloudflare = func(token string) *cloudflare.Client { return cloudflare.NewWithBase(token, base) }
+	return func() { newCloudflare = prev }
 }

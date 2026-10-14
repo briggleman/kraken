@@ -491,6 +491,14 @@
     for (const name of Object.keys(depth.dns?.ports ?? {})) next[name] = fwds[name]?.enabled ?? false;
     portOpen = next;
   });
+  // The fields hold what was typed until a publish succeeds and the saved values
+  // come back, so a failed publish used to look saved until a refresh emptied
+  // it (#431). Unsaved says so on the row instead. The Panel stores the service
+  // as a bare label ("_enshrouded._udp" → "enshrouded"), so compare it that way.
+  const bareService = (s: string) => s.trim().toLowerCase().replace(/(\._?(udp|tcp))$/, "").replace(/^_/, "");
+  const dnsDirty = $derived(
+    dnsName.trim() !== (depth.dns?.dns?.name ?? "") || bareService(dnsSvc) !== (depth.dns?.dns?.service ?? ""),
+  );
   async function dnsFlip() {
     if (dnsPublished && !dnsName.trim()) {
       depth.error = "enter a hostname before publishing";
@@ -1160,8 +1168,8 @@
           <div class="kv net-kv"><span>endpoint</span><b>{endpoint}</b><i class="nu" aria-hidden="true"></i><button class="mini-act res copy-act{copied ? ' did' : ''}" onclick={copyEndpoint}><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button></div>
           {#if depth.dns?.cloudflare_configured}
             <div class="dns-sep"></div>
-            <div class="kv net-kv"><span>hostname</span><input class="dns-ed" bind:value={dnsName} placeholder="game.example.com" spellcheck="false" aria-label="hostname" onblur={() => void dnsBlur()} /><i class="nu">dns</i><input type="checkbox" class="ns-r" id="dnsPub" bind:checked={dnsPublished} aria-label="dns published" onchange={() => void dnsFlip()} /><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
-            <div class="kv net-kv"><span>srv service</span><input class="dns-ed" bind:value={dnsSvc} placeholder="_game._udp" spellcheck="false" aria-label="srv service" onblur={() => void dnsBlur()} /><i class="nu">srv</i></div>
+            <div class="kv net-kv"><span>hostname</span><input class="dns-ed" bind:value={dnsName} placeholder="game.example.com" spellcheck="false" aria-label="hostname" onblur={() => void dnsBlur()} /><i class="nu">{dnsDirty ? "unsaved" : "dns"}</i><input type="checkbox" class="ns-r" id="dnsPub" bind:checked={dnsPublished} aria-label="dns published" onchange={() => void dnsFlip()} /><label class="net-state" for="dnsPub"><span class="ns-stack"><span class="ns-w on">unpublish</span><span class="ns-w off">publish</span></span></label></div>
+            <div class="kv net-kv"><span>srv service</span><input class="dns-ed" bind:value={dnsSvc} placeholder="enshrouded" spellcheck="false" aria-label="srv service" onblur={() => void dnsBlur()} /><i class="nu">srv</i></div>
           {/if}
         </div>
       </section>

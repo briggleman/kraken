@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 
-	"github.com/briggleman/kraken/internal/panel/cloudflare"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/agentpb"
@@ -806,7 +805,7 @@ func (s *Server) reconcileNodeDNS(ctx context.Context, nodeID, newHost string) {
 	if err != nil {
 		return
 	}
-	cf := cloudflare.New(token)
+	cf := newCloudflare(token)
 	for _, sv := range servers {
 		if sv.NodeID != nodeID || sv.DNS == nil || len(sv.DNS.RecordIDs) == 0 {
 			continue

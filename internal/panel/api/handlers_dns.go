@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 
 // hostnameRe is a permissive FQDN check (labels of letters/digits/hyphens, ≥2 labels).
 var hostnameRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$`)
+
+// newCloudflare builds the Cloudflare client every DNS path uses. A variable so
+// the black-box tests can aim it at a fake API (SetCloudflareBaseForTest).
+var newCloudflare = cloudflare.New
 
 // panelSettings returns the stored settings, or an empty (unconfigured) value.
 func (s *Server) panelSettings(ctx context.Context) *store.Settings {
@@ -177,7 +182,7 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	zones, err := cloudflare.New(token).ListZones(ctx)
+	zones, err := newCloudflare(token).ListZones(ctx)
 	if err != nil {
 		writeError(w, statusUpstream, err.Error())
 		return
@@ -259,7 +264,7 @@ func (s *Server) cleanupServerExternal(ctx context.Context, sv *store.Server) {
 	}
 	if sv.DNS != nil {
 		if token := s.cloudflareToken(ctx); token != "" {
-			cf := cloudflare.New(token)
+			cf := newCloudflare(token)
 			cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			for _, id := range sv.DNS.RecordIDs {
 				_ = cf.DeleteRecord(cctx, sv.DNS.ZoneID, id)
@@ -334,7 +339,12 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name must be a valid fully-qualified hostname (e.g. play.example.com)")
 		return
 	}
-	req.Service = strings.TrimSpace(req.Service)
+	svc, err := cloudflare.NormalizeService(req.Service)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	req.Service = svc
 
 	sv, sp, ok := s.loadServerAndSpec(ctx, w, chi.URLParam(r, "id"))
 	if !ok {
@@ -359,7 +369,7 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cf := cloudflare.New(token)
+	cf := newCloudflare(token)
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	zone, err := cf.ZoneFor(cctx, req.Name)
@@ -367,26 +377,37 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusUpstream, err.Error())
 		return
 	}
-	// Replace any records we created previously (idempotent re-assign).
-	if sv.DNS != nil {
-		for _, id := range sv.DNS.RecordIDs {
-			_ = cf.DeleteRecord(cctx, sv.DNS.ZoneID, id)
-		}
-	}
+	// Publishing is all or nothing (#431). A record already at a name is
+	// updated in place rather than duplicated, so a record left behind by a
+	// failed publish (or made by hand) can't block every later one. If the SRV
+	// record fails, a host record this publish created is removed again, and
+	// nothing is saved. The server's previous records are removed only after
+	// the new set is in place, and only those the new set doesn't reuse.
 	ids := make([]string, 0, 2)
-	hostID, err := cf.CreateHostRecord(cctx, zone.ID, req.Name, host)
+	hostID, hostCreated, err := cf.EnsureHostRecord(cctx, zone.ID, req.Name, host)
 	if err != nil {
-		writeError(w, statusUpstream, "could not create host record: "+err.Error())
+		writeError(w, statusUpstream, "could not publish "+req.Name+": "+err.Error())
 		return
 	}
 	ids = append(ids, hostID)
 	if req.Service != "" {
-		srvID, serr := cf.CreateSRVRecord(cctx, zone.ID, req.Service, protoForPort(sp, portName), req.Name, port)
+		srvID, _, serr := cf.EnsureSRVRecord(cctx, zone.ID, req.Service, protoForPort(sp, portName), req.Name, port)
 		if serr != nil {
-			writeError(w, statusUpstream, "could not create SRV record: "+serr.Error())
+			if hostCreated {
+				_ = cf.DeleteRecord(cctx, zone.ID, hostID)
+			}
+			writeError(w, statusUpstream, "could not publish the SRV record "+
+				cloudflare.SRVName(req.Service, protoForPort(sp, portName), req.Name)+": "+serr.Error())
 			return
 		}
 		ids = append(ids, srvID)
+	}
+	if sv.DNS != nil {
+		for _, old := range sv.DNS.RecordIDs {
+			if !slices.Contains(ids, old) {
+				_ = cf.DeleteRecord(cctx, sv.DNS.ZoneID, old)
+			}
+		}
 	}
 	sv.DNS = &store.ServerDNS{Name: req.Name, ZoneID: zone.ID, Service: req.Service, PortName: portName, RecordIDs: ids}
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
@@ -417,7 +438,7 @@ func (s *Server) handleDeleteServerDNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if token := s.cloudflareToken(ctx); token != "" {
-		cf := cloudflare.New(token)
+		cf := newCloudflare(token)
 		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		for _, id := range sv.DNS.RecordIDs {

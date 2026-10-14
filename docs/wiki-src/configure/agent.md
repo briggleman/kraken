@@ -81,6 +81,7 @@ On Windows the installer uses `C:\kraken` and the same layout beneath it.
 | `windows_isolation` | `KRAKEN_WINDOWS_ISOLATION` | `--windows-isolation` | `hyperv`, `process`, or `default` |
 | `image_pull` | `KRAKEN_IMAGE_PULL` | `--image-pull` | `always` (default), `if-not-present`, or `never` |
 | `image_prune` | `KRAKEN_IMAGE_PRUNE` | `--image-prune` | weekly prune of dangling images: `on` (default) or `off` |
+| `net_exclude` | `KRAKEN_NET_EXCLUDE` | `--net-exclude` | interfaces the node network meter leaves out, comma-separated; on Windows an adapter's name or description. For a NIC handed to another node's VM on the same machine |
 | `allow_insecure_grpc` | `KRAKEN_ALLOW_INSECURE_GRPC` | `--allow-insecure-grpc` | serve plaintext gRPC on a non-loopback address |
 
 Modes, which do something and exit rather than configuring a run: `--version`,
@@ -113,6 +114,17 @@ images no tag points at are removed, and Docker never removes one backing a
 container, running or stopped. Retention has no floor, so a dangling image is
 gone a week after it was untagged, and rolling back to it means downloading it
 again.
+
+**`net_exclude`** leaves interfaces out of the node network meter. You only need
+it when two nodes share one machine. Say a Windows node hands a second network
+card to a bridged WSL distro that runs a Linux node. That card still reads as
+hardware on Windows, so its traffic would land on both nodes' meters. List it on
+the Windows node by adapter name or description, for example
+`net_exclude: "Realtek Gaming 2.5GbE Family Controller"`.
+
+The meter otherwise counts a node's hardware network cards. That includes a card
+bound to a Hyper-V external switch, which is the one carrying both the host's
+traffic and its transparent containers'.
 
 :::security
 **`allow_insecure_grpc` hands the Docker socket to the network.** Agent gRPC has

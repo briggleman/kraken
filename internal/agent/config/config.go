@@ -71,7 +71,11 @@ type Config struct {
 	ImagePull string `json:"image_pull,omitempty"`
 	// ImagePrune is the weekly dangling-image collector: "on" (the default) or
 	// "off". See internal/agent/imageprune.go.
-	ImagePrune        string `json:"image_prune,omitempty"`
+	ImagePrune string `json:"image_prune,omitempty"`
+	// NetExclude lists interfaces, comma-separated, that the node network meter
+	// leaves out: a NIC handed to another node's VM on the same machine. See
+	// internal/agent/hostmetrics_net.go.
+	NetExclude        string `json:"net_exclude,omitempty"`
 	AllowInsecureGRPC *bool  `json:"allow_insecure_grpc,omitempty"`
 
 	// Tunnel enables reverse-connection mode: the Agent dials the Panel and
@@ -195,6 +199,7 @@ func parseArgs(args []string) (Config, Flags, string, error) {
 	fs.StringVar(&fromFlags.WindowsIsolation, "windows-isolation", "", `Windows container isolation: "hyperv", "process", or "default"`)
 	fs.StringVar(&fromFlags.ImagePull, "image-pull", "", `when to pull game-server images: "always", "if-not-present", or "never"`)
 	fs.StringVar(&fromFlags.ImagePrune, "image-prune", "", `weekly prune of dangling (untagged) game-server images: "on" or "off"`)
+	fs.StringVar(&fromFlags.NetExclude, "net-exclude", "", "interfaces the node network meter leaves out, comma-separated (Windows: adapter name or description)")
 	fs.BoolVar(&insecure, "allow-insecure-grpc", false, "serve plaintext gRPC on a non-loopback address (unsafe: exposes the Docker socket)")
 	fs.StringVar(&modes.Service, "service", "", `Windows service control: "install", "uninstall", "start", "stop", or "status"`+
 		"\n"+`("status" compares the registered SCM config against what "install" would write and exits 0 in sync, 1 on drift, 2 if not installed)`)
@@ -306,6 +311,7 @@ func (c *Config) overlayEnv() {
 	str("KRAKEN_WINDOWS_ISOLATION", &c.WindowsIsolation)
 	str("KRAKEN_IMAGE_PULL", &c.ImagePull)
 	str("KRAKEN_IMAGE_PRUNE", &c.ImagePrune)
+	str("KRAKEN_NET_EXCLUDE", &c.NetExclude)
 	str("KRAKEN_TUNNEL_ADDR", &c.TunnelAddr)
 	if v, ok := os.LookupEnv("KRAKEN_TUNNEL"); ok && v != "" {
 		b := v == "1" || strings.EqualFold(v, "true")
@@ -352,6 +358,7 @@ func (c *Config) overlay(f *Config) {
 	str(f.WindowsIsolation, &c.WindowsIsolation)
 	str(f.ImagePull, &c.ImagePull)
 	str(f.ImagePrune, &c.ImagePrune)
+	str(f.NetExclude, &c.NetExclude)
 	str(f.TunnelAddr, &c.TunnelAddr)
 	if f.Tunnel != nil {
 		c.Tunnel = f.Tunnel
@@ -561,6 +568,9 @@ func (c *Config) Export() error {
 	}
 	if c.ImagePrune != "" {
 		vars["KRAKEN_IMAGE_PRUNE"] = c.ImagePrune
+	}
+	if c.NetExclude != "" {
+		vars["KRAKEN_NET_EXCLUDE"] = c.NetExclude
 	}
 	if c.hostDataDirSet {
 		vars["KRAKEN_HOST_DATA_DIR"] = c.HostDataDir

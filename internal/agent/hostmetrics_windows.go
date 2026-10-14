@@ -4,7 +4,6 @@ package agent
 
 import (
 	"fmt"
-	"net"
 	"runtime"
 	"time"
 	"unsafe"
@@ -37,15 +36,18 @@ type memoryStatusEx struct {
 // benefit from one doesn't exist here.
 type hostReader struct {
 	dataDir string
+	exclude map[string]bool // KRAKEN_NET_EXCLUDE, lowercased
 }
 
-func newHostReader(dataDir string) *hostReader { return &hostReader{dataDir: dataDir} }
+func newHostReader(dataDir string) *hostReader {
+	return &hostReader{dataDir: dataDir, exclude: netExcludeFromEnv()}
+}
 
 func (r *hostReader) read() hostSnapshot {
 	s := hostSnapshot{at: time.Now(), diskPath: r.dataDir}
 	readWindowsCPU(&s)
 	readWindowsMem(&s)
-	readWindowsNet(&s)
+	readWindowsNet(&s, r.exclude)
 	readWindowsUptime(&s)
 	readDisk(r.dataDir, &s)
 	return s
@@ -100,8 +102,10 @@ func readWindowsMem(s *hostSnapshot) {
 const (
 	ifOperStatusUp         = 1
 	ifTypeSoftwareLoopback = 24
-	// Bit 0 of MIB_IF_ROW2.InterfaceAndOperStatusFlags is HardwareInterface.
+	// MIB_IF_ROW2.InterfaceAndOperStatusFlags: bit 0 is HardwareInterface, bit 1
+	// FilterInterface.
 	ifFlagHardwareInterface = 0x01
+	ifFlagFilterInterface   = 0x02
 )
 
 // readWindowsNet totals bytes across the host's hardware interfaces.
@@ -110,30 +114,45 @@ const (
 // Hyper-V host: the "vEthernet (WSL)" and container NAT adapters are real
 // interfaces with real counters, but every byte they carry also crosses the
 // physical NIC, so counting both doubles the host's apparent throughput.
-func readWindowsNet(s *hostSnapshot) {
-	ifaces, err := net.Interfaces()
+//
+// It reads the whole interface table rather than net.Interfaces(). That one
+// lists only adapters with an IP bound, and a NIC bound to a Hyper-V external
+// switch has none (the host's address moves to the switch's vEthernet adapter),
+// so the one interface that carries everything dropped out and the meter went
+// dark (#432). See sumIfRows for which rows count.
+func readWindowsNet(s *hostSnapshot, exclude map[string]bool) {
+	rows, err := windowsIfRows()
 	if err != nil {
 		warnHostMetricOnce("network", err)
 		return
 	}
-	var rx, tx uint64
-	var ok bool
-	for _, ifi := range ifaces {
-		row := windows.MibIfRow2{InterfaceIndex: uint32(ifi.Index)}
-		if err := windows.GetIfEntry2Ex(windows.MibIfTableNormal, &row); err != nil {
-			continue
-		}
-		if row.OperStatus != ifOperStatusUp || row.Type == ifTypeSoftwareLoopback {
-			continue
-		}
-		if row.InterfaceAndOperStatusFlags&ifFlagHardwareInterface == 0 {
-			continue
-		}
-		rx += row.InOctets
-		tx += row.OutOctets
-		ok = true
+	s.netRxBytes, s.netTxBytes, s.netOK = sumIfRows(rows, exclude)
+}
+
+// windowsIfRows copies the interface table out of GetIfTable2Ex, freeing it
+// before returning.
+func windowsIfRows() ([]ifCounters, error) {
+	var table *windows.MibIfTable2
+	if err := windows.GetIfTable2Ex(windows.MibIfTableNormal, &table); err != nil {
+		return nil, err
 	}
-	s.netRxBytes, s.netTxBytes, s.netOK = rx, tx, ok
+	defer windows.FreeMibTable(unsafe.Pointer(table))
+	raw := unsafe.Slice(&table.Table[0], table.NumEntries)
+	rows := make([]ifCounters, 0, len(raw))
+	for i := range raw {
+		r := &raw[i]
+		rows = append(rows, ifCounters{
+			alias:       windows.UTF16ToString(r.Alias[:]),
+			description: windows.UTF16ToString(r.Description[:]),
+			up:          r.OperStatus == ifOperStatusUp,
+			loopback:    r.Type == ifTypeSoftwareLoopback,
+			hardware:    r.InterfaceAndOperStatusFlags&ifFlagHardwareInterface != 0,
+			filter:      r.InterfaceAndOperStatusFlags&ifFlagFilterInterface != 0,
+			rx:          r.InOctets,
+			tx:          r.OutOctets,
+		})
+	}
+	return rows, nil
 }
 
 func readWindowsUptime(s *hostSnapshot) {

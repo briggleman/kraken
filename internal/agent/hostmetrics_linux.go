@@ -24,10 +24,11 @@ type hostReader struct {
 	proc    string
 	sys     string
 	dataDir string
+	exclude map[string]bool // KRAKEN_NET_EXCLUDE, lowercased
 }
 
 func newHostReader(dataDir string) *hostReader {
-	return &hostReader{proc: "/proc", sys: "/sys", dataDir: dataDir}
+	return &hostReader{proc: "/proc", sys: "/sys", dataDir: dataDir, exclude: netExcludeFromEnv()}
 }
 
 func (r *hostReader) read() hostSnapshot {
@@ -160,7 +161,7 @@ func (r *hostReader) readNet(s *hostSnapshot) {
 		warnHostMetricOnce("network", err)
 		return
 	}
-	rx, tx, ok := sumNetDev(string(b), r.physicalIface)
+	rx, tx, ok := sumNetDev(dropNetDevIfaces(string(b), r.exclude), r.physicalIface)
 	s.netRxBytes, s.netTxBytes, s.netOK = rx, tx, ok
 }
 
@@ -187,6 +188,24 @@ func (r *hostReader) physicalIface(name string) (physical, known bool) {
 // and physicality has to be guessed from the name.
 var virtualIfacePrefixes = []string{
 	"lo", "veth", "docker", "br-", "virbr", "tun", "tap", "kube", "cni", "flannel", "dummy",
+}
+
+// dropNetDevIfaces removes the operator-excluded interfaces (KRAKEN_NET_EXCLUDE)
+// from a /proc/net/dev listing, so neither the sysfs pass nor the name fallback
+// can count them.
+func dropNetDevIfaces(text string, exclude map[string]bool) string {
+	if len(exclude) == 0 {
+		return text
+	}
+	var b strings.Builder
+	for line := range strings.SplitSeq(text, "\n") {
+		if name, _, found := strings.Cut(line, ":"); found && exclude[strings.ToLower(strings.TrimSpace(name))] {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // sumNetDev totals receive and transmit bytes across the host's physical
@@ -251,7 +270,7 @@ func sumNetDev(text string, isPhysical func(string) (physical, known bool)) (rx,
 
 	rx, tx = 0, 0
 	for _, i := range ifaces {
-		if hasAnyPrefix(i.name, virtualIfacePrefixes) {
+		if hasAnyPrefix(i.name, virtualIfacePrefixes) || hasAnyPrefix(i.name, overlayIfacePrefixes) {
 			continue
 		}
 		rx += i.rx
@@ -259,15 +278,6 @@ func sumNetDev(text string, isPhysical func(string) (physical, known bool)) (rx,
 		ok = true
 	}
 	return rx, tx, ok
-}
-
-func hasAnyPrefix(s string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *hostReader) readUptime(s *hostSnapshot) {

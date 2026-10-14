@@ -155,6 +155,25 @@ func TestSumNetDevEmptyPhysicalSetFallsBack(t *testing.T) {
 	}
 }
 
+// KRAKEN_NET_EXCLUDE takes an interface out of both passes, and the name
+// fallback skips overlays whose traffic already crossed a counted NIC.
+func TestSumNetDevExcludesAndSkipsOverlays(t *testing.T) {
+	text := sampleNetDev + "tailscale0: 800 8 0 0 0 0 0 0 800 8 0 0 0 0 0 0\n  eth1: 60 6 0 0 0 0 0 0 70 7 0 0 0 0 0 0\n"
+	exclude := parseNetExclude("ETH1")
+
+	physical := func(name string) (bool, bool) { return name == "eth0" || name == "eth1", true }
+	if rx, tx, _ := sumNetDev(dropNetDevIfaces(text, exclude), physical); rx != 5000 || tx != 7000 {
+		t.Errorf("sysfs pass: rx/tx = %d/%d, want 5000/7000 — eth1 is excluded", rx, tx)
+	}
+	unknown := func(string) (bool, bool) { return false, false }
+	if rx, tx, _ := sumNetDev(dropNetDevIfaces(text, exclude), unknown); rx != 5000 || tx != 7000 {
+		t.Errorf("name fallback: rx/tx = %d/%d, want 5000/7000 — tailscale0 and the excluded eth1 skipped", rx, tx)
+	}
+	if got := dropNetDevIfaces(text, nil); got != text {
+		t.Error("an empty exclude list must leave the listing untouched")
+	}
+}
+
 func TestSumNetDevEmptyInput(t *testing.T) {
 	if _, _, ok := sumNetDev("header only\n", func(string) (bool, bool) { return true, true }); ok {
 		t.Error("expected no reading from a file with no interface rows")

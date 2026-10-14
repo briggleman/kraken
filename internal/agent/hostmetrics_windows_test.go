@@ -53,6 +53,15 @@ func TestWindowsHostReaderAgainstRealHost(t *testing.T) {
 	if !tel.CpuKnown {
 		t.Fatal("two real samples should yield a cpu rate")
 	}
+	// Any machine running this has an up adapter, so the meter must know a rate.
+	// This used to be logged and never asserted, which is how a host whose NIC
+	// sat behind a Hyper-V switch reported nothing unnoticed (#432).
+	if !first.netOK {
+		t.Fatal("no interface was counted; the node network meter would read unknown")
+	}
+	if !tel.NetKnown {
+		t.Fatal("two real samples should yield a network rate")
+	}
 	if tel.CpuPercent < 0 || tel.CpuPercent > 100 {
 		t.Errorf("cpu percent = %.2f, outside 0..100", tel.CpuPercent)
 	}

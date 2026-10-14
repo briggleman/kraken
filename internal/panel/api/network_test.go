@@ -154,7 +154,9 @@ func (f *fakeUnifi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.forgot = append(f.forgot, body["macs"])
 		_, _ = io.WriteString(w, `{"data":[]}`)
 	case strings.HasPrefix(path, "/rest/portforward"):
-		f.forward = body
+		if r.Method != http.MethodGet {
+			f.forward = body
+		}
 		_, _ = io.WriteString(w, `{"data":[{"_id":"rule-1"}]}`)
 	default:
 		http.Error(w, "unexpected "+r.Method+" "+path, http.StatusTeapot)

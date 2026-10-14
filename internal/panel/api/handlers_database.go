@@ -89,7 +89,7 @@ func (s *Server) handleTestDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	canCreate, exists, err := migrate.Probe(req.dsn())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, statusUpstream, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "db_exists": exists, "can_create_db": canCreate})
@@ -114,11 +114,11 @@ func (s *Server) handleConnectDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	dsn := req.dsn()
 	if err := migrate.EnsureDatabase(dsn); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, statusUpstream, err.Error())
 		return
 	}
 	if err := migrate.Up(dsn); err != nil {
-		writeError(w, http.StatusBadGateway, "migrations failed: "+err.Error())
+		writeError(w, statusUpstream, "migrations failed: "+err.Error())
 		return
 	}
 	if err := config.SaveDatabaseURL(s.cfg.ConfigFile, dsn); err != nil {

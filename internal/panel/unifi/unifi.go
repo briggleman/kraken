@@ -127,9 +127,21 @@ func (c *Client) ListPortForwards(ctx context.Context) ([]PortForward, error) {
 	return out, nil
 }
 
-// EnsureForward creates a rule (when in.ID is empty) or updates an existing one,
-// returning the rule id. Used to open a port or re-enable a previously-disabled one.
+// EnsureForward creates a rule or updates an existing one, returning the rule
+// id. Used to open a port, close one, or re-aim it at a new address.
+//
+// The id the Panel stored can outlive its rule: an operator deletes the rule in
+// the UniFi console, or a controller restore drops it. Updating a rule that is
+// gone fails, and every later attempt fails the same way, so the stored id is
+// checked against the controller first. Missing, the rule is adopted by name if
+// one carries this server's name, and created otherwise.
 func (c *Client) EnsureForward(ctx context.Context, in Forward) (string, error) {
+	rules, err := c.ListPortForwards(ctx)
+	if err != nil {
+		return "", err
+	}
+	in.ID = existingForward(rules, in.ID, in.Name)
+
 	rule := PortForward{
 		ID:            in.ID,
 		Name:          in.Name,
@@ -155,6 +167,22 @@ func (c *Client) EnsureForward(ctx context.Context, in Forward) (string, error) 
 		return out[0].ID, nil
 	}
 	return in.ID, nil
+}
+
+// existingForward is the id of the rule to update: the stored id when the
+// controller still has it, else a rule with the same name, else "" to create.
+func existingForward(rules []PortForward, id, name string) string {
+	for _, r := range rules {
+		if id != "" && r.ID == id {
+			return id
+		}
+	}
+	for _, r := range rules {
+		if name != "" && r.Name == name {
+			return r.ID
+		}
+	}
+	return ""
 }
 
 // DeleteForward removes a rule. A missing rule is not an error (idempotent cleanup).

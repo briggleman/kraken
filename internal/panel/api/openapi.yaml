@@ -209,7 +209,7 @@ paths:
                   restarting: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { description: Database is env-managed (KRAKEN_DATABASE_URL) }
-        '502': { description: Connection / create / migrate failed }
+        '424': { description: Connection / create / migrate failed }
   /setup/database/test:
     post:
       tags: [Setup]
@@ -231,7 +231,7 @@ paths:
                   db_exists: { type: boolean }
                   can_create_db: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '502': { description: Connection failed }
+        '424': { description: Connection failed }
   /setup/local-enroll:
     post:
       tags: [Setup]
@@ -1775,7 +1775,7 @@ paths:
                 properties:
                   zones: { type: array, items: { type: string } }
         '400': { description: Cloudflare not configured }
-        '502': { description: Cloudflare API error }
+        '424': { description: "Cloudflare API error (424, not 502: Cloudflare in front of the Panel replaces a 502 body)" }
   /settings/unifi/test:
     post:
       tags: [Settings]
@@ -1791,7 +1791,7 @@ paths:
                   forward_count: { type: integer }
                   wan_ip: { type: string }
         '400': { description: UniFi not configured }
-        '502': { description: UniFi API error }
+        '424': { description: "UniFi API error (424, not 502: Cloudflare in front of the Panel replaces a 502 body)" }
   /servers/{id}/dns:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -1844,7 +1844,7 @@ paths:
                   dns: { $ref: '#/components/schemas/ServerDNS' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/ServerHeld' }
-        '502': { description: Cloudflare API error }
+        '424': { description: "Cloudflare API error (424, not 502: Cloudflare in front of the Panel replaces a 502 body)" }
         '503': { description: Cloudflare not configured }
     delete:
       tags: [DNS]
@@ -1871,7 +1871,7 @@ paths:
         '200': { description: Forward updated }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/ServerHeld' }
-        '502': { description: UniFi API error }
+        '424': { description: "UniFi API error (424, not 502: Cloudflare in front of the Panel replaces a 502 body)" }
         '503': { description: UniFi not configured }
   /devices:
     post:

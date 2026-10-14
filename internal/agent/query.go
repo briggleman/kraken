@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -26,7 +27,13 @@ func (d *DockerRuntime) queryPlayers(ctx context.Context, serverID string, q *ag
 	switch q.GetMethod() {
 	case "a2s":
 		// Ports are published 1:1, so the A2S query port is reachable on loopback.
-		return a2sInfo(fmt.Sprintf("127.0.0.1:%d", q.GetPort()))
+		// A transparent container (#426) publishes nothing on the host: the
+		// game answers on its own address.
+		host := "127.0.0.1"
+		if ip := d.containerAddress(ctx, serverID); ip != "" {
+			host = ip
+		}
+		return a2sInfo(net.JoinHostPort(host, strconv.Itoa(int(q.GetPort()))))
 	case "palworld-rest":
 		return d.palworldPlayers(ctx, serverID, q.GetPort(), q.GetPassword())
 	default:

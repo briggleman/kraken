@@ -210,13 +210,16 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if newState == store.StateCrashed && status.ExitCodeKnown {
 			nexit, nexitKnown = status.LastExitCode, true
 		}
+		nip := nextContainerIP(sv.ContainerIP, status.GetContainerIp(), newState)
 		if newState == sv.State && np == sv.Players && nmax == sv.MaxPlayers && nknown == sv.PlayersKnown &&
-			nexit == sv.LastExitCode && nexitKnown == sv.LastExitCodeKnown {
+			nexit == sv.LastExitCode && nexitKnown == sv.LastExitCodeKnown && nip == sv.ContainerIP {
 			continue
 		}
+		addressChanged := nip != sv.ContainerIP
 		sv.State = newState
 		sv.Players, sv.MaxPlayers, sv.PlayersKnown = np, nmax, nknown
 		sv.LastExitCode, sv.LastExitCodeKnown = nexit, nexitKnown
+		sv.ContainerIP = nip
 		if uerr := s.store.UpdateServer(ctx, sv); uerr != nil {
 			s.logger.Warn("reconcile: update server failed", "server", sv.ID, "err", uerr)
 			continue
@@ -224,7 +227,26 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if crashedNow {
 			s.noteServerCrashed(sv, status)
 		}
+		if addressChanged {
+			s.serverAddressChanged(sv.ID)
+		}
 	}
+}
+
+// nextContainerIP is the address a server is stored with after a status poll
+// (#426). The Agent reports one only while a transparent container holds a
+// lease, so an empty report from a stopped server says nothing: the address
+// stays, and the endpoint, forward and reservation keep pointing at it. Only a
+// running server with no address is on the node's address again — its
+// container was recreated on the default network.
+func nextContainerIP(stored, reported string, state store.ServerState) string {
+	if reported != "" {
+		return reported
+	}
+	if state == store.StateRunning {
+		return ""
+	}
+	return stored
 }
 
 // reconcileWriteHook, when set, runs in a pass after the Agent's answer and
@@ -289,9 +311,15 @@ func (s *Server) adoptRunning(ctx context.Context, sv *store.Server, status *age
 	if ls := status.LastStats; ls != nil && ls.PlayersKnown {
 		sv.Players, sv.MaxPlayers, sv.PlayersKnown = ls.Players, ls.MaxPlayers, true
 	}
+	nip := nextContainerIP(sv.ContainerIP, status.GetContainerIp(), store.StateRunning)
+	addressChanged := nip != sv.ContainerIP
+	sv.ContainerIP = nip
 	if err := s.store.UpdateServer(ctx, sv); err != nil {
 		s.logger.Warn("reconcile: adopt running failed", "server", sv.ID, "err", err)
 		return
 	}
 	s.logger.Info("reconcile: adopted the agent's running container", "server", sv.ID, "was", from)
+	if addressChanged {
+		s.serverAddressChanged(sv.ID)
+	}
 }

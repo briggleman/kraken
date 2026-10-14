@@ -131,6 +131,16 @@ export interface NodeConfig {
   replicate_to_smb: boolean;
   steam_username?: string;
   steam_configured: boolean; // a Steam password is stored
+  // Container networking for game servers (#426), Windows nodes only:
+  // "transparent" gives each game container its own LAN address on a Docker
+  // transparent network bound to transparent_adapter, tagged with
+  // transparent_vlan when non-zero.
+  container_network: "nat" | "transparent";
+  transparent_adapter?: string;
+  transparent_vlan?: number;
+  // servers on this node not yet on the configured network — each moves on its
+  // next start
+  network_pending?: string[];
 }
 
 // NodeConfigUpdateResult is the response to saving node config: the saved view
@@ -162,6 +172,9 @@ export interface NodeConfigUpdate {
   replicate_to_smb?: boolean;
   steam_username?: string;
   steam_password?: string;
+  container_network?: "nat" | "transparent";
+  transparent_adapter?: string;
+  transparent_vlan?: number;
 }
 
 export interface PortForward {
@@ -181,7 +194,8 @@ export interface ServerDnsState {
   cloudflare_configured: boolean;
   unifi_configured: boolean;
   target_host: string;
-  lan_host: string;
+  lan_host: string; // the container's own address when it has one, else the node's
+  container_ip?: string; // a transparent container's own address (#426)
   ports: Record<string, number> | null;
   dns: ServerDNS | null;
   forwards: Record<string, PortForward> | null;
@@ -271,6 +285,8 @@ export interface Server {
   state: ServerState;
   vars: Record<string, string>;
   ports: Record<string, number>;
+  // a transparent container's own LAN address (#426); absent behind NAT
+  container_ip?: string;
   memory_mb: number;
   players?: number;
   max_players?: number;

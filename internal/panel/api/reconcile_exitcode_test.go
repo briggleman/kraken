@@ -33,6 +33,7 @@ func (a *statusAgent) GetServerStatus(_ context.Context, req *agentpb.GetServerS
 		LastStats:     want.LastStats,
 		LastExitCode:  want.LastExitCode,
 		ExitCodeKnown: want.ExitCodeKnown,
+		ContainerIp:   want.ContainerIp,
 	}, nil
 }
 

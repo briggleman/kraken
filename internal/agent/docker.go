@@ -23,6 +23,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -98,7 +99,12 @@ type DockerRuntime struct {
 	backups   backupTarget        // primary store (local fs, mounted share, SFTP or SMB)
 	replicate backupTarget        // optional off-node mirror (nil when replication is off)
 	nodeCfg   *agentpb.NodeConfig // last-applied config; source for per-server path templating (nil = defaults)
-	sftpPort  int32               // port the Agent's SFTP server bound (0 = SFTP off); reported in NodeInfo
+
+	// The node's transparent network for game containers (#426); see transparent.go.
+	transparent transparentNet
+	networks    networkOps // nil: d.cli
+	addrCache   addrCache  // transparent containers' exec-read addresses
+	sftpPort    int32      // port the Agent's SFTP server bound (0 = SFTP off); reported in NodeInfo
 
 	mu    sync.Mutex
 	specs map[string]*agentpb.ServerSpec // serverID → runtime spec
@@ -526,6 +532,7 @@ func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConf
 		}
 	}
 	detail := fmt.Sprintf("primary=%s replication=%t", primary.Kind(), replicate != nil)
+	netLine := d.applyTransparentConfig(cfg)
 	if replicate != nil && cfg.GetReplicateToSftp() && cfg.GetReplicateToSmb() {
 		// The Panel refuses this combination; a hand-edited config still reaches
 		// here, so say which mirror won rather than silently picking one.
@@ -533,6 +540,9 @@ func (d *DockerRuntime) ApplyNodeConfig(_ context.Context, cfg *agentpb.NodeConf
 	}
 	if len(msgs) > 0 {
 		detail = strings.Join(msgs, "; ")
+	}
+	if netLine != "" {
+		detail += "; " + netLine
 	}
 	slog.Info("node config applied", "primary", primary.Kind(), "replicate", replicate != nil, "ok", ok)
 	return ok, detail
@@ -1418,14 +1428,44 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 		host.Resources.Memory = spec.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
+	netCfg, err := d.joinTransparent(spec, cfg, host)
+	if err != nil {
+		return err
+	}
 	// Every start recreates the container, so this is also where a restore, a
 	// rendered config or a Files-tab edit made while the server was stopped is
 	// opened to the game. See datashare.go.
 	d.shareDataDirOrWarn(spec.ServerId, nil)
 	imgUser, imgKnown := d.imageUser(ctx, spec.Image)
 	d.shareDataWithGame(cfg, host, dataPath, false, imgUser, imgKnown)
-	_, err := d.cli.ContainerCreate(ctx, cfg, host, nil, nil, containerName(spec.ServerId))
+	_, err = d.containers.ContainerCreate(ctx, cfg, host, netCfg, nil, containerName(spec.ServerId))
 	return err
+}
+
+// joinTransparent puts a game container on the node's transparent network when
+// its spec says so (#426): it joins that network with the server's stable MAC,
+// and publishes nothing — the container answers on its own address, every port
+// the game opens with it, which is the point. A spec stamped transparent on a
+// node whose network isn't ready fails the start with the reason rather than
+// starting the server behind NAT, where its players would sit on the loading
+// screen with no explanation.
+func (d *DockerRuntime) joinTransparent(spec *agentpb.ServerSpec, cfg *container.Config, host *container.HostConfig) (*network.NetworkingConfig, error) {
+	if spec.GetNetworkMode() != networkModeTransp {
+		return nil, nil
+	}
+	if !d.isWindows() {
+		return nil, fmt.Errorf("docker: transparent networking is for Windows nodes")
+	}
+	name, err := d.transparentNetwork()
+	if err != nil {
+		return nil, fmt.Errorf("docker: %w", err)
+	}
+	host.NetworkMode = container.NetworkMode(name)
+	host.PortBindings = nil
+	cfg.ExposedPorts = nil
+	return &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{
+		name: {MacAddress: spec.GetMacAddress()},
+	}}, nil
 }
 
 func (d *DockerRuntime) stop(ctx context.Context, serverID string) error {
@@ -1497,6 +1537,7 @@ func (d *DockerRuntime) Status(ctx context.Context, serverID string) (*agentpb.S
 	// Attach the online-player count so the reconciler can surface it fleet-wide
 	// without an open stats stream (TTL-cached, so this poll rarely hits the game).
 	if state == agentpb.ServerState_SERVER_STATE_RUNNING {
+		status.ContainerIp = d.containerAddress(ctx, serverID)
 		if pl, mx, known := d.sampledPlayers(ctx, serverID); known {
 			status.LastStats = &agentpb.ResourceStats{
 				ServerId: serverID, Players: pl, MaxPlayers: mx, PlayersKnown: known,

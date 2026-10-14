@@ -598,8 +598,20 @@ type ServerSpec struct {
 	MaxRestarts    int32                  `protobuf:"varint,12,opt,name=max_restarts,json=maxRestarts,proto3" json:"max_restarts,omitempty"`            // cap on consecutive crash-restarts (0 → agent default)
 	PlayerQuery    *PlayerQuery           `protobuf:"bytes,13,opt,name=player_query,json=playerQuery,proto3" json:"player_query,omitempty"`             // how the Agent counts online players (nil → none)
 	Sftp           *SftpAccess            `protobuf:"bytes,14,opt,name=sftp,proto3" json:"sftp,omitempty"`                                              // per-server SFTP credentials (nil/disabled → no SFTP)
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// network_mode is the network this server's game container joins, stamped by
+	// the Panel from its node's config when the spec is pushed: "" or "nat" is the
+	// default Docker network with every port published on the node's address;
+	// "transparent" (Windows nodes only, #426) is the node's transparent network,
+	// where the container takes its own LAN address and publishes nothing. It is
+	// per server rather than read from the node's config at create time so that a
+	// node switching modes moves each server on its next start, never under it.
+	NetworkMode string `protobuf:"bytes,15,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`
+	// mac_address is the container's MAC on a transparent network: stable per
+	// server (derived from its id), so the router's DHCP reservation follows the
+	// server across recreates. Empty on "nat".
+	MacAddress    string `protobuf:"bytes,16,opt,name=mac_address,json=macAddress,proto3" json:"mac_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ServerSpec) Reset() {
@@ -728,6 +740,20 @@ func (x *ServerSpec) GetSftp() *SftpAccess {
 		return x.Sftp
 	}
 	return nil
+}
+
+func (x *ServerSpec) GetNetworkMode() string {
+	if x != nil {
+		return x.NetworkMode
+	}
+	return ""
+}
+
+func (x *ServerSpec) GetMacAddress() string {
+	if x != nil {
+		return x.MacAddress
+	}
+	return ""
 }
 
 // SftpAccess carries a server's SFTP credentials so the Agent's SFTP server can
@@ -3868,8 +3894,13 @@ type ServerStatus struct {
 	// began, by the Agent's clock; 0 when there has been none.
 	WatchdogRestarts          int32 `protobuf:"varint,6,opt,name=watchdog_restarts,json=watchdogRestarts,proto3" json:"watchdog_restarts,omitempty"`
 	LastWatchdogRestartUnixMs int64 `protobuf:"varint,7,opt,name=last_watchdog_restart_unix_ms,json=lastWatchdogRestartUnixMs,proto3" json:"last_watchdog_restart_unix_ms,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// container_ip is the game container's own address on a transparent network
+	// (#426): where players, the Agent's player query and the Panel's port
+	// forward reach it. Empty for a container on the default network, which is
+	// reached on the node's address, and while no address has been leased yet.
+	ContainerIp   string `protobuf:"bytes,8,opt,name=container_ip,json=containerIp,proto3" json:"container_ip,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ServerStatus) Reset() {
@@ -3949,6 +3980,13 @@ func (x *ServerStatus) GetLastWatchdogRestartUnixMs() int64 {
 		return x.LastWatchdogRestartUnixMs
 	}
 	return 0
+}
+
+func (x *ServerStatus) GetContainerIp() string {
+	if x != nil {
+		return x.ContainerIp
+	}
+	return ""
 }
 
 type StreamConsoleRequest struct {
@@ -4396,8 +4434,19 @@ type NodeConfig struct {
 	// to the SMB remote, regardless of the primary target. Mutually exclusive with
 	// replicate_to_sftp — one mirror destination per node.
 	ReplicateToSmb bool `protobuf:"varint,22,opt,name=replicate_to_smb,json=replicateToSmb,proto3" json:"replicate_to_smb,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Container networking for game servers on a Windows node (#426).
+	// container_network is "" / "nat" (the default) or "transparent". With
+	// "transparent" the Agent ensures a Docker transparent network bound to
+	// transparent_adapter (a host adapter name, e.g. "Ethernet 3"), tagging
+	// traffic with transparent_vlan when non-zero (1-4094). Creating that network
+	// moves the host's own address onto a Hyper-V vEthernet adapter, which cuts
+	// the host's connections for up to a minute, so the Agent answers this RPC
+	// before it builds the network and never removes one.
+	ContainerNetwork   string `protobuf:"bytes,23,opt,name=container_network,json=containerNetwork,proto3" json:"container_network,omitempty"`
+	TransparentAdapter string `protobuf:"bytes,24,opt,name=transparent_adapter,json=transparentAdapter,proto3" json:"transparent_adapter,omitempty"`
+	TransparentVlan    int32  `protobuf:"varint,25,opt,name=transparent_vlan,json=transparentVlan,proto3" json:"transparent_vlan,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *NodeConfig) Reset() {
@@ -4540,6 +4589,27 @@ func (x *NodeConfig) GetReplicateToSmb() bool {
 		return x.ReplicateToSmb
 	}
 	return false
+}
+
+func (x *NodeConfig) GetContainerNetwork() string {
+	if x != nil {
+		return x.ContainerNetwork
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetTransparentAdapter() string {
+	if x != nil {
+		return x.TransparentAdapter
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetTransparentVlan() int32 {
+	if x != nil {
+		return x.TransparentVlan
+	}
+	return 0
 }
 
 type ApplyNodeConfigRequest struct {
@@ -5099,7 +5169,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12%\n" +
 	"\x0econtainer_port\x18\x03 \x01(\x05R\rcontainerPort\x12\x1b\n" +
-	"\thost_port\x18\x04 \x01(\x05R\bhostPort\"\xf5\x04\n" +
+	"\thost_port\x18\x04 \x01(\x05R\bhostPort\"\xb9\x05\n" +
 	"\n" +
 	"ServerSpec\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
@@ -5118,7 +5188,10 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x10restart_on_crash\x18\v \x01(\bR\x0erestartOnCrash\x12!\n" +
 	"\fmax_restarts\x18\f \x01(\x05R\vmaxRestarts\x12?\n" +
 	"\fplayer_query\x18\r \x01(\v2\x1c.kraken.agent.v1.PlayerQueryR\vplayerQuery\x12/\n" +
-	"\x04sftp\x18\x0e \x01(\v2\x1b.kraken.agent.v1.SftpAccessR\x04sftp\x1a6\n" +
+	"\x04sftp\x18\x0e \x01(\v2\x1b.kraken.agent.v1.SftpAccessR\x04sftp\x12!\n" +
+	"\fnetwork_mode\x18\x0f \x01(\tR\vnetworkMode\x12\x1f\n" +
+	"\vmac_address\x18\x10 \x01(\tR\n" +
+	"macAddress\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x01\n" +
@@ -5343,7 +5416,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x13PowerActionResponse\x122\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\"5\n" +
 	"\x16GetServerStatusRequest\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xdb\x02\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xfe\x02\n" +
 	"\fServerStatus\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x122\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x1c.kraken.agent.v1.ServerStateR\x05state\x12=\n" +
@@ -5352,7 +5425,8 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\x0elast_exit_code\x18\x04 \x01(\x03R\flastExitCode\x12&\n" +
 	"\x0fexit_code_known\x18\x05 \x01(\bR\rexitCodeKnown\x12+\n" +
 	"\x11watchdog_restarts\x18\x06 \x01(\x05R\x10watchdogRestarts\x12@\n" +
-	"\x1dlast_watchdog_restart_unix_ms\x18\a \x01(\x03R\x19lastWatchdogRestartUnixMs\"R\n" +
+	"\x1dlast_watchdog_restart_unix_ms\x18\a \x01(\x03R\x19lastWatchdogRestartUnixMs\x12!\n" +
+	"\fcontainer_ip\x18\b \x01(\tR\vcontainerIp\"R\n" +
 	"\x14StreamConsoleRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1d\n" +
 	"\n" +
@@ -5391,7 +5465,7 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\vmax_players\x18\v \x01(\x05R\n" +
 	"maxPlayers\x12#\n" +
 	"\rplayers_known\x18\f \x01(\bR\fplayersKnown\x12D\n" +
-	"\x0eonline_players\x18\r \x03(\v2\x1d.kraken.agent.v1.OnlinePlayerR\ronlinePlayers\"\xad\x05\n" +
+	"\x0eonline_players\x18\r \x03(\v2\x1d.kraken.agent.v1.OnlinePlayerR\ronlinePlayers\"\xb6\x06\n" +
 	"\n" +
 	"NodeConfig\x12#\n" +
 	"\rbackup_target\x18\x01 \x01(\tR\fbackupTarget\x12\x1d\n" +
@@ -5412,7 +5486,10 @@ const file_kraken_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"smb_domain\x18\x14 \x01(\tR\tsmbDomain\x12\"\n" +
 	"\rsmb_base_path\x18\x15 \x01(\tR\vsmbBasePath\x12(\n" +
-	"\x10replicate_to_smb\x18\x16 \x01(\bR\x0ereplicateToSmbJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"e\n" +
+	"\x10replicate_to_smb\x18\x16 \x01(\bR\x0ereplicateToSmb\x12+\n" +
+	"\x11container_network\x18\x17 \x01(\tR\x10containerNetwork\x12/\n" +
+	"\x13transparent_adapter\x18\x18 \x01(\tR\x12transparentAdapter\x12)\n" +
+	"\x10transparent_vlan\x18\x19 \x01(\x05R\x0ftransparentVlanJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\vs3_endpointR\ts3_regionR\ts3_bucketR\rs3_access_keyR\rs3_secret_keyR\ts3_prefix\"e\n" +
 	"\x16ApplyNodeConfigRequest\x123\n" +
 	"\x06config\x18\x01 \x01(\v2\x1b.kraken.agent.v1.NodeConfigR\x06config\x12\x16\n" +
 	"\x06verify\x18\x02 \x01(\bR\x06verify\"A\n" +

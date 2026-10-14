@@ -267,11 +267,15 @@ func (s *Server) cleanupServerExternal(ctx context.Context, sv *store.Server) {
 			cancel()
 		}
 	}
-	if len(sv.Forwards) > 0 {
+	if len(sv.Forwards) > 0 || sv.Reservation != nil {
 		if uc := s.unifiClient(ctx); uc != nil {
 			cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			for _, f := range sv.Forwards {
 				_ = uc.DeleteForward(cctx, f.RuleID)
+			}
+			// The DHCP reservation for a transparent container (#426).
+			if sv.Reservation != nil {
+				_ = uc.ForgetClient(cctx, sv.Reservation.MAC)
 			}
 			cancel()
 		}
@@ -297,10 +301,13 @@ func (s *Server) handleGetServerDNS(w http.ResponseWriter, r *http.Request) {
 		"cloudflare_configured": s.cloudflareToken(ctx) != "",
 		"unifi_configured":      s.unifiClient(ctx) != nil,
 		"target_host":           serverExternalHost(node),
-		"lan_host":              nodeLANHost(node),
-		"ports":                 sv.Ports,
-		"dns":                   sv.DNS,
-		"forwards":              sv.Forwards,
+		"lan_host":              serverLANHost(sv, node),
+		// The container's own address on a transparent network (#426); lan_host
+		// is it when set. Empty for a server published on its node's address.
+		"container_ip": sv.ContainerIP,
+		"ports":        sv.Ports,
+		"dns":          sv.DNS,
+		"forwards":     sv.Forwards,
 	})
 }
 

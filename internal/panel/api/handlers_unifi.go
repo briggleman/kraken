@@ -89,7 +89,8 @@ func (s *Server) handleSetServerForward(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	node, _ := s.store.GetNode(ctx, sv.NodeID)
-	lanIP := nodeLANHost(node)
+	// A transparent container (#426) is forwarded to its own address.
+	lanIP := serverLANHost(sv, node)
 	if lanIP == "" {
 		writeError(w, http.StatusBadRequest, "the server's node has no LAN address yet")
 		return

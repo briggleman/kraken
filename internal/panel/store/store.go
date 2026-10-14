@@ -128,7 +128,26 @@ type NodeConfig struct {
 	// to the Agent's node config. SteamPassword is encrypted at rest.
 	SteamUsername string `json:"steam_username,omitempty"`
 	SteamPassword string `json:"steam_password,omitempty"` // encrypted at rest
+
+	// Container networking for game servers on a Windows node (#426). Empty or
+	// "nat" is Docker's default network with ports published on the node's
+	// address; "transparent" gives each game container its own LAN address on a
+	// Docker transparent network bound to TransparentAdapter, tagged with
+	// TransparentVLAN when non-zero.
+	ContainerNetwork   string `json:"container_network,omitempty"`
+	TransparentAdapter string `json:"transparent_adapter,omitempty"`
+	TransparentVLAN    int    `json:"transparent_vlan,omitempty"`
 }
+
+// Container network modes (NodeConfig.ContainerNetwork, ServerSpec.network_mode).
+const (
+	NetworkNAT         = "nat"
+	NetworkTransparent = "transparent"
+)
+
+// Transparent reports whether the node's game containers take their own
+// addresses.
+func (c *NodeConfig) Transparent() bool { return c != nil && c.ContainerNetwork == NetworkTransparent }
 
 // ServerDNS records a server's Cloudflare DNS assignment so the Panel can update
 // or remove the exact records it created.
@@ -145,6 +164,13 @@ type ServerDNS struct {
 type PortForward struct {
 	RuleID  string `json:"rule_id"`
 	Enabled bool   `json:"enabled"`
+}
+
+// ServerReservation is a server's DHCP reservation on the UniFi controller
+// (#426): the container's MAC pinned to the address DHCP first leased it.
+type ServerReservation struct {
+	MAC string `json:"mac"`
+	IP  string `json:"ip"`
 }
 
 // ServerSFTP holds a server's per-server SFTP credentials. The Panel generates
@@ -275,6 +301,15 @@ type Server struct {
 	// codes are unsigned 32-bit and would go negative in an int32.
 	LastExitCode      int64 `json:"last_exit_code,omitempty"`
 	LastExitCodeKnown bool  `json:"last_exit_code_known,omitempty"`
+	// ContainerIP is the game container's own address on a transparent network
+	// (#426), as the Agent last reported it: where players, the player query and
+	// the port forward reach the server. Empty for a server reached on its
+	// node's address, and while no address has been leased.
+	ContainerIP string `json:"container_ip,omitempty"`
+	// Reservation is the UniFi fixed-IP pin the Panel made for this server's
+	// container, so the address survives restarts. Nil when none was made — on
+	// a NAT node, or with UniFi not configured.
+	Reservation *ServerReservation `json:"reservation,omitempty"`
 	// Retire is a retire in progress (#360): set, with state retiring, when the
 	// job starts; its phase and the final backup's outcome are written as it
 	// moves, and it is cleared when the row becomes retired (or the retire is

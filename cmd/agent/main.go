@@ -175,6 +175,12 @@ func run(ctx context.Context, logger *slog.Logger, cfg *config.Config) error {
 	if pruner, ok := rt.(interface{ StartImagePruner(context.Context) }); ok {
 		pruner.StartImagePruner(ctx)
 	}
+	// The transparent network for game containers (#426), before the tunnel is
+	// dialed: rebuilding a missing one drops the host's connections, and better
+	// here than under a session to the Panel.
+	if nr, ok := rt.(interface{ RestoreTransparentNetwork(context.Context) }); ok {
+		nr.RestoreTransparentNetwork(ctx)
+	}
 
 	// The SFTP guard is built here — before the Service, which reports both
 	// listeners' state — but binds further down, once the gRPC side is wired.

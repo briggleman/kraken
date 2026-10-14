@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 
@@ -69,6 +70,13 @@ type nodeConfigView struct {
 
 	SteamUsername   string `json:"steam_username,omitempty"`
 	SteamConfigured bool   `json:"steam_configured"` // a Steam password is stored
+
+	ContainerNetwork   string `json:"container_network"` // "nat" | "transparent"
+	TransparentAdapter string `json:"transparent_adapter,omitempty"`
+	TransparentVLAN    int    `json:"transparent_vlan,omitempty"`
+	// NetworkPending names the node's servers not yet on the configured
+	// network; each moves on its next start.
+	NetworkPending []string `json:"network_pending,omitempty"`
 }
 
 func toNodeConfigView(c *store.NodeConfig) nodeConfigView {
@@ -95,7 +103,45 @@ func toNodeConfigView(c *store.NodeConfig) nodeConfigView {
 		ReplicateToSmb:         c.ReplicateToSmb,
 		SteamUsername:          c.SteamUsername,
 		SteamConfigured:        c.SteamPassword != "",
+		ContainerNetwork:       containerNetworkOrDefault(c.ContainerNetwork),
+		TransparentAdapter:     c.TransparentAdapter,
+		TransparentVLAN:        c.TransparentVLAN,
 	}
+}
+
+func containerNetworkOrDefault(mode string) string {
+	if mode == "" {
+		return store.NetworkNAT
+	}
+	return mode
+}
+
+// validateContainerNetwork checks a node's container-network settings (#426).
+// Transparent networking is a Windows-node feature: a Linux node reaches the
+// same end with host networking, and Docker's transparent driver exists only on
+// Windows. The adapter name goes to Docker as a network option, never through a
+// shell, so it only has to be a plausible adapter name.
+func validateContainerNetwork(c *store.NodeConfig, os cluster.NodeOS) error {
+	switch c.ContainerNetwork {
+	case "", store.NetworkNAT:
+		return nil
+	case store.NetworkTransparent:
+	default:
+		return fmt.Errorf("container_network must be %q or %q", store.NetworkNAT, store.NetworkTransparent)
+	}
+	if os != cluster.OSWindows {
+		return errors.New("transparent networking is for Windows nodes")
+	}
+	if c.TransparentAdapter == "" {
+		return errors.New("transparent_adapter is required: the host adapter the network binds to, e.g. \"Ethernet 3\"")
+	}
+	if len(c.TransparentAdapter) > 128 || strings.ContainsFunc(c.TransparentAdapter, unicode.IsControl) {
+		return errors.New("transparent_adapter is not a valid adapter name")
+	}
+	if c.TransparentVLAN < 0 || c.TransparentVLAN > 4094 {
+		return errors.New("transparent_vlan must be 0 (untagged) or 1-4094")
+	}
+	return nil
 }
 
 // nodeConfigToProto maps the stored config to the gRPC NodeConfig delivered to
@@ -118,6 +164,10 @@ func nodeConfigToProto(c *store.NodeConfig) *agentpb.NodeConfig {
 		SmbDomain:        c.SmbDomain,
 		SmbBasePath:      c.SmbBasePath,
 		ReplicateToSmb:   c.ReplicateToSmb,
+
+		ContainerNetwork:   c.ContainerNetwork,
+		TransparentAdapter: c.TransparentAdapter,
+		TransparentVlan:    int32(c.TransparentVLAN), // #nosec G115 -- validated 0-4094
 	}
 }
 
@@ -148,7 +198,9 @@ func (s *Server) handleGetNodeConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load node config")
 		return
 	}
-	writeJSON(w, http.StatusOK, toNodeConfigView(c))
+	view := toNodeConfigView(c)
+	view.NetworkPending = s.serversPendingNetwork(r.Context(), id, c)
+	writeJSON(w, http.StatusOK, view)
 }
 
 type updateNodeConfigRequest struct {
@@ -176,6 +228,10 @@ type updateNodeConfigRequest struct {
 
 	SteamUsername *string `json:"steam_username"`
 	SteamPassword *string `json:"steam_password"`
+
+	ContainerNetwork   *string `json:"container_network"`
+	TransparentAdapter *string `json:"transparent_adapter"`
+	TransparentVLAN    *int    `json:"transparent_vlan"`
 }
 
 // nodeConfigUpdateResponse returns the saved view plus the result of pushing the
@@ -241,6 +297,15 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	setTrim(&c.SteamUsername, req.SteamUsername)
 	setRaw(&c.SteamPassword, req.SteamPassword)
+	setTrim(&c.ContainerNetwork, req.ContainerNetwork)
+	setTrim(&c.TransparentAdapter, req.TransparentAdapter)
+	if req.TransparentVLAN != nil {
+		c.TransparentVLAN = *req.TransparentVLAN
+	}
+	if err := validateContainerNetwork(c, node.OS); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	// One mirror destination per node: the Agent would have to pick one anyway,
 	// and a silent pick hides half the operator's intent.
@@ -276,6 +341,7 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 	// backup. A push failure isn't fatal — the config is saved and re-pushed
 	// (without probes) on the next reconcile.
 	resp := nodeConfigUpdateResponse{nodeConfigView: toNodeConfigView(c)}
+	resp.NetworkPending = s.serversPendingNetwork(ctx, id, c)
 	if node.Status == cluster.NodeOnline {
 		ok, detail, perr := s.pushNodeConfig(ctx, node, true)
 		resp.Applied = perr == nil

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.0](https://github.com/briggleman/kraken/compare/v0.64.3...v0.65.0) (2026-10-14)
+
+
+### Features
+
+* transparent networking for windows game servers ([#435](https://github.com/briggleman/kraken/issues/435)) ([81eea61](https://github.com/briggleman/kraken/commit/81eea61e75c1ffc5bd89bd1bb8d7bef00471e4ef))
+
 ## [0.64.3](https://github.com/briggleman/kraken/compare/v0.64.2...v0.64.3) (2026-10-14)
 
 

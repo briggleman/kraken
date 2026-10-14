@@ -109,6 +109,13 @@ node_os: linux
 # untagged, and rolling back to it means downloading it again.
 # image_prune: on
 
+# Interfaces the node network meter leaves out, comma-separated. Only needed when
+# two nodes share one machine and a NIC handed to the other node's VM still reads
+# as hardware here (e.g. a Hyper-V switch given to a bridged WSL distro): list it
+# on the Windows node so that traffic isn't counted twice. On Windows a name is
+# the adapter's name ("Ethernet 2") or its description; on Linux the interface.
+# net_exclude: ""
+
 # Serve plaintext gRPC on a non-loopback address. This hands the Docker socket
 # to any host that can reach the port — enroll instead.
 # allow_insecure_grpc: false

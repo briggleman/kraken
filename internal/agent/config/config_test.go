@@ -18,6 +18,7 @@ func clearEnv(t *testing.T) {
 		"KRAKEN_TLS_CERT", "KRAKEN_TLS_KEY", "KRAKEN_TLS_CA", "KRAKEN_PANEL_URL",
 		"KRAKEN_ENROLL_TOKEN", "KRAKEN_CA_FINGERPRINT",
 		"KRAKEN_RUNTIME", "KRAKEN_WINDOWS_ISOLATION", "KRAKEN_ALLOW_INSECURE_GRPC",
+		"KRAKEN_NET_EXCLUDE",
 	} {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
@@ -266,12 +267,16 @@ func TestErrors(t *testing.T) {
 func TestExport(t *testing.T) {
 	clearEnv(t)
 	root := t.TempDir()
-	cfg, _, err := Load([]string{"--root", root, "--windows-isolation", "process"})
+	cfg, _, err := Load([]string{"--root", root, "--windows-isolation", "process", "--net-exclude", "Ethernet 2, Realtek Gaming"})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if err := cfg.Export(); err != nil {
 		t.Fatalf("Export: %v", err)
+	}
+	// The host sampler reads it from the environment; see agent/hostmetrics_net.go.
+	if got := os.Getenv("KRAKEN_NET_EXCLUDE"); got != "Ethernet 2, Realtek Gaming" {
+		t.Errorf("KRAKEN_NET_EXCLUDE = %q, want the flag value", got)
 	}
 	if got := os.Getenv("KRAKEN_DATA_DIR"); got != cfg.DataDir {
 		t.Errorf("KRAKEN_DATA_DIR = %q, want %q", got, cfg.DataDir)

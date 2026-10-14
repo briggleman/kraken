@@ -305,6 +305,12 @@ kraken-agent --config /etc/kraken/agent.yaml  # or name it explicitly</code></pr
 <td>weekly prune of dangling images: <code>on</code> (default) or <code>off</code></td>
 </tr>
 <tr>
+<td><code>net_exclude</code></td>
+<td><code>KRAKEN_NET_EXCLUDE</code></td>
+<td><code>--net-exclude</code></td>
+<td>interfaces the node network meter leaves out, comma-separated; on Windows an adapter&#39;s name or description. For a NIC handed to another node&#39;s VM on the same machine</td>
+</tr>
+<tr>
 <td><code>allow_insecure_grpc</code></td>
 <td><code>KRAKEN_ALLOW_INSECURE_GRPC</code></td>
 <td><code>--allow-insecure-grpc</code></td>
@@ -337,6 +343,15 @@ images no tag points at are removed, and Docker never removes one backing a
 container, running or stopped. Retention has no floor, so a dangling image is
 gone a week after it was untagged, and rolling back to it means downloading it
 again.</p>
+<p><strong><code>net_exclude</code></strong> leaves interfaces out of the node network meter. You only need
+it when two nodes share one machine. Say a Windows node hands a second network
+card to a bridged WSL distro that runs a Linux node. That card still reads as
+hardware on Windows, so its traffic would land on both nodes&#39; meters. List it on
+the Windows node by adapter name or description, for example
+<code>net_exclude: &quot;Realtek Gaming 2.5GbE Family Controller&quot;</code>.</p>
+<p>The meter otherwise counts a node&#39;s hardware network cards. That includes a card
+bound to a Hyper-V external switch, which is the one carrying both the host&#39;s
+traffic and its transparent containers&#39;.</p>
 <aside class="callout is-security">
 <span class="callout-k">security</span>
 <div class="callout-b"><p><strong><code>allow_insecure_grpc</code> hands the Docker socket to the network.</strong> Agent gRPC has

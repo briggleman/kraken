@@ -164,7 +164,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not save settings")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "settings")
+	s.recordAuditDetail(r, http.StatusOK, "settings")
 	writeJSON(w, http.StatusOK, s.toSettingsView(ctx, st))
 }
 
@@ -179,7 +179,7 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	zones, err := cloudflare.New(token).ListZones(ctx)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, statusUpstream, err.Error())
 		return
 	}
 	names := make([]string, len(zones))
@@ -364,7 +364,7 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	zone, err := cf.ZoneFor(cctx, req.Name)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, statusUpstream, err.Error())
 		return
 	}
 	// Replace any records we created previously (idempotent re-assign).
@@ -376,14 +376,14 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 	ids := make([]string, 0, 2)
 	hostID, err := cf.CreateHostRecord(cctx, zone.ID, req.Name, host)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not create host record: "+err.Error())
+		writeError(w, statusUpstream, "could not create host record: "+err.Error())
 		return
 	}
 	ids = append(ids, hostID)
 	if req.Service != "" {
 		srvID, serr := cf.CreateSRVRecord(cctx, zone.ID, req.Service, protoForPort(sp, portName), req.Name, port)
 		if serr != nil {
-			writeError(w, http.StatusBadGateway, "could not create SRV record: "+serr.Error())
+			writeError(w, statusUpstream, "could not create SRV record: "+serr.Error())
 			return
 		}
 		ids = append(ids, srvID)
@@ -394,7 +394,7 @@ func (s *Server) handleSetServerDNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Info("server DNS set", "server", sv.ID, "name", req.Name, "records", len(ids))
-	s.recordAudit(r, http.StatusOK, "dns:"+req.Name)
+	s.recordAuditDetail(r, http.StatusOK, "dns:"+req.Name)
 	writeJSON(w, http.StatusOK, map[string]any{"dns": sv.DNS})
 }
 
@@ -430,6 +430,6 @@ func (s *Server) handleDeleteServerDNS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update server")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "dns-remove:"+name)
+	s.recordAuditDetail(r, http.StatusOK, "dns-remove:"+name)
 	writeJSON(w, http.StatusOK, map[string]any{"dns": nil})
 }

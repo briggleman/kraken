@@ -504,7 +504,7 @@ func (s *Server) setNodeCordon(w http.ResponseWriter, r *http.Request, cordon bo
 		return
 	}
 	s.logger.Info("node cordon changed", "node", n.ID, "name", n.Name, "cordoned", cordon)
-	s.recordAudit(r, http.StatusOK, "node-cordon:"+n.ID)
+	s.recordAuditDetail(r, http.StatusOK, "node-cordon:"+n.ID)
 	writeJSON(w, http.StatusOK, n)
 }
 

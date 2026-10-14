@@ -152,7 +152,7 @@ func (s *Server) handleResetServerSFTPPassword(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "could not save SFTP credentials")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "sftp-password:"+sv.ID)
+	s.recordAuditDetail(r, http.StatusOK, "sftp-password:"+sv.ID)
 	// The plaintext password is returned exactly once — it is never stored.
 	writeJSON(w, http.StatusOK, map[string]any{"password": pw, "status": s.sftpStatus(r, sv, node)})
 }
@@ -196,7 +196,7 @@ func (s *Server) handleSetServerSFTPKeys(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "could not save SFTP keys")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "sftp-keys:"+sv.ID)
+	s.recordAuditDetail(r, http.StatusOK, "sftp-keys:"+sv.ID)
 	writeJSON(w, http.StatusOK, s.sftpStatus(r, sv, node))
 }
 
@@ -212,7 +212,7 @@ func (s *Server) handleDisableServerSFTP(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "could not update SFTP")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "sftp-disable:"+sv.ID)
+	s.recordAuditDetail(r, http.StatusOK, "sftp-disable:"+sv.ID)
 	writeJSON(w, http.StatusOK, s.sftpStatus(r, sv, node))
 }
 

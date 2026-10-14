@@ -54,7 +54,7 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 	// Name the job already in flight rather than letting the operator start a
 	// second push and read the Agent's refusal as a new problem.
 	if running, ok := s.agentJobs.running(n.ID); ok {
-		s.recordAudit(r, http.StatusConflict, "node-agent-update:"+n.ID)
+		s.recordAuditDetail(r, http.StatusConflict, "node-agent-update:"+n.ID)
 		writeError(w, http.StatusConflict,
 			"an update is already pushing to this node (job "+running.ID+")")
 		return
@@ -62,14 +62,14 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 
 	plan, err := s.prepareAgentUpdate(r.Context(), n)
 	if err != nil {
-		status := http.StatusBadGateway
+		status := statusUpstream
 		var ae *agentUpdateError
 		if errors.As(err, &ae) {
 			status = ae.status
 		}
 		// The audit entry records the status the caller actually received —
 		// it used to say 502 even when the response was a 409 or 503.
-		s.recordAudit(r, status, "node-agent-update:"+n.ID)
+		s.recordAuditDetail(r, status, "node-agent-update:"+n.ID)
 		writeError(w, status, err.Error())
 		return
 	}
@@ -77,7 +77,7 @@ func (s *Server) handleNodeAgentUpdate(w http.ResponseWriter, r *http.Request) {
 	job := s.agentJobs.start(n.ID, n.Name, plan.fromVersion, version.Version, int64(len(plan.data)))
 	go s.runAgentUpdate(job.ID, n.ID, n.Name, plan)
 
-	s.recordAudit(r, http.StatusAccepted, "node-agent-update:"+n.ID)
+	s.recordAuditDetail(r, http.StatusAccepted, "node-agent-update:"+n.ID)
 	writeJSON(w, http.StatusAccepted, job.body())
 }
 

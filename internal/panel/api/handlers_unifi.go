@@ -50,7 +50,7 @@ func (s *Server) handleTestUnifi(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	forwards, err := uc.ListPortForwards(ctx)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeError(w, statusUpstream, err.Error())
 		return
 	}
 	wan, _ := uc.GatewayWANIP(ctx)
@@ -108,7 +108,7 @@ func (s *Server) handleSetServerForward(w http.ResponseWriter, r *http.Request) 
 		Enabled: req.Open,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not update port forward: "+err.Error())
+		writeError(w, statusUpstream, "could not update port forward: "+err.Error())
 		return
 	}
 	if sv.Forwards == nil {
@@ -123,6 +123,6 @@ func (s *Server) handleSetServerForward(w http.ResponseWriter, r *http.Request) 
 	if req.Open {
 		action = "forward-open"
 	}
-	s.recordAudit(r, http.StatusOK, action+":"+sv.Name+"/"+portName)
+	s.recordAuditDetail(r, http.StatusOK, action+":"+sv.Name+"/"+portName)
 	writeJSON(w, http.StatusOK, map[string]any{"forwards": sv.Forwards})
 }

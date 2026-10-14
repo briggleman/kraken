@@ -333,7 +333,7 @@ func (s *Server) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not save node config")
 		return
 	}
-	s.recordAudit(r, http.StatusOK, "node-config:"+id)
+	s.recordAuditDetail(r, http.StatusOK, "node-config:"+id)
 
 	// Push to the Agent so the change takes effect now, with verification: this
 	// is the one path where an operator is looking at the response, so a target

@@ -39,6 +39,10 @@ func TestEnsureForward_CreateSendsRule(t *testing.T) {
 		if r.Header.Get("X-API-KEY") != "key-abc" {
 			t.Errorf("missing api key header, got %q", r.Header.Get("X-API-KEY"))
 		}
+		if r.Method == http.MethodGet {
+			dataEnvelope(w, []PortForward{})
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/proxy/network/api/s/default/rest/portforward" {
 			t.Errorf("unexpected req: %s %s", r.Method, r.URL.Path)
 		}
@@ -73,6 +77,43 @@ func TestEnsureForward_UpdateUsesPut(t *testing.T) {
 	}
 	if method != http.MethodPut || path != "/proxy/network/api/s/default/rest/portforward/rule1" {
 		t.Fatalf("expected PUT to rule path, got %s %s", method, path)
+	}
+}
+
+// The stored id outlived its rule (deleted in the UniFi console): updating it
+// would fail on every attempt, so the rule is recreated — or adopted by name
+// when one already carries it.
+func TestEnsureForward_StoredRuleGone(t *testing.T) {
+	cases := []struct {
+		name       string
+		rules      []PortForward
+		wantMethod string
+		wantPath   string
+	}{
+		{name: "recreated", rules: []PortForward{{ID: "other", Name: "roon ARC"}},
+			wantMethod: http.MethodPost, wantPath: "/proxy/network/api/s/default/rest/portforward"},
+		{name: "adopted by name", rules: []PortForward{{ID: "manual", Name: "kraken-enshrouded-01-game"}},
+			wantMethod: http.MethodPut, wantPath: "/proxy/network/api/s/default/rest/portforward/manual"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var method, path string
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					dataEnvelope(w, tc.rules)
+					return
+				}
+				method, path = r.Method, r.URL.Path
+				dataEnvelope(w, []PortForward{{ID: "new"}})
+			})
+			_, err := c.EnsureForward(context.Background(), Forward{ID: "gone", Name: "kraken-enshrouded-01-game", Port: 28000, LANIP: "192.168.20.98", Proto: "udp", Enabled: true})
+			if err != nil {
+				t.Fatalf("EnsureForward: %v", err)
+			}
+			if method != tc.wantMethod || path != tc.wantPath {
+				t.Fatalf("wrote %s %s, want %s %s", method, path, tc.wantMethod, tc.wantPath)
+			}
+		})
 	}
 }
 

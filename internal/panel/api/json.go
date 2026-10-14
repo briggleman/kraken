@@ -24,6 +24,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeError writes a JSON error envelope with the given status code.
+// statusUpstream answers a request that failed in a service the Panel called
+// for it: Cloudflare's DNS API, the UniFi controller, a node's Agent, the
+// database being set up. Not 502 Bad Gateway, which it used to be: the Panel
+// sits behind Cloudflare, and Cloudflare replaces the body of any origin 502
+// with its own error page, so the sentence saying what went wrong never reached
+// the operator — a port forward that would not open read as a bare "HTTP 502".
+// 424 Failed Dependency passes through untouched.
+const statusUpstream = http.StatusFailedDependency
+
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorBody{Error: msg})
 }

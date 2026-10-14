@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.3](https://github.com/briggleman/kraken/compare/v0.64.2...v0.64.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **agent:** count a NIC bound to a Hyper-V switch in the node network meter ([#433](https://github.com/briggleman/kraken/issues/433)) ([d74027c](https://github.com/briggleman/kraken/commit/d74027cc31d71176262551560a091b9cea697b06))
+
 ## [0.64.2](https://github.com/briggleman/kraken/compare/v0.64.1...v0.64.2) (2026-10-12)
 
 

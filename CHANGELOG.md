@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.65.1](https://github.com/briggleman/kraken/compare/v0.65.0...v0.65.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **panel:** a published hostname and srv record stick across a refresh ([#439](https://github.com/briggleman/kraken/issues/439)) ([d13d18a](https://github.com/briggleman/kraken/commit/d13d18a8f74a6422723e96bfe8f47fcdd59aecd6))
+* **panel:** recreate a port forward whose rule is gone, and let integration errors reach the ui ([#437](https://github.com/briggleman/kraken/issues/437)) ([9132b4a](https://github.com/briggleman/kraken/commit/9132b4af152195583e44134e8a59a0f511953004))
+
 ## [0.65.0](https://github.com/briggleman/kraken/compare/v0.64.3...v0.65.0) (2026-10-14)
 
 

@@ -32,12 +32,18 @@
 # ResampleDmo.dll, which imports msdmo.dll — all three are missing from Server
 # Core, so they travel together. dinput8.dll (DirectInput) became a static
 # import of enshrouded_server.exe in build 25936466 (2026-10-15: exit
-# 0xC0000135 on the first start after the update); it imports only core DLLs
-# Server Core already has.
+# 0xC0000135 on the first start after the update). It delay-loads
+# inputhost.dll (via ext-ms-win-mininput-inputhost), which Server Core also
+# lacks — with dinput8 alone the server died with 0xC06D007E in
+# CreateInputHostForProcess — and inputhost in turn loads
+# ResourcePolicyClient.dll. The rest of the input stack (CoreMessaging,
+# CoreUIComponents, …) is already in Server Core. Found with a loader-snaps
+# run in a local steam-win container; with all three the server reaches
+# Host_Online and no system DLL fails to load.
 FROM mcr.microsoft.com/windows/server:ltsc2022 AS deps
 SHELL ["powershell", "-NoLogo", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop';"]
 RUN New-Item -ItemType Directory -Force C:\sys32 | Out-Null; \
-    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll','dsound.dll','ResampleDmo.dll','msdmo.dll','dinput8.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
+    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll','dsound.dll','ResampleDmo.dll','msdmo.dll','dinput8.dll','inputhost.dll','ResourcePolicyClient.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
     Invoke-WebRequest -UseBasicParsing -Uri 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe' -OutFile C:\dxr.exe; \
     Start-Process -Wait -FilePath C:\dxr.exe -ArgumentList '/Q','/T:C:\dxr'; \
     expand C:\dxr\APR2007_xinput_x64.cab -F:xinput1_3.dll C:\sys32 | Out-Null

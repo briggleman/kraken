@@ -30,11 +30,14 @@
 # import of UE5 dedicated servers (RuneScape: Dragonwilds died at load with
 # STATUS_DLL_NOT_FOUND until it was present, 2026-09-12); it in turn imports
 # ResampleDmo.dll, which imports msdmo.dll — all three are missing from Server
-# Core, so they travel together.
+# Core, so they travel together. dinput8.dll (DirectInput) became a static
+# import of enshrouded_server.exe in build 25936466 (2026-10-15: exit
+# 0xC0000135 on the first start after the update); it imports only core DLLs
+# Server Core already has.
 FROM mcr.microsoft.com/windows/server:ltsc2022 AS deps
 SHELL ["powershell", "-NoLogo", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop';"]
 RUN New-Item -ItemType Directory -Force C:\sys32 | Out-Null; \
-    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll','dsound.dll','ResampleDmo.dll','msdmo.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
+    foreach ($d in 'directxdatabasehelper.dll','glu32.dll','iconcodecservice.dll','msacm32.dll','opengl32.dll','rasadhlp.dll','dsound.dll','ResampleDmo.dll','msdmo.dll','dinput8.dll') { Copy-Item ('C:\Windows\System32\' + $d) C:\sys32\ }; \
     Invoke-WebRequest -UseBasicParsing -Uri 'https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe' -OutFile C:\dxr.exe; \
     Start-Process -Wait -FilePath C:\dxr.exe -ArgumentList '/Q','/T:C:\dxr'; \
     expand C:\dxr\APR2007_xinput_x64.cab -F:xinput1_3.dll C:\sys32 | Out-Null

@@ -8,6 +8,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+
+	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
 
 // The line enshrouded-01 failed every update with on 2026-10-15, a few seconds
@@ -332,5 +337,95 @@ func TestHostAside_FailedMoveLeavesTheTreeAsFound(t *testing.T) {
 	}
 	if d := asideDirs(t, filepath.Join(root, "steamapps")); d != nil {
 		t.Errorf("aside dir left after a failed move: %v", d)
+	}
+}
+
+// exitOps is fakeOps with an exit code per created container: Linux SteamCMD
+// exits 8 when an app fails, and a `;` chain ending in it passes that on.
+type exitOps struct {
+	*fakeOps
+	exits []int64
+}
+
+func (e *exitOps) ContainerWait(_ context.Context, _ string, _ container.WaitCondition) (<-chan container.WaitResponse, <-chan error) {
+	status, errs := make(chan container.WaitResponse, 1), make(chan error, 1)
+	var code int64
+	if n := len(e.creates); n >= 1 && n <= len(e.exits) {
+		code = e.exits[n-1]
+	}
+	status <- container.WaitResponse{StatusCode: code}
+	return status, errs
+}
+
+func runFakeInstall(t *testing.T, d *DockerRuntime, script string) (failed string, completed bool, lines []string) {
+	t.Helper()
+	err := d.Install(deadlineCtx(t, 30*time.Minute), &agentpb.InstallServerRequest{ServerId: guardServer, Image: testRef, InstallScript: script},
+		func(ev *agentpb.InstallEvent) error {
+			switch e := ev.Event.(type) {
+			case *agentpb.InstallEvent_Failed:
+				failed = e.Failed
+			case *agentpb.InstallEvent_Completed:
+				completed = true
+			case *agentpb.InstallEvent_LogLine:
+				lines = append(lines, e.LogLine)
+			}
+			return nil
+		})
+	d.installCleanup.Wait()
+	if err != nil && failed == "" {
+		failed = err.Error()
+	}
+	return failed, completed, lines
+}
+
+// The live Linux run (kraken-steam-base, 2026-10-15): both app_update halves
+// end `state is 0x6` and the script exits 8. That exit must not hide the
+// SteamCMD line, or the manifest-aside retry never runs.
+func TestDockerInstall_StaleManifestRecoversThroughExit8(t *testing.T) {
+	d := newFileOpsRuntime(t)
+	d.images = &fakeImages{local: map[string]image.InspectResponse{testRef: {ID: oldID}}}
+	d.pullPolicy = pullNever
+	ops := &exitOps{fakeOps: &fakeOps{passLogs: [][]string{
+		{"Success! App '2278520' already up to date.", live0x6},
+		{"Success! App '2278520' fully installed."},
+	}}, exits: []int64{8, 0}}
+	d.containers = ops
+	writeTree(t, d.localDir(guardServer), "steamapps/appmanifest_2278520.acf", "steamapps/downloading/")
+
+	failed, completed, lines := runFakeInstall(t, d, "steamcmd +app_update 2278520 +quit;\nsteamcmd +app_update 2278520 +quit")
+	if failed != "" || !completed {
+		t.Fatalf("want a completed install after the retry, got failed=%q", failed)
+	}
+	if len(ops.creates) != 2 {
+		t.Fatalf("want two passes, got %d", len(ops.creates))
+	}
+	joined := strings.Join(lines, "\n")
+	for _, want := range []string{"install script ran", "exit 8", "moved steamapps/appmanifest_2278520.acf aside", "[kraken] recovered:"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("console should say %q; got\n%s", want, joined)
+		}
+	}
+	// Each pass got the depot cache: bound, and linked by the script.
+	for i, cmd := range ops.cmds {
+		if !strings.Contains(cmd[0], linkSteamCmdCache) {
+			t.Errorf("pass %d ran without the depot cache link: %q", i+1, cmd[0])
+		}
+	}
+	if d := asideDirs(t, filepath.Join(d.localDir(guardServer), "steamapps")); d != nil {
+		t.Errorf("aside dir left after a good retry: %v", d)
+	}
+}
+
+// A non-zero exit with no SteamCMD failure line is still the script's own
+// failure, reported by its code.
+func TestDockerInstall_NonZeroExitWithoutSteamLineStillFails(t *testing.T) {
+	d := newFileOpsRuntime(t)
+	d.images = &fakeImages{local: map[string]image.InspectResponse{testRef: {ID: oldID}}}
+	d.pullPolicy = pullNever
+	ops := &exitOps{fakeOps: &fakeOps{passLogs: [][]string{{"tar: unexpected end of file"}}}, exits: []int64{2}}
+	d.containers = ops
+	failed, completed, _ := runFakeInstall(t, d, "curl -L https://example.invalid/s.tgz | tar xz")
+	if completed || failed != "install exited with code 2" || len(ops.creates) != 1 {
+		t.Errorf("got failed=%q completed=%v passes=%d", failed, completed, len(ops.creates))
 	}
 }

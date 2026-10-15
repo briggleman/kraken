@@ -1150,7 +1150,12 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d: the install container cannot write this server's data dir (%s on the node). Check that dir's owner, group and mode",
 				st.StatusCode, d.localDir(serverID)))
 		}
-		if st.StatusCode != 0 {
+		// Linux SteamCMD exits 8 when an app fails, and a `;` chain ending in it
+		// passes that on. When it also printed a failure line, that line is the
+		// verdict: the recovery (steamrecovery.go) has to see it, and it says
+		// more than the exit code. Windows chains end in the relaunch guard's
+		// wait and exit 0 either way.
+		if st.StatusCode != 0 && steamErr == "" {
 			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d", st.StatusCode))
 		}
 	case <-ctx.Done():

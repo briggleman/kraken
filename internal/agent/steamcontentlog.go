@@ -46,12 +46,14 @@ var windowsContentLogDump = `powershell -NoProfile -NonInteractive -EncodedComma
 		`Write-Output '`+contentLogEnd+`'`)
 
 // linuxContentLogDump prints the content log of the steam-base / steam-wine
-// SteamCMD (/home/steam/steamcmd, from steam-deps), falling back to the
-// ~/Steam root a SteamCMD installed elsewhere uses. It keeps the script's own
+// SteamCMD. The binaries live in /home/steam/steamcmd (from steam-deps), but
+// Linux SteamCMD writes its logs under $HOME/Steam — found with `find` after a
+// real app_update on kraken-steam-base, 2026-10-15. The steamcmd dir is kept as
+// a fallback for an image that roots SteamCMD there. It keeps the script's own
 // exit status: `rc=$?` takes it from the script's last command, and the dump
 // exits with it, so a failing script still fails the pass.
 const linuxContentLogDump = `rc=$?; echo '` + contentLogBegin + `'; ` +
-	`for f in /home/steam/steamcmd/logs/content_log.txt "$HOME/Steam/logs/content_log.txt"; do ` +
+	`for f in "$HOME/Steam/logs/content_log.txt" /home/steam/steamcmd/logs/content_log.txt; do ` +
 	`if [ -f "$f" ]; then tail -n ` + contentLogTail + ` "$f"; break; fi; done; ` +
 	`echo '` + contentLogEnd + `'; exit $rc`
 

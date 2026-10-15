@@ -161,6 +161,40 @@ adopts what the Agent reports: a managed container found running behind an
 `offline` or `install_failed` row moves that row to `running` and clears the
 stale error.
 
+### The SteamCMD depot cache
+
+**The node keeps a small cache per Steam server so an update can be computed
+as a delta.** SteamCMD builds an update from two depot manifests, the build the
+tree holds and the build it is going to, and it keeps the first one in its own
+folder, not in the data directory. The install container is thrown away after
+every pass, so before this cache every real update had to fetch the old build's
+manifest again, and Steam refuses that to an anonymous login. The pass then
+ended a few seconds in with `state is 0x6 after update job`, `validate`
+included, and the fix was to delete the app manifest by hand.
+
+The cache is a folder per server under the node's data root,
+`<KRAKEN_DATA_DIR>/.kraken-steamcmd/<server id>`. It holds manifest files only
+(a few hundred KB per build) and sits beside the data directories, not in one,
+so backups, the Files tab and SFTP never see it. It is mounted into the install
+container where SteamCMD looks for it: straight onto `C:\steamcmd\depotcache`
+on a Windows node, and at `/kraken/steamcmd-depotcache`, linked from
+`$HOME/Steam/depotcache` by the pass itself, on a Linux node. A server's cache
+is deleted with its data.
+
+A server whose cache does not hold its installed build (every server's first
+update after the node's Agent is upgraded, or one whose cache was deleted)
+still fails the first try with `0x6`. When it does, and no SteamCMD staging
+file is in the tree, the Agent recovers it in the same pass: it moves
+`steamapps/appmanifest_<app>.acf` and the app's download state aside, runs the
+script once more as a fresh install over the existing files, and deletes what
+it moved when that works or puts it back when it does not. That second try
+downloads the whole depot rather than the change, so it needs 15 minutes left
+of the pass's 30 and is skipped with a reason in `last_error` otherwise, as it
+is for an install that used a one-time Steam Guard code. The install console
+says each step with a `[kraken]` line, ending
+`[kraken] recovered: the install pass ran again with steamapps/appmanifest_<app>.acf moved aside, and SteamCMD wrote a new app manifest`.
+After that pass the cache holds the new build, and the next update is a delta.
+
 ### The two opt-outs
 
 - **Per server: pin build.** The Config tab's toggle. A pinned server never runs

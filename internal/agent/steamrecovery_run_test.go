@@ -47,7 +47,34 @@ type memTree struct {
 	// reappear, when set, is put back into files after the first scan — an
 	// orphan the second pass left behind again.
 	reappear []stagingFile
+	// manifests are the app ids with an app manifest in the tree; asideErr
+	// fails every move aside; asides records each one made.
+	manifests map[string]bool
+	asideErr  error
+	asides    []*memAside
 }
+
+func (m *memTree) setManifestAside(appID string) (manifestAside, error) {
+	if m.asideErr != nil {
+		return nil, m.asideErr
+	}
+	if !m.manifests[appID] {
+		return nil, nil
+	}
+	a := &memAside{rel: "steamapps/appmanifest_" + appID + ".acf"}
+	m.asides = append(m.asides, a)
+	return a, nil
+}
+
+// memAside is a manifestAside in memory, recording what became of it.
+type memAside struct {
+	rel                 string
+	discarded, restored bool
+}
+
+func (a *memAside) moved() []string { return []string{a.rel} }
+func (a *memAside) discard() error  { a.discarded = true; return nil }
+func (a *memAside) restore() string { a.restored = true; return "put back " + a.rel }
 
 func (m *memTree) scan() []stagingFile {
 	m.scans++

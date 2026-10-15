@@ -24,14 +24,26 @@ refused to update and never said why.
 There are two causes behind that one line, and they need different fixes. What
 tells them apart is the run of `Update state` lines just above it.
 
-**Cause 1 — a stale download state.** SteamCMD keeps
-`steamapps/appmanifest_<appid>.acf` and a `steamapps/downloading/` directory
-between runs, and when they disagree with what the depot now holds, every
-subsequent `app_update` gives up in the same place. `0x6` is
-`StateUpdateRequired | StateFullyInstalled` — SteamCMD holding both beliefs at
-once and abandoning the job meant to settle them. Validating does not clear it,
-because validation trusts the manifest, which is also why the failure repeats
-exactly rather than intermittently.
+**Cause 1 — the old build's depot manifest is gone.** SteamCMD builds an
+update from two depot manifests, the build the tree holds and the build it is
+going to, and it keeps the first one in its own folder (`depotcache/`, under
+`C:\steamcmd` on a Windows node and `$HOME/Steam` on a Linux one), not in the
+data directory. Kraken's install container used to be thrown away with that
+folder in it, so every real update had to fetch the old manifest from Steam
+again, and Steam refuses that to an anonymous login. `0x6` is
+`StateUpdateRequired | StateFullyInstalled`: SteamCMD knows there is a newer
+build and gives up before fetching any of it. Validating does not clear it,
+because a validate wants the same old manifest, which is also why the failure
+repeats exactly rather than intermittently. SteamCMD's own log says it in so
+many words:
+
+```text
+BYldRequestDepotManifest(App: 1963720, Depot: 1963721, Manifest: 1468257471765199732, branch: ): Failed to get manifest request code, 'Access Denied'
+AppID 1963720 update canceled : Failed downloading 1 manifests (No connection)
+```
+
+The `No connection` there is SteamCMD's word for the refusal, not a network
+fault.
 
 The tell is that SteamCMD asks for no bytes at all: no `verifying` or
 `downloading` state, only `0 / 0`, and the pass is over in seconds:
@@ -49,9 +61,10 @@ one second, even one that downloaded 8 GB. The `install script ran …` line
 and the gap between one `Connecting anonymously` and the next are the real
 clock.
 
-It has turned up on the first real update of a server (enshrouded-01 on
-2026-10-15, dragonwilds-01 on 2026-09-15 and 2026-09-25), and a `validate`
-reinstall fails the same way.
+It met nearly every real update of a server (enshrouded-01 on 2026-10-15,
+dragonwilds-01 on 2026-09-15 and 2026-09-25), and a `validate` reinstall
+failed the same way. It was reproduced on both node OSes with a fresh SteamCMD
+folder, and went away when only that folder's `depotcache/` was kept.
 
 **Cause 2 — an update that downloaded but could not be committed.** Steam
 replaces a file by writing the new copy beside it as `<name>~RF<hex>.TMP` and
@@ -91,7 +104,28 @@ install tree for a file ending `~RF<hex>.TMP`.
   the update was replacing. If it is the server binary, the server could not
   have started either way.
 
-**Fix for cause 1.** Delete both, then run the install again.
+**Fix for cause 1.** On an Agent newer than 0.65.1 there is nothing to do.
+The node keeps each server's depot cache between passes ([SteamCMD's depot
+cache](/wiki/operate/servers/#the-steamcmd-depot-cache)), so an update is a delta.
+A server whose cache does not hold its installed build yet (every server's
+first update after the upgrade) still fails the first try, and the Agent
+recovers it in the same pass: it moves `steamapps/appmanifest_<appid>.acf`
+and the app's download state aside, runs the script once more as a fresh
+install over the existing files, and deletes what it moved when that works:
+
+```text
+[kraken] SteamCMD could not build this update (state 0x6 = fully installed, update required, and no staging files): the depot manifest of the installed build is not in its cache, and Steam will not hand it to an anonymous login
+[kraken] moved steamapps/appmanifest_2278520.acf, steamapps/downloading/2278520 aside and retrying the install pass once as a fresh install over the existing files — it downloads the whole depot rather than the change
+…
+[kraken] recovered: the install pass ran again with steamapps/appmanifest_2278520.acf, steamapps/downloading/2278520 moved aside, and SteamCMD wrote a new app manifest
+```
+
+That second try downloads the whole depot, so it runs only with 15 minutes
+left of the pass's 30, and never for an install that used a one-time Steam
+Guard code. When it is skipped or fails too, what was moved is put back,
+`last_error` says why, and a reinstall tries again.
+
+On an older Agent, do it by hand:
 
 1. Open the server's **Files** tab, or connect over SFTP.
 2. Delete `steamapps/appmanifest_<appid>.acf`.
@@ -123,7 +157,8 @@ in `install_failed` and `last_error` says what was found, with the state
 decoded, e.g.
 `state is 0x602 (update started, update paused, update required)`. If the
 orphans were cleared but no retry ran, reinstall and the next pass starts
-clean. `steamapps/appmanifest_<appid>.acf` is never touched automatically.
+clean. `steamapps/appmanifest_<appid>.acf` is moved aside only for cause 1,
+never for this one.
 
 On an Agent older than this, do it by hand: delete the orphaned `.TMP` and
 reinstall — not start, since the file it was replacing is not there to run.

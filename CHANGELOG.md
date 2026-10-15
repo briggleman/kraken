@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.65.2](https://github.com/briggleman/kraken/compare/v0.65.1...v0.65.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **agent:** keep steamcmd's depot cache between install passes ([#443](https://github.com/briggleman/kraken/issues/443)) ([636b6d4](https://github.com/briggleman/kraken/commit/636b6d4240455386d78548a648fbbd6e23b3618b))
+* **agent:** show steamcmd's content log when an install pass fails ([#442](https://github.com/briggleman/kraken/issues/442)) ([e46a610](https://github.com/briggleman/kraken/commit/e46a6106862d3b18f24306d6d1e5dc3dcfde566d))
+* **images:** add dinput8.dll to the steam-win image ([#440](https://github.com/briggleman/kraken/issues/440)) ([d3f5993](https://github.com/briggleman/kraken/commit/d3f599312fc7af76cfef29f50f5681887f1dd413))
+* **images:** add inputhost and resourcepolicyclient to the steam-win image ([#444](https://github.com/briggleman/kraken/issues/444)) ([44ae1ba](https://github.com/briggleman/kraken/commit/44ae1ba88ae54a032f3e52b8f1609a1486aa1dc6))
+
 ## [0.65.1](https://github.com/briggleman/kraken/compare/v0.65.0...v0.65.1) (2026-10-14)
 
 

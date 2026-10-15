@@ -1,14 +1,18 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/base64"
+	"fmt"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf16"
 
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/pkg/stdcopy"
 
 	"github.com/briggleman/kraken/internal/shared/agentpb"
 )
@@ -91,6 +95,7 @@ func TestContentLogCapture(t *testing.T) {
 	var c contentLogCapture
 	stream := []string{
 		"Success! App '1' fully installed.",
+		"",
 		contentLogBegin,
 		"[2026-10-15 11:45:54] AppID 2278520 update canceled : Failed to get manifest\r",
 		"",
@@ -99,11 +104,13 @@ func TestContentLogCapture(t *testing.T) {
 	}
 	var passed []string
 	for _, l := range stream {
-		if !c.take(l) {
-			passed = append(passed, l)
+		if rest, ok := c.take(l); ok {
+			passed = append(passed, rest)
 		}
 	}
-	if len(passed) != 2 || passed[0] != stream[0] || passed[1] != "after" {
+	// The blank installer line before the dump is kept, as the console always
+	// showed it; the blank line inside the dump is not.
+	if len(passed) != 3 || passed[0] != stream[0] || passed[1] != "" || passed[2] != "after" {
 		t.Fatalf("only the lines outside the markers should pass through: %q", passed)
 	}
 	got := c.relay()
@@ -112,6 +119,61 @@ func TestContentLogCapture(t *testing.T) {
 	}
 	if empty := (&contentLogCapture{}).relay(); len(empty) != 1 || !strings.Contains(empty[0], "no SteamCMD content_log.txt lines") {
 		t.Fatalf("an empty capture should say so: %q", empty)
+	}
+}
+
+// SteamCMD's last line often lacks a newline, so the begin marker arrives
+// glued to it (seen live on Linux). The text before the marker is still the
+// installer's; nothing of the dump may leak, and nothing of it may be lost.
+func TestContentLogCapture_MarkerGluedToSteamCMDsLastLine(t *testing.T) {
+	var c contentLogCapture
+	stream := []string{
+		"Unloading Steam API...OK" + contentLogBegin,
+		"[2026-10-15 13:02:11] AuthenticateDepotID 1963721 : Success!",
+		"[2026-10-15 13:02:12] AppID 1963720 update canceled : Failed downloading 1 manifests (No connection)" + contentLogEnd,
+	}
+	var passed []string
+	for _, l := range stream {
+		if rest, ok := c.take(l); ok {
+			passed = append(passed, rest)
+		}
+	}
+	if len(passed) != 1 || passed[0] != "Unloading Steam API...OK" {
+		t.Fatalf("want only SteamCMD's own text before the marker to pass through, got %q", passed)
+	}
+	if len(c.lines) != 2 || !strings.Contains(c.lines[1], "update canceled") {
+		t.Fatalf("both log lines should be captured, the last one glued to the end marker too: %q", c.lines)
+	}
+	// A glued marker with only whitespace before it leaves nothing to emit.
+	if rest, ok := (&contentLogCapture{}).take("  " + contentLogBegin); ok {
+		t.Fatalf("whitespace before the marker is not installer output: %q", rest)
+	}
+}
+
+// demux scans stdout and stderr on their own goroutines; the callback must
+// still be called one line at a time, since callers fold lines into state.
+func TestDemux_SerializesTheCallback(t *testing.T) {
+	var buf bytes.Buffer
+	out, errw := stdcopy.NewStdWriter(&buf, stdcopy.Stdout), stdcopy.NewStdWriter(&buf, stdcopy.Stderr)
+	for i := 0; i < 500; i++ {
+		_, _ = fmt.Fprintf(out, "out %d\n", i)
+		_, _ = fmt.Fprintf(errw, "err %d\n", i)
+	}
+	var inside, peak, n int32
+	err := demux(&buf, func(_, _ string) error {
+		if v := atomic.AddInt32(&inside, 1); v > atomic.LoadInt32(&peak) {
+			atomic.StoreInt32(&peak, v)
+		}
+		time.Sleep(10 * time.Microsecond)
+		atomic.AddInt32(&inside, -1)
+		n++ // a plain write: -race flags it if two calls overlap
+		return nil
+	})
+	if err != nil || n != 1000 {
+		t.Fatalf("demux: err=%v lines=%d", err, n)
+	}
+	if peak != 1 {
+		t.Fatalf("the callback ran %d at once", peak)
 	}
 }
 

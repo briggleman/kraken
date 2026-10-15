@@ -91,25 +91,34 @@ type contentLogCapture struct {
 	lines []string
 }
 
-// take reports whether text belongs to the dump — a marker or a line between
-// them — and keeps the lines. Everything else is the installer's own output.
-func (c *contentLogCapture) take(text string) bool {
-	switch strings.TrimSpace(text) {
-	case contentLogBegin:
+// take sorts one line of the stream. When ok, rest is installer output for the
+// caller to handle as before: the whole line outside the dump (blank lines
+// included, as the console always showed them), or the text the begin marker
+// was glued to. Inside the dump nothing is left over.
+//
+// A marker is found anywhere in a line, not only alone on one: SteamCMD's
+// last line often has no newline, so the begin marker's echo lands glued to
+// its end ("…Unloading Steam API...OK---kraken-steamcmd-content-log-begin---",
+// seen on Linux 2026-10-15). An exact match missed it there, and the whole
+// dump leaked onto the console. What precedes the begin marker is still the
+// installer's; what precedes the end marker is the log's last line.
+func (c *contentLogCapture) take(text string) (rest string, ok bool) {
+	if before, _, found := strings.Cut(text, contentLogBegin); found {
 		c.in = true
 		c.lines = c.lines[:0]
-		return true
-	case contentLogEnd:
-		c.in = false
-		return true
+		return before, strings.TrimSpace(before) != ""
 	}
 	if !c.in {
-		return false
+		return text, true
 	}
-	if line := strings.TrimRight(text, "\r\n"); strings.TrimSpace(line) != "" {
+	line, _, end := strings.Cut(text, contentLogEnd)
+	if end {
+		c.in = false
+	}
+	if line = strings.TrimRight(line, "\r\n"); strings.TrimSpace(line) != "" {
 		c.lines = append(c.lines, line)
 	}
-	return true
+	return "", false
 }
 
 // relay renders the captured lines for the console of a failed pass, with a

@@ -1109,7 +1109,8 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 	// from both the console and the verdict, and relayed only if the pass fails.
 	var contentLog contentLogCapture
 	if err := d.streamLogs(ctx, created.ID, "all", func(_ string, text string) error {
-		if contentLog.take(text) {
+		text, ok := contentLog.take(text)
+		if !ok {
 			return nil
 		}
 		steamErr = steamInstallOutcome(steamErr, text)
@@ -2532,7 +2533,18 @@ func (d *DockerRuntime) streamLogs(ctx context.Context, id, tail string, fn func
 
 // demux splits a Docker multiplexed (stdout+stderr) log stream into lines and
 // invokes fn for each. Both streams are surfaced; stderr lines are labeled.
+//
+// Each stream is scanned on its own goroutine, but fn is called under a lock,
+// one line at a time: callers fold every line into state (the install pass's
+// SteamCMD verdict, its content-log capture), and two streams calling in at
+// once would race on it.
 func demux(reader io.Reader, fn func(stream, text string) error) error {
+	var mu sync.Mutex
+	call := func(stream, text string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return fn(stream, text)
+	}
 	prOut, pwOut := io.Pipe()
 	prErr, pwErr := io.Pipe()
 	go func() {
@@ -2546,7 +2558,7 @@ func demux(reader io.Reader, fn func(stream, text string) error) error {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for sc.Scan() {
-			if err := fn(name, sc.Text()); err != nil {
+			if err := call(name, sc.Text()); err != nil {
 				errc <- err
 				return
 			}

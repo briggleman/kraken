@@ -974,6 +974,10 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 			_ = emit(sysLine("windows SteamCMD guard applied: priming steamcmd.exe's self-update and waiting for steamcmd to exit before the install container ends"))
 		}
 	}
+	// SteamCMD says why an update failed only in its content log, which dies
+	// with the container: print it at the end, relayed on failure. See
+	// steamcontentlog.go.
+	script, _ = withContentLogDump(script, d.isWindows())
 
 	// One-shot install container: run the install script against the data dir.
 	cfg := &container.Config{
@@ -1100,7 +1104,15 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 	// subscription", "Not for anonymous users", "Error! App '…' state is 0x6
 	// after update job."), so the exit code alone would let a broken install pass
 	// as success — leaving a silent, empty server, or relaunching a stale build.
+	//
+	// SteamCMD's content log, printed at the end of the script, is held back
+	// from both the console and the verdict, and relayed only if the pass fails.
+	var contentLog contentLogCapture
 	if err := d.streamLogs(ctx, created.ID, "all", func(_ string, text string) error {
+		text, ok := contentLog.take(text)
+		if !ok {
+			return nil
+		}
 		steamErr = steamInstallOutcome(steamErr, text)
 		return emit(logLine(text))
 	}); err != nil && ctx.Err() == nil {
@@ -1118,6 +1130,13 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 		// The run time goes out before the verdict either way: an install that
 		// died at 6m02s and one that died at 2s are different failures.
 		_ = emit(sysLine(fmt.Sprintf("install script ran %s, exit %d", took(scriptBegan), st.StatusCode)))
+		// A SteamCMD failure line, or a script that died after printing the
+		// log — not a non-zero exit from a script that never ran SteamCMD.
+		if steamErr != "" || (st.StatusCode != 0 && len(contentLog.lines) > 0) {
+			for _, line := range contentLog.relay() {
+				_ = emit(sysLine(line))
+			}
+		}
 		if _, shared := d.sharedGroup(); shared && st.StatusCode == exitDataDirNotWritable {
 			return "", id, d.fail(emit, fmt.Sprintf("install exited with code %d: the install container cannot write this server's data dir (%s on the node). Check that dir's owner, group and mode",
 				st.StatusCode, d.localDir(serverID)))
@@ -1134,9 +1153,12 @@ func (d *DockerRuntime) runInstallContainer(ctx context.Context, serverID string
 // steamInstallFailurePhrases are the SteamCMD output lines that mean an app
 // failed to install even though the steamcmd process exits 0. The canonical set
 // is LinuxGSM's error list (https://docs.linuxgsm.com/steamcmd/errors); the
-// "state is 0x… after update job" family is the one that bit us live on
-// 2026-09-15 (Dragonwilds, app 4019830, state 0x6 — no connection to the content
-// servers — where both app_update passes exited 0 and the stale build relaunched).
+// "state is 0x… after update job" family is the one first seen live on
+// 2026-09-15 (Dragonwilds, app 4019830, state 0x6 — both app_update passes
+// exited 0 and the stale build relaunched). The line itself never says why: an
+// instant 0x6 was a stale download state, not the network, and 0x602 a commit a
+// lock had blocked (steamrecovery.go). The reason is in SteamCMD's content log,
+// which a failed pass relays (steamcontentlog.go).
 //
 // Matching here is per-line and the LAST relevant line wins: a later
 // "Success! App … fully installed" clears an earlier match, which is what makes
@@ -2511,7 +2533,18 @@ func (d *DockerRuntime) streamLogs(ctx context.Context, id, tail string, fn func
 
 // demux splits a Docker multiplexed (stdout+stderr) log stream into lines and
 // invokes fn for each. Both streams are surfaced; stderr lines are labeled.
+//
+// Each stream is scanned on its own goroutine, but fn is called under a lock,
+// one line at a time: callers fold every line into state (the install pass's
+// SteamCMD verdict, its content-log capture), and two streams calling in at
+// once would race on it.
 func demux(reader io.Reader, fn func(stream, text string) error) error {
+	var mu sync.Mutex
+	call := func(stream, text string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return fn(stream, text)
+	}
 	prOut, pwOut := io.Pipe()
 	prErr, pwErr := io.Pipe()
 	go func() {
@@ -2525,7 +2558,7 @@ func demux(reader io.Reader, fn func(stream, text string) error) error {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for sc.Scan() {
-			if err := fn(name, sc.Text()); err != nil {
+			if err := call(name, sc.Text()); err != nil {
 				errc <- err
 				return
 			}

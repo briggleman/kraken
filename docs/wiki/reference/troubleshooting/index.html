@@ -144,12 +144,20 @@ subsequent <code>app_update</code> gives up in the same place. <code>0x6</code> 
 once and abandoning the job meant to settle them. Validating does not clear it,
 because validation trusts the manifest, which is also why the failure repeats
 exactly rather than intermittently.</p>
-<p>You will usually see the whole exchange land inside a single second, having
-asked for no bytes at all:</p>
+<p>The tell is that SteamCMD asks for no bytes at all: no <code>verifying</code> or
+<code>downloading</code> state, only <code>0 / 0</code>, and the pass is over in seconds:</p>
 <div class="cmd" data-lang="text"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>16:02:29 Connecting anonymously to Steam Public...OK
 16:02:29  Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
 16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
 16:02:29 Error! App '4019830' state is 0x6 after update job.</code></pre></div>
+<p>Don&#39;t read the timestamps as timing. SteamCMD buffers its output and the
+console stamps each line when it arrives, so a whole <code>app_update</code> often shares
+one second, even one that downloaded 8 GB. The <code>install script ran …</code> line
+and the gap between one <code>Connecting anonymously</code> and the next are the real
+clock.</p>
+<p>It has turned up on the first real update of a server (enshrouded-01 on
+2026-10-15, dragonwilds-01 on 2026-09-15 and 2026-09-25), and a <code>validate</code>
+reinstall fails the same way.</p>
 <p><strong>Cause 2 — an update that downloaded but could not be committed.</strong> Steam
 replaces a file by writing the new copy beside it as <code>&lt;name&gt;~RF&lt;hex&gt;.TMP</code> and
 then renaming that over the original. If the rename fails, the staged <code>.TMP</code>
@@ -166,6 +174,12 @@ Error! App '4019830' state is 0x602 after update job.</code></pre></div>
 started, stopped before finishing, still owed. A missing <code>0x61 downloading</code>
 state is the thing to notice — nothing needed fetching, so the failure is at the
 commit.</p>
+<p><strong>SteamCMD&#39;s own reason.</strong> The console line never says why the job stopped;
+SteamCMD writes that to its <code>content_log.txt</code>, which lives inside the install
+container. On an Agent newer than 0.65.1, a failed pass prints the end of that file as
+<code>[kraken] steamcmd content_log: …</code> lines right after <code>install script ran …</code>.
+Look there first for an <code>update canceled</code> line or an HTTP error. A clean pass
+leaves them out.</p>
 <p><strong>Which one you have.</strong> Open the server&#39;s <strong>Files</strong> tab and look in the
 install tree for a file ending <code>~RF&lt;hex&gt;.TMP</code>.</p>
 <ul>

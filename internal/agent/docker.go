@@ -843,6 +843,12 @@ func (d *DockerRuntime) Remove(ctx context.Context, serverID string, deleteData 
 		if err := removeAll(d.localDir(serverID)); err != nil {
 			dataErr = fmt.Errorf("docker: remove server %s: delete its data: %w", serverID, dataRemoveError(d.localDir(serverID), err))
 		}
+		// SteamCMD's depot cache describes that tree, so it goes with it. It
+		// is rebuilt by the next install; a failure is only logged, since the
+		// data the operator asked to delete is gone.
+		if err := removeAll(d.steamCmdCacheDir(serverID)); err != nil {
+			slog.Warn("could not delete the server's SteamCMD depot cache", "server", serverID, "err", err)
+		}
 	}
 	// The containers are gone, so the server is gone as far as this node is
 	// concerned, even if some of its bytes stayed behind. Forgetting it now is
@@ -998,6 +1004,9 @@ func (d *DockerRuntime) Install(ctx context.Context, req *agentpb.InstallServerR
 	if req.MemoryLimitMb > 0 {
 		host.Resources.Memory = req.MemoryLimitMb * 1024 * 1024
 	}
+	// SteamCMD's depot cache outlives the container, so an update can be built
+	// from the old build's manifest (steamcmdcache.go).
+	d.keepSteamCmdDepotCache(req.ServerId, cfg, host, func(line string) { _ = emit(sysLine(line)) })
 	d.applyIsolation(host)
 	imgUser, imgKnown := d.imageUser(ctx, req.Image)
 	d.shareDataWithGame(cfg, host, dataPath, true, imgUser, imgKnown)

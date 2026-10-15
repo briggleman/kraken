@@ -40,9 +40,17 @@ import (
 // ordinary in-flight artifact and is reported, never touched. Whatever was
 // found is named in the failure message, retry or not.
 //
-// Deliberately not touched: steamapps/appmanifest_*.acf. A stale manifest is a
-// plausible other cause of 0x6, but deleting it forces a full re-verify of the
-// whole tree, and this round does not make that call automatically.
+// The other repeating failure has no staging files at all: `state is 0x6`
+// (update required, fully installed) a few seconds into the pass, nothing
+// downloaded. SteamCMD could not build the update because the depot manifest of
+// the installed build was not in its cache and Steam would not hand it to an
+// anonymous login (steamcmdcache.go keeps that cache now). With the app manifest
+// moved aside SteamCMD treats the tree as a fresh install that needs only the
+// new manifest, so that is the second try: steamapps/appmanifest_<app>.acf and
+// the app's download state go aside, the pass runs once more, and they are
+// deleted when it succeeds or put back when it does not. It costs a whole-depot
+// download instead of the change, which is why it is the fallback and the cache
+// the fix.
 
 // steamStateRE captures the hex state from SteamCMD's "state is 0x… after
 // update job" line, including its own "state is is" typo.
@@ -243,10 +251,26 @@ func scanStagingFiles(root string) []stagingFile {
 	return out
 }
 
-// stagingTree is where the recovery finds and clears staging files.
+// stagingTree is where the recovery finds and clears staging files, and moves
+// an app manifest aside.
 type stagingTree interface {
 	scan() []stagingFile
 	remove(stagingFile) error
+	// setManifestAside moves the app's manifest and download state out of
+	// SteamCMD's sight. nil, nil means there was no manifest to move.
+	setManifestAside(appID string) (manifestAside, error)
+}
+
+// manifestAside is an app manifest, and the app's download state, moved out of
+// SteamCMD's way for one pass.
+type manifestAside interface {
+	// moved names what was moved, slash-separated and relative to the data dir.
+	moved() []string
+	// discard deletes what was moved: the pass that replaced it succeeded.
+	discard() error
+	// restore puts back whatever SteamCMD did not replace meanwhile, deletes
+	// what it did, and says what it did.
+	restore() string
 }
 
 // hostStagingTree is a server's data dir as the Agent sees it (localDir — never
@@ -291,6 +315,11 @@ type orphanCleanup struct {
 	locked   []stagingFile
 	failed   []orphanFailure
 	inFlight []stagingFile
+}
+
+// empty reports whether the scan found no staging file of any kind.
+func (c orphanCleanup) empty() bool {
+	return len(c.removed) == 0 && len(c.locked) == 0 && len(c.failed) == 0 && len(c.inFlight) == 0
 }
 
 // orphanFailure is an orphan whose removal failed for a reason other than a lock.
@@ -464,6 +493,11 @@ func runInstallWithRecovery(ctx context.Context, pass installPass, tree stagingT
 	}
 	report := cleanup.describe()
 	deadline, hasDeadline := ctx.Deadline()
+	if cleanup.empty() {
+		if appID, ok := staleManifestState(steamErr); ok {
+			return retryWithManifestAside(ctx, pass, tree, note, now, noRetry, appID, steamErr, joinClauses(msg, report))
+		}
+	}
 	switch {
 	case len(cleanup.removed) == 0:
 		// Nothing changed on disk, so a second pass would be byte-identical to
@@ -499,5 +533,78 @@ func runInstallWithRecovery(ctx context.Context, pass installPass, tree stagingT
 		sentence(describeSteamFailure(steamErr)),
 		fmt.Sprintf("second pass after removing %d orphaned staging file(s) (first pass: %s): %s", len(cleanup.removed), stateSummary(first), names),
 		describeLeftovers(tree.scan(), cleanup.removed),
+	), nil
+}
+
+// steamAppRE captures the app id from "Error! App '2278520' state is …".
+var steamAppRE = regexp.MustCompile(`(?i)\bApp '(\d+)'`)
+
+// staleManifestState reports whether a failure line is the stale-manifest
+// failure: "update required", perhaps "fully installed", and no other bit — no
+// update started, paused or committing, which is the orphaned-commit family
+// instead. It returns the app id the line names; a line without one does not
+// qualify, since the manifest to move is found by it.
+func staleManifestState(line string) (appID string, ok bool) {
+	_, v, ok := steamState(line)
+	if !ok || v&0x2 == 0 || v&^uint32(0x2|0x4) != 0 {
+		return "", false
+	}
+	m := steamAppRE.FindStringSubmatch(line)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// staleManifestRetryNeed is the time a manifest-aside retry needs left before
+// the deadline. It is a fresh install over the tree, which downloads the whole
+// depot rather than the change, so the first pass — a few seconds of failing —
+// says nothing about how long it takes.
+const staleManifestRetryNeed = 15 * time.Minute
+
+// retryWithManifestAside is the stale-manifest second try: move the app's
+// manifest and download state aside, run the pass once more, and delete them
+// on success or put them back on failure. failed is the first pass's report.
+func retryWithManifestAside(ctx context.Context, pass installPass, tree stagingTree, note func(string), now func() time.Time, noRetry, appID, first, failed string) (string, error) {
+	manifest := "steamapps/appmanifest_" + appID + ".acf"
+	deadline, hasDeadline := ctx.Deadline()
+	switch {
+	case noRetry != "":
+		return joinClauses(failed, noRetry+", so no automatic retry — run the install again"), nil
+	case !hasDeadline:
+		return joinClauses(failed, "no deadline on this install, so no automatic retry — run the install again"), nil
+	case deadline.Sub(now()) < staleManifestRetryNeed:
+		return joinClauses(failed, fmt.Sprintf("not enough time left to retry with %s moved aside (that needs %s) — run the install again", manifest, staleManifestRetryNeed)), nil
+	}
+	aside, err := tree.setManifestAside(appID)
+	if err != nil {
+		return joinClauses(failed, "could not move "+manifest+" aside for a retry: "+err.Error()), nil
+	}
+	if aside == nil {
+		return joinClauses(failed, "no "+manifest+" in the data dir to move aside"), nil
+	}
+	moved := strings.Join(aside.moved(), ", ")
+	note("[kraken] SteamCMD could not build this update (" + stateSummary(first) + ", and no staging files): the depot manifest of the installed build is not in its cache, and Steam will not hand it to an anonymous login")
+	note("[kraken] moved " + moved + " aside and retrying the install pass once as a fresh install over the existing files — it downloads the whole depot rather than the change")
+	steamErr, err := pass(ctx)
+	if err != nil {
+		if r := aside.restore(); r != "" {
+			note("[kraken] " + r)
+		}
+		return "", err
+	}
+	if steamErr == "" {
+		if derr := aside.discard(); derr != nil {
+			note("[kraken] could not delete the old app manifest set aside: " + derr.Error())
+		}
+		// Said again last, as the orphan retry does: a long second pass can
+		// scroll the line before it out of the install buffer.
+		note("[kraken] recovered: the install pass ran again with " + moved + " moved aside, and SteamCMD wrote a new app manifest")
+		return "", nil
+	}
+	return joinClauses(
+		sentence(describeSteamFailure(steamErr)),
+		"second pass after moving "+moved+" aside (first pass: "+stateSummary(first)+")",
+		aside.restore(),
 	), nil
 }

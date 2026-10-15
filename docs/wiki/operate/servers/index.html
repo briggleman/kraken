@@ -118,6 +118,7 @@
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#what-a-start-does">What a start does</a>
 <a class="toc-link lvl-3" href="#validate-on-the-update-pass">Validate on the update pass</a>
+<a class="toc-link lvl-3" href="#the-steamcmd-depot-cache">The SteamCMD depot cache</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
 <a class="toc-link lvl-2" href="#the-build-check">The build check</a>
@@ -366,6 +367,36 @@ left the Panel, while the game went on serving players.</p>
 adopts what the Agent reports: a managed container found running behind an
 <code>offline</code> or <code>install_failed</code> row moves that row to <code>running</code> and clears the
 stale error.</p>
+<h3 id="the-steamcmd-depot-cache">The SteamCMD depot cache <a class="hlink" href="#the-steamcmd-depot-cache" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p><strong>The node keeps a small cache per Steam server so an update can be computed
+as a delta.</strong> SteamCMD builds an update from two depot manifests, the build the
+tree holds and the build it is going to, and it keeps the first one in its own
+folder, not in the data directory. The install container is thrown away after
+every pass, so before this cache every real update had to fetch the old build&#39;s
+manifest again, and Steam refuses that to an anonymous login. The pass then
+ended a few seconds in with <code>state is 0x6 after update job</code>, <code>validate</code>
+included, and the fix was to delete the app manifest by hand.</p>
+<p>The cache is a folder per server under the node&#39;s data root,
+<code>&lt;KRAKEN_DATA_DIR&gt;/.kraken-steamcmd/&lt;server id&gt;</code>. It holds manifest files only
+(a few hundred KB per build) and sits beside the data directories, not in one,
+so backups, the Files tab and SFTP never see it. It is mounted into the install
+container where SteamCMD looks for it: straight onto <code>C:\steamcmd\depotcache</code>
+on a Windows node, and at <code>/kraken/steamcmd-depotcache</code>, linked from
+<code>$HOME/Steam/depotcache</code> by the pass itself, on a Linux node. A server&#39;s cache
+is deleted with its data.</p>
+<p>A server whose cache does not hold its installed build (every server&#39;s first
+update after the node&#39;s Agent is upgraded, or one whose cache was deleted)
+still fails the first try with <code>0x6</code>. When it does, and no SteamCMD staging
+file is in the tree, the Agent recovers it in the same pass: it moves
+<code>steamapps/appmanifest_&lt;app&gt;.acf</code> and the app&#39;s download state aside, runs the
+script once more as a fresh install over the existing files, and deletes what
+it moved when that works or puts it back when it does not. That second try
+downloads the whole depot rather than the change, so it needs 15 minutes left
+of the pass&#39;s 30 and is skipped with a reason in <code>last_error</code> otherwise, as it
+is for an install that used a one-time Steam Guard code. The install console
+says each step with a <code>[kraken]</code> line, ending
+<code>[kraken] recovered: the install pass ran again with steamapps/appmanifest_&lt;app&gt;.acf moved aside, and SteamCMD wrote a new app manifest</code>.
+After that pass the cache holds the new build, and the next update is a delta.</p>
 <h3 id="the-two-opt-outs">The two opt-outs <a class="hlink" href="#the-two-opt-outs" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <ul>
 <li><strong>Per server: pin build.</strong> The Config tab&#39;s toggle. A pinned server never runs
@@ -733,6 +764,7 @@ way a retire&#39;s removal is owed; the answer carries <code>removal_pending: tr
 <a class="toc-link lvl-2" href="#update-on-start">Update on start</a>
 <a class="toc-link lvl-3" href="#what-a-start-does">What a start does</a>
 <a class="toc-link lvl-3" href="#validate-on-the-update-pass">Validate on the update pass</a>
+<a class="toc-link lvl-3" href="#the-steamcmd-depot-cache">The SteamCMD depot cache</a>
 <a class="toc-link lvl-3" href="#the-two-opt-outs">The two opt-outs</a>
 <a class="toc-link lvl-3" href="#what-deliberately-does-not-update">What deliberately does not update</a>
 <a class="toc-link lvl-2" href="#the-build-check">The build check</a>

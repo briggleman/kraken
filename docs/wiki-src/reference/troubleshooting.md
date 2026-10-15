@@ -33,8 +33,8 @@ once and abandoning the job meant to settle them. Validating does not clear it,
 because validation trusts the manifest, which is also why the failure repeats
 exactly rather than intermittently.
 
-You will usually see the whole exchange land inside a single second, having
-asked for no bytes at all:
+The tell is that SteamCMD asks for no bytes at all: no `verifying` or
+`downloading` state, only `0 / 0`, and the pass is over in seconds:
 
 ```text
 16:02:29 Connecting anonymously to Steam Public...OK
@@ -42,6 +42,16 @@ asked for no bytes at all:
 16:02:29  Update state (0x0) unknown,       progress: 0.00 (0 / 0)
 16:02:29 Error! App '4019830' state is 0x6 after update job.
 ```
+
+Don't read the timestamps as timing. SteamCMD buffers its output and the
+console stamps each line when it arrives, so a whole `app_update` often shares
+one second, even one that downloaded 8 GB. The `install script ran …` line
+and the gap between one `Connecting anonymously` and the next are the real
+clock.
+
+It has turned up on the first real update of a server (enshrouded-01 on
+2026-10-15, dragonwilds-01 on 2026-09-15 and 2026-09-25), and a `validate`
+reinstall fails the same way.
 
 **Cause 2 — an update that downloaded but could not be committed.** Steam
 replaces a file by writing the new copy beside it as `<name>~RF<hex>.TMP` and
@@ -64,6 +74,13 @@ Error! App '4019830' state is 0x602 after update job.
 started, stopped before finishing, still owed. A missing `0x61 downloading`
 state is the thing to notice — nothing needed fetching, so the failure is at the
 commit.
+
+**SteamCMD's own reason.** The console line never says why the job stopped;
+SteamCMD writes that to its `content_log.txt`, which lives inside the install
+container. On an Agent newer than 0.65.1, a failed pass prints the end of that file as
+`[kraken] steamcmd content_log: …` lines right after `install script ran …`.
+Look there first for an `update canceled` line or an HTTP error. A clean pass
+leaves them out.
 
 **Which one you have.** Open the server's **Files** tab and look in the
 install tree for a file ending `~RF<hex>.TMP`.

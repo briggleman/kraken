@@ -46,6 +46,7 @@ type fakeOps struct {
 
 	lists    int        // ContainerList calls — one per guard run
 	creates  []string   // names passed to ContainerCreate, in order
+	cmds     [][]string // the Cmd of each created container, in order
 	passLogs [][]string // the output of each created container, in order
 }
 
@@ -56,8 +57,11 @@ func (f *fakeOps) ContainerList(_ context.Context, _ container.ListOptions) ([]c
 
 // ContainerCreate records the name and hands out install-<n> ids; the n-th
 // created container's logs are passLogs[n-1].
-func (f *fakeOps) ContainerCreate(_ context.Context, _ *container.Config, _ *container.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, name string) (container.CreateResponse, error) {
+func (f *fakeOps) ContainerCreate(_ context.Context, cfg *container.Config, _ *container.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, name string) (container.CreateResponse, error) {
 	f.creates = append(f.creates, name)
+	if cfg != nil {
+		f.cmds = append(f.cmds, cfg.Cmd)
+	}
 	return container.CreateResponse{ID: fmt.Sprintf("install-%d", len(f.creates))}, nil
 }
 

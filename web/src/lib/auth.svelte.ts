@@ -65,6 +65,14 @@ export async function login(username: string, password: string): Promise<void> {
   await refreshMe(); // pull the role + permissions
 }
 
+/** An invitee choosing their first password: the Panel answers with a
+ *  session, so this is a login by another door. */
+export async function acceptInvite(token: string, password: string): Promise<void> {
+  await api.acceptInvite(token, password);
+  resetSession();
+  await refreshMe();
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.logout();

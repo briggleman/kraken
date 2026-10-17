@@ -3,13 +3,22 @@
   import { ui, closeSheet, sheetZ } from "@/lib/state.svelte";
   import { sheetFocus } from "@/lib/sheetFocus";
   import { auth } from "@/lib/auth.svelte";
-  import { api } from "@/api/client";
-  import type { AdminUser, Role } from "@/api/types";
+  import { api, errMsg } from "@/api/client";
+  import { inviteChip, inviteModeAvailable } from "@/lib/invite";
+  import type { AdminUser, PanelSettings, Role } from "@/api/types";
 
   let users = $state<AdminUser[]>([]);
   let roles = $state<Role[]>([]);
+  // the panel's email settings decide whether the create form can offer an
+  // invite; they fail soft — no settings, no invite mode
+  let settings = $state<PanelSettings | null>(null);
   let err = $state<string | null>(null);
   let query = $state("");
+
+  // the create form's two modes: a one-time password shown here, or an
+  // emailed invite. the toggle is drawn only once an invite is possible.
+  let useInvite = $state(true);
+  let inviteNote = $state<string | null>(null);
 
   // the "shown once" reveals: a reset password, and a freshly created account's
   // password. both are generated in the browser and never come back from the api.
@@ -20,6 +29,8 @@
   let newUsername = $state("");
   let newEmail = $state("");
   let newRoleId = $state("");
+  const inviteReady = $derived(inviteModeAvailable(settings, newEmail));
+  const inviting = $derived(inviteReady && useInvite);
 
   // fetch once per open; reveals are cleared on close — they are shown once.
   // fetchedOpen is a plain variable, NOT $state: the effect both reads and
@@ -34,6 +45,7 @@
       fetchedOpen = false;
       revealed = null;
       createdPw = null;
+      inviteNote = null;
       err = null;
     }
   });
@@ -41,9 +53,10 @@
   async function load() {
     err = null;
     try {
-      const [u, r] = await Promise.all([api.listUsers(), api.listRoles()]);
+      const [u, r, s] = await Promise.all([api.listUsers(), api.listRoles(), api.getPanelSettings().catch(() => null)]);
       users = u.users ?? [];
       roles = r.roles ?? [];
+      settings = s;
       if (!roles.some((x) => x.id === newRoleId)) {
         newRoleId =
           roles.find((x) => x.name.toLowerCase().includes("operator"))?.id ?? roles[0]?.id ?? "";
@@ -148,10 +161,54 @@
     }
   }
 
+  async function resendInvite(u: AdminUser) {
+    err = null;
+    try {
+      const r = await api.sendInvite(u.id);
+      users = users.map((x) => (x.id === u.id ? { ...x, invite: r.invite } : x));
+      inviteNote = `a new invite went to ${r.invite.sent_to} — the old link stopped working`;
+    } catch (e) {
+      fail(e, "resend failed");
+      void load(); // a 424 leaves a failed invite on the row; show it
+    }
+  }
+
+  async function revokeInvite(u: AdminUser) {
+    err = null;
+    try {
+      await api.revokeInvite(u.id);
+      users = users.map((x) => (x.id === u.id ? { ...x, invite: undefined } : x));
+      inviteNote = `the invite for ${u.username} was revoked — the account stays, locked, until you resend or reset`;
+    } catch (e) {
+      fail(e, "revoke failed");
+    }
+  }
+
   async function createAccount() {
     const username = newUsername.trim();
     if (!username || !newRoleId) return;
     err = null;
+    inviteNote = null;
+    if (inviting) {
+      try {
+        const created = await api.createUser({
+          username,
+          email: newEmail.trim(),
+          role_id: newRoleId,
+          invite: true,
+        });
+        users = [...users, created];
+        inviteNote = `invite sent to ${created.invite?.sent_to ?? newEmail.trim()} — the link is good for 24 hours; the account cannot be used until ${created.username} sets a password`;
+        newUsername = "";
+        newEmail = "";
+      } catch (e) {
+        // a 424 means the account exists but the email did not go out; the
+        // list shows it with a failed chip and a resend action
+        err = errMsg(e);
+        void load();
+      }
+      return;
+    }
     const pw = genPassword();
     try {
       const created = await api.createUser({
@@ -206,6 +263,7 @@
       </div>
       {#each shown as u (u.id)}
         {@const self = auth.user?.id === u.id}
+        {@const chip = inviteChip(u.invite)}
         <div class="users-row{self ? ' self' : ''}{roleClass(u)}">
           <span class="u-name">{u.username}{#if self} <em>(you)</em>{/if}</span>
           <span class="u-mail">{u.email || "—"}</span>
@@ -226,9 +284,15 @@
                 onchange={(e) => void setActive(u, e.currentTarget.checked)}
               /><i></i>{u.disabled ? "disabled" : "active"}</label
             >
+            {#if chip}<span class="u-state invited" title="sent to {u.invite?.sent_to}">{chip.text}</span>{/if}
           </span>
           <span class="u-act">
-            <button class="mini-act" onclick={() => void resetPassword(u)}>reset</button>
+            {#if u.invite && !self}
+              <button class="mini-act" onclick={() => void resendInvite(u)}>resend</button>
+              <button class="mini-act" onclick={() => void revokeInvite(u)}>revoke</button>
+            {:else}
+              <button class="mini-act" onclick={() => void resetPassword(u)}>reset</button>
+            {/if}
             {#if !self}<button class="mini-act del" onclick={() => void removeUser(u)}>remove</button>{/if}
           </span>
         </div>
@@ -246,11 +310,20 @@
       </div>
     {/if}
 
+    {#if inviteNote}
+      <p class="wz-res shown ok" role="status" aria-live="polite"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span>{inviteNote}</span></p>
+    {/if}
+
     <section class="prefs-group" aria-label="Create an account">
       <div class="cfg-head">
         <h3 class="pane-label">create an account</h3>
-        <span class="cfg-badge enc">one-time password</span>
-        <span class="cfg-badge env">generated in your browser</span>
+        {#if inviting}
+          <span class="cfg-badge enc">emailed invite</span>
+          <span class="cfg-badge env">good for 24 hours</span>
+        {:else}
+          <span class="cfg-badge enc">one-time password</span>
+          <span class="cfg-badge env">generated in your browser</span>
+        {/if}
       </div>
       <div class="cfg">
         <div class="cfg-row">
@@ -267,18 +340,27 @@
             {#each roles as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
           </select>
         </div>
+        {#if inviteReady}
+          <label class="tgl"><input type="checkbox" bind:checked={useInvite} /><i></i>send an invite instead of a one-time password</label>
+        {/if}
         {#if createdPw}
           <div class="cfg-row">
             <span>one-time password for {createdPw.username} — copy it once, it is not shown again</span>
             <div class="cfg-ro">{createdPw.password}</div>
           </div>
         {/if}
-        <p class="cfg-help">there are no invite links yet — the account is created directly, with a strong password generated in your browser and shown once above. copy it and hand it to the user; the panel never shows it again. the reset action in the table mints a new one the same way.</p>
+        {#if inviting}
+          <p class="cfg-help">the panel emails a one-time link, good for 24 hours, that lets them choose their own password and signs them in. nobody — not you, not the panel — ever sees a password for the account before they do. the row shows the invite until it is used; resend replaces the link, revoke kills it.</p>
+        {:else if settings?.smtp_configured && settings.public_url}
+          <p class="cfg-help">the account is created directly, with a strong password generated in your browser and shown once above. copy it and hand it to the user; the panel never shows it again. the reset action in the table mints a new one the same way. with an email address filled in, the toggle above sends an invite instead.</p>
+        {:else}
+          <p class="cfg-help">the account is created directly, with a strong password generated in your browser and shown once above. copy it and hand it to the user; the panel never shows it again. the reset action in the table mints a new one the same way. to email invites instead, set an smtp relay and a public address under console settings.</p>
+        {/if}
       </div>
       <div class="cfg-actions">
-        <span class="cfg-note">sign-ins and account changes are recorded in the audit log</span>
+        <span class="cfg-note">sign-ins, invites and account changes are recorded in the audit log</span>
         <button class="cfg-btn ghost" onclick={() => closeSheet("users")}>close</button>
-        <button class="cfg-btn solid" disabled={!newUsername.trim() || !newRoleId} onclick={() => void createAccount()}>create account</button>
+        <button class="cfg-btn solid" disabled={!newUsername.trim() || !newRoleId} onclick={() => void createAccount()}>{inviting ? "send invite" : "create account"}</button>
       </div>
     </section>
 

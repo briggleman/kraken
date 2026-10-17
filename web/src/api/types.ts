@@ -219,12 +219,31 @@ export interface Role {
   permissions: string[];
 }
 
+// InviteState is an account's open invite: the person has not chosen a
+// password yet. "sent" is live, "expired" delivered but past its 24 hours,
+// "failed" never left the Panel (the relay refused it; resend to try again).
+export interface InviteState {
+  state: "sent" | "expired" | "failed";
+  sent_to: string;
+  sent_at?: string;
+  expires_at: string;
+}
+
+// InviteInfo is what the set-password sheet learns from a live invite link.
+export interface InviteInfo {
+  username: string;
+  role_name: string;
+  panel_host: string;
+  expires_at: string;
+}
+
 export interface AdminUser {
   id: string;
   username: string;
   email: string;
   role_id: string;
   disabled: boolean;
+  invite?: InviteState;
 }
 
 export interface Backup {

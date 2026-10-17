@@ -3,6 +3,7 @@
   import { ui, wz, LG_SUB, loginGo } from "@/lib/state.svelte";
   import { auth, login } from "@/lib/auth.svelte";
   import { fleet } from "@/lib/fleet.svelte";
+  import { inviteActive } from "@/lib/invite.svelte";
 
   // The login is real: it shows whenever there is no session (and during the
   // wizard's restart choreography), takes actual credentials, and shows the
@@ -13,7 +14,9 @@
   let failed = $state(false);
   let busy = $state(false);
 
-  const open = $derived(ui.loginOpen || (!auth.loading && !auth.user));
+  // An invite sheet (someone choosing their first password) stands in for the
+  // login while it is up; the two never show together.
+  const open = $derived(ui.loginOpen || (!auth.loading && !auth.user && !inviteActive()));
 
   async function go() {
     if (busy) return;

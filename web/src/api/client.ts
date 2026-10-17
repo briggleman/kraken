@@ -1,6 +1,8 @@
 import type {
   AgentUpdateJob,
   AdminUser,
+  InviteInfo,
+  InviteState,
   AuditEntry,
   Backup,
   BootstrapToken,
@@ -349,11 +351,31 @@ export const api = {
   listUsers(): Promise<{ users: AdminUser[] | null }> {
     return request("GET", "/users");
   },
-  createUser(input: { username: string; email: string; password: string; role_id: string }): Promise<AdminUser> {
+  /** Creates an account. With `invite: true` the Panel emails a one-time
+   *  set-password link instead of taking a password (which is then omitted). */
+  createUser(input: { username: string; email: string; password?: string; role_id: string; invite?: boolean }): Promise<AdminUser> {
     return request("POST", "/users", input);
   },
   updateUser(id: string, patch: { email?: string; role_id?: string; disabled?: boolean }): Promise<AdminUser> {
     return request("PUT", `/users/${id}`, patch);
+  },
+  /** Sends (or sends again) an account's invite; the previous link stops working. */
+  sendInvite(id: string): Promise<{ invite: InviteState }> {
+    return request("POST", `/users/${id}/invite`);
+  },
+  /** Revokes an account's open invite. */
+  revokeInvite(id: string): Promise<{ revoked: number }> {
+    return request("DELETE", `/users/${id}/invite`);
+  },
+  /** What a live invite link is for — unauthenticated; the token is the authority. */
+  getInvite(token: string): Promise<InviteInfo> {
+    return request("GET", `/invites/${encodeURIComponent(token)}`);
+  },
+  /** Chooses the account's password and signs in with the session the Panel answers with. */
+  async acceptInvite(token: string, password: string): Promise<LoginResponse> {
+    const resp = await request<LoginResponse>("POST", `/invites/${encodeURIComponent(token)}/accept`, { password });
+    setToken(resp.token);
+    return resp;
   },
   resetUserPassword(id: string, password: string): Promise<{ status: string }> {
     return request("POST", `/users/${id}/password`, { password });

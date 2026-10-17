@@ -20,12 +20,17 @@
   import Setup from "@/surfaces/Setup.svelte";
   import { startSim, ui, closeSheet, closeConfirm } from "@/lib/state.svelte";
   import { auth, bootAuth, mustChangePassword } from "@/lib/auth.svelte";
+  import Invite from "@/surfaces/Invite.svelte";
+  import { bootInvite } from "@/lib/invite.svelte";
   import { fleet, startFleetPolling, stopFleetPolling } from "@/lib/fleet.svelte";
   import { startTelemetryPolling, stopTelemetryPolling } from "@/lib/telemetry.svelte";
   import { depth, surface, followFleet, sftpHide, bootDeepLinks } from "@/lib/depth.svelte";
   import { api } from "@/api/client";
 
   startSim();
+  // An emailed invite link opens the Panel with no session to resolve; the
+  // sheet it opens takes the token out of the address bar first thing.
+  bootInvite();
   void bootAuth();
 
   const authed = $derived(!auth.loading && !!auth.user);
@@ -107,6 +112,7 @@
 <ApiDocs />
 <Login />
 <Rotate />
+<Invite />
 <DbRestart />
 <Setup />
 <ConfirmDelete />

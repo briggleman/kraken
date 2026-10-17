@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.67.0](https://github.com/briggleman/kraken/compare/v0.66.0...v0.67.0) (2026-10-17)
+
+
+### Features
+
+* **panel:** account invites — one-time set-password links by email ([#453](https://github.com/briggleman/kraken/issues/453)) ([f48e1fe](https://github.com/briggleman/kraken/commit/f48e1fe4e4ece50afc45460535ae35472dff547d))
+* **panel:** outbound email — smtp settings, mailer, test send, public url ([#452](https://github.com/briggleman/kraken/issues/452)) ([8e49b43](https://github.com/briggleman/kraken/commit/8e49b436b1b7b74203626c6d53fcd6fa5f79526e))
+* **web:** send invites from the users sheet, and the set-password sheet they open ([#454](https://github.com/briggleman/kraken/issues/454)) ([88ebd63](https://github.com/briggleman/kraken/commit/88ebd633e21b0db2d9f58f6ed549048af2a6234a))
+
 ## [0.66.0](https://github.com/briggleman/kraken/compare/v0.65.2...v0.66.0) (2026-10-17)
 
 

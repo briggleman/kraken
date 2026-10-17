@@ -131,6 +131,7 @@
 <a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-3" href="#steam-build-check">steam build check</a>
 <a class="toc-link lvl-3" href="#push-alerts">push alerts</a>
+<a class="toc-link lvl-3" href="#ios-password-autofill">ios password autofill</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
@@ -312,6 +313,14 @@ description.</p>
 </tbody>
 </table></div>
 
+<h3 id="ios-password-autofill">ios password autofill <a class="hlink" href="#ios-password-autofill" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_APPLE_APP_IDS</code><span class="def">default <span class="nil">unset</span></span></td><td>AppleAppIDs are the iOS apps allowed to offer this Panel&#39;s saved passwords, as <code>&lt;Team ID&gt;.&lt;bundle id&gt;</code> entries separated by commas (the companion is <code>HGMD87Q9KP.com.briggleman.kraken-companion</code>). When set, the Panel serves <code>/.well-known/apple-app-site-association</code> naming them under <code>webcredentials</code>, so an app whose Associated Domains entitlement lists <code>webcredentials:&lt;this Panel&#39;s host&gt;</code> can fill its username and password from the iCloud Keychain. Unset serves nothing there (a 404), which is the default. An entry that is not a ten-character Team ID, a dot and a bundle id stops the Panel at startup.</td></tr>
+</tbody>
+</table></div>
+
 
 <h2 id="reading-the-defaults">Reading the defaults <a class="hlink" href="#reading-the-defaults" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <ul>
@@ -346,6 +355,19 @@ it to loopback and the fleet goes offline. See <a href="/wiki/configure/network/
 firewall</a>.</li>
 <li><strong><code>KRAKEN_RATE_LIMITS</code></strong> and <strong><code>KRAKEN_LOG_LEVEL</code></strong>: see <a href="/wiki/configure/limits-and-logging/">limits and
 logging</a>.</li>
+<li><strong><code>KRAKEN_APPLE_APP_IDS</code></strong>: lets an iOS app fill its sign-in from the
+passwords iCloud Keychain saved for this Panel. Set it to the app&#39;s
+<code>&lt;Team ID&gt;.&lt;bundle id&gt;</code>, and the Panel answers
+<code>https://&lt;your panel&gt;/.well-known/apple-app-site-association</code> with that app
+under <code>webcredentials</code>. The app&#39;s Associated Domains entitlement has to list
+<code>webcredentials:&lt;your panel&#39;s host&gt;</code> as well; iOS only offers the password
+when both sides name each other. Apple&#39;s CDN fetches the file, not the phone,
+so it has to be reachable from the internet over HTTPS with no redirect. If
+Cloudflare is in front, check that no bot rule challenges the
+<code>AASA-Bot</code> user agent. Then check what Apple has cached with
+<code>curl https://app-site-association.cdn-apple.com/a/v1/&lt;your panel&#39;s host&gt;</code>.
+The username and password come from the Keychain. The Panel&#39;s address does
+not, so the app has to remember that itself.</li>
 </ul>
 <h2 id="what-is-not-here">What is not here <a class="hlink" href="#what-is-not-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The Agent carries its own configuration, with a file, flags and environment
@@ -390,6 +412,7 @@ clicking around.</p>
 <a class="toc-link lvl-3" href="#audit-log">audit log</a>
 <a class="toc-link lvl-3" href="#steam-build-check">steam build check</a>
 <a class="toc-link lvl-3" href="#push-alerts">push alerts</a>
+<a class="toc-link lvl-3" href="#ios-password-autofill">ios password autofill</a>
 <a class="toc-link lvl-2" href="#reading-the-defaults">Reading the defaults</a>
 <a class="toc-link lvl-2" href="#the-ones-worth-knowing">The ones worth knowing</a>
 <a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>

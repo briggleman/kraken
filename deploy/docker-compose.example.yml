@@ -183,6 +183,11 @@ services:
       # Uncomment for reverse-proxy / public hostname setups:
       # KRAKEN_ALLOWED_ORIGINS: "https://kraken.example.com"
 
+      # Let the iOS companion fill its sign-in from the passwords iCloud
+      # Keychain saved for this Panel (serves the apple-app-site-association
+      # file). Needs a public HTTPS hostname that Apple's CDN can fetch.
+      # KRAKEN_APPLE_APP_IDS: "HGMD87Q9KP.com.briggleman.kraken-companion"
+
       # Behind a reverse proxy or a Cloudflare Tunnel, name it here — the
       # Panel otherwise sees the proxy as the client on every request, which
       # files every audit row under the proxy and turns the per-client rate

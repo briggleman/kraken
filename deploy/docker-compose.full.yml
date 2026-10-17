@@ -56,6 +56,10 @@ services:
       KRAKEN_BOOTSTRAP_ADMIN_USER: ${KRAKEN_BOOTSTRAP_ADMIN_USER:-admin}
       KRAKEN_BOOTSTRAP_ADMIN_PASSWORD: ${KRAKEN_BOOTSTRAP_ADMIN_PASSWORD:-}
       KRAKEN_ALLOWED_ORIGINS: ${KRAKEN_ALLOWED_ORIGINS:-}
+      # iOS apps (<Team ID>.<bundle id>) that may fill their sign-in from the
+      # passwords iCloud Keychain saved for this Panel. Empty serves nothing at
+      # /.well-known/apple-app-site-association.
+      KRAKEN_APPLE_APP_IDS: ${KRAKEN_APPLE_APP_IDS:-}
       KRAKEN_QUICKSTART: "true"
       KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
       # Reverse proxies whose forwarding headers the Panel may believe. LEAVE

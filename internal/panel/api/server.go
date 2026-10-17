@@ -490,6 +490,8 @@ func (s *Server) routes() chi.Router {
 	r.Get("/healthz", s.handleHealth)
 	r.Get("/readyz", s.handleHealth)
 	r.Get("/metrics", s.handleMetrics)
+	// iOS Password AutoFill — unauthenticated by necessity: Apple's CDN fetches it.
+	r.Get("/.well-known/apple-app-site-association", s.handleAppleAppSiteAssociation)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth: login is public; logout/me require a valid session. Public and
@@ -713,6 +715,23 @@ func (s *Server) routes() chi.Router {
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleAppleAppSiteAssociation serves the file iOS reads to decide which apps
+// may offer this Panel's saved passwords (KRAKEN_APPLE_APP_IDS). Apple's CDN
+// fetches it over HTTPS and refuses redirects and non-JSON bodies, so it must
+// answer here itself; without app IDs it is a plain 404 rather than the SPA
+// shell the catch-all would otherwise return with a 200.
+func (s *Server) handleAppleAppSiteAssociation(w http.ResponseWriter, req *http.Request) {
+	if len(s.cfg.AppleAppIDs) == 0 {
+		http.NotFound(w, req)
+		return
+	}
+	type apps struct {
+		Apps []string `json:"apps"`
+	}
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	writeJSON(w, http.StatusOK, map[string]apps{"webcredentials": {Apps: s.cfg.AppleAppIDs}})
 }
 
 // handleVersion reports the Panel's build. The UI shows `version` as a footer

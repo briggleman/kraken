@@ -302,6 +302,51 @@ func TestLoadRejectsAnUnparseableRateLimitSkipEntry(t *testing.T) {
 	}
 }
 
+// The association file is off unless app IDs are named, and an ID Apple would
+// silently ignore stops startup instead.
+func TestLoadAppleAppIDs(t *testing.T) {
+	t.Setenv("KRAKEN_APPLE_APP_IDS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected unset app IDs: %v", err)
+	}
+	if len(cfg.AppleAppIDs) != 0 {
+		t.Fatalf("app IDs on by default: %v", cfg.AppleAppIDs)
+	}
+
+	t.Setenv("KRAKEN_APPLE_APP_IDS", " HGMD87Q9KP.com.briggleman.kraken-companion , ABCDE12345.io.example.app_2 ")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted a bundle id with an underscore")
+	}
+	t.Setenv("KRAKEN_APPLE_APP_IDS", " HGMD87Q9KP.com.briggleman.kraken-companion , ABCDE12345.io.example.app-2 ")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected good app IDs: %v", err)
+	}
+	if len(cfg.AppleAppIDs) != 2 || cfg.AppleAppIDs[0] != "HGMD87Q9KP.com.briggleman.kraken-companion" {
+		t.Fatalf("app IDs loaded as %v", cfg.AppleAppIDs)
+	}
+
+	for _, bad := range []string{
+		"com.briggleman.kraken-companion",            // no Team ID
+		"hgmd87q9kp.com.briggleman.kraken-companion", // Team IDs are upper case
+		"HGMD87Q9K.com.briggleman.kraken-companion",  // nine characters
+		"HGMD87Q9KP.",                       // no bundle id
+		"HGMD87Q9KP.com..kraken",            // empty segment
+		"webcredentials:kraken.example.com", // the entitlement, not the app ID
+	} {
+		t.Setenv("KRAKEN_APPLE_APP_IDS", bad)
+		_, err := Load()
+		if err == nil {
+			t.Errorf("Load accepted KRAKEN_APPLE_APP_IDS=%q", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "KRAKEN_APPLE_APP_IDS") {
+			t.Errorf("the error for %q does not name the variable: %v", bad, err)
+		}
+	}
+}
+
 // Push alerts are off unless a relay is named, and a relay URL the Panel could
 // never post to stops startup instead of leaving push silently broken.
 func TestLoadPushRelay(t *testing.T) {

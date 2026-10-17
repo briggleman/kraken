@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -195,6 +196,17 @@ type Config struct {
 	// beyond their install id. Optional; when unset no Authorization header
 	// is sent at all. It is a secret and never appears in a log line.
 	PushRelayToken string
+
+	// AppleAppIDs are the iOS apps allowed to offer this Panel's saved
+	// passwords, as `<Team ID>.<bundle id>` entries separated by commas (the
+	// companion is `HGMD87Q9KP.com.briggleman.kraken-companion`). When set, the
+	// Panel serves `/.well-known/apple-app-site-association` naming them under
+	// `webcredentials`, so an app whose Associated Domains entitlement lists
+	// `webcredentials:<this Panel's host>` can fill its username and password
+	// from the iCloud Keychain. Unset serves nothing there (a 404), which is
+	// the default. An entry that is not a ten-character Team ID, a dot and a
+	// bundle id stops the Panel at startup.
+	AppleAppIDs []string
 }
 
 // The accepted values of KRAKEN_RATE_LIMITS. "on" is accepted too as the
@@ -322,6 +334,20 @@ func validatePushRelayURL() error {
 // PushEnabled reports whether a push relay is configured.
 func (c *Config) PushEnabled() bool { return c.PushRelayURL != "" }
 
+// appleAppID is an App ID as the association file names it: the ten-character
+// Team ID (App ID prefix), a dot, and a reverse-DNS bundle identifier.
+var appleAppID = regexp.MustCompile(`^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$`)
+
+// ValidateAppleAppIDs reports the first entry that is not `<Team ID>.<bundle id>`.
+func ValidateAppleAppIDs(ids []string) error {
+	for _, id := range ids {
+		if !appleAppID.MatchString(id) {
+			return fmt.Errorf("%q is not <Team ID>.<bundle id>, such as HGMD87Q9KP.com.briggleman.kraken-companion", id)
+		}
+	}
+	return nil
+}
+
 // ValidateCIDRList reports the first entry that is neither a CIDR nor a bare
 // IP. Hostnames are refused on purpose: a name is not source-verifiable, and a
 // list of trusted addresses cannot depend on what DNS says today.
@@ -374,6 +400,7 @@ func Load() (*Config, error) {
 		AuditRetentionDays:     envInt("KRAKEN_AUDIT_RETENTION_DAYS", 90),
 		PushRelayURL:           strings.TrimSpace(env("KRAKEN_PUSH_RELAY_URL", "")),
 		PushRelayToken:         strings.TrimSpace(env("KRAKEN_PUSH_RELAY_TOKEN", "")),
+		AppleAppIDs:            envList("KRAKEN_APPLE_APP_IDS"),
 	}
 	// envInt falls back silently on anything it cannot parse, which is the
 	// wrong failure for a retention window: "90d", "ninety" or "-1" would leave
@@ -387,6 +414,12 @@ func Load() (*Config, error) {
 	// nothing, which an operator finds out about the day an alert mattered.
 	if err := validatePushRelayURL(); err != nil {
 		return nil, err
+	}
+	// Apple fetches the association file once and caches it, so a malformed
+	// app ID is not an error anyone would see: AutoFill just never offers the
+	// password. Refuse it here, where the typo is still visible.
+	if err := ValidateAppleAppIDs(c.AppleAppIDs); err != nil {
+		return nil, fmt.Errorf("KRAKEN_APPLE_APP_IDS: %w", err)
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {
 		c.SetupAllowedCIDRs = DefaultSetupAllowedCIDRs()

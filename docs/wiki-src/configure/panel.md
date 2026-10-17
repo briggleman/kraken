@@ -58,6 +58,19 @@ it.
   firewall](/wiki/configure/network/).
 - **`KRAKEN_RATE_LIMITS`** and **`KRAKEN_LOG_LEVEL`**: see [limits and
   logging](/wiki/configure/limits-and-logging/).
+- **`KRAKEN_APPLE_APP_IDS`**: lets an iOS app fill its sign-in from the
+  passwords iCloud Keychain saved for this Panel. Set it to the app's
+  `<Team ID>.<bundle id>`, and the Panel answers
+  `https://<your panel>/.well-known/apple-app-site-association` with that app
+  under `webcredentials`. The app's Associated Domains entitlement has to list
+  `webcredentials:<your panel's host>` as well; iOS only offers the password
+  when both sides name each other. Apple's CDN fetches the file, not the phone,
+  so it has to be reachable from the internet over HTTPS with no redirect. If
+  Cloudflare is in front, check that no bot rule challenges the
+  `AASA-Bot` user agent. Then check what Apple has cached with
+  `curl https://app-site-association.cdn-apple.com/a/v1/<your panel's host>`.
+  The username and password come from the Keychain. The Panel's address does
+  not, so the app has to remember that itself.
 
 ## What is not here
 

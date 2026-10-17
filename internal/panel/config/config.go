@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -195,6 +196,19 @@ type Config struct {
 	// beyond their install id. Optional; when unset no Authorization header
 	// is sent at all. It is a secret and never appears in a log line.
 	PushRelayToken string
+
+	// AppleAppIDs lists the iOS apps allowed to use this Panel's sign-in
+	// credentials, as full app IDs: the Apple team ID, a dot, then the bundle
+	// ID, such as `HGMD87Q9KP.com.briggleman.kraken-companion`. When set, the
+	// Panel serves them at `/.well-known/apple-app-site-association` in a
+	// `webcredentials` entry, so iCloud Keychain and 1Password offer the
+	// Panel's saved sign-in inside the companion app as well as in a browser.
+	// Unset or empty, the default, leaves that path a 404. Apple fetches the
+	// file from its own CDN, which only reaches a Panel served over HTTPS at
+	// the domain's root, so it does nothing on a LAN-only install, and the
+	// Panel itself never contacts Apple. An entry that is not shaped like an
+	// app ID stops the Panel at startup.
+	AppleAppIDs []string
 }
 
 // The accepted values of KRAKEN_RATE_LIMITS. "on" is accepted too as the
@@ -319,6 +333,26 @@ func validatePushRelayURL() error {
 	return nil
 }
 
+// appleAppID is the shape of a full app ID: a ten-character Apple team ID,
+// a dot, then a bundle ID of letters, digits, hyphens and dots.
+var appleAppID = regexp.MustCompile(`^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$`)
+
+// validateAppleAppIDs rejects a KRAKEN_APPLE_APP_IDS entry that is not a full
+// app ID. A bare bundle ID is the likely typo, and Apple matches the file
+// against the team-prefixed form, so it would be served and never match.
+func validateAppleAppIDs(ids []string) error {
+	for _, id := range ids {
+		if !appleAppID.MatchString(id) {
+			return fmt.Errorf("config: KRAKEN_APPLE_APP_IDS entry %q must be a full app ID, the team ID then the bundle ID, such as ABCDE12345.com.example.app (leave it unset to serve no apple-app-site-association)", id)
+		}
+	}
+	return nil
+}
+
+// AppleAppSiteAssociationEnabled reports whether any app IDs are configured
+// for /.well-known/apple-app-site-association.
+func (c *Config) AppleAppSiteAssociationEnabled() bool { return len(c.AppleAppIDs) > 0 }
+
 // PushEnabled reports whether a push relay is configured.
 func (c *Config) PushEnabled() bool { return c.PushRelayURL != "" }
 
@@ -374,6 +408,7 @@ func Load() (*Config, error) {
 		AuditRetentionDays:     envInt("KRAKEN_AUDIT_RETENTION_DAYS", 90),
 		PushRelayURL:           strings.TrimSpace(env("KRAKEN_PUSH_RELAY_URL", "")),
 		PushRelayToken:         strings.TrimSpace(env("KRAKEN_PUSH_RELAY_TOKEN", "")),
+		AppleAppIDs:            envList("KRAKEN_APPLE_APP_IDS"),
 	}
 	// envInt falls back silently on anything it cannot parse, which is the
 	// wrong failure for a retention window: "90d", "ninety" or "-1" would leave
@@ -386,6 +421,11 @@ func Load() (*Config, error) {
 	// alternative is a Panel that looks configured for push and quietly sends
 	// nothing, which an operator finds out about the day an alert mattered.
 	if err := validatePushRelayURL(); err != nil {
+		return nil, err
+	}
+	// A malformed app ID would be served faithfully and never match, which an
+	// operator would only notice as a password manager that stays quiet.
+	if err := validateAppleAppIDs(c.AppleAppIDs); err != nil {
 		return nil, err
 	}
 	if len(c.SetupAllowedCIDRs) == 0 {

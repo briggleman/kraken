@@ -255,6 +255,20 @@ extra hop only matters if Cloudflare ever inserts an intermediate.
 the audit log once the Panel trusts its proxy: three sign-in attempts, each carrying the client's own address in the source column rather than the proxy's
 :::
 
+## The companion app's sign-in file
+
+Set `KRAKEN_APPLE_APP_IDS` and the Panel serves
+`/.well-known/apple-app-site-association`, which lets iCloud Keychain and
+1Password offer the Panel's saved sign-in inside the iOS companion app. Apple
+fetches that file from its own CDN, anonymously, over HTTPS, from the root of
+the domain the app names, and it does not follow redirects. So the proxy has to
+pass that exact path through to the Panel unchanged: no `http`→`https` or
+`www` redirect in front of it, no login wall, no rewrite. An orange-clouded
+Cloudflare record passing the request through is fine. Check it from outside
+your network with `curl -i https://kraken.example.com/.well-known/apple-app-site-association`,
+which should answer `200` with `Content-Type: application/json` on the first
+response, not after a `301`.
+
 ## While you are here
 
 An internet-reachable Panel wants three more things settled:

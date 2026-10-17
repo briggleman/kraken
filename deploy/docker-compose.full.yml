@@ -94,6 +94,10 @@ services:
       # Days of audit log to keep; a daily job deletes what is older, in
       # batches. 0 keeps every entry forever.
       KRAKEN_AUDIT_RETENTION_DAYS: ${KRAKEN_AUDIT_RETENTION_DAYS:-90}
+      # iOS app IDs (team ID + bundle ID) served in the Panel's
+      # apple-app-site-association file, so password managers offer its
+      # sign-in in the companion app. Empty serves a 404 there.
+      KRAKEN_APPLE_APP_IDS: ${KRAKEN_APPLE_APP_IDS:-}
     volumes:
       - panel-state:/var/lib/kraken
 

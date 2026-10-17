@@ -491,6 +491,12 @@ func (s *Server) routes() chi.Router {
 	r.Get("/readyz", s.handleHealth)
 	r.Get("/metrics", s.handleMetrics)
 
+	// Apple's credential association file — unauthenticated, because Apple's
+	// CDN fetches it anonymously. Registered whether or not any app IDs are
+	// configured, so an unconfigured Panel answers 404 here rather than letting
+	// the UI fallback below serve index.html at a path Apple parses as JSON.
+	r.Get(appleAppSiteAssociationPath, s.handleAppleAppSiteAssociation)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth: login is public; logout/me require a valid session. Public and
 		// password-checking, so it is rate limited per source IP — generously,
@@ -694,7 +700,8 @@ func (s *Server) routes() chi.Router {
 	})
 
 	// Embedded UI: catch-all handler under NotFound so it never shadows
-	// /api/v1/*, /healthz, /readyz, or /metrics (chi tries those first).
+	// /api/v1/*, /healthz, /readyz, /metrics, or the apple-app-site-association
+	// file (chi tries those first).
 	// The handler serves the built React bundle with SPA fallback so any
 	// client-router path (/servers/foo, /nodes, …) renders index.html.
 	ui := webui.Handler()

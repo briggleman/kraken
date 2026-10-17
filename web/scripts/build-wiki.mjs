@@ -277,6 +277,7 @@ const GROUP_TITLES = {
   AuditRetentionDays: "audit log",
   UpdateCheckInterval: "steam build check",
   PushRelayURL: "push alerts",
+  AppleAppIDs: "companion app sign-in",
 };
 const LOOSE_GROUPS = { KRAKEN_SECRETS_KEY: { title: "secrets at rest", after: "state on disk" } };
 

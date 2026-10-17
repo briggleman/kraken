@@ -347,3 +347,45 @@ func TestLoadPushRelay(t *testing.T) {
 		}
 	}
 }
+
+// The association file is off unless app IDs are named, and an entry Apple
+// could never match stops startup instead of being served and ignored.
+func TestLoadAppleAppIDs(t *testing.T) {
+	t.Setenv("KRAKEN_APPLE_APP_IDS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load rejected unset app IDs: %v", err)
+	}
+	if cfg.AppleAppSiteAssociationEnabled() || len(cfg.AppleAppIDs) != 0 {
+		t.Fatalf("the association file is on by default: %v", cfg.AppleAppIDs)
+	}
+
+	t.Setenv("KRAKEN_APPLE_APP_IDS", " HGMD87Q9KP.com.briggleman.kraken-companion , ,ABCDE12345.com.example.app-2 ")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load rejected valid app IDs: %v", err)
+	}
+	want := []string{"HGMD87Q9KP.com.briggleman.kraken-companion", "ABCDE12345.com.example.app-2"}
+	if !cfg.AppleAppSiteAssociationEnabled() || strings.Join(cfg.AppleAppIDs, "|") != strings.Join(want, "|") {
+		t.Fatalf("KRAKEN_APPLE_APP_IDS loaded as %v, want %v", cfg.AppleAppIDs, want)
+	}
+
+	for _, bad := range []string{
+		"com.briggleman.kraken-companion",   // bare bundle ID, no team
+		"hgmd87q9kp.com.briggleman.kraken",  // team IDs are upper case
+		"HGMD87Q9K.com.briggleman.kraken",   // nine-character team
+		"HGMD87Q9KP.",                       // team with no bundle
+		"HGMD87Q9KP.com..kraken",            // empty bundle component
+		"HGMD87Q9KP.com.briggleman.kraken/", // stray character
+	} {
+		t.Setenv("KRAKEN_APPLE_APP_IDS", bad)
+		_, err := Load()
+		if err == nil {
+			t.Errorf("Load accepted KRAKEN_APPLE_APP_IDS=%q", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "KRAKEN_APPLE_APP_IDS") {
+			t.Errorf("the error for %q does not name the variable: %v", bad, err)
+		}
+	}
+}

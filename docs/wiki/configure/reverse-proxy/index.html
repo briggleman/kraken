@@ -121,6 +121,7 @@
 <a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>
 <a class="toc-link lvl-3" href="#authenticated-origin-pulls">Authenticated Origin Pulls</a>
 <a class="toc-link lvl-2" href="#checking-your-work">Checking your work</a>
+<a class="toc-link lvl-2" href="#the-companion-app39s-sign-in-file">The companion app&#39;s sign-in file</a>
 <a class="toc-link lvl-2" href="#while-you-are-here">While you are here</a>
 </div></details>
     <article class="prose">
@@ -346,6 +347,18 @@ logging</a>.</li>
 </figure>
 
 
+<h2 id="the-companion-app39s-sign-in-file">The companion app&#39;s sign-in file <a class="hlink" href="#the-companion-app39s-sign-in-file" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Set <code>KRAKEN_APPLE_APP_IDS</code> and the Panel serves
+<code>/.well-known/apple-app-site-association</code>, which lets iCloud Keychain and
+1Password offer the Panel&#39;s saved sign-in inside the iOS companion app. Apple
+fetches that file from its own CDN, anonymously, over HTTPS, from the root of
+the domain the app names, and it does not follow redirects. So the proxy has to
+pass that exact path through to the Panel unchanged: no <code>http</code>→<code>https</code> or
+<code>www</code> redirect in front of it, no login wall, no rewrite. An orange-clouded
+Cloudflare record passing the request through is fine. Check it from outside
+your network with <code>curl -i https://kraken.example.com/.well-known/apple-app-site-association</code>,
+which should answer <code>200</code> with <code>Content-Type: application/json</code> on the first
+response, not after a <code>301</code>.</p>
 <h2 id="while-you-are-here">While you are here <a class="hlink" href="#while-you-are-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>An internet-reachable Panel wants three more things settled:</p>
 <ul>
@@ -386,6 +399,7 @@ firewall</a>.</li>
 <a class="toc-link lvl-2" href="#cloudflare-in-front">Cloudflare in front</a>
 <a class="toc-link lvl-3" href="#authenticated-origin-pulls">Authenticated Origin Pulls</a>
 <a class="toc-link lvl-2" href="#checking-your-work">Checking your work</a>
+<a class="toc-link lvl-2" href="#the-companion-app39s-sign-in-file">The companion app&#39;s sign-in file</a>
 <a class="toc-link lvl-2" href="#while-you-are-here">While you are here</a>
     </div>
   </aside>

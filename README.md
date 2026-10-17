@@ -46,7 +46,10 @@ _Screenshots to follow._
   phone and off until you configure a relay
   ([krakenserver.io/wiki/operate/alerts/](https://krakenserver.io/wiki/operate/alerts/)).
 - **Auth and RBAC.** argon2id passwords, four roles, per-server object-level
-  authorization, and AES-256-GCM encryption for every secret at rest.
+  authorization, and AES-256-GCM encryption for every secret at rest. New
+  accounts can be invited by email with a one-time link that lets the person
+  choose their own password, once an SMTP relay is configured
+  ([krakenserver.io/wiki/operate/users/](https://krakenserver.io/wiki/operate/users/)).
 - **Optional networking automation** with Cloudflare DNS and UniFi port
   forwards. Both degrade cleanly when unconfigured.
 
@@ -73,7 +76,7 @@ _Screenshots to follow._
 |---|---|
 | **Install** | [krakenserver.io/wiki/install/panel/](https://krakenserver.io/wiki/install/panel/) — Panel and Postgres in Docker Compose, Agents on bare metal |
 | **Configure** | [krakenserver.io/wiki/configure/panel/](https://krakenserver.io/wiki/configure/panel/) — every `KRAKEN_*` variable, generated from the source |
-| **Operate** | [krakenserver.io/wiki/operate/fleet/](https://krakenserver.io/wiki/operate/fleet/) — the fleet view, servers, files, backups, mods, the audit log, push alerts |
+| **Operate** | [krakenserver.io/wiki/operate/fleet/](https://krakenserver.io/wiki/operate/fleet/) — the fleet view, servers, files, backups, mods, the audit log, push alerts, users and invites |
 | **API** | [krakenserver.io/wiki/reference/api/](https://krakenserver.io/wiki/reference/api/) — generated from the OpenAPI document |
 
 ## Development

@@ -85,6 +85,7 @@
 <a class="nav-link" href="/wiki/operate/players/">Who is online</a>
 <a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
 <a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
+<a class="nav-link" href="/wiki/operate/users/">Users, roles and invites</a>
 </details>
 <details class="nav-sec" open>
 <summary><span class="nav-sec-t">game specs</span></summary>
@@ -139,6 +140,16 @@ and are deleted on expiry. Stored as a <strong>SHA-256 digest</strong> at rest â
 database dump cannot be replayed as live sessions.&quot; The session token never
 goes in a URL: the console WebSocket carries it in a subprotocol instead, and
 that rule &quot;remains absolute: a session credential never goes in a URL.&quot;</p>
+<p><strong>Account invites.</strong> The one credential that <em>does</em> travel in a URL is the
+one-time invite link, and it is built for that: 32 random bytes, good for 24
+hours, consumed by one <code>UPDATE â€¦ WHERE &lt;live&gt;</code> so a second redemption cannot
+also win, stored only as a SHA-256 digest like a session, and never written to
+an audit row (the row keeps the route pattern, not the path). The link is
+built from the configured public address, never from a request&#39;s <code>Host</code>
+header. The two routes that redeem it are unauthenticated and rate limited
+like download-token redemption, and every failure answers the same 404.
+Accepting an invite ends every other session of the account. The operator&#39;s
+view is <a href="/wiki/operate/users/">Users, roles and invites</a>.</p>
 <p><strong>Transport, Panel to Agent.</strong> &quot;mutual TLS with a pinned server name
 (<code>mtls.ClientTLS</code>); no <code>InsecureSkipVerify</code>. TLS 1.2 minimum.&quot; Identity is
 enforced in both directions: only the Panel may drive an Agent&#39;s gRPC listener,
@@ -149,8 +160,8 @@ certs, which is what it is for, and authorizes them by their per-node URI-SAN
 identity.</p>
 <p><strong>Secrets at rest.</strong> Every reversible secret the Panel persists is sealed with
 AES-256-GCM before it reaches Postgres: &quot;the Cloudflare API token, UniFi API
-key, the Agent-enrollment <strong>CA private key</strong>, and each node&#39;s <strong>SFTP backup
-credentials and Steam password</strong>&quot;. The master key is <code>KRAKEN_SECRETS_KEY</code>,
+key, the <strong>SMTP relay password</strong>, the Agent-enrollment <strong>CA private key</strong>, and
+each node&#39;s <strong>SFTP backup credentials and Steam password</strong>&quot;. The master key is <code>KRAKEN_SECRETS_KEY</code>,
 base64 of 32 bytes, or an auto-generated key persisted to the config file at
 mode <code>0600</code>, <strong>outside the database it protects</strong>. A startup warning names the
 auto-generated case.</p>

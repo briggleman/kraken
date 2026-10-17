@@ -55,16 +55,25 @@ sends nothing, keeps no queue, and changes nothing else: the devices API still
 answers, the app still registers, and the test alert says `disabled`.
 
 **Run it beside the Panel, listening on loopback.** The Panel is its only
-client, so nothing else needs to reach it, and an address on the same machine
-also keeps the request off the network. With the Panel running as a host
-process (systemd, or the Windows service), that is
-`KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:<port>`. With the Panel in a container,
-`127.0.0.1` is the container itself. Put the relay on the same compose network
-and name it by service (`http://kraken-relay:<port>`), or reach a relay on the
-host through `http://host.docker.internal:<port>` on Docker Desktop. A relay
-that only the Panel can reach needs no `KRAKEN_PUSH_RELAY_TOKEN`. If you set
-one anyway and the URL is plain `http://` to a name, the Panel warns at
-startup, because it cannot tell where a name resolves.
+client, so nothing else needs to reach it. The relay listens on
+`127.0.0.1:8787` by default, and it refuses to listen on any other address
+unless it has a token (`KRAKEN_RELAY_TOKEN`). Which address you use depends on
+where the Panel runs:
+
+- **The Panel runs as a host process** (systemd, or the Windows service): use
+  `KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:8787`. No token is needed.
+- **The Panel runs in a container on Docker Desktop:** `127.0.0.1` there is
+  the container itself. Run the relay on the host with its default address
+  and use `http://host.docker.internal:8787`; Docker Desktop forwards that to
+  the host's loopback. No token is needed.
+- **The Panel runs in a container on Linux:** run the relay in a container on
+  the same compose network with `KRAKEN_RELAY_ADDR=:8787`, and point the Panel
+  at its service name (`http://kraken-relay:8787`). Alternatively, run it on
+  the host bound to the Docker bridge address. Either way it is no longer on
+  loopback, so set `KRAKEN_RELAY_TOKEN` on the relay and the same value as
+  `KRAKEN_PUSH_RELAY_TOKEN` on the Panel. The Panel then warns at startup that
+  the token travels over plain `http://` to a name, because it cannot tell
+  where a name resolves. On a private compose network, ignore the warning.
 
 **The signing key lives on the relay's host and nowhere else.** The relay needs
 the APNs auth key file (`AuthKey_<Key ID>.p8`), its Key ID, the Team ID, and the

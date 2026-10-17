@@ -31,6 +31,8 @@ KRAKEN_PUSH_RELAY_TOKEN=…                        # only if your relay asks for
 ```
 
 Both are in the [Panel configuration reference](/wiki/configure/panel/#push-alerts).
+Where the relay runs and what it needs is under [running the
+relay](#running-the-relay), below.
 The Panel logs one line at startup saying whether alerts are on and which relay
 host it will use — never the token. If a token is set and the URL is plain
 `http://` to a host that is not this machine or a private address, it also warns
@@ -39,6 +41,70 @@ that the token would cross the network in the clear; use `https://`.
 Then sign in on the companion app and allow notifications. The app registers
 the phone with the Panel by itself, and keeps the registration fresh every time
 it starts.
+
+## Running the relay
+
+The relay is a small service of its own, apart from the Panel, and it exists
+for one reason. Apple delivers a notification only when the request is signed
+with an APNs auth key from the app's developer team, and that key cannot ship
+inside a self-hosted, GPL Panel that anyone can read. So the key stays with the
+relay, and the Panel hands the relay sealed alerts over plain HTTP.
+
+It is **strictly optional**. Leave `KRAKEN_PUSH_RELAY_URL` unset and the Panel
+sends nothing, keeps no queue, and changes nothing else: the devices API still
+answers, the app still registers, and the test alert says `disabled`.
+
+**Run it beside the Panel, listening on loopback.** The Panel is its only
+client, so nothing else needs to reach it, and an address on the same machine
+also keeps the request off the network. With the Panel running as a host
+process (systemd, or the Windows service), that is
+`KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:<port>`. With the Panel in a container,
+`127.0.0.1` is the container itself. Put the relay on the same compose network
+and name it by service (`http://kraken-relay:<port>`), or reach a relay on the
+host through `http://host.docker.internal:<port>` on Docker Desktop. A relay
+that only the Panel can reach needs no `KRAKEN_PUSH_RELAY_TOKEN`. If you set
+one anyway and the URL is plain `http://` to a name, the Panel warns at
+startup, because it cannot tell where a name resolves.
+
+**The signing key lives on the relay's host and nowhere else.** The relay needs
+the APNs auth key file (`AuthKey_<Key ID>.p8`), its Key ID, the Team ID, and the
+app's topic (its bundle id, `com.briggleman.kraken-companion` for the
+companion). Keep the `.p8` readable by the relay's user only. Do not commit it
+anywhere, bake it into an image, or hand it to the Panel: the Panel never sees
+it and has no variable for it. The relay's own README names its variables and
+ships its systemd unit.
+
+**One relay serves both kinds of build.** A phone running a build installed
+from Xcode has a sandbox push token; a TestFlight or App Store build has a
+production one. The app says which when it registers, and the Panel passes it
+on every request as `environment`, so the relay sends each alert to Apple's
+matching gateway. A sandbox token sent to the production gateway is refused as
+a bad token, which the Panel would record as a dead phone.
+
+**Check it end to end** after the relay is up and the Panel has restarted with
+the URL:
+
+1. The Panel's startup log says `push alerts on` with the relay's host. If it
+   says `push alerts off`, the variable did not reach the Panel.
+2. In the app's alerts sheet, send a test alert. It must answer `sent`, and
+   the phone must show `test alert from <your panel's host>` with the Kraken
+   title. A generic "Kraken alert" means the push reached the phone but the
+   app's alerts extension could not open the envelope, which is a problem in
+   the app (the extension cannot read the key the app registered), not in the
+   Panel or the relay.
+3. The [audit log](/wiki/operate/audit/) has a `push.sent` row for the test,
+   target the device.
+4. Optionally, prove that a dead token comes back: register a device with a
+   made-up push token (64 hex digits) through `POST /api/v1/devices` and send
+   it a test alert. Apple refuses a token it never issued (`BadDeviceToken`),
+   and the relay reports that to the Panel as `410`, so the test answers
+   `token_dead`, the audit row is `push.failed` with `410`, and the device now
+   has `token_invalid_at` set. Delete it afterwards with
+   `DELETE /api/v1/devices/<id>`.
+
+A run of `push.dropped` rows after this point means the Panel can no longer
+reach the relay (it stopped, or its address changed). Nothing is lost
+elsewhere: the Panel keeps running and drops each alert after two minutes.
 
 ## What you are told
 

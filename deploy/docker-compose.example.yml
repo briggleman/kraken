@@ -209,6 +209,11 @@ services:
       # in that one hands header-forging to your whole LAN.
       # KRAKEN_RATE_LIMIT_IP_SKIP: "192.168.65.1"
 
+      # Push alerts for the iOS companion, through the Kraken push relay. Run
+      # the relay beside the Panel; it holds the APNs signing key, the Panel
+      # never does. Unset = no alerts, nothing else changes.
+      # KRAKEN_PUSH_RELAY_URL: "http://127.0.0.1:8787"
+
       KRAKEN_QUICKSTART: "true"
       KRAKEN_LOCAL_AGENT_ADDR: 127.0.0.1:9090
     volumes:

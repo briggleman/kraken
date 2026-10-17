@@ -34,6 +34,7 @@ const (
 	DownloadRedeemBurstForTest = downloadRedeemBurst
 	LoginBurstForTest          = loginBurst
 	LoginUserBurstForTest      = loginUserBurst
+	MailSendBurstForTest       = mailSendBurst
 )
 
 // AuditPruneBatchForTest is how many rows one retention pass deletes per

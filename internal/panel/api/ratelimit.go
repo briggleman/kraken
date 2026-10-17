@@ -49,7 +49,20 @@ const (
 	// guessing.
 	loginUserPerMinute = 10
 	loginUserBurst     = 10
+	// mailSendPerMinute / Burst guard every email the Panel sends — a test
+	// message, an invite — under ONE key for the whole Panel, mailLimitKey.
+	// The limit is not on a caller; it is on the Panel's standing with the
+	// relay and with the recipients' providers, which a hijacked admin
+	// session could burn through as fast as a careless one. Ten a minute is
+	// several times what inviting a whole friend group takes, and a relay that
+	// sees a hundred a minute from a homelab Panel would rightly stop trusting
+	// it.
+	mailSendPerMinute = 10
+	mailSendBurst     = 10
 )
+
+// mailLimitKey is the one key the outbound-mail limiter spends from.
+const mailLimitKey = "panel"
 
 // rateLimiterMaxKeyLen bounds one key's contribution to the table. The
 // per-username limiter is keyed on a string an unauthenticated caller chose, up

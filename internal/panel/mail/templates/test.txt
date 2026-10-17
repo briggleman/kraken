@@ -1,0 +1,13 @@
+KRAKEN{{if .PanelHost}} · {{.PanelHost}}{{end}}
+
+Outbound email works.
+
+{{.Username}} sent this test from the Kraken panel{{if .PanelHost}} at
+{{.PanelHost}}{{end}} on {{.SentAt}}. It went through {{.Relay}}
+({{.Security}}). Account invites and anything else the panel sends will
+take the same route.
+
+If this landed in spam, the From domain is probably missing SPF, DKIM or
+DMARC records: see the Outbound email page in the Kraken wiki.
+
+Sent by the Kraken panel{{if .PanelHost}} at {{.PanelHost}}{{end}}.

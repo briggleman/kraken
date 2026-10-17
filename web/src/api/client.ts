@@ -492,11 +492,23 @@ export const api = {
     unifi_api_key?: string;
     unifi_site?: string;
     unifi_verify_tls?: boolean;
+    smtp_host?: string;
+    smtp_port?: number;
+    smtp_security?: "starttls" | "tls" | "none";
+    smtp_username?: string;
+    smtp_password?: string;
+    smtp_from?: string;
+    smtp_from_name?: string;
+    public_url?: string;
     session_ttl_seconds?: number;
     allowed_origins?: string[];
     bootstrap_disabled?: boolean;
   }): Promise<PanelSettings> {
     return request("PUT", "/settings", input);
+  },
+  /** Sends the test message through the stored relay; `to` defaults to the caller's own address. */
+  testSmtp(to?: string): Promise<{ sent_to: string; message_id: string; server_reply: string }> {
+    return request("POST", "/settings/smtp/test", to ? { to } : {});
   },
   testCloudflare(): Promise<{ zones: string[] | null }> {
     return request("POST", "/settings/cloudflare/test");

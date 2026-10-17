@@ -2,6 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://krakenserver.io/wiki/</loc></url>
   <url><loc>https://krakenserver.io/wiki/configure/agent/</loc></url>
+  <url><loc>https://krakenserver.io/wiki/configure/email/</loc></url>
   <url><loc>https://krakenserver.io/wiki/configure/limits-and-logging/</loc></url>
   <url><loc>https://krakenserver.io/wiki/configure/network/</loc></url>
   <url><loc>https://krakenserver.io/wiki/configure/panel/</loc></url>

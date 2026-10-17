@@ -100,6 +100,17 @@ export interface PanelSettings {
   unifi_url?: string;
   unifi_site?: string;
   unifi_verify_tls: boolean;
+  // outbound email: the password is write-only and never comes back
+  smtp_configured: boolean;
+  smtp_host?: string;
+  smtp_port: number;
+  smtp_security: "starttls" | "tls" | "none";
+  smtp_username?: string;
+  smtp_from?: string;
+  smtp_from_name?: string;
+  // the address people reach the panel at; the only source for links in email
+  public_url: string;
+  public_url_locked: boolean;
   session_ttl_seconds: number;
   session_ttl_locked: boolean;
   allowed_origins: string[] | null;

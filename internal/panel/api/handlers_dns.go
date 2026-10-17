@@ -14,6 +14,8 @@ import (
 
 	"github.com/briggleman/kraken/internal/panel/cloudflare"
 	"github.com/briggleman/kraken/internal/panel/cluster"
+	"github.com/briggleman/kraken/internal/panel/config"
+	"github.com/briggleman/kraken/internal/panel/mail"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/shared/spec"
 )
@@ -46,6 +48,20 @@ type settingsView struct {
 	UnifiSite            string `json:"unifi_site,omitempty"`
 	UnifiVerifyTLS       bool   `json:"unifi_verify_tls"`
 
+	// Outbound email. The password is never returned; smtp_configured says
+	// whether there is enough to send (a host and a from address).
+	SMTPConfigured bool   `json:"smtp_configured"`
+	SMTPHost       string `json:"smtp_host,omitempty"`
+	SMTPPort       int    `json:"smtp_port"`
+	SMTPSecurity   string `json:"smtp_security"`
+	SMTPUsername   string `json:"smtp_username,omitempty"`
+	SMTPFrom       string `json:"smtp_from,omitempty"`
+	SMTPFromName   string `json:"smtp_from_name,omitempty"`
+	// PublicURL is the effective public address (env or stored), and
+	// public_url_locked whether KRAKEN_PUBLIC_URL pins it.
+	PublicURL       string `json:"public_url"`
+	PublicURLLocked bool   `json:"public_url_locked"`
+
 	// Global runtime settings. Each *_locked flag is true when the equivalent env
 	// var is set, in which case the effective value comes from env (not the store)
 	// and the UI shows the field as read-only/ENV-MANAGED.
@@ -65,6 +81,16 @@ func (s *Server) toSettingsView(ctx context.Context, st *store.Settings) setting
 		UnifiURL:             st.UnifiURL,
 		UnifiSite:            st.UnifiSite,
 		UnifiVerifyTLS:       st.UnifiVerifyTLS,
+
+		SMTPConfigured:  mailConfig(st).Configured(),
+		SMTPHost:        st.SMTPHost,
+		SMTPPort:        mailPortOrDefault(st.SMTPPort),
+		SMTPSecurity:    string(mailConfig(st).Security),
+		SMTPUsername:    st.SMTPUsername,
+		SMTPFrom:        st.SMTPFrom,
+		SMTPFromName:    st.SMTPFromName,
+		PublicURL:       s.publicURL(ctx),
+		PublicURLLocked: s.cfg.PublicURLFromEnv,
 
 		SessionTTLSeconds:    int(s.sessionTTL(ctx) / time.Second),
 		SessionTTLLocked:     s.cfg.SessionTTLFromEnv,
@@ -111,6 +137,14 @@ type updatePanelSettingsRequest struct {
 	UnifiAPIKey        *string   `json:"unifi_api_key"`
 	UnifiSite          *string   `json:"unifi_site"`
 	UnifiVerifyTLS     *bool     `json:"unifi_verify_tls"`
+	SMTPHost           *string   `json:"smtp_host"`
+	SMTPPort           *int      `json:"smtp_port"`
+	SMTPSecurity       *string   `json:"smtp_security"`
+	SMTPUsername       *string   `json:"smtp_username"`
+	SMTPPassword       *string   `json:"smtp_password"`
+	SMTPFrom           *string   `json:"smtp_from"`
+	SMTPFromName       *string   `json:"smtp_from_name"`
+	PublicURL          *string   `json:"public_url"`
 	SessionTTLSeconds  *int      `json:"session_ttl_seconds"`
 	AllowedOrigins     *[]string `json:"allowed_origins"`
 	BootstrapDisabled  *bool     `json:"bootstrap_disabled"`
@@ -145,6 +179,47 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.UnifiVerifyTLS != nil {
 		st.UnifiVerifyTLS = *req.UnifiVerifyTLS
 	}
+	// Outbound email. Validated as one relay configuration once every field
+	// has been applied, so a save that leaves the whole inconsistent is
+	// refused before it is stored.
+	if req.SMTPHost != nil {
+		st.SMTPHost = strings.TrimSpace(*req.SMTPHost)
+	}
+	if req.SMTPPort != nil {
+		st.SMTPPort = *req.SMTPPort
+	}
+	if req.SMTPSecurity != nil {
+		sec, ok := mail.ParseSecurity(*req.SMTPSecurity)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "smtp_security must be starttls, tls or none")
+			return
+		}
+		st.SMTPSecurity = string(sec)
+	}
+	if req.SMTPUsername != nil {
+		st.SMTPUsername = strings.TrimSpace(*req.SMTPUsername)
+	}
+	if req.SMTPPassword != nil {
+		st.SMTPPassword = *req.SMTPPassword
+	}
+	if req.SMTPFrom != nil {
+		st.SMTPFrom = strings.TrimSpace(*req.SMTPFrom)
+	}
+	if req.SMTPFromName != nil {
+		st.SMTPFromName = strings.TrimSpace(*req.SMTPFromName)
+	}
+	if err := mailConfig(st).Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.PublicURL != nil && !s.cfg.PublicURLFromEnv {
+		u, err := config.NormalizePublicURL(*req.PublicURL)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "public_url: "+err.Error())
+			return
+		}
+		st.PublicURL = u
+	}
 	// Global runtime settings — ignored when the equivalent env var locks them.
 	if req.SessionTTLSeconds != nil && !s.cfg.SessionTTLFromEnv {
 		secs := *req.SessionTTLSeconds
@@ -169,8 +244,25 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not save settings")
 		return
 	}
-	s.recordAuditDetail(r, http.StatusOK, "settings")
+	// A change to the relay settings is named in the audit log — a new
+	// password or host is how every future invite is routed — without saying
+	// what the values were.
+	action := "settings"
+	if req.SMTPHost != nil || req.SMTPPort != nil || req.SMTPSecurity != nil || req.SMTPUsername != nil ||
+		req.SMTPPassword != nil || req.SMTPFrom != nil || req.SMTPFromName != nil {
+		action = "settings:smtp"
+	}
+	s.recordAuditDetail(r, http.StatusOK, action)
 	writeJSON(w, http.StatusOK, s.toSettingsView(ctx, st))
+}
+
+// mailPortOrDefault is the port the view shows: the stored one, or the
+// submission port the mailer falls back to when none is stored.
+func mailPortOrDefault(p int) int {
+	if p == 0 {
+		return mail.DefaultPort
+	}
+	return p
 }
 
 // handleTestCloudflare verifies the stored token by listing the zones it can reach.

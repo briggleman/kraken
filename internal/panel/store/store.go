@@ -62,6 +62,27 @@ type Settings struct {
 	// operators who install a trusted cert should enable this to defeat MITM.
 	UnifiVerifyTLS bool `json:"unifi_verify_tls,omitempty"`
 
+	// Outbound email (SMTP), used for account invites and the test message
+	// the Integrations panel sends. SMTPHost empty means email is
+	// unconfigured; SMTPFrom is the bare sender address and SMTPFromName its
+	// display name. SMTPPassword is encrypted at rest. SMTPSecurity is one of
+	// "starttls" (default when empty), "tls" (implicit TLS, usually port 465)
+	// or "none" (a relay on your own network only).
+	SMTPHost     string `json:"smtp_host,omitempty"`
+	SMTPPort     int    `json:"smtp_port,omitempty"` // 0 → 587
+	SMTPSecurity string `json:"smtp_security,omitempty"`
+	SMTPUsername string `json:"smtp_username,omitempty"`
+	SMTPPassword string `json:"smtp_password,omitempty"`
+	SMTPFrom     string `json:"smtp_from,omitempty"`
+	SMTPFromName string `json:"smtp_from_name,omitempty"`
+
+	// PublicURL is the address people reach this Panel at
+	// (https://panel.example.com, an optional path prefix allowed). It is the
+	// only source for the links the Panel puts in email; the request's Host
+	// header is never used for that, since behind a proxy it is whatever the
+	// caller sent. KRAKEN_PUBLIC_URL overrides it and locks the UI field.
+	PublicURL string `json:"public_url,omitempty"`
+
 	// Global runtime settings. The equivalent env var overrides these and locks
 	// the field in the UI; a zero value means "use the built-in/config default".
 	SessionTTLSeconds int      `json:"session_ttl_seconds,omitempty"` // session lifetime; 0 → config default

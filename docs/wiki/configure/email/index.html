@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Outbound email — Kraken wiki</title>
+<meta name="description" content="The SMTP relay the Panel sends through — what it is used for, the settings and which security mode to pick, the public address every emailed link is built from, provider recipes, and the SPF, DKIM and DMARC checklist that keeps an invite out of the spam folder." />
+<link rel="canonical" href="https://krakenserver.io/wiki/configure/email/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/configure/email/" />
+<meta property="og:title" content="Outbound email — Kraken wiki" />
+<meta property="og:description" content="The SMTP relay the Panel sends through — what it is used for, the settings and which security mode to pick, the public address every emailed link is built from, provider recipes, and the SPF, DKIM and DMARC checklist that keeps an invite out of the spam folder." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Outbound email — Kraken wiki" />
+<meta name="twitter:description" content="The SMTP relay the Panel sends through — what it is used for, the settings and which security mode to pick, the public address every emailed link is built from, provider recipes, and the SPF, DKIM and DMARC checklist that keeps an invite out of the spam folder." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.66.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+<a class="nav-link is-here" href="/wiki/configure/email/" aria-current="page">Outbound email</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+<a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>configure</span><i aria-hidden="true">/</i><span aria-current="page">Outbound email</span></nav>
+    <h1>Outbound email</h1>
+    <p class="lede">The SMTP relay the Panel sends through — what it is used for, the settings and which security mode to pick, the public address every emailed link is built from, provider recipes, and the SPF, DKIM and DMARC checklist that keeps an invite out of the spam folder.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#what-it-is-used-for">What it is used for</a>
+<a class="toc-link lvl-2" href="#the-settings">The settings</a>
+<a class="toc-link lvl-3" href="#which-security-mode">Which security mode</a>
+<a class="toc-link lvl-3" href="#authentication">Authentication</a>
+<a class="toc-link lvl-2" href="#the-public-address">The public address</a>
+<a class="toc-link lvl-2" href="#provider-recipes">Provider recipes</a>
+<a class="toc-link lvl-2" href="#deliverability">Deliverability</a>
+<a class="toc-link lvl-2" href="#the-limit-on-sending">The limit on sending</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+</div></details>
+    <article class="prose">
+<p>The Panel can send email. It does so for exactly one thing today: inviting a
+person to an account with a link that lets them choose their own password,
+instead of an administrator handing one over. Nothing is sent until you
+configure a relay, and a Panel without one loses that convenience and nothing
+else.</p>
+<p>Everything on this page is set in the UI under <strong>console settings › email
+(smtp)</strong>, except the public address, which has an environment variable as well.</p>
+<h2 id="what-it-is-used-for">What it is used for <a class="hlink" href="#what-it-is-used-for" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>Account invites.</strong> Creating an account can send the new person a one-time
+link, good for 24 hours, that opens a set-password sheet on the Panel. The
+first password they choose is the only one that ever exists for the account.
+See <a href="/wiki/operate/users/">Users, roles and invites</a>.</li>
+<li><strong>The test message.</strong> The <em>send test email</em> button in the same panel sends
+one message through the stored settings and shows you what the relay
+answered, so you know the route works before you need it.</li>
+</ul>
+<p>That is the whole list. The Panel sends no digests, no alerts by email (alerts
+go to <a href="/wiki/operate/alerts/">the phone</a>), and nothing to anyone who was not
+just invited by an administrator.</p>
+<h2 id="the-settings">The settings <a class="hlink" href="#the-settings" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>field</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>relay host</strong></td>
+<td>the SMTP server&#39;s hostname or address, with no scheme and no port</td>
+</tr>
+<tr>
+<td><strong>port</strong></td>
+<td>587 for STARTTLS (the usual submission port), 465 for implicit TLS, 25 only for a relay on your own network</td>
+</tr>
+<tr>
+<td><strong>security</strong></td>
+<td><code>starttls</code>, <code>tls</code> or <code>none</code> (see below)</td>
+</tr>
+<tr>
+<td><strong>username</strong> / <strong>password</strong></td>
+<td>the relay login. Leave the username empty for a relay that takes mail from your network without one. The password is stored encrypted and never shown again</td>
+</tr>
+<tr>
+<td><strong>from address</strong></td>
+<td>the bare address messages come from, such as <code>kraken@example.com</code>. It has to be one the relay lets you send as</td>
+</tr>
+<tr>
+<td><strong>from name</strong></td>
+<td>the display name beside it. Default <code>Kraken</code></td>
+</tr>
+</tbody></table>
+</div>
+<p>The password is sealed with the Panel&#39;s secrets key before it reaches the
+database, the same as the Cloudflare and UniFi credentials: see
+<a href="/wiki/security/">Security</a>.</p>
+<h3 id="which-security-mode">Which security mode <a class="hlink" href="#which-security-mode" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<ul>
+<li><strong><code>starttls</code></strong> opens a plain connection and upgrades it before a word of
+the message is said. The upgrade is <strong>required</strong>: a relay that does not offer
+STARTTLS is refused, never spoken to in the clear. This is the right choice
+for every provider on port 587.</li>
+<li><strong><code>tls</code></strong> is encrypted from the first byte, usually on port 465. Pick it when
+the provider&#39;s instructions say &quot;SSL&quot; or name port 465.</li>
+<li><strong><code>none</code></strong> talks in the clear. It exists for a relay on your own network, say
+a Postfix on the same host that already knows how to deliver. The UI says so
+in violet, because a login sent over it would travel in plaintext, and the
+Panel refuses to send one that way unless the relay is this very host.</li>
+</ul>
+<p>The relay&#39;s certificate is always verified against the system roots. There is
+no &quot;skip verification&quot; switch, on purpose: a mail relay with a bad certificate
+is a relay you should not be giving a password to.</p>
+<h3 id="authentication">Authentication <a class="hlink" href="#authentication" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<p>The Panel speaks <code>PLAIN</code>, <code>CRAM-MD5</code> and <code>LOGIN</code>, and picks the strongest one
+the relay offers, in that order. Microsoft 365 and a number of appliances offer
+only <code>LOGIN</code>, which is why it is there. OAuth-based mechanisms are not
+supported; use an app password instead.</p>
+<h2 id="the-public-address">The public address <a class="hlink" href="#the-public-address" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A link in an email has to name the Panel, and the Panel has to be told its own
+name. That is the <strong>public address</strong> under <em>sessions &amp; security</em>, or the
+<code>KRAKEN_PUBLIC_URL</code> environment variable, which wins when set and locks the
+field. It is an absolute <code>https://</code> address, with an optional path prefix if
+the Panel lives under one, and no query string.</p>
+<aside class="callout is-note">
+<span class="callout-k">note</span>
+<div class="callout-b"><p><strong>The Panel never builds a link from the address a request arrived on.</strong> Behind
+a proxy, the <code>Host</code> header is whatever the caller sent, and a password-setting
+link built from it would point wherever an attacker chose. Set the public
+address once and every emailed link comes from it. The UI will suggest the
+address when your allowed WebSocket origins list holds exactly one entry.</p>
+</div>
+</aside>
+
+
+<p>An <code>http://</code> address works, and the UI points out that the one-time token in an
+invite link then travels in the clear.</p>
+<h2 id="provider-recipes">Provider recipes <a class="hlink" href="#provider-recipes" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Any provider&#39;s &quot;SMTP settings for a mail client&quot; page is what you want: the
+Panel is a mail client as far as the relay is concerned.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>provider</th>
+<th>host</th>
+<th>port / security</th>
+<th>login</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Google Workspace / Gmail</td>
+<td><code>smtp.gmail.com</code></td>
+<td>587 <code>starttls</code></td>
+<td>the address, and an <strong>app password</strong> (2-step verification has to be on)</td>
+</tr>
+<tr>
+<td>Microsoft 365</td>
+<td><code>smtp.office365.com</code></td>
+<td>587 <code>starttls</code></td>
+<td>the mailbox, and an app password; <em>authenticated SMTP</em> has to be enabled for the mailbox</td>
+</tr>
+<tr>
+<td>Fastmail</td>
+<td><code>smtp.fastmail.com</code></td>
+<td>465 <code>tls</code></td>
+<td>the address, and an app password</td>
+</tr>
+<tr>
+<td>Postmark</td>
+<td><code>smtp.postmarkapp.com</code></td>
+<td>587 <code>starttls</code></td>
+<td>the server API token as both username and password</td>
+</tr>
+<tr>
+<td>Amazon SES</td>
+<td><code>email-smtp.&lt;region&gt;.amazonaws.com</code></td>
+<td>587 <code>starttls</code></td>
+<td>the SMTP credentials SES generates (not your IAM keys)</td>
+</tr>
+<tr>
+<td>Mailgun</td>
+<td><code>smtp.mailgun.org</code></td>
+<td>587 <code>starttls</code></td>
+<td>the domain&#39;s SMTP login</td>
+</tr>
+<tr>
+<td>a Postfix on this host</td>
+<td><code>127.0.0.1</code></td>
+<td>25 <code>none</code></td>
+<td>none</td>
+</tr>
+</tbody></table>
+</div>
+<p>The transactional services (Postmark, SES, Mailgun) are the easy path to a
+sending domain that is properly set up, because they walk you through the DNS
+records below as part of adding the domain.</p>
+<h2 id="deliverability">Deliverability <a class="hlink" href="#deliverability" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A homelab Panel&#39;s invite is a message from a domain nobody has heard of, and
+the big providers will file it as spam unless the domain vouches for it. What
+the From domain needs:</p>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>Send from a domain you control</strong>, through a provider&#39;s submission port
+(587, STARTTLS). Do not run your own outbound MTA on a home connection:
+residential addresses are blocked on port 25 by most ISPs and have no
+reputation to send with.</li>
+<li><input disabled="" type="checkbox"> <strong>SPF</strong>: a <code>TXT</code> record on the From domain naming the provider&#39;s
+senders, <code>v=spf1 include:&lt;the provider&#39;s spf record&gt; -all</code> (or <code>~all</code>). Stay
+under SPF&#39;s limit of ten DNS lookups.</li>
+<li><input disabled="" type="checkbox"> <strong>DKIM</strong>: publish the provider&#39;s selector record,
+<code>&lt;selector&gt;._domainkey.&lt;domain&gt;</code>, and check that the provider signs with
+<code>d=</code> your From domain rather than its own.</li>
+<li><input disabled="" type="checkbox"> <strong>DMARC</strong>: a <code>TXT</code> at <code>_dmarc.&lt;domain&gt;</code> reading
+<code>v=DMARC1; p=none; rua=mailto:&lt;a mailbox of yours&gt;</code> to start, moved to
+<code>p=quarantine</code> once a few reports come back clean.</li>
+<li><input disabled="" type="checkbox"> <strong>Alignment</strong>: the header From domain, the envelope sender (the
+<code>Return-Path</code>) and the DKIM <code>d=</code> have to be the same organisational domain.
+A From of <code>kraken@home.example</code> relayed by a provider that signs as
+<code>provider.example</code> fails DMARC even with SPF and DKIM both passing.</li>
+<li><input disabled="" type="checkbox"> <strong>A mailbox that exists</strong> at the From address, or at least one that
+accepts bounces. People reply to invites.</li>
+<li><input disabled="" type="checkbox"> <strong>Check it</strong>: send a test message to a Gmail and an Outlook address and
+read <code>Authentication-Results:</code> in the raw headers. You want
+<code>spf=pass dkim=pass dmarc=pass</code>. mail-tester.com gives the same reading with
+a score.</li>
+</ul>
+<p>What the Panel tells you: the test message&#39;s result line carries the relay&#39;s
+final reply and the <code>Message-ID</code> it stamped, which is what you match against a
+bounce or the relay&#39;s own log. DNS is the operator&#39;s side; the Panel does not
+look it up for you, because a LAN-first Panel must not depend on outbound DNS
+to say whether its own settings are correct.</p>
+<h2 id="the-limit-on-sending">The limit on sending <a class="hlink" href="#the-limit-on-sending" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Every message the Panel sends, a test or an invite, spends from <strong>one budget
+for the whole Panel</strong>: ten a minute. The limit is not on any caller; it is on
+the Panel&#39;s standing with the relay and with the recipients&#39; providers, which a
+hijacked administrator session could burn through as fast as a careless one.
+It is on under <code>KRAKEN_RATE_LIMITS=all</code> and off under every narrower setting;
+see <a href="/wiki/configure/limits-and-logging/">limits and logging</a>.</p>
+<h2 id="in-the-audit-log">In the audit log <a class="hlink" href="#in-the-audit-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>action</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>settings:smtp</code></td>
+<td>the relay settings were saved (never what they were saved to)</td>
+</tr>
+<tr>
+<td><code>mail.test:&lt;address&gt;</code></td>
+<td>a test message was sent to that address; the row&#39;s status is 200 when the relay took it, 424 when it refused</td>
+</tr>
+</tbody></table>
+</div>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/configure/limits-and-logging/"><span class="pg-k">previous</span><span class="pg-t">Limits and logging</span></a>
+      <a class="pg next" href="/wiki/operate/fleet/"><span class="pg-k">next</span><span class="pg-t">The fleet view<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/configure/email.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/configure/email.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#what-it-is-used-for">What it is used for</a>
+<a class="toc-link lvl-2" href="#the-settings">The settings</a>
+<a class="toc-link lvl-3" href="#which-security-mode">Which security mode</a>
+<a class="toc-link lvl-3" href="#authentication">Authentication</a>
+<a class="toc-link lvl-2" href="#the-public-address">The public address</a>
+<a class="toc-link lvl-2" href="#provider-recipes">Provider recipes</a>
+<a class="toc-link lvl-2" href="#deliverability">Deliverability</a>
+<a class="toc-link lvl-2" href="#the-limit-on-sending">The limit on sending</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.66.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

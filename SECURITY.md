@@ -163,7 +163,8 @@ warning is logged when the key was auto-generated, nudging operators to set
   (`store.HashToken`), lookups hash the incoming bearer. A DB dump yields no usable
   tokens. (Pre-existing plaintext sessions stop validating after upgrade — users
   simply re-login.)
-- **Reversible secrets** — the Cloudflare API token, UniFi API key, the Agent-
+- **Reversible secrets** — the Cloudflare API token, UniFi API key, the **SMTP
+  relay password** (outbound email, 2026-10-17), the Agent-
   enrollment **CA private key**, and each node's **SFTP backup credentials and
   Steam password** (per-node config: SFTP password, SFTP private key, Steam
   password) are sealed with **AES-256-GCM** (random nonce per value) before they

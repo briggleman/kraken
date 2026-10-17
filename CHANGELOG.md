@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.0](https://github.com/briggleman/kraken/compare/v0.65.2...v0.66.0) (2026-10-17)
+
+
+### Features
+
+* **panel:** serve apple-app-site-association for ios password autofill ([#447](https://github.com/briggleman/kraken/issues/447)) ([54d7585](https://github.com/briggleman/kraken/commit/54d7585c291da524aba5d2bb0336e56d43d14fff))
+
 ## [0.65.2](https://github.com/briggleman/kraken/compare/v0.65.1...v0.65.2) (2026-10-15)
 
 

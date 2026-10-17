@@ -160,16 +160,26 @@ relay, and the Panel hands the relay sealed alerts over plain HTTP.</p>
 sends nothing, keeps no queue, and changes nothing else: the devices API still
 answers, the app still registers, and the test alert says <code>disabled</code>.</p>
 <p><strong>Run it beside the Panel, listening on loopback.</strong> The Panel is its only
-client, so nothing else needs to reach it, and an address on the same machine
-also keeps the request off the network. With the Panel running as a host
-process (systemd, or the Windows service), that is
-<code>KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:&lt;port&gt;</code>. With the Panel in a container,
-<code>127.0.0.1</code> is the container itself. Put the relay on the same compose network
-and name it by service (<code>http://kraken-relay:&lt;port&gt;</code>), or reach a relay on the
-host through <code>http://host.docker.internal:&lt;port&gt;</code> on Docker Desktop. A relay
-that only the Panel can reach needs no <code>KRAKEN_PUSH_RELAY_TOKEN</code>. If you set
-one anyway and the URL is plain <code>http://</code> to a name, the Panel warns at
-startup, because it cannot tell where a name resolves.</p>
+client, so nothing else needs to reach it. The relay listens on
+<code>127.0.0.1:8787</code> by default, and it refuses to listen on any other address
+unless it has a token (<code>KRAKEN_RELAY_TOKEN</code>). Which address you use depends on
+where the Panel runs:</p>
+<ul>
+<li><strong>The Panel runs as a host process</strong> (systemd, or the Windows service): use
+<code>KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:8787</code>. No token is needed.</li>
+<li><strong>The Panel runs in a container on Docker Desktop:</strong> <code>127.0.0.1</code> there is
+the container itself. Run the relay on the host with its default address
+and use <code>http://host.docker.internal:8787</code>; Docker Desktop forwards that to
+the host&#39;s loopback. No token is needed.</li>
+<li><strong>The Panel runs in a container on Linux:</strong> run the relay in a container on
+the same compose network with <code>KRAKEN_RELAY_ADDR=:8787</code>, and point the Panel
+at its service name (<code>http://kraken-relay:8787</code>). Alternatively, run it on
+the host bound to the Docker bridge address. Either way it is no longer on
+loopback, so set <code>KRAKEN_RELAY_TOKEN</code> on the relay and the same value as
+<code>KRAKEN_PUSH_RELAY_TOKEN</code> on the Panel. The Panel then warns at startup that
+the token travels over plain <code>http://</code> to a name, because it cannot tell
+where a name resolves. On a private compose network, ignore the warning.</li>
+</ul>
 <p><strong>The signing key lives on the relay&#39;s host and nowhere else.</strong> The relay needs
 the APNs auth key file (<code>AuthKey_&lt;Key ID&gt;.p8</code>), its Key ID, the Team ID, and the
 app&#39;s topic (its bundle id, <code>com.briggleman.kraken-companion</code> for the

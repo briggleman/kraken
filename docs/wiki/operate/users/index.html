@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Users, roles and invites — Kraken wiki</title>
+<meta name="description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/users/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/users/" />
+<meta property="og:title" content="Users, roles and invites — Kraken wiki" />
+<meta property="og:description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Users, roles and invites — Kraken wiki" />
+<meta name="twitter:description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.66.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+<a class="nav-link" href="/wiki/configure/email/">Outbound email</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+<a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
+<a class="nav-link is-here" href="/wiki/operate/users/" aria-current="page">Users, roles and invites</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Users, roles and invites</span></nav>
+    <h1>Users, roles and invites</h1>
+    <p class="lede">The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#the-four-roles">The four roles</a>
+<a class="toc-link lvl-2" href="#creating-an-account">Creating an account</a>
+<a class="toc-link lvl-2" href="#what-the-invitee-sees">What the invitee sees</a>
+<a class="toc-link lvl-2" href="#the-rules">The rules</a>
+<a class="toc-link lvl-2" href="#when-the-email-does-not-go-out">When the email does not go out</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+</div></details>
+    <article class="prose">
+<p>Kraken is usually one operator and their own fleet, and that is the default
+install: the bootstrap admin is the only account. When other people need in —
+a friend who runs one of the servers, somebody who should only read the
+dashboard — they get accounts of their own, with a role that says what they
+may do, and a way to set a password that never passes through you.</p>
+<p>Everything on this page lives in the <strong>users</strong> sheet, reached from console
+settings › <em>users &amp; access</em> › <strong>manage users</strong>. It needs the <code>user.manage</code>
+permission, which Owner and Admin hold.</p>
+<h2 id="the-four-roles">The four roles <a class="hlink" href="#the-four-roles" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A user has exactly one role. Roles are sets of permissions; the built-in four
+cannot be edited yet (a role editor is tracked as #125).</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>role</th>
+<th>may</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Owner</strong></td>
+<td>everything, including settings, nodes, users and deletes</td>
+</tr>
+<tr>
+<td><strong>Admin</strong></td>
+<td>everything about servers, specs, nodes, backups and settings; manage users; read the audit log. Cannot act on owners</td>
+</tr>
+<tr>
+<td><strong>Operator</strong></td>
+<td>start, stop, restart, kill; console and command; files; backups; create servers; read specs and nodes. No settings, no users</td>
+</tr>
+<tr>
+<td><strong>Read-only</strong></td>
+<td>read the dashboard, the console and the specs; act on nothing</td>
+</tr>
+</tbody></table>
+</div>
+<p>Operators and read-only users are scoped to the servers they created unless a
+role grants <code>server.any</code>, which Owner and Admin have through their wildcards.
+The exact permission list is in
+<a href="https://github.com/briggleman/kraken/blob/main/internal/panel/rbac/rbac.go"><code>internal/panel/rbac/rbac.go</code></a>,
+and the users sheet&#39;s legend restates it in a sentence each.</p>
+<h2 id="creating-an-account">Creating an account <a class="hlink" href="#creating-an-account" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The create form at the bottom of the sheet has two modes.</p>
+<p><strong>A one-time password, shown once.</strong> The default, and the only mode until
+outbound email is configured. Your browser mints a strong random password,
+the account is created with it, and the password is shown to you exactly once.
+Copy it and hand it to the person however you hand people secrets; the Panel
+never shows it again. The <strong>reset</strong> action on a row mints a new one the same
+way.</p>
+<p><strong>An emailed invite.</strong> Once a relay and a public address are configured
+(<a href="/wiki/configure/email/">outbound email</a>) and you have typed an email
+address, a toggle appears — <em>send an invite instead of a one-time password</em>,
+on by default — and the button reads <strong>send invite</strong>. The account is created
+with a password nobody knows, and the person is emailed a link that lets them
+choose their own. Nobody, you included, ever sees a password for the account
+before they do.</p>
+<p>The invite email names you (the account that sent it), the username, the
+role, the Panel&#39;s public host, and when the link stops working. It is sent
+as text and as HTML, from the address configured as the relay&#39;s sender.</p>
+<h2 id="what-the-invitee-sees">What the invitee sees <a class="hlink" href="#what-the-invitee-sees" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The link opens the Panel on a sheet of its own: <em>Welcome aboard, captain</em> —
+the panel, the role, the time left — and two password fields with the same
+twelve-character floor and strength meter the first-run rotation uses. The
+token leaves the address bar the moment the page loads, so it does not sit in
+the browser history. Setting the password signs them straight in: the Panel
+answers with a session the way login does, and they land on the pane.</p>
+<p>A link that is no longer good — used, expired, revoked, or replaced by a newer
+one — opens one message: <em>this invite link is not valid any more … ask the
+person who invited you to send a new link.</em> Every reason reads the same, so a
+wrong link teaches nothing about the account behind it.</p>
+<h2 id="the-rules">The rules <a class="hlink" href="#the-rules" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li>A link is good for <strong>24 hours</strong> from when it was sent.</li>
+<li>It works <strong>once</strong>. Accepting it consumes it; a second use of the same link
+is refused.</li>
+<li>An account has <strong>one open invite at a time</strong>. <strong>Resend</strong> mints a new link
+and emails it; the old one stops working the moment the new one is sent.
+One resend per account per minute, so a double-click does not send the
+same person two emails.</li>
+<li><strong>Revoke</strong> kills the open link without touching the account. The account
+stays, with a password nobody knows, until you resend or reset.</li>
+<li>Disabling the account revokes its invite; deleting the account deletes it.</li>
+<li>Until the invite is accepted, a sign-in attempt for the account gets the
+ordinary &quot;that username and password do not match&quot; — the account is not
+described any differently from any other.</li>
+<li>Accepting the invite <strong>ends every other session</strong> the account had. There
+should not be any; if there were, they do not survive the person proving
+the mailbox.</li>
+<li>The link is stored only as a digest, like a session. A copy of the
+database holds nothing anyone could redeem.</li>
+</ul>
+<p>The users sheet shows an open invite as a chip on the row — <code>invited · 23h left</code>, <code>invite expired</code>, or <code>invite failed</code> — with <strong>resend</strong> and <strong>revoke</strong>
+beside it. The chip disappears when the invite is accepted.</p>
+<h2 id="when-the-email-does-not-go-out">When the email does not go out <a class="hlink" href="#when-the-email-does-not-go-out" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>If the relay refuses the message after the account has been created, the
+sheet says so, the account stays, and the row shows <code>invite failed</code> with a
+<strong>resend</strong> action. Fix whatever the relay said (the sentence is the relay&#39;s
+own, passed through) under <a href="/wiki/configure/email/">outbound email</a>, send a
+test message to yourself, and then <strong>resend</strong>. Nothing about the account needs
+to be redone.</p>
+<p>An account whose invite has <strong>expired</strong> is the same story without the error:
+<strong>resend</strong> mints a fresh 24 hours.</p>
+<h2 id="in-the-audit-log">In the audit log <a class="hlink" href="#in-the-audit-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>action</th>
+<th>actor</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>invite.sent:&lt;username&gt;</code></td>
+<td>the admin</td>
+<td>an account was created with an invite; status 201, or 424 when the relay refused</td>
+</tr>
+<tr>
+<td><code>invite.resent:&lt;username&gt;</code></td>
+<td>the admin</td>
+<td>a new link was sent; status 200, or 424</td>
+</tr>
+<tr>
+<td><code>invite.revoked:&lt;username&gt;</code></td>
+<td>the admin</td>
+<td>the open link was killed</td>
+</tr>
+<tr>
+<td><code>invite.accepted</code></td>
+<td><strong>the new user</strong></td>
+<td>the password was set and the person signed in — their first row in the log</td>
+</tr>
+<tr>
+<td><code>/invites/{token} — rate limited (…)</code></td>
+<td>anonymous</td>
+<td>too many link lookups from one address; one row per address per window, never one per request</td>
+</tr>
+</tbody></table>
+</div>
+<p>The path recorded for an invite route is the route pattern, never the path the
+request arrived on: that path <em>is</em> the token, and a row that kept it would
+hand a live link to anyone who can read the log.</p>
+<h2 id="what-is-not-here">What is not here <a class="hlink" href="#what-is-not-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>Self-service password reset by email.</strong> Deliberately. The threat model of
+&quot;anyone who can type an email address can make the Panel send mail about
+it&quot; is a different one from &quot;an administrator decided to invite someone&quot;,
+and it needs its own thinking about enumeration and timing. An operator
+who has lost their password asks an admin to <strong>reset</strong> it, or an admin who
+has lost theirs uses the bootstrap path described under
+<a href="/wiki/install/panel/">installing the Panel</a>.</li>
+<li><strong>Changing an email address with re-verification.</strong> Changing the address on
+a row is an edit, nothing more.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/alerts/"><span class="pg-k">previous</span><span class="pg-t">Push alerts</span></a>
+      <a class="pg next" href="/wiki/specs/"><span class="pg-k">next</span><span class="pg-t">The spec catalog<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/users.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/users.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#the-four-roles">The four roles</a>
+<a class="toc-link lvl-2" href="#creating-an-account">Creating an account</a>
+<a class="toc-link lvl-2" href="#what-the-invitee-sees">What the invitee sees</a>
+<a class="toc-link lvl-2" href="#the-rules">The rules</a>
+<a class="toc-link lvl-2" href="#when-the-email-does-not-go-out">When the email does not go out</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.66.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

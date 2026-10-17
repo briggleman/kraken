@@ -1034,3 +1034,83 @@ vector, the relay client's retry, drop, `410` and redirect paths),
 (`TestPostgresDeviceTokenEncryptionAtRest`) and `cmd/panel`
 (`TestInsecureRelayToken`, `TestBuildAlertsLogsTheRelayHostOnly`), and by the
 end-to-end drill on the fake-live stack recorded in the phase 5 PR.
+
+## Outbound email and account invites (2026-10-17)
+
+Issue #451; shipped as #452 (the mailer), #453 (invites), #454 (the web side)
+and the docs PR that closes it. The Panel can now send email through an
+operator-configured SMTP relay, and uses it for one thing: inviting a person
+to an account with a one-time link that lets them choose their own password.
+
+**What the relay gets.** `internal/panel/mail`, the standard library's
+`net/smtp`. Three modes: `starttls` (default; the upgrade is *required* — a
+relay that does not offer STARTTLS is refused, never spoken to in the clear),
+`tls` (implicit), `none` (own-network relays only; PLAIN and LOGIN refuse to
+send a password over it unless the relay is this host, net/smtp's own rule for
+PLAIN matched for LOGIN). Certificates verify against the system roots with
+TLS 1.2 minimum, and there is no skip switch; the `RootCAs` field exists so a
+test can present a self-signed relay. Every header value is refused if it
+holds CR or LF (`mail.Config.Validate`, `noLineBreaks`), so a display name or
+subject cannot inject a header. The relay password is sealed at rest with the
+other reversible secrets (`postgres.SaveSettings`), and the settings view never
+returns it (`handlers_dns.go`, `settingsView`; `TestSettings_SMTP_RoundTripNeverEchoesPassword`).
+
+**The public address.** Every link the Panel writes into email is built from
+`KRAKEN_PUBLIC_URL` or the stored `public_url`, validated by one function
+(`config.NormalizePublicURL`: absolute http(s), optional path prefix, no
+query, fragment or userinfo). **The request's `Host` header is never used**:
+behind a proxy it is whatever the caller sent, and a password-setting link
+built from it is the textbook host-header injection.
+`TestInvite_LinkIgnoresRequestHost` sends the create request with
+`Host: evil.example.net` and reads the link out of the captured email.
+
+**The invite token.** 32 bytes from `crypto/rand`, base64url, carried in the
+path of `/invite/{token}`, stored only as its SHA-256 digest
+(`user_invites.token_hash`, `store.HashToken`), 24 hours, single use. The
+consume is one `UPDATE … WHERE token_hash=$1 AND sent_at IS NOT NULL AND
+consumed_at IS NULL AND revoked_at IS NULL AND expires_at > $2`, so two
+redemptions racing cannot both succeed (`TestInvites_ConsumeIsSingleShot`
+runs sixteen at once against the memory store). A row whose send failed keeps
+`sent_at` NULL and is never redeemable. One open invite per user is a partial
+unique index; a resend revokes before it inserts. Disabling the user revokes;
+deleting the user cascades. Accepting ends every other session of the account
+(`SessionStore.DeleteSessionsByUser`) before minting the one it answers with.
+
+**The two unauthenticated routes.** `GET /invites/{token}` and
+`POST /invites/{token}/accept` carry no session — the token is the whole
+authority, as with download tokens — and are limited per client address by
+the `invite_redeem` limiter at the download budget (30/min, burst 10), under
+the same `downloads` switch. Every failure — unknown, expired, used, revoked,
+the account disabled or gone — answers the same 404 with the same sentence
+(`liveInvite`). A guessed-link flood leaves one audit row per address per
+window through the limiter's first-trip hook.
+
+**The token appears nowhere the Panel keeps.** An audit row records the
+request path, and on these routes the path *is* the token, so the rows for
+`invite.accepted` and the limiter's trip are written through
+`withoutInviteToken`, which substitutes the route pattern.
+`TestInvite_Lifecycle` reads the whole audit log back and asserts the token is
+not in it, then reads the store row and asserts it holds a 64-hex digest that
+is not the token. Refusals are `Debug` log lines; the Panel logs the invitee's
+username on acceptance and never the link.
+
+**Outbound-mail budget.** Every message — a test, an invite — spends from one
+Panel-wide limiter, `mail_send`, 10/min burst 10. It is not a limit on any
+caller: it bounds what a hijacked administrator session (or a careless one)
+can do to the operator's domain reputation with the relay. On under
+`KRAKEN_RATE_LIMITS=all` only.
+
+**Residual risks, accepted.**
+
+- An `http://` public address puts the token on the wire in the clear for
+  the one request that redeems it. The UI says so in the caution colour when
+  the address is saved; the Panel does not refuse it, because a LAN-only
+  Panel with no certificate is a real deployment.
+- The email itself is as private as the recipient's mailbox and the relay's
+  logs. A 24-hour, single-use token is the mitigation; a shorter window
+  would turn an invite into a race against the recipient's inbox.
+- Self-service password reset by email is deliberately *not* built: it has
+  an enumeration and timing surface of its own ("anyone can make the Panel
+  send mail about any address") that an administrator-initiated invite does
+  not, and it would need the response-time floor gnzb's forgot-password form
+  carries. Tracked as a possible follow-up on #451.

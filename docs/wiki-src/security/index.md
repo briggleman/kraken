@@ -27,6 +27,17 @@ database dump cannot be replayed as live sessions." The session token never
 goes in a URL: the console WebSocket carries it in a subprotocol instead, and
 that rule "remains absolute: a session credential never goes in a URL."
 
+**Account invites.** The one credential that *does* travel in a URL is the
+one-time invite link, and it is built for that: 32 random bytes, good for 24
+hours, consumed by one `UPDATE … WHERE <live>` so a second redemption cannot
+also win, stored only as a SHA-256 digest like a session, and never written to
+an audit row (the row keeps the route pattern, not the path). The link is
+built from the configured public address, never from a request's `Host`
+header. The two routes that redeem it are unauthenticated and rate limited
+like download-token redemption, and every failure answers the same 404.
+Accepting an invite ends every other session of the account. The operator's
+view is [Users, roles and invites](/wiki/operate/users/).
+
 **Transport, Panel to Agent.** "mutual TLS with a pinned server name
 (`mtls.ClientTLS`); no `InsecureSkipVerify`. TLS 1.2 minimum." Identity is
 enforced in both directions: only the Panel may drive an Agent's gRPC listener,
@@ -38,8 +49,8 @@ identity.
 
 **Secrets at rest.** Every reversible secret the Panel persists is sealed with
 AES-256-GCM before it reaches Postgres: "the Cloudflare API token, UniFi API
-key, the Agent-enrollment **CA private key**, and each node's **SFTP backup
-credentials and Steam password**". The master key is `KRAKEN_SECRETS_KEY`,
+key, the **SMTP relay password**, the Agent-enrollment **CA private key**, and
+each node's **SFTP backup credentials and Steam password**". The master key is `KRAKEN_SECRETS_KEY`,
 base64 of 32 bytes, or an auto-generated key persisted to the config file at
 mode `0600`, **outside the database it protects**. A startup warning names the
 auto-generated case.

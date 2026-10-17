@@ -3,12 +3,15 @@ package api
 import (
 	"errors"
 	"net/http"
+	netmail "net/mail"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/briggleman/kraken/internal/panel/auth"
+	"github.com/briggleman/kraken/internal/panel/mail"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
 )
@@ -19,9 +22,20 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list users")
 		return
 	}
+	// One read for every open invite, so the list shows who has not chosen a
+	// password yet without a query per row.
+	invites := map[string]*store.Invite{}
+	if list, err := s.store.ListLatestInvites(r.Context()); err == nil {
+		for _, inv := range list {
+			invites[inv.UserID] = inv
+		}
+	}
+	now := time.Now()
 	views := make([]userView, 0, len(users))
 	for _, u := range users {
-		views = append(views, toUserView(u))
+		v := toUserView(u)
+		v.Invite = inviteViewOf(invites[u.ID], now)
+		views = append(views, v)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"users": views})
 }
@@ -45,6 +59,11 @@ type createUserRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	RoleID   string `json:"role_id"`
+	// Invite, when true, emails the new person a one-time link to choose
+	// their own password instead of taking one here. Password is then
+	// ignored; Email is required; outbound email and the public address
+	// must be configured (409 says which is missing).
+	Invite bool `json:"invite"`
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -53,22 +72,55 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.Username == "" || req.Password == "" || req.RoleID == "" {
+	if req.Username == "" || req.RoleID == "" || (req.Password == "" && !req.Invite) {
 		writeError(w, http.StatusBadRequest, "username, password and role_id are required")
 		return
 	}
 	ctx := r.Context()
+	var (
+		inviteCfg    mail.Config
+		invitePublic string
+	)
+	if req.Invite {
+		if _, err := netmail.ParseAddress(strings.TrimSpace(req.Email)); err != nil {
+			writeError(w, http.StatusBadRequest, "an invite needs an email address to go to")
+			return
+		}
+		var why string
+		inviteCfg, invitePublic, why = s.inviteReady(ctx)
+		if why != "" {
+			writeError(w, http.StatusConflict, why)
+			return
+		}
+	}
 	if _, err := s.store.GetRole(ctx, req.RoleID); err != nil {
 		writeError(w, http.StatusBadRequest, "unknown role")
 		return
 	}
-	hash, err := auth.HashPassword(req.Password)
+	password := req.Password
+	if req.Invite {
+		// The account exists before the person has chosen anything, so it
+		// gets a password nobody knows: 32 random bytes, hashed and dropped.
+		// The invite is the only way in until they set their own.
+		secret, err := auth.NewSessionToken()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not create user")
+			return
+		}
+		password = secret
+		// The send comes after the row is written; spend the budget first so
+		// a refused send does not leave an account nobody meant to create yet.
+		if s.rejectMailSend(w, r) {
+			return
+		}
+	}
+	hash, err := auth.HashPassword(password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not hash password")
 		return
 	}
 	u := &store.User{
-		ID: uuid.NewString(), Username: req.Username, Email: req.Email,
+		ID: uuid.NewString(), Username: req.Username, Email: strings.TrimSpace(req.Email),
 		PasswordHash: hash, RoleID: req.RoleID, CreatedAt: time.Now().UTC(),
 	}
 	if err := s.store.CreateUser(ctx, u); err != nil {
@@ -79,8 +131,26 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create user")
 		return
 	}
-	s.logger.Info("user created", "username", u.Username, "role", u.RoleID)
-	writeJSON(w, http.StatusCreated, toUserView(u))
+	s.logger.Info("user created", "username", u.Username, "role", u.RoleID, "invited", req.Invite)
+	if !req.Invite {
+		writeJSON(w, http.StatusCreated, toUserView(u))
+		return
+	}
+	view := toUserView(u)
+	inv, err := s.sendInvite(ctx, inviteCfg, invitePublic, u, userFrom(ctx))
+	view.Invite = inviteViewOf(inv, time.Now())
+	if err != nil {
+		// The account exists; the email did not go out. Say both, so the
+		// admin resends rather than creating the user a second time.
+		s.recordAuditDetail(r, statusUpstream, "invite.sent:"+u.Username)
+		writeJSON(w, statusUpstream, map[string]any{
+			"error": "the account was created but the invite email did not go out: " + err.Error() + " — fix the relay settings and use resend",
+			"user":  view,
+		})
+		return
+	}
+	s.recordAuditDetail(r, http.StatusCreated, "invite.sent:"+u.Username)
+	writeJSON(w, http.StatusCreated, view)
 }
 
 type updateUserRequest struct {
@@ -139,6 +209,14 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		if n > 0 {
 			s.logger.Info("push devices revoked: user disabled", "username", u.Username, "devices", n)
+		}
+		// An open invite is a way into a disabled account; close it too.
+		// (A live invite already refuses a disabled user; this keeps the row
+		// honest as well.)
+		if n, err := s.store.RevokeInvitesByUser(ctx, u.ID, time.Now().UTC()); err != nil {
+			s.logger.Warn("user disabled but their invite could not be revoked", "username", u.Username, "err", err)
+		} else if n > 0 {
+			s.logger.Info("invite revoked: user disabled", "username", u.Username)
 		}
 	}
 	writeJSON(w, http.StatusOK, toUserView(u))

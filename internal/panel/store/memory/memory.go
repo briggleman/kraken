@@ -26,6 +26,7 @@ type Store struct {
 	schedules map[string]*store.ScheduledTask
 	auditLog  []*store.AuditEntry
 	sessions  map[string]*store.Session
+	invites   map[string]*store.Invite
 
 	// Self-generated Agent-enrollment CA (dev: regenerated each restart).
 	caCert []byte
@@ -56,6 +57,7 @@ func New() *Store {
 		servers:    make(map[string]*store.Server),
 		schedules:  make(map[string]*store.ScheduledTask),
 		sessions:   make(map[string]*store.Session),
+		invites:    make(map[string]*store.Invite),
 		nodeConfig: make(map[string]*store.NodeConfig),
 		devices:    make(map[deviceKey]*store.Device),
 	}
@@ -133,6 +135,11 @@ func (s *Store) DeleteUser(_ context.Context, id string) error {
 	for k := range s.devices {
 		if k.userID == id {
 			delete(s.devices, k)
+		}
+	}
+	for k, inv := range s.invites {
+		if inv.UserID == id {
+			delete(s.invites, k)
 		}
 	}
 	return nil
@@ -508,6 +515,18 @@ func (s *Store) DeleteSession(_ context.Context, token string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, store.HashToken(token))
+	return nil
+}
+
+// DeleteSessionsByUser ends every session of the user.
+func (s *Store) DeleteSessionsByUser(_ context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for h, sess := range s.sessions {
+		if sess.UserID == userID {
+			delete(s.sessions, h)
+		}
+	}
 	return nil
 }
 

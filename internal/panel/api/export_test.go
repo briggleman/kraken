@@ -35,7 +35,20 @@ const (
 	LoginBurstForTest          = loginBurst
 	LoginUserBurstForTest      = loginUserBurst
 	MailSendBurstForTest       = mailSendBurst
+	InviteRedeemBurstForTest   = inviteRedeemBurst
 )
+
+// SetInviteTimingForTest sets the invite TTL and the resend cooldown, so a
+// test can reach the expiry branch and send twice without waiting. The
+// returned func restores them.
+func SetInviteTimingForTest(ttl, cooldown time.Duration) func() {
+	oldTTL, oldCooldown := inviteTTL, inviteResendCooldown
+	inviteTTL, inviteResendCooldown = ttl, cooldown
+	return func() { inviteTTL, inviteResendCooldown = oldTTL, oldCooldown }
+}
+
+// PruneInvitesOnceForTest runs one invite housekeeping pass.
+func (s *Server) PruneInvitesOnceForTest(ctx context.Context) { s.pruneInvitesOnce(ctx) }
 
 // AuditPruneBatchForTest is how many rows one retention pass deletes per
 // statement, so a test can stage exactly one batch too many.

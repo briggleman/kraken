@@ -59,6 +59,12 @@ const (
 	// it.
 	mailSendPerMinute = 10
 	mailSendBurst     = 10
+	// inviteRedeemPerMinute / Burst guard GET /invites/{token} and its accept,
+	// which are reachable with no credentials at all (the token is the whole
+	// authority), the same shape as download-token redemption and with the
+	// same budget. A person opening their one link takes two of these.
+	inviteRedeemPerMinute = 30
+	inviteRedeemBurst     = 10
 )
 
 // mailLimitKey is the one key the outbound-mail limiter spends from.

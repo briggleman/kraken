@@ -155,6 +155,12 @@ login along a second axis that needs no address at all:</p>
 <td>10</td>
 </tr>
 <tr>
+<td>invite-link lookup and acceptance (<code>/invites/{token}</code>)</td>
+<td>client address</td>
+<td>30/min</td>
+<td>10</td>
+</tr>
+<tr>
 <td>outbound email (a test message, an invite)</td>
 <td>one key for the whole Panel</td>
 <td>10/min</td>
@@ -171,7 +177,11 @@ email</a>.</p>
 and a refused request does not consume future capacity.</p>
 <p>The download limit sits on the <strong>token branch</strong>, not on the route: a
 session-authenticated download is not what the limit is for, and an operator
-must not be refused for sharing a NAT address with somebody probing tokens. The
+must not be refused for sharing a NAT address with somebody probing tokens.
+The invite routes are the same kind of thing — a one-time token is the whole
+authority, there is no session to prefer — so they take the same budget and
+follow the same switch (<code>downloads</code>). A person opening their one link spends
+two of it. The
 login numbers are deliberately generous for the same reason — locking a team out
 of their own Panel is a worse failure than the guessing being slowed.</p>
 <p><strong>Keys are per client, and the client is resolved once.</strong> IPv4 is keyed per
@@ -319,8 +329,8 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.</p
 </tbody></table>
 </div>
 <p><code>kraken_rate_limited_total</code> carries a <code>limiter</code> label: <code>download</code>, <code>login</code> (the
-per-address one), <code>login_user</code> (the per-username one) and <code>mail_send</code> (the
-Panel-wide outbound-email budget). A spike on
+per-address one), <code>login_user</code> (the per-username one), <code>invite_redeem</code> (the
+invite-link routes) and <code>mail_send</code> (the Panel-wide outbound-email budget). A spike on
 <code>login_user</code> with nothing on <code>login</code> is somebody working through one account
 from many addresses — or from behind a NAT, where <code>login</code> cannot see them apart
 in the first place.</p>

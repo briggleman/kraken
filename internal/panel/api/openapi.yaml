@@ -1706,8 +1706,35 @@ paths:
       responses: { '200': { description: Users } }
     post:
       tags: [Users & Roles]
-      summary: Create a user
-      responses: { '201': { description: Created } }
+      summary: Create a user, with a password or with an emailed invite
+      description: >
+        With `invite: true` the person is emailed a one-time link, good for 24
+        hours, that opens the set-password sheet on the Panel; `password` is
+        ignored and `email` is required. Outbound email and the public address
+        must both be configured, or the request is refused with 409 and nothing
+        is created. If the account is created but the relay refuses the
+        message, the answer is 424 carrying the user (with `invite.state:
+        failed`), so the admin resends rather than creating the user twice.
+        Audited as `invite.sent:<username>`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, role_id]
+              properties:
+                username: { type: string }
+                email: { type: string }
+                password: { type: string, format: password, description: "Required unless invite is true" }
+                role_id: { type: string }
+                invite: { type: boolean, description: "Email a one-time set-password link instead of taking a password" }
+      responses:
+        '201': { description: Created (a UserView; with `invite` when one was sent) }
+        '400': { description: "Missing field, unknown role, or an invite without an email address" }
+        '409': { description: "Username taken, or an invite was asked for while outbound email or the public address is not configured" }
+        '424': { description: "Created, but the invite email did not go out; the body carries `user` with `invite.state: failed`" }
+        '429': { description: Outbound-mail limit reached (Retry-After set) }
   /users/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
     put:
@@ -1726,6 +1753,100 @@ paths:
   /users/{id}/password:
     parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
     post: { tags: [Users & Roles], summary: Reset a user's password, responses: { '200': { description: Reset } } }
+  /users/{id}/invite:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    post:
+      tags: [Users & Roles]
+      summary: Send (or send again) the account's invite
+      description: >
+        Mints a new one-time link and emails it; the previous invite stops
+        working. Refused with 409 for a disabled account, an account with no
+        email address, or while outbound email or the public address is not
+        configured. One send per account per minute (429 with Retry-After),
+        and every send spends from the Panel-wide outbound-mail budget.
+        Audited as `invite.resent:<username>`.
+      responses:
+        '200':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite: { $ref: '#/components/schemas/InviteView' }
+        '404': { description: User not found }
+        '409': { description: The account cannot be invited; the message says why }
+        '424': { description: "Recorded, but the relay did not take the message; the body carries `invite` with `state: failed`" }
+        '429': { description: Resend cooldown or outbound-mail limit (Retry-After set) }
+    delete:
+      tags: [Users & Roles]
+      summary: Revoke the account's open invite
+      description: The link stops working now; the account stays, locked, until a resend or a password reset. Audited as `invite.revoked:<username>`.
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked: { type: integer, description: How many open invites were closed (0 or 1) }
+        '404': { description: User not found }
+  /invites/{token}:
+    parameters: [ { name: token, in: path, required: true, schema: { type: string }, description: The one-time token from the emailed link } ]
+    get:
+      tags: [Users & Roles]
+      summary: Describe a live invite, for the set-password sheet
+      description: >
+        Unauthenticated; the token is the whole authority. Rate limited per
+        source address like download-token redemption. Every way the token
+        can be wrong — unknown, expired, used, revoked, the account disabled
+        or gone — answers the same 404, so a wrong link teaches nothing.
+      security: []
+      responses:
+        '200':
+          description: The invite is live
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username: { type: string }
+                  role_name: { type: string }
+                  panel_host: { type: string, description: "The Panel's public host, as the email named it" }
+                  expires_at: { type: string, format: date-time }
+        '404': { description: Not a live invite }
+        '429': { description: Too many lookups from this address (Retry-After set) }
+  /invites/{token}/accept:
+    parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+    post:
+      tags: [Users & Roles]
+      summary: Choose the account's password and sign in
+      description: >
+        Unauthenticated, limited like the lookup. The invite is consumed
+        exactly once (a second redemption of the same link is a 404), the
+        password is set, every session the account had is ended, and a fresh
+        session is answered with, as `POST /auth/login` does. Audited as
+        `invite.accepted` with the new user as the actor.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { description: Password too short }
+        '404': { description: Not a live invite }
+        '429': { description: Too many attempts from this address (Retry-After set) }
   /roles:
     get: { tags: [Users & Roles], summary: List roles, responses: { '200': { description: Roles } } }
   /permissions:
@@ -2183,6 +2304,14 @@ components:
       properties:
         username: { type: string }
         password: { type: string, format: password }
+    InviteView:
+      type: object
+      description: An account's open invite — present only while the person has not chosen a password yet.
+      properties:
+        state: { type: string, enum: [sent, expired, failed], description: "sent: live; expired: delivered but past its 24 hours; failed: the relay never took the message (resend to try again)" }
+        sent_to: { type: string }
+        sent_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
     LoginResponse:
       type: object
       properties:
@@ -2196,6 +2325,7 @@ components:
         username: { type: string }
         email: { type: string }
         role_id: { type: string }
+        invite: { $ref: '#/components/schemas/InviteView' }
         disabled: { type: boolean }
         must_change_password: { type: boolean }
     DeviceRegistration:

@@ -47,6 +47,27 @@ type TestData struct {
 	SentAt   string
 }
 
+// InviteData fills the account invite.
+type InviteData struct {
+	// Inviter is the administrator who created the account.
+	Inviter string
+	// Username and RoleName describe the account the person is stepping into.
+	Username string
+	RoleName string
+	// PanelHost is the Panel's public host; InviteURL the one-time link.
+	PanelHost string
+	InviteURL string
+	// ExpiresAt is the absolute expiry, written out ("18 Oct 2026, 19:40
+	// UTC"); ExpiresIn the same as a duration ("24 hours").
+	ExpiresAt string
+	ExpiresIn string
+}
+
+// InviteSubject is the subject of the invite.
+func InviteSubject(d InviteData) string {
+	return d.Inviter + " invited you to " + d.PanelHost
+}
+
 // TestSubject is the subject of the test message.
 func TestSubject(d TestData) string {
 	if d.PanelHost == "" {

@@ -1,0 +1,16 @@
+KRAKEN · {{.PanelHost}}
+
+{{.Inviter}} has set up an account for you.
+
+You can sign in to the Kraken panel at {{.PanelHost}} as {{.Username}}
+with the {{.RoleName}} role. Choose your password first:
+
+  {{.InviteURL}}
+
+The link works once and stops working at {{.ExpiresAt}}
+({{.ExpiresIn}} from when this was sent).
+
+Not expecting this? You can ignore it. Nothing happens until the link is
+used, and {{.Inviter}} can send a new one if this one runs out.
+
+Sent by the Kraken panel at {{.PanelHost}}.

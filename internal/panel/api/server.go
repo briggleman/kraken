@@ -115,6 +115,9 @@ type Server struct {
 	// whole Panel (see mailLimitKey): the limit is on the Panel's standing
 	// with the relay, not on any caller.
 	mailLimit *rateLimiter
+	// inviteLimit bounds the two unauthenticated invite routes per client
+	// address, as downloadLimit does for download tokens.
+	inviteLimit *rateLimiter
 
 	// mailer sends the Panel's email through the relay in the stored settings.
 	mailer *mail.Sender
@@ -219,7 +222,17 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 			cfg.LoginRateLimitsEnabled()),
 		// Raw keys: the one key is a word, not an address to normalize.
 		mailLimit: newUsernameLimiter("mail_send", mailSendPerMinute, mailSendBurst, cfg.MailRateLimitsEnabled()),
-		mailer:    &mail.Sender{},
+		// Invite redemption is token redemption, so it follows the download
+		// limiter's switch.
+		inviteLimit: newRateLimiter("invite_redeem", inviteRedeemPerMinute, inviteRedeemBurst,
+			cfg.DownloadRateLimitsEnabled()),
+		mailer: &mail.Sender{},
+	}
+	// A flood of guessed invite links never reaches a handler that audits,
+	// so the limiter leaves the row: once per client per window.
+	s.inviteLimit.onFirstTrip = func(r *http.Request) {
+		s.appendAudit(withoutInviteToken(r), http.StatusTooManyRequests, "anonymous",
+			"/invites/{token} — rate limited (too many invite lookups from this address)")
 	}
 	// A brute-force flood never reaches handleLogin, which is what audits a
 	// failed attempt — so the limiter leaves the row itself, once per client
@@ -511,6 +524,12 @@ func (s *Server) routes() chi.Router {
 		// of your own Panel is worse than the guessing being slowed.
 		r.With(s.limit(s.loginLimit)).Post("/auth/login", s.handleLogin)
 
+		// Account invites: the one-time link in the email is the whole
+		// authority, so these have no session. Limited per source address
+		// like download-token redemption.
+		r.With(s.limit(s.inviteLimit)).Get("/invites/{token}", s.handleGetInvite)
+		r.With(s.limit(s.inviteLimit)).Post("/invites/{token}/accept", s.handleAcceptInvite)
+
 		// Agent enrollment: authenticated by a one-time bootstrap token (the Agent
 		// has no session/cert yet), so this is intentionally outside requireAuth.
 		r.Post("/agents/enroll", s.handleEnroll)
@@ -681,6 +700,8 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermUserManage)).Put("/users/{id}", s.handleUpdateUser)
 			r.With(s.requirePermission(rbac.PermUserManage)).Post("/users/{id}/password", s.handleResetPassword)
 			r.With(s.requirePermission(rbac.PermUserManage)).Delete("/users/{id}", s.handleDeleteUser)
+			r.With(s.requirePermission(rbac.PermUserManage)).Post("/users/{id}/invite", s.handleSendInvite)
+			r.With(s.requirePermission(rbac.PermUserManage)).Delete("/users/{id}/invite", s.handleRevokeInvite)
 			r.With(s.requirePermission(rbac.PermUserManage)).Get("/roles", s.handleListRoles)
 			r.With(s.requirePermission(rbac.PermUserManage)).Get("/permissions", s.handleListPermissions)
 

@@ -27,6 +27,9 @@ type userView struct {
 	RoleID             string `json:"role_id"`
 	Disabled           bool   `json:"disabled"`
 	MustChangePassword bool   `json:"must_change_password"`
+	// Invite is the account's open invite, when it has one: a person who has
+	// not chosen a password yet. Absent otherwise.
+	Invite *inviteView `json:"invite,omitempty"`
 }
 
 func toUserView(u *store.User) userView {

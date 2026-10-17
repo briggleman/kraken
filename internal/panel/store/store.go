@@ -748,6 +748,72 @@ type SessionStore interface {
 	// it lets a caller holding only a session's identity — never its secret —
 	// ask whether that session is still alive.
 	SessionExistsByHash(ctx context.Context, hash string) (bool, error)
+	// DeleteSessionsByUser ends every session of the user. It is what an
+	// accepted invite does before minting the session it answers with: a
+	// password chosen through a link proves the mailbox, and no session from
+	// before that moment should outlive it.
+	DeleteSessionsByUser(ctx context.Context, userID string) error
+}
+
+// Invite is a one-time, expiring link that lets a newly created user choose
+// their own first password. The bearer token travels only in the email the
+// Panel sends; the row keeps its SHA-256 digest (TokenHash, see HashToken),
+// as sessions do, so a database dump holds no usable links. A user has at
+// most one open invite: sending again revokes the one before.
+type Invite struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	TokenHash string `json:"-"`
+	// SentTo is the address at send time; the user's email may change later.
+	SentTo string `json:"sent_to"`
+	// CreatedBy is the administrator who sent it, or "" once that account is gone.
+	CreatedBy string    `json:"created_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	// SentAt is when the relay took the message; nil means the send failed
+	// and the link was never delivered, so it can never be redeemed.
+	SentAt     *time.Time `json:"sent_at,omitempty"`
+	ConsumedAt *time.Time `json:"consumed_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+}
+
+// Live reports whether the invite can still be redeemed at now: delivered,
+// unused, not revoked, not expired.
+func (i *Invite) Live(now time.Time) bool {
+	return i.SentAt != nil && i.ConsumedAt == nil && i.RevokedAt == nil && now.Before(i.ExpiresAt)
+}
+
+// Open reports whether the invite is still the user's current one: neither
+// consumed nor revoked, whatever its delivery or expiry. An open invite is
+// what the Users sheet shows a chip for, and what a resend supersedes.
+func (i *Invite) Open() bool { return i.ConsumedAt == nil && i.RevokedAt == nil }
+
+// InviteStore persists account invites.
+type InviteStore interface {
+	// CreateInvite stores a new invite. The caller has already revoked the
+	// user's open ones: a user has at most one, and the store enforces it.
+	CreateInvite(ctx context.Context, inv *Invite) error
+	// MarkInviteSent records that the relay accepted the message.
+	MarkInviteSent(ctx context.Context, id string, at time.Time) error
+	// GetInviteByHash finds an invite by its token digest, in any state.
+	GetInviteByHash(ctx context.Context, hash string) (*Invite, error)
+	// LatestInviteByUser returns the user's newest invite in any state, or
+	// ErrNotFound when they never had one.
+	LatestInviteByUser(ctx context.Context, userID string) (*Invite, error)
+	// ListLatestInvites returns every user's newest invite — one read for
+	// the whole users list.
+	ListLatestInvites(ctx context.Context) ([]*Invite, error)
+	// ConsumeInvite marks the live invite with this digest consumed, exactly
+	// once: ErrNotFound when no live invite has it, including when a
+	// concurrent call got there first.
+	ConsumeInvite(ctx context.Context, hash string, at time.Time) error
+	// RevokeInvitesByUser marks every open invite of the user revoked and
+	// reports how many it closed.
+	RevokeInvitesByUser(ctx context.Context, userID string, at time.Time) (int64, error)
+	// DeleteInvitesBefore deletes invites that are no longer open, or have
+	// expired, and were created before the given time. Housekeeping; the
+	// audit log is the record.
+	DeleteInvitesBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
 // CAStore persists the Panel's self-generated Agent-enrollment CA (a single
@@ -783,6 +849,7 @@ type Store interface {
 	AuditStore
 	SessionStore
 	CAStore
+	InviteStore
 	SettingsStore
 	NodeSettingsStore
 	DeviceStore

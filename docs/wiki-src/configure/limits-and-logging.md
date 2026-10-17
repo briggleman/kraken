@@ -15,6 +15,7 @@ login along a second axis that needs no address at all:
 | download-token redemption | client address | 30/min | 10 |
 | `POST /auth/login` | client address | 20/min | 20 |
 | login + change-password **failures** | submitted username | 10/min | 10 |
+| invite-link lookup and acceptance (`/invites/{token}`) | client address | 30/min | 10 |
 | outbound email (a test message, an invite) | one key for the whole Panel | 10/min | 10 |
 
 The last one is different in kind: it is not a limit on a caller but on what
@@ -28,7 +29,11 @@ and a refused request does not consume future capacity.
 
 The download limit sits on the **token branch**, not on the route: a
 session-authenticated download is not what the limit is for, and an operator
-must not be refused for sharing a NAT address with somebody probing tokens. The
+must not be refused for sharing a NAT address with somebody probing tokens.
+The invite routes are the same kind of thing — a one-time token is the whole
+authority, there is no session to prefer — so they take the same budget and
+follow the same switch (`downloads`). A person opening their one link spends
+two of it. The
 login numbers are deliberately generous for the same reason — locking a team out
 of their own Panel is a worse failure than the guessing being slowed.
 
@@ -185,8 +190,8 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.
 | `kraken_rate_limited_total` | refusals, per limiter |
 
 `kraken_rate_limited_total` carries a `limiter` label: `download`, `login` (the
-per-address one), `login_user` (the per-username one) and `mail_send` (the
-Panel-wide outbound-email budget). A spike on
+per-address one), `login_user` (the per-username one), `invite_redeem` (the
+invite-link routes) and `mail_send` (the Panel-wide outbound-email budget). A spike on
 `login_user` with nothing on `login` is somebody working through one account
 from many addresses — or from behind a NAT, where `login` cannot see them apart
 in the first place.

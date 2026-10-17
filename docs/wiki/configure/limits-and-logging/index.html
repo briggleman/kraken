@@ -73,6 +73,7 @@
 <a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
 <a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
 <a class="nav-link is-here" href="/wiki/configure/limits-and-logging/" aria-current="page">Limits and logging</a>
+<a class="nav-link" href="/wiki/configure/email/">Outbound email</a>
 </details>
 <details class="nav-sec" open>
 <summary><span class="nav-sec-t">operate</span></summary>
@@ -153,8 +154,19 @@ login along a second axis that needs no address at all:</p>
 <td>10/min</td>
 <td>10</td>
 </tr>
+<tr>
+<td>outbound email (a test message, an invite)</td>
+<td>one key for the whole Panel</td>
+<td>10/min</td>
+<td>10</td>
+</tr>
 </tbody></table>
 </div>
+<p>The last one is different in kind: it is not a limit on a caller but on what
+the Panel sends, so that neither a careless administrator nor a hijacked
+session can spend the operator&#39;s domain reputation with the relay. It runs
+under <code>all</code> and under no narrower mode. See <a href="/wiki/configure/email/">outbound
+email</a>.</p>
 <p>A refusal is a <strong>429</strong> in the ordinary JSON error envelope with <code>Retry-After</code>,
 and a refused request does not consume future capacity.</p>
 <p>The download limit sits on the <strong>token branch</strong>, not on the route: a
@@ -307,7 +319,8 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.</p
 </tbody></table>
 </div>
 <p><code>kraken_rate_limited_total</code> carries a <code>limiter</code> label: <code>download</code>, <code>login</code> (the
-per-address one) and <code>login_user</code> (the per-username one). A spike on
+per-address one), <code>login_user</code> (the per-username one) and <code>mail_send</code> (the
+Panel-wide outbound-email budget). A spike on
 <code>login_user</code> with nothing on <code>login</code> is somebody working through one account
 from many addresses — or from behind a NAT, where <code>login</code> cannot see them apart
 in the first place.</p>
@@ -328,7 +341,7 @@ limiter, with one client address behind it, is worth reading the audit log over.
 
     <nav class="pager" aria-label="more pages">
       <a class="pg prev" href="/wiki/configure/network/"><span class="pg-k">previous</span><span class="pg-t">Ports and firewall</span></a>
-      <a class="pg next" href="/wiki/operate/fleet/"><span class="pg-k">next</span><span class="pg-t">The fleet view<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="pg next" href="/wiki/configure/email/"><span class="pg-k">next</span><span class="pg-t">Outbound email<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </nav>
 
     <footer class="doc-foot">

@@ -4,6 +4,7 @@
   import { sheetFocus } from "@/lib/sheetFocus";
   import { api, errMsg } from "@/api/client";
   import { fleet } from "@/lib/fleet.svelte";
+  import { auth } from "@/lib/auth.svelte";
   import type { AdminUser, DatabaseConfig, PanelSettings } from "@/api/types";
 
   type Res = { cls: "ok" | "bad"; text: string } | null;
@@ -27,9 +28,23 @@
   let uBusy = $state(false);
   let uRes = $state<Res>(null);
 
+  // email (smtp) — the password is write-only; everything else is readable
+  type Security = PanelSettings["smtp_security"];
+  let mHost = $state("");
+  let mPort = $state("587");
+  let mSec = $state<Security>("starttls");
+  let mUser = $state("");
+  let mPass = $state("");
+  let mFrom = $state("");
+  let mFromName = $state("");
+  let mTestTo = $state("");
+  let mBusy = $state(false);
+  let mRes = $state<Res>(null);
+
   // sessions & security
   let sessTtl = $state("");
   let origins = $state("");
+  let pubUrl = $state("");
   let bootstrapEnabled = $state(true);
   let secBusy = $state(false);
   let secRes = $state<Res>(null);
@@ -39,6 +54,13 @@
     uUrl = s.unifi_url ?? "";
     uSite = s.unifi_site ?? "";
     uVerify = s.unifi_verify_tls;
+    mHost = s.smtp_host ?? "";
+    mPort = String(s.smtp_port || 587);
+    mSec = s.smtp_security || "starttls";
+    mUser = s.smtp_username ?? "";
+    mFrom = s.smtp_from ?? "";
+    mFromName = s.smtp_from_name ?? "";
+    pubUrl = s.public_url ?? "";
     sessTtl = String(s.session_ttl_seconds);
     origins = (s.allowed_origins ?? []).join(", ");
     bootstrapEnabled = !s.bootstrap_disabled;
@@ -62,8 +84,10 @@
     if (!ui.open.prefs) return;
     cfToken = "";
     uKey = "";
+    mPass = "";
     cfRes = null;
     uRes = null;
+    mRes = null;
     secRes = null;
     void load();
   });
@@ -144,11 +168,74 @@
     uBusy = false;
   }
 
+  async function mSave() {
+    if (mBusy || !settings) return;
+    mBusy = true;
+    mRes = null;
+    const patch: SettingsPatch = {};
+    const port = Number(mPort.trim() || "587");
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      mRes = { cls: "bad", text: "the port must be a whole number between 1 and 65535." };
+      mBusy = false;
+      return;
+    }
+    if (mHost.trim() !== (settings.smtp_host ?? "")) patch.smtp_host = mHost.trim();
+    if (port !== settings.smtp_port) patch.smtp_port = port;
+    if (mSec !== settings.smtp_security) patch.smtp_security = mSec;
+    if (mUser.trim() !== (settings.smtp_username ?? "")) patch.smtp_username = mUser.trim();
+    if (mPass) patch.smtp_password = mPass;
+    if (mFrom.trim() !== (settings.smtp_from ?? "")) patch.smtp_from = mFrom.trim();
+    if (mFromName.trim() !== (settings.smtp_from_name ?? "")) patch.smtp_from_name = mFromName.trim();
+    if (!Object.keys(patch).length) {
+      mRes = { cls: "ok", text: "nothing changed." };
+      mBusy = false;
+      return;
+    }
+    try {
+      const s = await api.updatePanelSettings(patch);
+      seed(s);
+      mPass = "";
+      mRes = {
+        cls: "ok",
+        text: s.smtp_configured
+          ? "email settings saved — the password is stored encrypted and never shown again."
+          : "saved — a relay host and a from address are both needed before anything can be sent.",
+      };
+    } catch (e) {
+      mRes = { cls: "bad", text: errMsg(e) };
+    }
+    mBusy = false;
+  }
+
+  async function mTest() {
+    if (mBusy) return;
+    mBusy = true;
+    mRes = null;
+    try {
+      const r = await api.testSmtp(mTestTo.trim() || undefined);
+      mRes = { cls: "ok", text: `sent to ${r.sent_to} — the relay said "${r.server_reply}" · message id ${r.message_id}` };
+    } catch (e) {
+      mRes = { cls: "bad", text: errMsg(e) };
+    }
+    mBusy = false;
+  }
+
+  // a public address the allowed-origins list can suggest: exactly one entry, no wildcard
+  const pubSuggest = $derived.by(() => {
+    if (pubUrl.trim() || settings?.public_url_locked) return "";
+    const list = (settings?.allowed_origins ?? []).map((o) => o.trim()).filter(Boolean);
+    if (list.length !== 1 || list[0].includes("*")) return "";
+    return list[0].startsWith("http") ? list[0] : "https://" + list[0];
+  });
+
   async function secSave() {
     if (secBusy || !settings) return;
     secBusy = true;
     secRes = null;
     const patch: SettingsPatch = {};
+    if (!settings.public_url_locked && pubUrl.trim() !== (settings.public_url ?? "")) {
+      patch.public_url = pubUrl.trim();
+    }
     if (!settings.session_ttl_locked) {
       const n = Number(sessTtl.trim());
       if (!Number.isInteger(n) || n <= 0) {
@@ -261,6 +348,30 @@
         <div class="cfg"><p class="cfg-desc">a unifi os api key lets servers open port forwards on your gateway.</p><label class="cfg-row"><span>controller url</span><input class="cfg-in" type="text" placeholder="https://192.168.1.1" autocomplete="off" bind:value={uUrl} /></label><label class="cfg-row"><span>replace api key</span><input class="cfg-in" type="password" placeholder="•••••••••• (leave blank to keep)" autocomplete="off" bind:value={uKey} /></label><label class="cfg-row"><span>site</span><input class="cfg-in" type="text" placeholder="default" autocomplete="off" bind:value={uSite} /></label><label class="tgl "><input type="checkbox" bind:checked={uVerify} /><i></i>verify tls certificate</label><p class="cfg-help">off by default — unifi gateways ship with a self-signed cert on the lan. turn on once a trusted certificate is installed on the controller.</p><p class="wz-res{uRes ? ' shown ' + uRes.cls : ''}" role="status" aria-live="polite">{#if uRes}<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span>{uRes.text}</span>{/if}</p></div>
         <div class="cfg-actions"><button class="cfg-btn ghost" disabled={uBusy || !settings?.unifi_configured} onclick={() => void uTest()}>{uBusy ? "testing…" : "test connection"}</button><button class="cfg-btn solid" disabled={uBusy} onclick={() => void uSave()}>save</button></div>
       </section>
+      <section class="prefs-group" aria-label="Outbound email">
+        <div class="cfg-head"><h3 class="pane-label">email (smtp)</h3>{#if settings?.smtp_configured}<span class="cfg-badge enc">encrypted</span><span class="cfg-badge ok">configured</span>{:else}<span class="cfg-badge env">not set</span>{/if}</div>
+        <div class="cfg">
+          <p class="cfg-desc">a relay the panel can send through lets you invite people by email instead of handing them a password. nothing is sent until a host and a from address are set.</p>
+          <label class="cfg-row"><span>relay host</span><input class="cfg-in" type="text" placeholder="smtp.example.com" autocomplete="off" bind:value={mHost} /></label>
+          <label class="cfg-row"><span>port</span><input class="cfg-in" type="text" inputmode="numeric" placeholder="587" autocomplete="off" bind:value={mPort} /></label>
+          <label class="cfg-row"><span>security</span>
+            <select class="cfg-in" bind:value={mSec}>
+              <option value="starttls">starttls — upgrade the connection first (port 587, the usual)</option>
+              <option value="tls">tls — encrypted from the first byte (port 465)</option>
+              <option value="none">none — a relay on your own network only</option>
+            </select>
+          </label>
+          <label class="cfg-row"><span>username</span><input class="cfg-in" type="text" placeholder="leave empty for a relay without a login" autocomplete="off" bind:value={mUser} /></label>
+          <label class="cfg-row"><span>replace password</span><input class="cfg-in" type="password" placeholder="•••••••••• (leave blank to keep)" autocomplete="new-password" bind:value={mPass} /><p class="cfg-help">stored server-side, encrypted, and never shown again.</p></label>
+          <label class="cfg-row"><span>from address</span><input class="cfg-in" type="email" placeholder="kraken@example.com" autocomplete="off" bind:value={mFrom} /></label>
+          <label class="cfg-row"><span>from name</span><input class="cfg-in" type="text" placeholder="Kraken" autocomplete="off" bind:value={mFromName} /></label>
+          {#if mSec === "none"}<p class="wz-res shown bad" role="note"><span>none sends the relay login and every message in the clear. a password is refused on that path unless the relay is this very host.</span></p>{/if}
+          <p class="cfg-help">deliverability: the from address's domain needs spf, dkim and dmarc records published and aligned, and the relay should be a provider's submission port (587) rather than a home ip. the test below tells you what the relay said; the wiki page <b>outbound email</b> has the checklist.</p>
+          <label class="cfg-row"><span>send a test to</span><input class="cfg-in" type="email" placeholder={auth.user?.email || "you@example.com"} autocomplete="off" bind:value={mTestTo} /></label>
+          <p class="wz-res{mRes ? ' shown ' + mRes.cls : ''}" role="status" aria-live="polite">{#if mRes}<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5 7.2 L 5.4 10 L 11.5 3.6"/></svg><span>{mRes.text}</span>{/if}</p>
+        </div>
+        <div class="cfg-actions"><button class="cfg-btn ghost" disabled={mBusy || !settings?.smtp_configured} onclick={() => void mTest()}>{mBusy ? "working…" : "send test email"}</button><button class="cfg-btn solid" disabled={mBusy} onclick={() => void mSave()}>save</button></div>
+      </section>
     </div>
     <div class="pb-col">
       <div class="pb-col-head"><h3 class="pane-label">platform</h3><span class="pb-col-note">mostly pinned by the environment</span></div>
@@ -270,8 +381,8 @@
       </section>
       <section class="prefs-group" aria-label="Sessions and security">
         <div class="cfg-head"><h3 class="pane-label">sessions &amp; security</h3></div>
-        <div class="cfg"><label class="cfg-row"><span>session lifetime {#if settings?.session_ttl_locked}<span class="cfg-badge env">env-managed</span>{/if}</span><input class="cfg-in" type="text" bind:value={sessTtl} disabled={settings?.session_ttl_locked ?? false} /><p class="cfg-help">{settings?.session_ttl_locked ? "managed via KRAKEN_SESSION_TTL — " : "duration in seconds — "}≈ {ttlHours}h a login stays valid.</p></label><label class="cfg-row"><span>allowed websocket origins {#if settings?.allowed_origins_locked}<span class="cfg-badge env">env-managed</span>{/if}</span><input class="cfg-in" type="text" bind:value={origins} disabled={settings?.allowed_origins_locked ?? false} placeholder="panel.example.com, *.example.com" /><p class="cfg-help">{settings?.allowed_origins_locked ? "managed via KRAKEN_ALLOWED_ORIGINS." : "comma-separated. empty falls back to localhost dev origins; same-origin is always allowed."}</p></label><label class="tgl{settings?.bootstrap_locked ? ' is-locked' : ''}"><input type="checkbox" bind:checked={bootstrapEnabled} disabled={settings?.bootstrap_locked ?? false} /><i></i>auto-create the bootstrap admin ({settings?.bootstrap_user || "admin"}) when no users exist</label><p class="cfg-help">{settings?.bootstrap_locked ? "read-only — pinned via the KRAKEN_BOOTSTRAP_ADMIN_* env vars." : `the bootstrap admin (${settings?.bootstrap_user || "admin"}) is created at first start when the instance has no users.`}</p></div>
-        <div class="cfg-actions">{#if secRes}<span class="cfg-note wz-res shown {secRes.cls}">{secRes.text}</span>{:else}<span class="cfg-note">env-managed rows cannot be edited here</span>{/if}<button class="cfg-btn solid" disabled={secBusy || !settings || (settings.session_ttl_locked && settings.allowed_origins_locked && settings.bootstrap_locked)} onclick={() => void secSave()}>{secBusy ? "saving…" : "save"}</button></div>
+        <div class="cfg"><label class="cfg-row"><span>session lifetime {#if settings?.session_ttl_locked}<span class="cfg-badge env">env-managed</span>{/if}</span><input class="cfg-in" type="text" bind:value={sessTtl} disabled={settings?.session_ttl_locked ?? false} /><p class="cfg-help">{settings?.session_ttl_locked ? "managed via KRAKEN_SESSION_TTL — " : "duration in seconds — "}≈ {ttlHours}h a login stays valid.</p></label><label class="cfg-row"><span>allowed websocket origins {#if settings?.allowed_origins_locked}<span class="cfg-badge env">env-managed</span>{/if}</span><input class="cfg-in" type="text" bind:value={origins} disabled={settings?.allowed_origins_locked ?? false} placeholder="panel.example.com, *.example.com" /><p class="cfg-help">{settings?.allowed_origins_locked ? "managed via KRAKEN_ALLOWED_ORIGINS." : "comma-separated. empty falls back to localhost dev origins; same-origin is always allowed."}</p></label><label class="cfg-row"><span>public address {#if settings?.public_url_locked}<span class="cfg-badge env">env-managed</span>{/if}</span><input class="cfg-in" type="url" bind:value={pubUrl} disabled={settings?.public_url_locked ?? false} placeholder="https://panel.example.com" autocomplete="off" /><p class="cfg-help">{settings?.public_url_locked ? "managed via KRAKEN_PUBLIC_URL — " : ""}the address people reach this panel at. it is the only thing links in email are built from; the address a request arrived on is never used.{#if pubSuggest} <button type="button" class="mini-act" onclick={() => (pubUrl = pubSuggest)}>use {pubSuggest}</button>{/if}</p>{#if pubUrl.trim().startsWith("http://")}<p class="wz-res shown bad" role="note"><span>an http:// address means an invite link's one-time token travels in the clear.</span></p>{/if}</label><label class="tgl{settings?.bootstrap_locked ? ' is-locked' : ''}"><input type="checkbox" bind:checked={bootstrapEnabled} disabled={settings?.bootstrap_locked ?? false} /><i></i>auto-create the bootstrap admin ({settings?.bootstrap_user || "admin"}) when no users exist</label><p class="cfg-help">{settings?.bootstrap_locked ? "read-only — pinned via the KRAKEN_BOOTSTRAP_ADMIN_* env vars." : `the bootstrap admin (${settings?.bootstrap_user || "admin"}) is created at first start when the instance has no users.`}</p></div>
+        <div class="cfg-actions">{#if secRes}<span class="cfg-note wz-res shown {secRes.cls}">{secRes.text}</span>{:else}<span class="cfg-note">env-managed rows cannot be edited here</span>{/if}<button class="cfg-btn solid" disabled={secBusy || !settings || (settings.session_ttl_locked && settings.allowed_origins_locked && settings.bootstrap_locked && settings.public_url_locked)} onclick={() => void secSave()}>{secBusy ? "saving…" : "save"}</button></div>
       </section>
       <section class="prefs-group" aria-label="Users and access">
         <div class="cfg-head"><h3 class="pane-label">users &amp; access</h3><span class="cfg-badge ok">{userCount} account{userCount === 1 ? "" : "s"}</span></div>

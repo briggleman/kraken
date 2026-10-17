@@ -1743,7 +1743,12 @@ paths:
               schema: { $ref: '#/components/schemas/SettingsView' }
     put:
       tags: [Settings]
-      summary: Update Panel-global settings (Cloudflare token, UniFi gateway)
+      summary: Update Panel-global settings (Cloudflare token, UniFi gateway, outbound email, public address)
+      description: >
+        Every field is optional; an omitted field is unchanged and an empty
+        string clears it. The SMTP fields are validated together as one relay
+        configuration (400 names the first thing wrong). public_url is ignored
+        while KRAKEN_PUBLIC_URL pins it.
       requestBody:
         required: true
         content:
@@ -1755,6 +1760,14 @@ paths:
                 unifi_url: { type: string, description: "UniFi controller base URL, e.g. https://192.168.1.1" }
                 unifi_api_key: { type: string, description: "UniFi OS API key; empty string clears it" }
                 unifi_site: { type: string, description: "UniFi site (default 'default')" }
+                smtp_host: { type: string, description: "SMTP relay hostname or address; empty turns outbound email off" }
+                smtp_port: { type: integer, description: "Relay port; 0 means 587" }
+                smtp_security: { type: string, enum: [starttls, tls, none], description: "starttls (required upgrade; the default), tls (implicit, usually 465) or none (a relay on your own network only)" }
+                smtp_username: { type: string, description: "Relay login; empty sends without authentication" }
+                smtp_password: { type: string, format: password, description: "Relay password; stored encrypted and never returned" }
+                smtp_from: { type: string, description: "Bare sender address, e.g. kraken@example.com" }
+                smtp_from_name: { type: string, description: "Sender display name, default Kraken" }
+                public_url: { type: string, description: "The address people reach this Panel at (https://panel.example.com); the only source for links in email" }
       responses:
         '200':
           description: Saved
@@ -1792,6 +1805,39 @@ paths:
                   wan_ip: { type: string }
         '400': { description: UniFi not configured }
         '424': { description: "UniFi API error (424, not 502: Cloudflare in front of the Panel replaces a 502 body)" }
+  /settings/smtp/test:
+    post:
+      tags: [Settings]
+      summary: Send a test message through the stored SMTP settings
+      description: >
+        Proves the relay settings work end to end. The message goes to `to`,
+        or to the caller's own address when the body is empty. The answer
+        carries the Message-ID the Panel stamped and the relay's final reply,
+        so a bounce or a relay log can be matched to this send. Counted by the
+        outbound-mail limiter (ten a minute for the whole Panel). Audited as
+        `mail.test:<to>`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to: { type: string, description: "Recipient; defaults to the caller's email" }
+      responses:
+        '200':
+          description: Accepted by the relay
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent_to: { type: string }
+                  message_id: { type: string }
+                  server_reply: { type: string, description: "The relay's 250 line, e.g. '2.0.0 OK queued as …'" }
+        '400': { description: "Outbound email not configured, or no usable recipient" }
+        '424': { description: "The relay refused or could not be reached; the error text is the relay's own" }
+        '429': { description: Outbound-mail limit reached (Retry-After set) }
   /servers/{id}/dns:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -2383,11 +2429,29 @@ components:
         record_ids: { type: array, items: { type: string } }
     SettingsView:
       type: object
+      description: Panel-global settings as the UI reads them. Secrets are never included; each integration has a *_configured flag instead.
       properties:
         cloudflare_configured: { type: boolean }
         unifi_configured: { type: boolean }
         unifi_url: { type: string }
         unifi_site: { type: string }
+        unifi_verify_tls: { type: boolean }
+        smtp_configured: { type: boolean, description: "A relay host and a from address are set" }
+        smtp_host: { type: string }
+        smtp_port: { type: integer, description: "The stored port, or 587 when none is stored" }
+        smtp_security: { type: string, enum: [starttls, tls, none] }
+        smtp_username: { type: string }
+        smtp_from: { type: string }
+        smtp_from_name: { type: string }
+        public_url: { type: string, description: "The effective public address: KRAKEN_PUBLIC_URL when set, else the stored value, else empty" }
+        public_url_locked: { type: boolean, description: "KRAKEN_PUBLIC_URL pins public_url" }
+        session_ttl_seconds: { type: integer }
+        session_ttl_locked: { type: boolean }
+        allowed_origins: { type: array, items: { type: string } }
+        allowed_origins_locked: { type: boolean }
+        bootstrap_disabled: { type: boolean }
+        bootstrap_user: { type: string }
+        bootstrap_locked: { type: boolean }
     DBConnectRequest:
       type: object
       required: [host, user]

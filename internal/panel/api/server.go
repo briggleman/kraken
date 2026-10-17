@@ -20,6 +20,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/alerts"
 	"github.com/briggleman/kraken/internal/panel/cluster"
 	"github.com/briggleman/kraken/internal/panel/config"
+	"github.com/briggleman/kraken/internal/panel/mail"
 	"github.com/briggleman/kraken/internal/panel/nodeclient"
 	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
@@ -110,6 +111,13 @@ type Server struct {
 	downloadLimit  *rateLimiter
 	loginLimit     *rateLimiter
 	loginUserLimit *rateLimiter
+	// mailLimit bounds what the Panel sends by email, under one key for the
+	// whole Panel (see mailLimitKey): the limit is on the Panel's standing
+	// with the relay, not on any caller.
+	mailLimit *rateLimiter
+
+	// mailer sends the Panel's email through the relay in the stored settings.
+	mailer *mail.Sender
 
 	// trustedProxies is the parsed KRAKEN_TRUSTED_PROXIES allowlist. Empty (the
 	// default) means no forwarding header is believed and every caller is its
@@ -209,6 +217,9 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		loginLimit: newRateLimiter("login", loginPerMinute, loginBurst, cfg.LoginRateLimitsEnabled()),
 		loginUserLimit: newUsernameLimiter("login_user", loginUserPerMinute, loginUserBurst,
 			cfg.LoginRateLimitsEnabled()),
+		// Raw keys: the one key is a word, not an address to normalize.
+		mailLimit: newUsernameLimiter("mail_send", mailSendPerMinute, mailSendBurst, cfg.MailRateLimitsEnabled()),
+		mailer:    &mail.Sender{},
 	}
 	// A brute-force flood never reaches handleLogin, which is what audits a
 	// failed attempt — so the limiter leaves the row itself, once per client
@@ -678,6 +689,7 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermSettingsManage)).Put("/settings", s.handleUpdateSettings)
 			r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/settings/cloudflare/test", s.handleTestCloudflare)
 			r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/settings/unifi/test", s.handleTestUnifi)
+			r.With(s.requirePermission(rbac.PermSettingsManage)).Post("/settings/smtp/test", s.handleTestMail)
 
 			// Per-server networking: Cloudflare DNS + UniFi port forwards.
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}/dns", s.handleGetServerDNS)

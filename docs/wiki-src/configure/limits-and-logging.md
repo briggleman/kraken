@@ -15,6 +15,13 @@ login along a second axis that needs no address at all:
 | download-token redemption | client address | 30/min | 10 |
 | `POST /auth/login` | client address | 20/min | 20 |
 | login + change-password **failures** | submitted username | 10/min | 10 |
+| outbound email (a test message, an invite) | one key for the whole Panel | 10/min | 10 |
+
+The last one is different in kind: it is not a limit on a caller but on what
+the Panel sends, so that neither a careless administrator nor a hijacked
+session can spend the operator's domain reputation with the relay. It runs
+under `all` and under no narrower mode. See [outbound
+email](/wiki/configure/email/).
 
 A refusal is a **429** in the ordinary JSON error envelope with `Retry-After`,
 and a refused request does not consume future capacity.
@@ -178,7 +185,8 @@ reach and strangers cannot, which is where the rest of the Panel belongs too.
 | `kraken_rate_limited_total` | refusals, per limiter |
 
 `kraken_rate_limited_total` carries a `limiter` label: `download`, `login` (the
-per-address one) and `login_user` (the per-username one). A spike on
+per-address one), `login_user` (the per-username one) and `mail_send` (the
+Panel-wide outbound-email budget). A spike on
 `login_user` with nothing on `login` is somebody working through one account
 from many addresses — or from behind a NAT, where `login` cannot see them apart
 in the first place.

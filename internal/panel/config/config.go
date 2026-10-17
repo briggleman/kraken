@@ -65,6 +65,22 @@ type Config struct {
 	// locks the WS-origins field in the UI (env wins over the stored setting).
 	AllowedOriginsFromEnv bool
 
+	// PublicURL is the address people reach this Panel at, such as
+	// `https://panel.example.com` (an optional path prefix is allowed; no
+	// query string or fragment). It is the only source for the links the
+	// Panel writes into email, such as an account invite: the request's Host
+	// header is never used for that, because behind a proxy it is whatever
+	// the caller sent, and a password-setting link built from it would point
+	// wherever an attacker chose. Unset leaves the UI field editable and
+	// stored in the database; set, it wins and locks that field. A value that
+	// is not an absolute http:// or https:// address stops the Panel at
+	// startup. An `http://` address works but the link's token then travels
+	// in the clear, and the UI says so.
+	PublicURL string
+	// PublicURLFromEnv is true when KRAKEN_PUBLIC_URL was set, which locks the
+	// public-address field in the UI (env wins over the stored setting).
+	PublicURLFromEnv bool
+
 	// SetupAllowedCIDRs restricts the /setup/* API surface (first-run wizard,
 	// datastore configuration, local enrollment) to requests whose real TCP
 	// peer falls inside one of these CIDRs (single IPs allowed too). Defaults
@@ -251,6 +267,14 @@ func (c *Config) RateLimitsEnabled() bool {
 	return c.LoginRateLimitsEnabled() || c.DownloadRateLimitsEnabled()
 }
 
+// MailRateLimitsEnabled reports whether the outbound-email limiter should
+// run. It has no mode of its own: it is on under "all" and off under every
+// narrower setting, since the narrower modes exist to get a limiter out of the
+// way behind a NAT, and the mail limiter is keyed on nothing about the caller.
+func (c *Config) MailRateLimitsEnabled() bool {
+	return c.RateLimitMode() == RateLimitsAll
+}
+
 // SlogLevel maps LogLevel onto a slog level, defaulting to Info for anything
 // unrecognized — a typo must not silence the Panel.
 func (c *Config) SlogLevel() slog.Level {
@@ -334,6 +358,31 @@ func validatePushRelayURL() error {
 // PushEnabled reports whether a push relay is configured.
 func (c *Config) PushEnabled() bool { return c.PushRelayURL != "" }
 
+// NormalizePublicURL validates and canonicalizes the Panel's public address,
+// whichever side it came from (KRAKEN_PUBLIC_URL or the stored setting): an
+// absolute http:// or https:// URL with a host, an optional path prefix, no
+// user info, no query string, no fragment, no trailing slash. Empty is
+// allowed and stays empty, meaning "not set".
+func NormalizePublicURL(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", nil
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("%q must be an absolute http:// or https:// address, such as https://panel.example.com", v)
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("%q must not carry a username or password", v)
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return "", fmt.Errorf("%q must not have a query string or fragment", v)
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = ""
+	return u.String(), nil
+}
+
 // appleAppID is an App ID as the association file names it: the ten-character
 // Team ID (App ID prefix), a dot, and a reverse-DNS bundle identifier.
 var appleAppID = regexp.MustCompile(`^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$`)
@@ -386,6 +435,7 @@ func Load() (*Config, error) {
 		CAKey:                  env("KRAKEN_CA_KEY", ""),
 		LocalAgentAddr:         env("KRAKEN_LOCAL_AGENT_ADDR", "127.0.0.1:9090"),
 		AllowedOrigins:         envList("KRAKEN_ALLOWED_ORIGINS"),
+		PublicURL:              env("KRAKEN_PUBLIC_URL", ""),
 		SetupAllowedCIDRs:      envList("KRAKEN_SETUP_ALLOWED_CIDRS"),
 		TunnelAddr:             env("KRAKEN_TUNNEL_ADDR", ":9443"),
 		SFTPProxy:              env("KRAKEN_SFTP_PROXY", "on"),
@@ -415,6 +465,13 @@ func Load() (*Config, error) {
 	if err := validatePushRelayURL(); err != nil {
 		return nil, err
 	}
+	// A public address the Panel cannot build a link from is the same kind of
+	// quiet failure: every invite would carry a broken URL. Refuse it here.
+	publicURL, err := NormalizePublicURL(c.PublicURL)
+	if err != nil {
+		return nil, fmt.Errorf("config: KRAKEN_PUBLIC_URL: %w", err)
+	}
+	c.PublicURL = publicURL
 	// Apple fetches the association file once and caches it, so a malformed
 	// app ID is not an error anyone would see: AutoFill just never offers the
 	// password. Refuse it here, where the typo is still visible.
@@ -458,6 +515,7 @@ func Load() (*Config, error) {
 		c.CSPMode = CSPEnforce
 	}
 	_, c.AllowedOriginsFromEnv = os.LookupEnv("KRAKEN_ALLOWED_ORIGINS")
+	_, c.PublicURLFromEnv = os.LookupEnv("KRAKEN_PUBLIC_URL")
 	_, c.SessionTTLFromEnv = os.LookupEnv("KRAKEN_SESSION_TTL")
 	_, userSet := os.LookupEnv("KRAKEN_BOOTSTRAP_ADMIN_USER")
 	_, pwSet := os.LookupEnv("KRAKEN_BOOTSTRAP_ADMIN_PASSWORD")

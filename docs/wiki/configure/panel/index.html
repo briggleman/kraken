@@ -73,6 +73,7 @@
 <a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
 <a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
 <a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+<a class="nav-link" href="/wiki/configure/email/">Outbound email</a>
 </details>
 <details class="nav-sec" open>
 <summary><span class="nav-sec-t">operate</span></summary>
@@ -116,6 +117,7 @@
 <a class="toc-link lvl-3" href="#core">core</a>
 <a class="toc-link lvl-3" href="#bootstrap-admin">bootstrap admin</a>
 <a class="toc-link lvl-3" href="#browser-origins">browser origins</a>
+<a class="toc-link lvl-3" href="#publicurl">publicurl</a>
 <a class="toc-link lvl-3" href="#first-run-setup">first-run setup</a>
 <a class="toc-link lvl-3" href="#content-security-policy">content security policy</a>
 <a class="toc-link lvl-3" href="#panel-agent-mtls">panel → agent mTLS</a>
@@ -181,6 +183,14 @@ description.</p>
 <thead><tr><th>variable</th><th>what it does</th></tr></thead>
 <tbody>
 <tr><td><code>KRAKEN_ALLOWED_ORIGINS</code><span class="def">default <span class="nil">unset</span></span></td><td>AllowedOrigins is the WebSocket Origin allowlist (host[:port] patterns, &quot;*&quot; wildcards allowed). Empty falls back to localhost dev origins. Same-origin requests are always permitted regardless of this list.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="publicurl">publicurl <a class="hlink" href="#publicurl" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
+<div class="tbl"><table class="envs">
+<thead><tr><th>variable</th><th>what it does</th></tr></thead>
+<tbody>
+<tr><td><code>KRAKEN_PUBLIC_URL</code><span class="def">default <span class="nil">unset</span></span></td><td>PublicURL is the address people reach this Panel at, such as <code>https://panel.example.com</code> (an optional path prefix is allowed; no query string or fragment). It is the only source for the links the Panel writes into email, such as an account invite: the request&#39;s Host header is never used for that, because behind a proxy it is whatever the caller sent, and a password-setting link built from it would point wherever an attacker chose. Unset leaves the UI field editable and stored in the database; set, it wins and locks that field. A value that is not an absolute http:// or https:// address stops the Panel at startup. An <code>http://</code> address works but the link&#39;s token then travels in the clear, and the UI says so.</td></tr>
 </tbody>
 </table></div>
 
@@ -355,6 +365,10 @@ it to loopback and the fleet goes offline. See <a href="/wiki/configure/network/
 firewall</a>.</li>
 <li><strong><code>KRAKEN_RATE_LIMITS</code></strong> and <strong><code>KRAKEN_LOG_LEVEL</code></strong>: see <a href="/wiki/configure/limits-and-logging/">limits and
 logging</a>.</li>
+<li><strong><code>KRAKEN_PUBLIC_URL</code></strong>: the address people reach the Panel at, and the only
+thing a link in an email is built from. The UI has a field for it too; the
+variable wins and locks the field. See <a href="/wiki/configure/email/">outbound
+email</a>.</li>
 <li><strong><code>KRAKEN_APPLE_APP_IDS</code></strong>: lets an iOS app fill its sign-in from the
 passwords iCloud Keychain saved for this Panel. Set it to the app&#39;s
 <code>&lt;Team ID&gt;.&lt;bundle id&gt;</code>, and the Panel answers
@@ -374,7 +388,8 @@ not, so the app has to remember that itself.</li>
 variables of its own: <a href="/wiki/configure/agent/">Agent configuration</a>.</p>
 <p>A few settings live in the database and are edited in the UI instead of the
 environment: the datastore DSN entered in the first-run wizard, the session TTL,
-the WebSocket origins. Where an environment variable exists for one of those,
+the WebSocket origins, the public address, the SMTP relay. Where an environment
+variable exists for one of those,
 <strong>the environment wins and the UI shows the field as locked</strong>, so a host driven
 by compose or systemd cannot be changed out from under its unit file by somebody
 clicking around.</p>
@@ -397,6 +412,7 @@ clicking around.</p>
 <a class="toc-link lvl-3" href="#core">core</a>
 <a class="toc-link lvl-3" href="#bootstrap-admin">bootstrap admin</a>
 <a class="toc-link lvl-3" href="#browser-origins">browser origins</a>
+<a class="toc-link lvl-3" href="#publicurl">publicurl</a>
 <a class="toc-link lvl-3" href="#first-run-setup">first-run setup</a>
 <a class="toc-link lvl-3" href="#content-security-policy">content security policy</a>
 <a class="toc-link lvl-3" href="#panel-agent-mtls">panel → agent mTLS</a>

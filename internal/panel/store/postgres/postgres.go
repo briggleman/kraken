@@ -801,6 +801,7 @@ func (s *Store) GetSettings(ctx context.Context) (*store.Settings, error) {
 	if s.cipher != nil {
 		st.CloudflareAPIToken = s.cipher.DecryptString(st.CloudflareAPIToken)
 		st.UnifiAPIKey = s.cipher.DecryptString(st.UnifiAPIKey)
+		st.SMTPPassword = s.cipher.DecryptString(st.SMTPPassword)
 	}
 	return &st, nil
 }
@@ -810,6 +811,7 @@ func (s *Store) SaveSettings(ctx context.Context, st *store.Settings) error {
 	if s.cipher != nil {
 		enc.CloudflareAPIToken = s.cipher.EncryptString(st.CloudflareAPIToken)
 		enc.UnifiAPIKey = s.cipher.EncryptString(st.UnifiAPIKey)
+		enc.SMTPPassword = s.cipher.EncryptString(st.SMTPPassword)
 	}
 	data, err := json.Marshal(&enc)
 	if err != nil {

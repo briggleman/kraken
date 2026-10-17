@@ -58,6 +58,10 @@ it.
   firewall](/wiki/configure/network/).
 - **`KRAKEN_RATE_LIMITS`** and **`KRAKEN_LOG_LEVEL`**: see [limits and
   logging](/wiki/configure/limits-and-logging/).
+- **`KRAKEN_PUBLIC_URL`**: the address people reach the Panel at, and the only
+  thing a link in an email is built from. The UI has a field for it too; the
+  variable wins and locks the field. See [outbound
+  email](/wiki/configure/email/).
 - **`KRAKEN_APPLE_APP_IDS`**: lets an iOS app fill its sign-in from the
   passwords iCloud Keychain saved for this Panel. Set it to the app's
   `<Team ID>.<bundle id>`, and the Panel answers
@@ -79,7 +83,8 @@ variables of its own: [Agent configuration](/wiki/configure/agent/).
 
 A few settings live in the database and are edited in the UI instead of the
 environment: the datastore DSN entered in the first-run wizard, the session TTL,
-the WebSocket origins. Where an environment variable exists for one of those,
+the WebSocket origins, the public address, the SMTP relay. Where an environment
+variable exists for one of those,
 **the environment wins and the UI shows the field as locked**, so a host driven
 by compose or systemd cannot be changed out from under its unit file by somebody
 clicking around.

@@ -114,6 +114,7 @@
     <p class="lede">What the iOS companion is told about your fleet and when — the three alert classes, every event and the sentence it sends, the crash-loop escalation and its quiet hour, why a node has to stay down for a minute before it pages, how devices are registered and revoked, the test alert, and what push.sent, push.failed and push.dropped mean in the audit log.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#turning-them-on">Turning them on</a>
+<a class="toc-link lvl-2" href="#running-the-relay">Running the relay</a>
 <a class="toc-link lvl-2" href="#what-you-are-told">What you are told</a>
 <a class="toc-link lvl-2" href="#the-crash-loop-escalation">The crash-loop escalation</a>
 <a class="toc-link lvl-2" href="#node-alerts-wait-a-minute">Node alerts wait a minute</a>
@@ -140,6 +141,8 @@ happened, not who you are. <a href="/wiki/security/">Security</a> has the full m
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_PUSH_RELAY_URL=https://push.example.com   # the relay's base URL; unset = off
 KRAKEN_PUSH_RELAY_TOKEN=…                        # only if your relay asks for one</code></pre></div>
 <p>Both are in the <a href="/wiki/configure/panel/#push-alerts">Panel configuration reference</a>.
+Where the relay runs and what it needs is under <a href="#running-the-relay">running the
+relay</a>, below.
 The Panel logs one line at startup saying whether alerts are on and which relay
 host it will use — never the token. If a token is set and the URL is plain
 <code>http://</code> to a host that is not this machine or a private address, it also warns
@@ -147,6 +150,63 @@ that the token would cross the network in the clear; use <code>https://</code>.<
 <p>Then sign in on the companion app and allow notifications. The app registers
 the phone with the Panel by itself, and keeps the registration fresh every time
 it starts.</p>
+<h2 id="running-the-relay">Running the relay <a class="hlink" href="#running-the-relay" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The relay is a small service of its own, apart from the Panel, and it exists
+for one reason. Apple delivers a notification only when the request is signed
+with an APNs auth key from the app&#39;s developer team, and that key cannot ship
+inside a self-hosted, GPL Panel that anyone can read. So the key stays with the
+relay, and the Panel hands the relay sealed alerts over plain HTTP.</p>
+<p>It is <strong>strictly optional</strong>. Leave <code>KRAKEN_PUSH_RELAY_URL</code> unset and the Panel
+sends nothing, keeps no queue, and changes nothing else: the devices API still
+answers, the app still registers, and the test alert says <code>disabled</code>.</p>
+<p><strong>Run it beside the Panel, listening on loopback.</strong> The Panel is its only
+client, so nothing else needs to reach it, and an address on the same machine
+also keeps the request off the network. With the Panel running as a host
+process (systemd, or the Windows service), that is
+<code>KRAKEN_PUSH_RELAY_URL=http://127.0.0.1:&lt;port&gt;</code>. With the Panel in a container,
+<code>127.0.0.1</code> is the container itself. Put the relay on the same compose network
+and name it by service (<code>http://kraken-relay:&lt;port&gt;</code>), or reach a relay on the
+host through <code>http://host.docker.internal:&lt;port&gt;</code> on Docker Desktop. A relay
+that only the Panel can reach needs no <code>KRAKEN_PUSH_RELAY_TOKEN</code>. If you set
+one anyway and the URL is plain <code>http://</code> to a name, the Panel warns at
+startup, because it cannot tell where a name resolves.</p>
+<p><strong>The signing key lives on the relay&#39;s host and nowhere else.</strong> The relay needs
+the APNs auth key file (<code>AuthKey_&lt;Key ID&gt;.p8</code>), its Key ID, the Team ID, and the
+app&#39;s topic (its bundle id, <code>com.briggleman.kraken-companion</code> for the
+companion). Keep the <code>.p8</code> readable by the relay&#39;s user only. Do not commit it
+anywhere, bake it into an image, or hand it to the Panel: the Panel never sees
+it and has no variable for it. The relay&#39;s own README names its variables and
+ships its systemd unit.</p>
+<p><strong>One relay serves both kinds of build.</strong> A phone running a build installed
+from Xcode has a sandbox push token; a TestFlight or App Store build has a
+production one. The app says which when it registers, and the Panel passes it
+on every request as <code>environment</code>, so the relay sends each alert to Apple&#39;s
+matching gateway. A sandbox token sent to the production gateway is refused as
+a bad token, which the Panel would record as a dead phone.</p>
+<p><strong>Check it end to end</strong> after the relay is up and the Panel has restarted with
+the URL:</p>
+<ol>
+<li>The Panel&#39;s startup log says <code>push alerts on</code> with the relay&#39;s host. If it
+says <code>push alerts off</code>, the variable did not reach the Panel.</li>
+<li>In the app&#39;s alerts sheet, send a test alert. It must answer <code>sent</code>, and
+the phone must show <code>test alert from &lt;your panel&#39;s host&gt;</code> with the Kraken
+title. A generic &quot;Kraken alert&quot; means the push reached the phone but the
+app&#39;s alerts extension could not open the envelope, which is a problem in
+the app (the extension cannot read the key the app registered), not in the
+Panel or the relay.</li>
+<li>The <a href="/wiki/operate/audit/">audit log</a> has a <code>push.sent</code> row for the test,
+target the device.</li>
+<li>Optionally, prove that a dead token comes back: register a device with a
+made-up push token (64 hex digits) through <code>POST /api/v1/devices</code> and send
+it a test alert. Apple refuses a token it never issued (<code>BadDeviceToken</code>),
+and the relay reports that to the Panel as <code>410</code>, so the test answers
+<code>token_dead</code>, the audit row is <code>push.failed</code> with <code>410</code>, and the device now
+has <code>token_invalid_at</code> set. Delete it afterwards with
+<code>DELETE /api/v1/devices/&lt;id&gt;</code>.</li>
+</ol>
+<p>A run of <code>push.dropped</code> rows after this point means the Panel can no longer
+reach the relay (it stopped, or its address changed). Nothing is lost
+elsewhere: the Panel keeps running and drops each alert after two minutes.</p>
 <h2 id="what-you-are-told">What you are told <a class="hlink" href="#what-you-are-told" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Every alert has a <strong>class</strong>, which the phone turns into how it interrupts you:</p>
 <div class="tbl"><table>
@@ -363,6 +423,7 @@ a <code>push.failed</code> with <code>410</code> is one phone that needs to open
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#turning-them-on">Turning them on</a>
+<a class="toc-link lvl-2" href="#running-the-relay">Running the relay</a>
 <a class="toc-link lvl-2" href="#what-you-are-told">What you are told</a>
 <a class="toc-link lvl-2" href="#the-crash-loop-escalation">The crash-loop escalation</a>
 <a class="toc-link lvl-2" href="#node-alerts-wait-a-minute">Node alerts wait a minute</a>

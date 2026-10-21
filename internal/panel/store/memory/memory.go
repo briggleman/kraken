@@ -23,6 +23,7 @@ type Store struct {
 	specs     map[string]*spec.Spec
 	nodes     map[string]*cluster.Node
 	servers   map[string]*store.Server
+	grants    map[grantKey]*store.ServerGrant
 	schedules map[string]*store.ScheduledTask
 	auditLog  []*store.AuditEntry
 	sessions  map[string]*store.Session
@@ -55,6 +56,7 @@ func New() *Store {
 		specs:      make(map[string]*spec.Spec),
 		nodes:      make(map[string]*cluster.Node),
 		servers:    make(map[string]*store.Server),
+		grants:     make(map[grantKey]*store.ServerGrant),
 		schedules:  make(map[string]*store.ScheduledTask),
 		sessions:   make(map[string]*store.Session),
 		invites:    make(map[string]*store.Invite),
@@ -140,6 +142,18 @@ func (s *Store) DeleteUser(_ context.Context, id string) error {
 	for k, inv := range s.invites {
 		if inv.UserID == id {
 			delete(s.invites, k)
+		}
+	}
+	// Their grants go with them, and the servers they owned are left without
+	// an owner, as Postgres's ON DELETE CASCADE / SET NULL have it.
+	for k := range s.grants {
+		if k.userID == id {
+			delete(s.grants, k)
+		}
+	}
+	for _, sv := range s.servers {
+		if sv.OwnerID == id {
+			sv.OwnerID = ""
 		}
 	}
 	return nil
@@ -341,10 +355,12 @@ func (s *Store) UpdateServer(_ context.Context, sv *store.Server) error {
 		return store.ErrNotFound
 	}
 	next := cloneServer(sv)
-	// The build check is UpdateServerBuild's to write, as the Postgres store's
-	// separate columns make it there: a stale copy written back here must not
-	// undo a check that landed after it was read.
+	// The build check and the owner are UpdateServerBuild's and
+	// SetServerOwner's to write, as the Postgres store's separate columns make
+	// them there: a stale copy written back here must not undo a check or a
+	// transfer that landed after it was read.
 	next.Build = cur.Build
+	next.OwnerID = cur.OwnerID
 	s.servers[sv.ID] = next
 	return nil
 }
@@ -367,10 +383,16 @@ func (s *Store) DeleteServer(_ context.Context, id string) error {
 		return store.ErrNotFound
 	}
 	delete(s.servers, id)
-	// Its schedules go with it, under the same lock (see store.ServerStore).
+	// Its schedules and grants go with it, under the same lock (see
+	// store.ServerStore).
 	for sid, t := range s.schedules {
 		if t.ServerID == id {
 			delete(s.schedules, sid)
+		}
+	}
+	for k := range s.grants {
+		if k.serverID == id {
+			delete(s.grants, k)
 		}
 	}
 	return nil

@@ -52,6 +52,10 @@ type serverJSON struct {
 	// builds the last check found and the status they add up to under the
 	// spec as it is now.
 	Update updatecheck.Result `json:"update"`
+	// Access is how the caller reaches the server — "owner", "grant" (shared
+	// with them, #146) or "any" (server.any) — on the list and the single read;
+	// absent elsewhere.
+	Access string `json:"access,omitempty"`
 }
 
 // handleServerUpdateCheck checks one server's build now and answers with the

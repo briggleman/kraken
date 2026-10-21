@@ -250,9 +250,13 @@ func ServerStates() []ServerState {
 type Server struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// OwnerID is the user who created the server. Access to a server is scoped to
-	// its owner unless the caller's role holds PermServerAny (Owner/Admin). Empty
-	// on servers created before ownership existed → treated as PermServerAny-only.
+	// OwnerID is the user who owns the server: its creator, until an
+	// administrator transfers it. Access to a server is scoped to its owner and
+	// the users it is granted to (ServerGrant) unless the caller's role holds
+	// PermServerAny (Owner/Admin). Empty on servers created before ownership
+	// existed, or whose owner was deleted → reachable through PermServerAny and
+	// grants only. Like Build, it is not UpdateServer's to write: a transfer
+	// goes through SetServerOwner, so a stale copy written back cannot undo it.
 	OwnerID  string                 `json:"owner_id,omitempty"`
 	SpecID   string                 `json:"spec_id"`
 	NodeID   string                 `json:"node_id"`
@@ -696,9 +700,14 @@ type ServerStore interface {
 	CreateServer(ctx context.Context, s *Server) error
 	GetServer(ctx context.Context, id string) (*Server, error)
 	ListServers(ctx context.Context) ([]*Server, error)
-	// UpdateServer writes the server row. It does NOT write Server.Build,
-	// whatever the passed copy holds: that is UpdateServerBuild's alone.
+	// UpdateServer writes the server row. It does NOT write Server.Build or
+	// Server.OwnerID, whatever the passed copy holds: those are
+	// UpdateServerBuild's and SetServerOwner's alone.
 	UpdateServer(ctx context.Context, s *Server) error
+	// SetServerOwner transfers the server to ownerID, the one writer of
+	// Server.OwnerID after creation. ErrNotFound when there is no such server,
+	// or no such user.
+	SetServerOwner(ctx context.Context, id, ownerID string) error
 	// UpdateServerBuild writes the server's build-check fields and nothing
 	// else, so a check never races the row's other writers (see ServerBuild).
 	// ErrNotFound when there is no such server.
@@ -708,6 +717,38 @@ type ServerStore interface {
 	// forever against a server that no longer exists and fails with "load
 	// server" on every slot (#354).
 	DeleteServer(ctx context.Context, id string) error
+}
+
+// ServerGrant lets one user reach one server beside its owner (#146). It makes
+// the server visible and nothing more: what the user may do on it is still
+// their role's to decide, so a Read-only grantee watches and an Operator
+// grantee runs it.
+type ServerGrant struct {
+	ServerID string `json:"server_id"`
+	UserID   string `json:"user_id"`
+	// GrantedBy is the user who made the grant, kept as a plain reference so
+	// deleting that user leaves the grant in place.
+	GrantedBy string    `json:"granted_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ServerGrantStore persists server grants. A grant goes when either its server
+// or its user does.
+type ServerGrantStore interface {
+	// GrantServer records the grant. Granting what is already granted keeps the
+	// first grant and is not an error. ErrNotFound when the server or the user
+	// does not exist.
+	GrantServer(ctx context.Context, g *ServerGrant) error
+	// RevokeServerGrant removes the user's grant on the server. ErrNotFound
+	// when there was none.
+	RevokeServerGrant(ctx context.Context, serverID, userID string) error
+	// ListServerGrants returns the server's grants, oldest first.
+	ListServerGrants(ctx context.Context, serverID string) ([]*ServerGrant, error)
+	// ServerIDsGrantedTo returns the ids of every server granted to the user —
+	// one read for a whole server list.
+	ServerIDsGrantedTo(ctx context.Context, userID string) ([]string, error)
+	// HasServerGrant reports whether the user holds a grant on the server.
+	HasServerGrant(ctx context.Context, serverID, userID string) (bool, error)
 }
 
 // ScheduleStore persists cron-scheduled tasks.
@@ -845,6 +886,7 @@ type Store interface {
 	SpecStore
 	NodeStore
 	ServerStore
+	ServerGrantStore
 	ScheduleStore
 	AuditStore
 	SessionStore

@@ -351,3 +351,34 @@ func TestSendTestReachesTheDeviceWhateverItsRules(t *testing.T) {
 		t.Fatalf("test payload = %+v", p)
 	}
 }
+
+// A server shared with a user (#146) reaches their phone the same way it
+// reaches their API: a grant joins the owner and server.any. Revoking it stops
+// the next alert, because the grants are read per event at send time.
+func TestDispatchReachesGrantees(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	f.user("bob", rbac.RoleOperator) // owns s1
+	f.user("carl", rbac.RoleReadOnly)
+	f.user("dana", rbac.RoleReadOnly)
+	if err := f.st.CreateServer(ctx, &store.Server{ID: dw.ID, Name: dw.Name, OwnerID: "bob", NodeID: dw.NodeID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.GrantServer(ctx, &store.ServerGrant{ServerID: dw.ID, UserID: "carl"}); err != nil {
+		t.Fatal(err)
+	}
+	carl := f.device("carl", "c-carl", nil)
+	dana := f.device("dana", "d-dana", nil)
+
+	f.dispatch(ServerCrashed(dw, 0, false, t0))
+	if len(f.send.got(carl)) != 1 || len(f.send.got(dana)) != 0 {
+		t.Fatalf("grant rule: carl %d, dana %d; want 1 and 0", len(f.send.got(carl)), len(f.send.got(dana)))
+	}
+	if err := f.st.RevokeServerGrant(ctx, dw.ID, "carl"); err != nil {
+		t.Fatal(err)
+	}
+	f.dispatch(ServerCrashed(dw, 0, false, t0))
+	if len(f.send.got(carl)) != 1 {
+		t.Fatalf("carl got %d alerts after the grant was revoked, want still 1", len(f.send.got(carl)))
+	}
+}

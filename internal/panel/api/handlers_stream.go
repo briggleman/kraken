@@ -119,8 +119,9 @@ func (s *Server) handleServerStream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load server")
 		return
 	}
-	// Object-level authz: the owner, or a role with server.any (Owner/Admin).
-	if !(role.Has(rbac.PermServerAny) || (server.OwnerID != "" && server.OwnerID == user.ID)) {
+	// Object-level authz: the one rule every server read goes through — owner,
+	// grant, or a role with server.any (Owner/Admin) (#422).
+	if !store.MayAccessServer(user, role, server.OwnerID, func() bool { return s.hasGrant(r.Context(), server.ID, user) }) {
 		writeError(w, http.StatusNotFound, "server not found")
 		return
 	}

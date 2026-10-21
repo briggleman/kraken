@@ -689,6 +689,14 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerConfig)).Post("/servers/{id}/sftp/disable", s.handleDisableServerSFTP)
 
 			// Cron-scheduled tasks (restart / backup / command).
+			// Shared servers (#146): who reaches a server beside its owner. The
+			// handlers decide who may manage it (owner or administrator).
+			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}/access", s.handleGetServerAccess)
+			r.With(s.requirePermission(rbac.PermServerView)).Put("/servers/{id}/access/{userID}", s.handleGrantServerAccess)
+			r.With(s.requirePermission(rbac.PermServerView)).Delete("/servers/{id}/access/{userID}", s.handleRevokeServerAccess)
+			r.With(s.requirePermission(rbac.PermServerAny), s.requirePermission(rbac.PermUserManage)).
+				Put("/servers/{id}/owner", s.handleTransferServer)
+
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}/schedules", s.handleListSchedules)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/schedules", s.handleCreateSchedule)
 			r.With(s.requirePermission(rbac.PermServerPower)).Put("/servers/{id}/schedules/{scheduleId}", s.handleUpdateSchedule)

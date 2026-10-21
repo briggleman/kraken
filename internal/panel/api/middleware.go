@@ -146,7 +146,23 @@ func sessionHashFrom(ctx context.Context) string {
 // a device's user, so a server the API hides is a server the phone never hears
 // about.
 func (s *Server) mayAccessServer(ctx context.Context, sv *store.Server) bool {
-	return store.MayAccessServer(userFrom(ctx), roleFrom(ctx), sv.OwnerID)
+	u := userFrom(ctx)
+	return store.MayAccessServer(u, roleFrom(ctx), sv.OwnerID, func() bool { return s.hasGrant(ctx, sv.ID, u) })
+}
+
+// hasGrant reports whether u holds a grant on the server. A grant that cannot
+// be read grants nothing: the request is refused as if the server were not
+// there, which is the safe way to be wrong.
+func (s *Server) hasGrant(ctx context.Context, serverID string, u *store.User) bool {
+	if u == nil {
+		return false
+	}
+	ok, err := s.store.HasServerGrant(ctx, serverID, u.ID)
+	if err != nil {
+		s.logger.Warn("could not read server grant; treating it as absent", "server", serverID, "user", u.Username, "err", err)
+		return false
+	}
+	return ok
 }
 
 // authorizeServer enforces mayAccessServer, writing 404 (not 403 — so we don't

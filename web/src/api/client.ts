@@ -34,6 +34,7 @@ import type {
   ServerUpdate,
   ServerSettings,
   SftpStatus,
+  ServerAccess,
   SetupStatus,
   Spec,
   UpdateSettingsResult,
@@ -247,6 +248,21 @@ export const api = {
     return request("DELETE", `/servers/${id}`);
   },
 
+  /** Who the server is shared with (#146). */
+  getServerAccess(id: string): Promise<ServerAccess> {
+    return request("GET", `/servers/${id}/access`);
+  },
+  /** Share the server with a user — its owner or an administrator. */
+  grantServerAccess(id: string, userId: string): Promise<ServerAccess> {
+    return request("PUT", `/servers/${id}/access/${userId}`);
+  },
+  revokeServerAccess(id: string, userId: string): Promise<ServerAccess> {
+    return request("DELETE", `/servers/${id}/access/${userId}`);
+  },
+  /** Move ownership — administrators only. */
+  transferServer(id: string, userId: string): Promise<ServerAccess> {
+    return request("PUT", `/servers/${id}/owner`, { user_id: userId });
+  },
   getServerSftp(id: string): Promise<SftpStatus> {
     return request("GET", `/servers/${id}/sftp`);
   },

@@ -14,6 +14,7 @@ import type {
   ScheduledTask,
   Server,
   ServerDnsState,
+  ServerAccess,
   ServerSettings,
   SftpStatus,
 } from "@/api/types";
@@ -22,6 +23,7 @@ import { untrack } from "svelte";
 import { ServerStream, type StreamMode } from "./stream.svelte";
 import { fleet, refreshFleet } from "./fleet.svelte";
 import { fmtWhen } from "./fmt";
+import { auth, hasPerm } from "./auth.svelte";
 
 export interface Origin {
   ox: string;
@@ -106,6 +108,11 @@ export const depth = $state({
   // A build check in flight (#392); see checkBuild.
   checkingBuild: false,
   error: null as string | null,
+  // Who the server is shared with (#146): the owner, the grants and the users
+  // a grant could go to. Optional like SFTP: a refusal leaves the block out
+  // rather than taking the drill-in's error line.
+  access: null as ServerAccess | null,
+  accessBusy: false,
   sftp: null as SftpStatus | null,
   sftpOpen: false,
   sftpBusy: false,
@@ -465,6 +472,8 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.restoreNote = null;
   depth.retireFinalBackup = true;
   depth.error = null;
+  depth.access = null;
+  depth.accessBusy = false;
   depth.sftp = null;
   depth.sftpOpen = false;
   depth.sftpBusy = false;
@@ -553,18 +562,26 @@ async function refreshDetail() {
   // out is newer than it (#368).
   const genAtStart = serverGen;
   const logRead = ++installLogReads;
+  // A shared server reaches roles that hold only some of the drill-in's
+  // permissions (#146): a Read-only grantee may view and read the console, not
+  // list backups or files. A read the signed-in role is known not to hold is
+  // not asked — it answers empty and is no error. An unknown role asks, and
+  // the Panel decides.
+  const allowed = <T>(perm: string, read: () => Promise<T>, empty: T): Promise<T> =>
+    auth.role && !hasPerm(perm) ? Promise.resolve(empty) : read();
   const results = await Promise.allSettled([
     api.getServer(id),
-    api.listBackups(id),
+    allowed("backup.manage", () => api.listBackups(id), { backups: [], mirror: "" }),
     api.listSchedules(id),
     api.getServerDns(id),
     api.getServerSettings(id),
-    api.listFiles(id, "."),
-    api.getServerSftp(id),
+    allowed<FileListing | null>("server.files.read", () => api.listFiles(id, "."), null),
+    api.getServerAccess(id),
+    allowed<SftpStatus | null>("server.files.read", () => api.getServerSftp(id), null),
     api.getInstallLog(id),
   ]);
   if (depth.serverId !== id) return; // drilled elsewhere meanwhile
-  const [srv, bk, sch, dns, settings, files, sftp, installLog] = results;
+  const [srv, bk, sch, dns, settings, files, access, sftp, installLog] = results;
   if (bk.status === "fulfilled") {
     depth.backups = bk.value.backups ?? [];
     depth.backupMirror = bk.value.mirror ?? "";
@@ -584,6 +601,7 @@ async function refreshDetail() {
   if (dns.status === "fulfilled") depth.dns = dns.value;
   if (settings.status === "fulfilled") depth.settings = settings.value;
   if (files.status === "fulfilled") depth.files = files.value;
+  if (access.status === "fulfilled") depth.access = access.value;
   // SFTP keeps its own error line: it is one optional affordance in the tab
   // strip, and a node that cannot answer for it must not blank the drill-in.
   depth.sftp = sftp.status === "fulfilled" ? sftp.value : null;
@@ -595,8 +613,9 @@ async function refreshDetail() {
   if (installLog.status === "fulfilled" && claimInstallLog(logRead)) {
     setInstallLog(installLog.value);
   }
-  // The two optional reads are excluded from the drill-in's error line.
-  const firstErr = results.slice(0, -2).find((r) => r.status === "rejected") as
+  // The three optional reads (access, SFTP, the install log) are excluded from
+  // the drill-in's error line.
+  const firstErr = results.slice(0, -3).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
     | undefined;
   // Only this refresh's own verdict is written, and only over the notice it
@@ -1113,6 +1132,39 @@ export async function backupDelete(b: Backup) {
   } catch (e) {
     depth.error = errMsg(e);
   }
+}
+
+// --- access (#146) -----------------------------------------------------------
+
+// accessChange runs one access write and takes the view it answers with.
+// The busy flag is the house idiom (inherited, not designed): every control in
+// the block is disabled while a write is out.
+async function accessChange(write: (id: string) => Promise<ServerAccess>): Promise<boolean> {
+  const id = depth.serverId;
+  if (!id || depth.accessBusy) return false;
+  depth.accessBusy = true;
+  try {
+    const view = await write(id);
+    if (depth.serverId === id) depth.access = view;
+    return true;
+  } catch (e) {
+    depth.error = errMsg(e);
+    return false;
+  } finally {
+    depth.accessBusy = false;
+  }
+}
+
+export function accessGrant(userId: string): Promise<boolean> {
+  return accessChange((id) => api.grantServerAccess(id, userId));
+}
+
+export function accessRevoke(userId: string): Promise<boolean> {
+  return accessChange((id) => api.revokeServerAccess(id, userId));
+}
+
+export function accessTransfer(userId: string): Promise<boolean> {
+  return accessChange((id) => api.transferServer(id, userId));
 }
 
 // --- schedules ---------------------------------------------------------------

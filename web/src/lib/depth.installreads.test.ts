@@ -25,6 +25,7 @@ vi.mock("@/api/client", async (importOriginal) => {
       listSchedules: ok({ schedules: [] }),
       getServerDns: ok(null),
       getServerSettings: ok({ groups: [], values: {} }),
+      getServerAccess: ok(null),
       getServerSftp: ok(null),
     },
   };

@@ -353,6 +353,11 @@ export interface Server {
   /** The host ports a retired server held, which a revive asks for again. */
   retired_ports?: Record<string, number>;
   created_at: string;
+  /** The user who owns the server; absent when nobody does (#146). */
+  owner_id?: string;
+  /** How the caller reaches this server: they own it, it is shared with them,
+   *  or their role reaches every server. On GET /servers and /servers/{id}. */
+  access?: ServerAccessVia;
   /** The Steam build check (#392). Present on every server GET /servers and
    *  GET /servers/{id} answer with (and on the retire, revive and restore
    *  answers). Absent from POST /servers' 201, which is the stored record as
@@ -832,4 +837,34 @@ export interface FileContent {
   size: number;
   is_binary: boolean;
   too_large: boolean;
+}
+
+// --- shared servers (#146) ----------------------------------------------------
+
+export type ServerAccessVia = "owner" | "grant" | "any";
+
+/** A user as the access view names them: enough to show and pick. */
+export interface AccessUser {
+  id: string;
+  username: string;
+  /** The role's display name. */
+  role: string;
+}
+
+export interface ServerGrant extends AccessUser {
+  /** Who made the grant; absent once that account is gone. */
+  granted_by?: string;
+  created_at: string;
+}
+
+/** GET /servers/{id}/access. A grant makes the server visible and nothing
+ *  more: the grantee's role decides what they may do on it. grants and
+ *  candidates are null for a caller who may not manage the server's access. */
+export interface ServerAccess {
+  owner: AccessUser | null;
+  access: ServerAccessVia;
+  can_manage: boolean;
+  can_transfer: boolean;
+  grants: ServerGrant[] | null;
+  candidates: AccessUser[] | null;
 }

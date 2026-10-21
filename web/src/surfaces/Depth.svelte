@@ -35,6 +35,9 @@
     restoreActive,
     restoreMeter,
     restoreNoteText,
+    accessGrant,
+    accessRevoke,
+    accessTransfer,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote, ui } from "@/lib/state.svelte";
@@ -42,7 +45,7 @@
   import { hasPerm } from "@/lib/auth.svelte";
   import { buildLine } from "@/lib/buildcheck";
   import { nodeOf, specOf } from "@/lib/fleet.svelte";
-  import { fmtClock, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
+  import { fmtClock, fmtDay, fmtExit, fmtGb, fmtSize, fmtUptime, fmtWhen } from "@/lib/fmt";
   import { isFromSpec, isMissing } from "@/lib/required";
   import { lastRun } from "@/lib/schedules";
   import type { FileEntry, ScheduleAction, SettingField, SettingGroup } from "@/api/types";
@@ -434,7 +437,35 @@
     settingsNote = null;
   }
 
-  // schedules form
+  // access (#146): the picker under the rows shares the server, or — after
+  // the owner row's transfer pill — names the new owner. A choice made for one
+  // server never carries into the next one's drill-in.
+  let accPick = $state("");
+  let accTransfer = $state(false);
+  $effect(() => {
+    void depth.serverId;
+    accPick = "";
+    accTransfer = false;
+  });
+  const acc = $derived(depth.access);
+  // A transfer can go to anyone but the owner: the people it is shared with
+  // as well as the people it could be.
+  const accChoices = $derived(
+    acc ? (accTransfer ? [...(acc.grants ?? []), ...(acc.candidates ?? [])] : (acc.candidates ?? [])) : [],
+  );
+  async function accSubmit() {
+    if (!accPick) return;
+    const ok = accTransfer ? await accessTransfer(accPick) : await accessGrant(accPick);
+    if (ok) {
+      accPick = "";
+      accTransfer = false;
+    }
+  }
+
+  // schedules form. Every schedule write needs server.power, so a role without
+  // it (a Read-only user the server is shared with, #146) sees the orders and
+  // none of the controls.
+  const canSchedule = $derived(hasPerm("server.power"));
   const CRON_PRESETS: { cron: string; label: string }[] = [
     { cron: "0 * * * *", label: "hourly" },
     { cron: "0 */6 * * *", label: "every 6h" },
@@ -646,6 +677,10 @@
       <span>players <b>{meta.players}</b></span>
       <span>port <b>{meta.port}</b></span>
       <span>ver <b>{meta.ver}</b></span>
+      <!-- Whose server this is (#146): for someone it is shared with, the
+           answer without opening anything. Absent until the access read lands;
+           "nobody" for a server whose owner was deleted. -->
+      {#if acc}<span>owner <b>{acc.owner?.username ?? "nobody"}</b></span>{/if}
     </div>
     <!-- The Steam build check (#392): its own line closing the header, so a
          long status never squeezes the meta onto two lines. Plain when
@@ -1062,8 +1097,10 @@
         </p>
       {/if}
       <div class="controls-row" id="dControls">
-        {#if powerControls(server?.state) === "none"}
-          <!-- retiring or retired (#360): the retire job owns the server -->
+        {#if powerControls(server?.state) === "none" || !hasPerm("server.power")}
+          <!-- retiring or retired (#360): the retire job owns the server. Or a
+               role without server.power — a Read-only user the server is
+               shared with (#146) — which would only be refused. -->
         {:else if powerControls(server?.state) === "stop"}
           <button class="ctl ctl-stop" disabled={depth.powerBusy} onclick={() => void power("stop")}>stop</button>
           <button class="ctl ctl-restart" disabled={depth.powerBusy} onclick={() => void power("restart")}>restart</button>
@@ -1173,6 +1210,10 @@
           {/if}
         </div>
       </section>
+      <!-- Every backup route needs backup.manage, so a role without it — a
+           Read-only user a server is shared with (#146) — is not offered the
+           block, as the danger block is gated on server.delete. -->
+      {#if hasPerm("backup.manage")}
       <section class="side-block" aria-label="Backups">
         <h3 class="pane-label">backups</h3>
         <div class="side-body" id="backupBody">
@@ -1258,6 +1299,7 @@
           <button class="bk-big" disabled={depth.creatingBackup || backupsBusy || restoring || retiring} onclick={() => void backupCreate()}>create backup now</button>
         </div>
       </section>
+      {/if}
       <section class="side-block" aria-label="Schedules">
         <h3 class="pane-label">schedules</h3>
         <div class="side-body">
@@ -1266,11 +1308,14 @@
               {@const last = lastRun(t)}
               <div class="sch-row{t.enabled ? '' : ' paused'}" data-cron={t.cron}>
                 <span class="sch-main"><span>{t.name}</span><small>{t.action === "command" && t.command ? "command: " + t.command : t.action} · {t.cron}</small><small>{last.when}</small>{#if last.error}<small class="sch-err" role="status">{last.error}</small>{/if}</span>
-                <span class="sch-acts"><span class="sch-next">{schNext(t)}</span><button class="mini-act res sch-pause" onclick={() => void scheduleToggle(t)}>{t.enabled ? "pause" : "resume"}</button><button class="mini-act del" onclick={() => void scheduleDelete(t)}>delete</button></span>
+                <span class="sch-acts"><span class="sch-next">{schNext(t)}</span>{#if canSchedule}<button class="mini-act res sch-pause" onclick={() => void scheduleToggle(t)}>{t.enabled ? "pause" : "resume"}</button><button class="mini-act del" onclick={() => void scheduleDelete(t)}>delete</button>{/if}</span>
               </div>
             {/each}
           </div>
-          {#if !schFormOpen}
+          {#if !depth.schedules.length && !canSchedule}
+            <p class="cfg-help">no schedules</p>
+          {/if}
+          {#if !schFormOpen && canSchedule}
             <button class="cfg-btn ghost sch-new" onclick={schOpenForm}>new schedule</button>
           {/if}
           <div class="sch-form" hidden={!schFormOpen}>
@@ -1303,6 +1348,46 @@
           </div>
         </div>
       </section>
+      <!-- Access (DESIGN.md, Access Block; #146): who reaches this server beside
+           its owner. Shown only to those who may change it — the owner and
+           administrators; someone it is shared with has the header's owner line.
+           Busy, empty and ownerless states follow the house idiom and were
+           inherited rather than designed. -->
+      {#if acc?.can_manage}
+        <section class="side-block" aria-label="Access">
+          <h3 class="pane-label">access</h3>
+          <div class="side-body">
+            <div class="sch-row acc-row">
+              <span class="sch-main"><span>{acc.owner?.username ?? "nobody"}</span><small>{acc.owner ? "owner · " + acc.owner.role : "no owner — only administrators reach it"}</small></span>
+              {#if acc.can_transfer && !accTransfer}
+                <span class="sch-acts"><button class="mini-act res" disabled={depth.accessBusy} onclick={() => { accTransfer = true; accPick = ""; }}>transfer</button></span>
+              {/if}
+            </div>
+            {#each acc.grants ?? [] as g (g.id)}
+              <div class="sch-row acc-row">
+                <span class="sch-main"><span>{g.username}</span><small>{g.role}{g.granted_by ? " · shared by " + g.granted_by : ""} · {fmtDay(Date.parse(g.created_at))}</small></span>
+                <span class="sch-acts"><button class="mini-act del" disabled={depth.accessBusy} onclick={() => void accessRevoke(g.id)}>remove</button></span>
+              </div>
+            {/each}
+            <div class="cfg-row">
+              <span>{accTransfer ? "transfer to" : "share with"}</span>
+              <select class="cfg-in" bind:value={accPick} disabled={depth.accessBusy || accChoices.length === 0} aria-label={accTransfer ? "New owner of this server" : "User to share this server with"}>
+                <option value="">{accChoices.length === 0 ? "nobody else to choose" : "choose a user…"}</option>
+                {#each accChoices as u (u.id)}<option value={u.id}>{u.username} · {u.role}</option>{/each}
+              </select>
+            </div>
+            {#if accTransfer}
+              <div class="sch-btns">
+                <button class="cfg-btn ghost" disabled={depth.accessBusy || !accPick} onclick={() => void accSubmit()}>{depth.accessBusy ? "transferring…" : "transfer"}</button>
+                <button class="cfg-btn ghost" disabled={depth.accessBusy} onclick={() => { accTransfer = false; accPick = ""; }}>cancel</button>
+              </div>
+            {:else}
+              <button class="cfg-btn ghost" disabled={depth.accessBusy || !accPick} onclick={() => void accSubmit()}>{depth.accessBusy ? "sharing…" : "share"}</button>
+            {/if}
+            <p class="cfg-help">{accTransfer ? "the new owner can share it and remove shares; the old owner keeps nothing unless it is shared with them." : "a share only lets them see the server — their role decides what they can do on it."}</p>
+          </div>
+        </section>
+      {/if}
       <!-- The retire block (DESIGN.md, Retire Block): the danger block no longer
            deletes a server, it retires it. The note is the short form (the
            mock's twenty-one words): what goes — the final backup, then the world

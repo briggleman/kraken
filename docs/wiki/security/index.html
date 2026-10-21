@@ -217,12 +217,16 @@ a trailing <code>.*</code> is a domain wildcard.</p>
 </tr>
 </tbody></table>
 </div>
-<p>On top of that sits object-level ownership. A server records the user who
-created it, and every server-scoped route checks it after loading the row.
-Owner and Admin hold <code>server.any</code> through their wildcards; Operator and
-Read-only do not, so they are scoped to servers they created. Lists are filtered
-to what you may see, and a denial is <strong>404, not 403</strong>, &quot;so another user&#39;s server
-isn&#39;t revealed to exist.&quot;</p>
+<p>On top of that sits object-level access. A server records its owner, and every
+server-scoped route checks access after loading the row. Owner and Admin hold
+<code>server.any</code> through their wildcards and reach every server. Everyone else
+reaches the servers they own and the servers
+<a href="/wiki/operate/users/#sharing-a-server">shared with them</a>. A share makes the
+server visible and nothing more: the role still decides every action on it.
+Lists are filtered to what you may see, and a denial is <strong>404, not 403</strong>, &quot;so
+another user&#39;s server isn&#39;t revealed to exist.&quot; The API, the console stream and
+push alerts all apply one rule (<code>store.MayAccessServer</code>), so they cannot
+disagree about who reaches a server.</p>
 <h2 id="hardening-a-panel-the-internet-can-reach">Hardening a Panel the internet can reach <a class="hlink" href="#hardening-a-panel-the-internet-can-reach" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Seven steps. None of them is optional if the Panel has a public hostname.</p>
 <p><strong>1. Name your proxy.</strong> Set <code>KRAKEN_TRUSTED_PROXIES</code> to the CIDRs of whatever is

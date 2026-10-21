@@ -96,12 +96,16 @@ a trailing `.*` is a domain wildcard.
 | **Operator** | view, create, power, console read and command, files read and write, server config, `backup.manage`, `spec.view`, `node.view` |
 | **Read-only** | `server.view`, `server.console.read`, `spec.view`, `node.view` |
 
-On top of that sits object-level ownership. A server records the user who
-created it, and every server-scoped route checks it after loading the row.
-Owner and Admin hold `server.any` through their wildcards; Operator and
-Read-only do not, so they are scoped to servers they created. Lists are filtered
-to what you may see, and a denial is **404, not 403**, "so another user's server
-isn't revealed to exist."
+On top of that sits object-level access. A server records its owner, and every
+server-scoped route checks access after loading the row. Owner and Admin hold
+`server.any` through their wildcards and reach every server. Everyone else
+reaches the servers they own and the servers
+[shared with them](/wiki/operate/users/#sharing-a-server). A share makes the
+server visible and nothing more: the role still decides every action on it.
+Lists are filtered to what you may see, and a denial is **404, not 403**, "so
+another user's server isn't revealed to exist." The API, the console stream and
+push alerts all apply one rule (`store.MayAccessServer`), so they cannot
+disagree about who reaches a server.
 
 ## Hardening a Panel the internet can reach
 

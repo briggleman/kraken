@@ -29,7 +29,7 @@ but do not define the product's center.
 
 Multi-user is supported (four built-in roles: **Owner**, **Admin**, **Operator**,
 **Read-only** — `internal/panel/rbac/rbac.go`, with per-server object-level
-ownership), but the assumed default install is one operator managing their own
+ownership and sharing), but the assumed default install is one operator managing their own
 fleet. Running servers *for* a wider community is a supported case, not the
 design target.
 

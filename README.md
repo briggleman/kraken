@@ -46,8 +46,9 @@ _Screenshots to follow._
   phone and off until you configure a relay
   ([krakenserver.io/wiki/operate/alerts/](https://krakenserver.io/wiki/operate/alerts/)).
 - **Auth and RBAC.** argon2id passwords, four roles, per-server object-level
-  authorization, and AES-256-GCM encryption for every secret at rest. New
-  accounts can be invited by email with a one-time link that lets the person
+  authorization with sharing (a server can be shared with a user without
+  handing them the fleet), and AES-256-GCM encryption for every secret at
+  rest. New accounts can be invited by email with a one-time link that lets the person
   choose their own password, once an SMTP relay is configured
   ([krakenserver.io/wiki/operate/users/](https://krakenserver.io/wiki/operate/users/)).
 - **Optional networking automation** with Cloudflare DNS and UniFi port

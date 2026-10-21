@@ -1,6 +1,6 @@
 ---
 title: Users, roles and invites
-description: The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send.
+description: The four built-in roles and what each may do, sharing a server with someone without handing them the fleet, transferring a server to a new owner, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send.
 section: operate
 order: 38
 ---
@@ -25,13 +25,62 @@ cannot be edited yet (a role editor is tracked as #125).
 | **Owner** | everything, including settings, nodes, users and deletes |
 | **Admin** | everything about servers, specs, nodes, backups and settings; manage users; read the audit log. Cannot act on owners |
 | **Operator** | start, stop, restart, kill; console and command; files; backups; create servers; read specs and nodes. No settings, no users |
-| **Read-only** | read the dashboard, the console and the specs; act on nothing |
+| **Read-only** | watch the servers shared with them — status, console, specs and nodes; act on nothing |
 
-Operators and read-only users are scoped to the servers they created unless a
-role grants `server.any`, which Owner and Admin have through their wildcards.
-The exact permission list is in
+Owner and Admin reach every server: their wildcards include `server.any`.
+Everyone else reaches the servers they own and the servers
+[shared with them](#sharing-a-server), and nothing else. Their role then
+decides what they may do on each one. A new Read-only user owns nothing and
+cannot create a server, so they see an empty fleet until something is shared
+with them. The exact permission list is in
 [`internal/panel/rbac/rbac.go`](https://github.com/briggleman/kraken/blob/main/internal/panel/rbac/rbac.go),
 and the users sheet's legend restates it in a sentence each.
+
+## Sharing a server
+
+A server has one **owner**: whoever created it, until an administrator
+transfers it. Sharing lets other people reach it without giving them the whole
+fleet.
+
+**A share makes the server visible, and nothing more.** What the person may do
+on it is still their role's to decide:
+
+- A **Read-only** user it is shared with sees it on the fleet page, opens its
+  drill-in, and watches the console. The power, schedule and backup controls
+  are not offered.
+- An **Operator** it is shared with runs it as if it were their own: start,
+  stop, console, files, backups, schedules, config.
+
+**Who can share.** The server's owner, whatever their role, and any
+administrator (a role holding both `server.any` and `user.manage`, which Owner
+and Admin do). The drill-in's **access** block lists the owner and everyone the
+server is shared with, each with **remove**, and a *share with* picker underneath.
+The picker leaves out the owner, anyone it is already shared with, disabled
+accounts, and roles that reach every server anyway. People the server is shared
+with do not see the block; the drill-in header's **owner** line tells them whose
+server it is.
+
+**Transferring ownership.** Administrators only. The owner's row carries a
+**transfer** pill that turns the picker into *transfer to*. The new owner can
+then share it and remove shares. If they already had a share, it goes, because
+ownership covers it. The old owner keeps nothing unless it is shared with them.
+
+**When people are deleted.** Deleting a user deletes every share they held.
+Deleting a server's owner leaves the server with **no owner**. The owner line
+reads `nobody`, and only administrators and the people it is shared with reach
+it until an administrator transfers it to someone. Deleting a server deletes its
+shares.
+
+Push alerts follow the same rule: a server shared with you is a server your
+phone hears about, if your role holds `server.view`.
+
+| action | actor | meaning |
+| --- | --- | --- |
+| `server.grant:<username>` | owner or admin | the server was shared with the user |
+| `server.revoke:<username>` | owner or admin | the share was removed |
+| `server.transfer:<username>` | admin | the user is the server's new owner |
+
+Each row's target is the server.
 
 ## Creating an account
 

@@ -393,6 +393,10 @@ plaintext HTTP on a LAN by design, so it is the wrong layer to assert HSTS.
     probing other nodes' paths reveals nothing. None of them reaches any Agent.
     Regression test: `TestNodePower_RefusesServerOnAnotherNode`
     (`internal/panel/api/handlers_node_power_test.go`).
+  - **Follow-up, 2026-10-21 (#146): owner, grant, or `server.any`.** A server
+    can now be shared with users beside its owner, and the console stream's
+    inline copy of the rule is gone (#422 item 1). See
+    [Shared servers](#shared-servers-2026-10-21).
 
 ## Cross-node agent authentication + dependency sweep (2026-08-27)
 
@@ -1114,3 +1118,78 @@ can do to the operator's domain reputation with the relay. On under
   send mail about any address") that an administrator-initiated invite does
   not, and it would need the response-time floor gnzb's forgot-password form
   carries. Tracked as a possible follow-up on #451.
+
+## Shared servers (2026-10-21)
+
+Issue #146; shipped as #457 (the Panel), #459 (the web side) and the docs PR
+that closes it. Until now a server was reached by its owner or by a role
+holding `server.any`, and nothing in between. A Read-only user could never see
+a server at all: they own nothing, and they cannot create one.
+
+**The rule.** `store.MayAccessServer(user, role, ownerID, granted)`: a role
+with `server.any` reaches every server; anyone else reaches the servers they
+own and the servers granted to them. `granted` is a lookup the rule calls only
+when ownership and `server.any` have not already settled the answer, so owners
+and administrators cost nothing extra. **A grant is visibility only.** Every
+route keeps its own permission gate (`requirePermission`), so a Read-only
+grantee gets `server.view` and `server.console.read` on that server and nothing
+else. A grant never adds a permission the role lacks. One rule covers every
+reader:
+- the API middleware (`mayAccessServer`)
+- the server list, which reads the caller's grants once
+  (`ServerIDsGrantedTo`) instead of once per server
+- the console/stats WebSocket, which had its own inline copy of the old rule
+  and could have missed this change (#422 item 1)
+- the push-alert dispatcher, which reads a server's grants once per event at
+  send time
+
+A grant lookup that errors grants nothing.
+
+**Who changes it.** Granting and revoking: the server's owner, or a role
+holding both `server.any` and `user.manage` (`mayManageAccess`). Transfer: the
+second group only (`PUT /servers/{id}/owner`, gated on both permissions at the
+route). Someone who cannot reach the server gets **404** on every access route,
+as on every other server route. Someone who can reach it but not manage it gets
+**403**: they already know it exists. The access view gives a non-manager the
+owner's name and nothing else. The candidate list (id, username, role name) goes
+only to those who may manage, which reaches an Operator owner who otherwise
+cannot list users. That disclosure is deliberate: you cannot share with someone
+you cannot name.
+
+**Ownership got its own column.** Every writer of a server rewrites the whole
+`data` JSONB document. An owner kept there could be put back by any stale copy
+written after a transfer, quietly returning a server to someone it was taken
+from. Migration 00011 moves it to `servers.owner_id`
+(`REFERENCES users ON DELETE SET NULL`), backfilled from the document. An owner
+id that names no existing user stays NULL, which is what it already meant.
+`UpdateServer` no longer writes it in either store; `SetServerOwner` is its only
+writer after create. This is the same reasoning as the build-check columns
+(00008). Regression tests: `TestServerOwnershipAndGrants` (memory) and
+`TestPostgresServerOwnershipAndGrants` (Postgres) write a stale copy after a
+transfer and assert the transfer stands. `TestOwnerBackfill_Integration`
+upgrades a 00010 database with an owned, an orphaned and a legacy server.
+
+**Grants cannot outlive their ends.** `server_grants` cascades on both its
+server and its user. `granted_by` is a plain reference, so deleting whoever
+made a grant leaves the grant. Deleting a user also clears them as owner. An
+ownerless server is reachable only through `server.any` and its grants until
+an administrator transfers it.
+
+**Audited.** `server.grant:<user>`, `server.revoke:<user>`,
+`server.transfer:<user>`, with the server as the target.
+
+**Tests.** `TestServerGrantReachAndRole` covers the owner, a Read-only grantee,
+an Operator grantee, a stranger and an admin, across read, list, power, the
+console WebSocket and revoke. `TestServerAccessManageRights` covers who may
+share and what each caller sees. `TestServerTransfer` covers transfer and
+deletion of owner and grantee. `TestDispatchReachesGrantees` covers alerts. A
+mutation check (grants switched off in the rule) fails all four.
+
+**Residual risks, accepted.**
+
+- An Operator owner can see the usernames and role names of every account a
+  share could go to. Sharing needs a name to share with; a typed username
+  would disclose the same thing one guess at a time.
+- The web drill-in still offers a few controls a grantee's role cannot use:
+  console input, kick, settings apply, DNS/forwards, SFTP controls. The Panel
+  refuses each one; the UI gating is tracked as #458.

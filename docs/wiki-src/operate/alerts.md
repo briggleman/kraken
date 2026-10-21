@@ -227,7 +227,8 @@ you whether the path works.
 `KRAKEN_PUSH_RELAY_URL` is not set. Then send a test alert from the app. Then
 look in the [audit log](/wiki/operate/audit/) for `push.` rows — if there are
 none, nothing has happened that you are allowed to hear about (an Operator only
-hears about the servers they own).
+hears about the servers they own or that are
+[shared with them](/wiki/operate/users/#sharing-a-server)).
 
 **One phone went silent.** Look up its device: if `token_invalid_at` is set,
 the relay reported its push token dead and the Panel stopped sending to it.

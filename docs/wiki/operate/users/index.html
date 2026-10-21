@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Users, roles and invites — Kraken wiki</title>
-<meta name="description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<meta name="description" content="The four built-in roles and what each may do, sharing a server with someone without handing them the fleet, transferring a server to a new owner, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
 <link rel="canonical" href="https://krakenserver.io/wiki/operate/users/" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Kraken" />
 <meta property="og:url" content="https://krakenserver.io/wiki/operate/users/" />
 <meta property="og:title" content="Users, roles and invites — Kraken wiki" />
-<meta property="og:description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<meta property="og:description" content="The four built-in roles and what each may do, sharing a server with someone without handing them the fleet, transferring a server to a new owner, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
 <meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Users, roles and invites — Kraken wiki" />
-<meta name="twitter:description" content="The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
+<meta name="twitter:description" content="The four built-in roles and what each may do, sharing a server with someone without handing them the fleet, transferring a server to a new owner, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send." />
 <meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
 <meta name="theme-color" content="#02090E" />
 
@@ -113,9 +113,10 @@
   <main class="doc" id="doc">
     <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Users, roles and invites</span></nav>
     <h1>Users, roles and invites</h1>
-    <p class="lede">The four built-in roles and what each may do, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send.</p>
+    <p class="lede">The four built-in roles and what each may do, sharing a server with someone without handing them the fleet, transferring a server to a new owner, the two ways to create an account — a one-time password shown once, or an emailed invite that lets the person choose their own — what the invitee sees, the 24-hour single-use rules with resend and revoke, what invite.sent, invite.accepted and the rest mean in the audit log, and how to recover from a failed send.</p>
     <details class="toc-in"><summary>on this page</summary><div class="toc">
 <a class="toc-link lvl-2" href="#the-four-roles">The four roles</a>
+<a class="toc-link lvl-2" href="#sharing-a-server">Sharing a server</a>
 <a class="toc-link lvl-2" href="#creating-an-account">Creating an account</a>
 <a class="toc-link lvl-2" href="#what-the-invitee-sees">What the invitee sees</a>
 <a class="toc-link lvl-2" href="#the-rules">The rules</a>
@@ -156,15 +157,76 @@ cannot be edited yet (a role editor is tracked as #125).</p>
 </tr>
 <tr>
 <td><strong>Read-only</strong></td>
-<td>read the dashboard, the console and the specs; act on nothing</td>
+<td>watch the servers shared with them — status, console, specs and nodes; act on nothing</td>
 </tr>
 </tbody></table>
 </div>
-<p>Operators and read-only users are scoped to the servers they created unless a
-role grants <code>server.any</code>, which Owner and Admin have through their wildcards.
-The exact permission list is in
+<p>Owner and Admin reach every server: their wildcards include <code>server.any</code>.
+Everyone else reaches the servers they own and the servers
+<a href="#sharing-a-server">shared with them</a>, and nothing else. Their role then
+decides what they may do on each one. A new Read-only user owns nothing and
+cannot create a server, so they see an empty fleet until something is shared
+with them. The exact permission list is in
 <a href="https://github.com/briggleman/kraken/blob/main/internal/panel/rbac/rbac.go"><code>internal/panel/rbac/rbac.go</code></a>,
 and the users sheet&#39;s legend restates it in a sentence each.</p>
+<h2 id="sharing-a-server">Sharing a server <a class="hlink" href="#sharing-a-server" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>A server has one <strong>owner</strong>: whoever created it, until an administrator
+transfers it. Sharing lets other people reach it without giving them the whole
+fleet.</p>
+<p><strong>A share makes the server visible, and nothing more.</strong> What the person may do
+on it is still their role&#39;s to decide:</p>
+<ul>
+<li>A <strong>Read-only</strong> user it is shared with sees it on the fleet page, opens its
+drill-in, and watches the console. The power, schedule and backup controls
+are not offered.</li>
+<li>An <strong>Operator</strong> it is shared with runs it as if it were their own: start,
+stop, console, files, backups, schedules, config.</li>
+</ul>
+<p><strong>Who can share.</strong> The server&#39;s owner, whatever their role, and any
+administrator (a role holding both <code>server.any</code> and <code>user.manage</code>, which Owner
+and Admin do). The drill-in&#39;s <strong>access</strong> block lists the owner and everyone the
+server is shared with, each with <strong>remove</strong>, and a <em>share with</em> picker underneath.
+The picker leaves out the owner, anyone it is already shared with, disabled
+accounts, and roles that reach every server anyway. People the server is shared
+with do not see the block; the drill-in header&#39;s <strong>owner</strong> line tells them whose
+server it is.</p>
+<p><strong>Transferring ownership.</strong> Administrators only. The owner&#39;s row carries a
+<strong>transfer</strong> pill that turns the picker into <em>transfer to</em>. The new owner can
+then share it and remove shares. If they already had a share, it goes, because
+ownership covers it. The old owner keeps nothing unless it is shared with them.</p>
+<p><strong>When people are deleted.</strong> Deleting a user deletes every share they held.
+Deleting a server&#39;s owner leaves the server with <strong>no owner</strong>. The owner line
+reads <code>nobody</code>, and only administrators and the people it is shared with reach
+it until an administrator transfers it to someone. Deleting a server deletes its
+shares.</p>
+<p>Push alerts follow the same rule: a server shared with you is a server your
+phone hears about, if your role holds <code>server.view</code>.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>action</th>
+<th>actor</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>server.grant:&lt;username&gt;</code></td>
+<td>owner or admin</td>
+<td>the server was shared with the user</td>
+</tr>
+<tr>
+<td><code>server.revoke:&lt;username&gt;</code></td>
+<td>owner or admin</td>
+<td>the share was removed</td>
+</tr>
+<tr>
+<td><code>server.transfer:&lt;username&gt;</code></td>
+<td>admin</td>
+<td>the user is the server&#39;s new owner</td>
+</tr>
+</tbody></table>
+</div>
+<p>Each row&#39;s target is the server.</p>
 <h2 id="creating-an-account">Creating an account <a class="hlink" href="#creating-an-account" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>The create form at the bottom of the sheet has two modes.</p>
 <p><strong>A one-time password, shown once.</strong> The default, and the only mode until
@@ -294,6 +356,7 @@ a row is an edit, nothing more.</li>
     <span class="rail-k">on this page</span>
     <div class="toc">
 <a class="toc-link lvl-2" href="#the-four-roles">The four roles</a>
+<a class="toc-link lvl-2" href="#sharing-a-server">Sharing a server</a>
 <a class="toc-link lvl-2" href="#creating-an-account">Creating an account</a>
 <a class="toc-link lvl-2" href="#what-the-invitee-sees">What the invitee sees</a>
 <a class="toc-link lvl-2" href="#the-rules">The rules</a>

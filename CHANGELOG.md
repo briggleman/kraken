@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.68.0](https://github.com/briggleman/kraken/compare/v0.67.0...v0.68.0) (2026-10-21)
+
+
+### Features
+
+* **panel:** share a server with other users ([#457](https://github.com/briggleman/kraken/issues/457)) ([0907a22](https://github.com/briggleman/kraken/commit/0907a2218bd70327dad823d3cffe7a9e37d0e8b8))
+* **web:** share a server from its drill-in ([#459](https://github.com/briggleman/kraken/issues/459)) ([7896d91](https://github.com/briggleman/kraken/commit/7896d9131c49c1435e66ae5cf90873cf2e65981c))
+
 ## [0.67.0](https://github.com/briggleman/kraken/compare/v0.66.0...v0.67.0) (2026-10-17)
 
 

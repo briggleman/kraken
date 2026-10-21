@@ -28,6 +28,7 @@ vi.mock("@/api/client", async (importOriginal) => {
           "getServerDns",
           "getServerSettings",
           "listFiles",
+          "getServerAccess",
           "getServerSftp",
           "getInstallLog",
         ].map((k) => [k, () => new Promise(() => {})]),

@@ -2984,6 +2984,7 @@ FINISH: mock for direction comparison; the chosen direction's production build e
       <span>players <b id="dPlayers">7/32</b></span>
       <span>port <b id="dPort">8211</b></span>
       <span>ver <b id="dVer">v0.6.1</b></span>
+      <span>owner <b id="dOwner">ben</b></span>
     </div>
     <div class="depth-build" id="dBuildWrap">build <b id="dBuild">25247047</b><span class="bs" id="dBuildSt">current · checked 3h ago</span><button class="mini-act build-check" id="dBuildCheck" title="ask Steam for the branch's current build now">check</button></div>
   </div>
@@ -3239,6 +3240,29 @@ FINISH: mock for direction comparison; the chosen direction's production build e
           </div>
         </div>
       </section>
+      <section class="side-block" aria-label="Access">
+        <h3 class="pane-label">access</h3>
+        <div class="side-body">
+          <div class="sch-row acc-row">
+            <span class="sch-main"><span>ben</span><small>owner · Owner</small></span>
+            <span class="sch-acts"><button class="mini-act res">transfer</button></span>
+          </div>
+          <div class="sch-row acc-row">
+            <span class="sch-main"><span>kestrel</span><small>Operator · shared by ben · sep 30</small></span>
+            <span class="sch-acts"><button class="mini-act del">remove</button></span>
+          </div>
+          <div class="sch-row acc-row">
+            <span class="sch-main"><span>wren</span><small>Read-only · shared by ben · oct 12</small></span>
+            <span class="sch-acts"><button class="mini-act del">remove</button></span>
+          </div>
+          <div class="cfg-row">
+            <span>share with</span>
+            <select class="cfg-in" aria-label="User to share this server with"><option selected>choose a user…</option><option>marlow · Operator</option><option>pike · Read-only</option></select>
+          </div>
+          <button class="cfg-btn ghost">share</button>
+          <p class="cfg-help">a share only lets them see the server — their role decides what they can do on it.</p>
+        </div>
+      </section>
       <section class="side-block danger-block" aria-label="Retire server">
         <h3 class="pane-label">danger</h3>
         <div class="side-body">
@@ -3370,8 +3394,9 @@ FINISH: mock for direction comparison; the chosen direction's production build e
 
                   <div class="users-foot">
     <div class="users-legend"><b>owner</b><span>everything, including settings, nodes and deletes</span></div>
-    <div class="users-legend"><b>operator</b><span>start, stop, restart, console and files — no settings</span></div>
-    <div class="users-legend"><b>viewer</b><span>read the dashboard and the logs, act on nothing</span></div>
+    <div class="users-legend"><b>admin</b><span>every server, node and setting, and the accounts</span></div>
+    <div class="users-legend"><b>operator</b><span>runs the servers they create or are shared — start, stop, console, files; no settings</span></div>
+    <div class="users-legend"><b>read-only</b><span>watches the servers shared with them, acts on nothing</span></div>
     <div class="users-legend"><b>machine identities</b><span>system and agent:&lt;node&gt; act in the audit log but are not accounts</span></div>
                   </div>
   </div>

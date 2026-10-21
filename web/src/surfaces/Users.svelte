@@ -366,8 +366,9 @@
 
     <div class="users-foot">
       <div class="users-legend"><b>owner</b><span>everything, including settings, nodes and deletes</span></div>
-      <div class="users-legend"><b>operator</b><span>start, stop, restart, console and files — no settings</span></div>
-      <div class="users-legend"><b>viewer</b><span>read the dashboard and the logs, act on nothing</span></div>
+      <div class="users-legend"><b>admin</b><span>every server, node and setting, and the accounts</span></div>
+      <div class="users-legend"><b>operator</b><span>runs the servers they create or are shared — start, stop, console, files; no settings</span></div>
+      <div class="users-legend"><b>read-only</b><span>watches the servers shared with them, acts on nothing</span></div>
       <div class="users-legend"><b>machine identities</b><span>system and agent:&lt;node&gt; act in the audit log but are not accounts</span></div>
     </div>
   </div>

@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/briggleman/kraken/internal/panel/rbac"
 	"github.com/briggleman/kraken/internal/panel/store"
 )
 
@@ -178,13 +180,11 @@ func TestDownloadTokenRejectedAfterServerIsReOwned(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("operator mint: got %d, want 201", code)
 	}
-	sv, err := e.st.GetServer(ctx, e.server)
-	if err != nil {
-		t.Fatalf("get server: %v", err)
+	if err := e.st.CreateUser(ctx, &store.User{ID: "someone-else", Username: "someone-else", RoleID: rbac.RoleOperator, CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("create user: %v", err)
 	}
-	sv.OwnerID = "someone-else"
-	if err := e.st.UpdateServer(ctx, sv); err != nil {
-		t.Fatalf("update server owner: %v", err)
+	if err := e.st.SetServerOwner(ctx, e.server, "someone-else"); err != nil {
+		t.Fatalf("set server owner: %v", err)
 	}
 	if rec := do(t, e.h, http.MethodGet, tok.URL, "", nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("redeem after the server was re-owned: got %d, want 401", rec.Code)

@@ -1180,6 +1180,85 @@ paths:
         '500': { $ref: '#/components/responses/AgentError' }
         '503': { $ref: '#/components/responses/NodeUnreachable' }
 
+  /servers/{id}/access:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Servers]
+      summary: Who the server is shared with
+      description: >-
+        Requires server.view and access to the server (owner, grant or
+        server.any). The owner and administrators also see the grants and the
+        users a grant could go to.
+      responses:
+        '200':
+          description: The server's access
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /servers/{id}/access/{userId}:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [Servers]
+      summary: Share the server with a user
+      description: >-
+        The server's owner or an administrator (server.any + user.manage).
+        Granting what is already granted is not an error. The grant makes the
+        server visible; the user's role decides what they may do on it.
+        Audited as server.grant:<username>.
+      responses:
+        '200':
+          description: The server's access as it now stands
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccess' }
+        '403': { description: The caller reaches the server but may not manage its access }
+        '404': { description: "No such server for this caller, or no such user" }
+        '409': { description: The user already owns the server }
+    delete:
+      tags: [Servers]
+      summary: Stop sharing the server with a user
+      description: >-
+        The server's owner or an administrator. Audited as
+        server.revoke:<username>.
+      responses:
+        '200':
+          description: The server's access as it now stands
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccess' }
+        '403': { description: The caller reaches the server but may not manage its access }
+        '404': { description: "No such server for this caller, or the user has no grant on it" }
+  /servers/{id}/owner:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    put:
+      tags: [Servers]
+      summary: Transfer the server to another owner
+      description: >-
+        Administrators only (server.any + user.manage). The new owner's grant,
+        if they held one, is dropped; the previous owner keeps nothing they are
+        not granted. Audited as server.transfer:<username>.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The server's access as it now stands
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServerAccess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { description: The caller is not an administrator }
+        '404': { description: No such server or user }
+
   /servers/{id}/schedules:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -2486,6 +2565,57 @@ components:
             only repeat an install that just ran.
         created_at: { type: string, format: date-time }
         update: { $ref: '#/components/schemas/ServerUpdate' }
+        owner_id:
+          type: string
+          description: >-
+            The user who owns the server: its creator, until an administrator
+            transfers it (PUT /servers/{id}/owner). Absent when nobody owns it.
+        access:
+          type: string
+          enum: [owner, grant, any]
+          description: >-
+            How the caller reaches this server: they own it, it is shared with
+            them (a grant), or their role reaches every server (server.any).
+            On the list and the single read only.
+    ServerAccess:
+      type: object
+      description: >-
+        Who reaches a server beside its owner (#146). A grant makes the server
+        visible to a user and nothing more: their role still decides what they
+        may do on it. grants and candidates are null for a caller who may not
+        manage the server's access.
+      properties:
+        owner:
+          nullable: true
+          allOf: [ { $ref: '#/components/schemas/AccessUser' } ]
+        access: { type: string, enum: [owner, grant, any] }
+        can_manage: { type: boolean, description: "the caller is the owner, or holds server.any and user.manage" }
+        can_transfer: { type: boolean, description: "the caller holds server.any and user.manage" }
+        grants:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/ServerGrant' }
+        candidates:
+          type: array
+          nullable: true
+          description: >-
+            The users a grant could go to: everyone but the owner, the users
+            already granted, disabled accounts, and roles that reach every
+            server anyway.
+          items: { $ref: '#/components/schemas/AccessUser' }
+    AccessUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        role: { type: string, description: "the role's display name" }
+    ServerGrant:
+      allOf:
+        - { $ref: '#/components/schemas/AccessUser' }
+        - type: object
+          properties:
+            granted_by: { type: string, description: "username of whoever made the grant; absent once that account is gone" }
+            created_at: { type: string, format: date-time }
     ServerUpdate:
       type: object
       description: >-

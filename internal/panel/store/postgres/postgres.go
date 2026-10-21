@@ -406,25 +406,34 @@ func (s *Store) CreateServer(ctx context.Context, sv *store.Server) error {
 	b := sv.Build
 	_, err = s.pool.Exec(ctx,
 		`INSERT INTO servers (id, name, spec_id, node_id, state, data, created_at,
-		   installed_build, available_build, available_build_at, update_checked_at, update_check_error)
-		 VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12)`,
+		   installed_build, available_build, available_build_at, update_checked_at, update_check_error, owner_id)
+		 VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,
+		   (SELECT id FROM users WHERE id::text = $13))`,
 		sv.ID, sv.Name, sv.SpecID, sv.NodeID, string(sv.State), string(data), sv.CreatedAt,
-		nullText(b.InstalledBuild), nullText(b.AvailableBuild), b.AvailableBuildAt, b.CheckedAt, nullText(b.CheckError))
+		nullText(b.InstalledBuild), nullText(b.AvailableBuild), b.AvailableBuildAt, b.CheckedAt, nullText(b.CheckError),
+		sv.OwnerID)
 	if isUniqueViolation(err) {
 		return store.ErrConflict
 	}
 	return err
 }
 
+// serverCols is what every server query selects, in scanServer's order.
+const serverCols = `data, installed_build, available_build, available_build_at, update_checked_at,
+	update_check_error, COALESCE(owner_id::text, '')`
+
 // scanServer reads what every server query selects: the row's JSON document,
-// then the build-check columns that live beside it (see store.ServerBuild).
+// then the build-check columns that live beside it (see store.ServerBuild),
+// then the owner column, which wins over whatever owner the document still
+// carries (see store.Server.OwnerID).
 func (s *Store) scanServer(row pgx.Row) (*store.Server, error) {
 	var (
 		data                           []byte
 		installed, available, checkErr *string
 		availableAt, checkedAt         *time.Time
+		ownerID                        string
 	)
-	err := row.Scan(&data, &installed, &available, &availableAt, &checkedAt, &checkErr)
+	err := row.Scan(&data, &installed, &available, &availableAt, &checkedAt, &checkErr, &ownerID)
 	if notFoundErr(err) {
 		return nil, store.ErrNotFound
 	}
@@ -435,6 +444,7 @@ func (s *Store) scanServer(row pgx.Row) (*store.Server, error) {
 	if err := json.Unmarshal(data, &sv); err != nil {
 		return nil, err
 	}
+	sv.OwnerID = ownerID
 	sv.Build = store.ServerBuild{
 		InstalledBuild:   deref(installed),
 		AvailableBuild:   deref(available),
@@ -481,11 +491,11 @@ func deref(s *string) string {
 }
 
 func (s *Store) GetServer(ctx context.Context, id string) (*store.Server, error) {
-	return s.scanServer(s.pool.QueryRow(ctx, `SELECT data, installed_build, available_build, available_build_at, update_checked_at, update_check_error FROM servers WHERE id=$1`, id))
+	return s.scanServer(s.pool.QueryRow(ctx, `SELECT `+serverCols+` FROM servers WHERE id=$1`, id))
 }
 
 func (s *Store) ListServers(ctx context.Context) ([]*store.Server, error) {
-	rows, err := s.pool.Query(ctx, `SELECT data, installed_build, available_build, available_build_at, update_checked_at, update_check_error FROM servers ORDER BY created_at`)
+	rows, err := s.pool.Query(ctx, `SELECT `+serverCols+` FROM servers ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}

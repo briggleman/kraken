@@ -73,13 +73,8 @@ func seedDownloadOperator(t *testing.T, e *downloadEnv, id string) string {
 	if err := e.st.CreateSession(ctx, &store.Session{Token: id + "-token", UserID: id, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	sv, err := e.st.GetServer(ctx, e.server)
-	if err != nil {
-		t.Fatalf("get server: %v", err)
-	}
-	sv.OwnerID = id
-	if err := e.st.UpdateServer(ctx, sv); err != nil {
-		t.Fatalf("update server owner: %v", err)
+	if err := e.st.SetServerOwner(ctx, e.server, id); err != nil {
+		t.Fatalf("set server owner: %v", err)
 	}
 	return id + "-token"
 }

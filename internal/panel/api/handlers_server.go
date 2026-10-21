@@ -687,12 +687,33 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 			specs[sp.ID] = sp
 		}
 	}
-	// Scope the list to servers the caller may access (owner, or PermServerAny),
-	// and strip SFTP credential material from the response.
+	// Scope the list to servers the caller may access (owner, grant, or
+	// PermServerAny), and strip SFTP credential material from the response.
+	// The caller's grants are read once for the whole list, and only when the
+	// rule gets as far as asking.
+	u, role := userFrom(r.Context()), roleFrom(r.Context())
+	var grants map[string]bool
+	granted := func(id string) bool {
+		if grants == nil {
+			grants = map[string]bool{}
+			if u != nil {
+				ids, gerr := s.store.ServerIDsGrantedTo(r.Context(), u.ID)
+				if gerr != nil {
+					s.logger.Warn("could not read the caller's server grants; listing without them", "user", u.Username, "err", gerr)
+				}
+				for _, id := range ids {
+					grants[id] = true
+				}
+			}
+		}
+		return grants[id]
+	}
 	visible := make([]*serverJSON, 0, len(servers))
 	for _, sv := range servers {
-		if s.mayAccessServer(r.Context(), sv) {
-			visible = append(visible, s.serverResponseWith(sv, specs[sv.SpecID]))
+		if store.MayAccessServer(u, role, sv.OwnerID, func() bool { return granted(sv.ID) }) {
+			out := s.serverResponseWith(sv, specs[sv.SpecID])
+			out.Access = accessVia(u, role, sv)
+			visible = append(visible, out)
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"servers": visible})
@@ -711,7 +732,9 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeServer(w, r.Context(), sv) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.serverResponse(r.Context(), sv))
+	out := s.serverResponse(r.Context(), sv)
+	out.Access = accessVia(userFrom(r.Context()), roleFrom(r.Context()), sv)
+	writeJSON(w, http.StatusOK, out)
 }
 
 // installLogResponse is the retained install output for one server.

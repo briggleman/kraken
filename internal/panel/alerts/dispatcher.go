@@ -15,12 +15,14 @@ import (
 )
 
 // Store is what the dispatcher reads and writes: the devices, the user and role
-// behind each, the two device marks a delivery leaves, and the audit log.
+// behind each, a server's grants, the two device marks a delivery leaves, and
+// the audit log.
 type Store interface {
 	AuditAppender
 	ListDevices(ctx context.Context) ([]*store.Device, error)
 	GetUser(ctx context.Context, id string) (*store.User, error)
 	GetRole(ctx context.Context, id string) (*rbac.Role, error)
+	ListServerGrants(ctx context.Context, serverID string) ([]*store.ServerGrant, error)
 	MarkDeviceTokenInvalid(ctx context.Context, userID, id, token string, at time.Time) (bool, error)
 	TouchDeviceSent(ctx context.Context, userID, id string, at time.Time) error
 }
@@ -129,6 +131,25 @@ type audience struct {
 	ctx   context.Context
 	users map[string]*store.User
 	roles map[string]*rbac.Role
+	// grantees is the event's server's grants as a set of user ids, read on
+	// first use; nil until then.
+	grantees map[string]bool
+}
+
+// granted reports whether the user holds a grant on the event's server. A
+// grant list that cannot be read grants nothing: the alert still reaches the
+// owner and server.any, and a missed alert beats one sent to the wrong phone.
+func (a *audience) granted(serverID, userID string) bool {
+	if a.grantees == nil {
+		a.grantees = map[string]bool{}
+		gs, err := a.st.ListServerGrants(a.ctx, serverID)
+		if err == nil {
+			for _, g := range gs {
+				a.grantees[g.UserID] = true
+			}
+		}
+	}
+	return a.grantees[userID]
 }
 
 func (a *audience) user(id string) (*store.User, *rbac.Role) {
@@ -162,7 +183,8 @@ func (d *Dispatcher) fanOut(e Event) {
 	var wg sync.WaitGroup
 	for _, dev := range devices {
 		user, role := aud.user(dev.UserID)
-		if !Allowed(e, dev, user, role) {
+		granted := func() bool { return aud.granted(e.Server.ID, dev.UserID) }
+		if !Allowed(e, dev, user, role, granted) {
 			continue
 		}
 		wg.Add(1)
@@ -187,9 +209,10 @@ func (d *Dispatcher) fanOut(e Event) {
 //   - a user who is gone or disabled gets nothing, whatever their devices say
 //     (a registration can race the disable that revoked it);
 //   - the device's own rules: the class toggle, and for alive the mutes;
-//   - RBAC: a server event needs server.view and the API's ownership rule
-//     (store.MayAccessServer), a node event needs node.view.
-func Allowed(e Event, dev *store.Device, user *store.User, role *rbac.Role) bool {
+//   - RBAC: a server event needs server.view and the API's access rule
+//     (store.MayAccessServer: owner, grant or server.any — granted reports the
+//     grant), a node event needs node.view.
+func Allowed(e Event, dev *store.Device, user *store.User, role *rbac.Role, granted func() bool) bool {
 	if dev.TokenInvalidAt != nil || user == nil || role == nil || user.Disabled {
 		return false
 	}
@@ -211,7 +234,7 @@ func Allowed(e Event, dev *store.Device, user *store.User, role *rbac.Role) bool
 	}
 	switch {
 	case e.serverEvent():
-		return role.Has(rbac.PermServerView) && store.MayAccessServer(user, role, e.Server.OwnerID)
+		return role.Has(rbac.PermServerView) && store.MayAccessServer(user, role, e.Server.OwnerID, granted)
 	case e.nodeEvent():
 		return role.Has(rbac.PermNodeView)
 	default:

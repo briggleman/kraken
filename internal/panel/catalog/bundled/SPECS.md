@@ -249,6 +249,14 @@ backup:
 - The globs are spec-level only (no per-server override) and are resolved by the
   Panel on every backup, manual or scheduled. Restore is unaffected: an archive
   only ever contains what was included.
+- **Never include a file that sits beside the install tree.** A restore
+  replaces, wholesale, every directory the archive holds a file *directly* in
+  (`swapUnits` in [`internal/agent/restore.go`](../../../agent/restore.go)).
+  Including `R5/ServerDescription.json` would make `R5/` that directory, so
+  the restore would replace the game's binaries with the archive's two
+  folders. Files at the data root are safe (they are swapped one by one), and
+  so are directories that hold only saves. Windrose leaves its server config
+  out for this reason; its Settings tab rebuilds the file on every start.
 
 ## The `query:` block — who is online
 

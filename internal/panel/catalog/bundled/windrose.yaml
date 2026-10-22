@@ -2,12 +2,12 @@ name: Windrose
 slug: windrose
 description: >-
   Windrose dedicated server (SteamCMD app 4129620). Windows-only, so this
-  targets a Windows node (steam-win image). Configuration lives in
-  ServerDescription.json at the install root — the server auto-generates
-  PersistentServerId, InviteCode, and WorldIslandId on first launch and
-  rewrites the file at runtime, so Kraken deliberately does NOT template it.
-  Boot once, then edit ServerName / Password / MaxPlayerCount / region via
-  the Files tab or SFTP. Recommend 8 GB for 2 players, 12 GB for 4, 16 GB for 10.
+  targets a Windows node (steam-win image). Server name, password, player cap,
+  invite code, the world to load and its difficulty are set from the Settings
+  tab and applied before every start. Players join with the invite code (Play →
+  Connect to Server). To bring in a world from a game client or another server,
+  restore a backup holding its RocksDB_v2_Backups folder, then enter its ID
+  under World. Recommend 8 GB for 2 players, 12 GB for 4, 16 GB for 10.
 # Steam main-capsule + community-icon (game appid 3041230). See bundled/SPECS.md.
 banner_url: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3041230/3e9ad197ff39345193cd44c1d9a072b482865a9f/library_hero_2x.jpg?t=1783932953
 icon_url: https://shared.fastly.steamstatic.com/community_assets/images/apps/3041230/f8ae552a1c3eb4a6d3015867a6a4a64c02b9cd8d.jpg
@@ -25,18 +25,253 @@ install:
     steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
     & steamcmd.exe +force_install_dir C:\data +login anonymous +app_update {{APP_ID}} {{VALIDATE}} +quit
 startup:
-  # -log + -MULTIHOME + -PORT are standard UE engine flags that let Windrose bind
-  # the allocated game port. No -QUERYPORT: Windrose has no separate query port —
-  # it advertises via P2P NAT punch-through when direct connect is off, or
-  # DirectConnectionServerPort in ServerDescription.json when it's on.
+  # First the Settings tab is applied (kraken\apply-settings.ps1, rendered
+  # below), then the server starts. `&`, not `&&`: a failed apply still boots
+  # the server on the settings it already had.
+  #
+  # The server is the Shipping exe, launched the way the build's own
+  # StartServerForeground.bat does. The root WindroseServer.exe is only a
+  # wrapper around it. -MULTIHOME and -PORT are standard UE flags that keep the
+  # engine's net driver on the allocated port. Windrose itself connects players
+  # through its P2P connection service (invite code), so no query port.
   command: >-
-    C:\data\WindroseServer.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}}
-  # No ready_regex: the invite code prints after boot but the exact log line
-  # format isn't documented, so the watchdog just watches for process uptime.
+    powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\data\kraken\apply-settings.ps1
+    & C:\data\R5\Binaries\Win64\WindroseServer-Win64-Shipping.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}}
+  # No ready_regex: stdout carries only UE's Display/Warning/Error lines. The
+  # lines that mean "up" ("Server registration finished successfully", the
+  # invite-code banner) are Verbose and reach only R5\Saved\Logs\R5.log
+  # (observed on build 0.10.0.9.32, 2026-10-22).
   restart: { on_crash: true, max_retries: 3 }
   stop: { type: signal, value: CTRL_SHUTDOWN_EVENT }
+# Direct IP connection (UseDirectConnection) needs ONE port open on both TCP
+# and UDP, which a Kraken port (one protocol each) cannot express yet, so the
+# spec leaves the game on its default P2P mode and does not offer the toggle.
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
+
+# Field names, ranges and defaults come from the official Dedicated Server
+# Guide (playwindrose.com/dedicated-server-guide, game version 0.10.0.5.120)
+# and the DedicatedServer.md shipped with the server. The difficulty groups
+# follow the guide's custom-preset table; they nest under World with
+# enabled_when, because Easy, Medium and Hard carry fixed values of their own.
+settings:
+  groups:
+    - id: server
+      label: Server settings
+      fields:
+        - { key: ServerName, label: Server name, type: string, default: "Kraken Windrose", help: "Helps players tell servers with similar invite codes apart." }
+        - { key: Password, label: Password, type: password, default: "", help: "Blank lets anyone with the invite code join." }
+        - { key: MaxPlayerCount, label: Max players, type: int, default: "8", min: 1, max: 10, help: "The game's own default is 8. Plan on 8 GB of memory for 2 players, 12 GB for 4 and 16 GB for 10." }
+        - { key: InviteCode, label: Invite code, type: string, default: "", pattern: "^([0-9A-Za-z]{6,})?$", help: "At least 6 letters or digits, case-sensitive. Blank keeps the code the server generated; it is shown in the console banner and in R5/ServerDescription.json." }
+        - { key: UserSelectedRegion, label: Connection region, type: enum, options: [Auto, EU, SEA, CIS], default: Auto, help: "Region of the connection service. EU covers Europe and North America; Auto picks the lowest latency." }
+        - { key: AutoLoadLatestBackupIfHasBroken, label: Recover broken saves, type: bool, default: "true", help: "If a save fails to load, start from the newest working autosave instead." }
+    - id: world
+      label: World
+      description: >-
+        Difficulty changes are written into the world's save before the server
+        starts. A world the server has not loaded yet picks them up from its
+        second start.
+      fields:
+        - { key: WorldIslandId, label: World ID, type: string, default: "", pattern: "^([0-9A-F]{32})?$", help: "The 32-character folder name under R5/Saved/SaveProfiles/Default/RocksDB_v2_Backups/Worlds. Blank keeps the world the server created on first start." }
+        - { key: WorldPresetType, label: Difficulty, type: enum, options: [Keep, Easy, Medium, Hard, Custom], default: Keep, help: "Keep leaves the world as it was saved. Pick Custom to edit the sections below." }
+    - id: combat
+      label: Combat
+      parent: world
+      enabled_when: { setting: WorldPresetType, in: [Custom] }
+      fields:
+        - { key: CombatDifficulty, label: Combat difficulty, type: enum, options: [Easy, Normal, Hard], default: Normal, help: "How hard boss fights are and how aggressive enemies are in general." }
+        - { key: MobHealthMultiplier, label: Enemy health, type: float, default: "1", min: 0.2, max: 5 }
+        - { key: MobDamageMultiplier, label: Enemy damage, type: float, default: "1", min: 0.2, max: 5 }
+    - id: naval
+      label: Naval combat
+      parent: world
+      enabled_when: { setting: WorldPresetType, in: [Custom] }
+      fields:
+        - { key: ShipsHealthMultiplier, label: Enemy ship health, type: float, default: "1", min: 0.4, max: 5 }
+        - { key: ShipsDamageMultiplier, label: Enemy ship damage, type: float, default: "1", min: 0.2, max: 2.5 }
+        - { key: BoardingDifficultyMultiplier, label: Boarding difficulty, type: float, default: "1", min: 0.2, max: 5, help: "How many enemy sailors must fall to win a boarding action." }
+    - id: coop
+      label: Co-op
+      parent: world
+      enabled_when: { setting: WorldPresetType, in: [Custom] }
+      fields:
+        - { key: SharedQuests, label: Shared quests, type: bool, default: "true", help: "A co-op quest one player completes is completed for everyone who has it active." }
+        - { key: StatsCorrectionModifier, label: Enemy scaling per player, type: float, default: "1", min: 0, max: 2, help: "Raises enemy health and posture with the number of players online." }
+        - { key: ShipStatsCorrectionModifier, label: Enemy ship scaling per player, type: float, default: "0", min: 0, max: 2, help: "Raises enemy ship health with the number of players online." }
+    - id: exploration
+      label: Exploration
+      parent: world
+      enabled_when: { setting: WorldPresetType, in: [Custom] }
+      fields:
+        - { key: EasyExplore, label: Immersive exploration, type: bool, default: "false", help: "Hides the map markers for points of interest, so they take longer to find. Stored as EasyExplore, the setting's old name." }
+
+# Windrose generates PersistentServerId (and an InviteCode) itself and rewrites
+# R5\ServerDescription.json while it runs, so the file is merged, not
+# templated: the Panel renders the Settings tab into kraken\windrose-settings.json
+# and the startup command runs kraken\apply-settings.ps1, which sets only the
+# fields Kraken owns and leaves the server's own ones alone. Verified on build
+# 0.10.0.9.32 (2026-10-22): the server keeps the merged fields, fills in its own
+# when the file does not exist yet, and loads the world WorldIslandId names.
+#
+# World difficulty lives in the world's save. The supported way to change it
+# (guide, "Updating World Settings") is to edit the world's
+# RocksDB_v2\<version>\Worlds\<id>\WorldDescription.json with the server stopped
+# and run the bundled R5WorldDescriptionUpdater.exe on it, which patches the
+# description into the world's _Latest.zip autosave — the copy the server loads
+# from on start. The script does that only when the difficulty differs from the
+# world's current one. Verified the same day: Hard applied, survived a restart,
+# and an unchanged second run left the save alone.
+# Logical /data root: safePath maps it to C:\data on the Windows node.
+config_files:
+  - path: /data/kraken/windrose-settings.json
+    format: template
+    template: |
+      {
+        "ServerName": {{printf "%q" .settings.ServerName}},
+        "Password": {{printf "%q" .settings.Password}},
+        "MaxPlayerCount": {{.settings.MaxPlayerCount}},
+        "InviteCode": "{{.settings.InviteCode}}",
+        "UserSelectedRegion": "{{if ne .settings.UserSelectedRegion "Auto"}}{{.settings.UserSelectedRegion}}{{end}}",
+        "AutoLoadLatestBackupIfHasBroken": {{.settings.AutoLoadLatestBackupIfHasBroken}},
+        "WorldIslandId": "{{.settings.WorldIslandId}}",
+        "World": {
+          "Preset": "{{.settings.WorldPresetType}}",
+          "CombatDifficulty": "{{.settings.CombatDifficulty}}",
+          "MobHealthMultiplier": {{.settings.MobHealthMultiplier}},
+          "MobDamageMultiplier": {{.settings.MobDamageMultiplier}},
+          "ShipsHealthMultiplier": {{.settings.ShipsHealthMultiplier}},
+          "ShipsDamageMultiplier": {{.settings.ShipsDamageMultiplier}},
+          "BoardingDifficultyMultiplier": {{.settings.BoardingDifficultyMultiplier}},
+          "SharedQuests": {{.settings.SharedQuests}},
+          "StatsCorrectionModifier": {{.settings.StatsCorrectionModifier}},
+          "ShipStatsCorrectionModifier": {{.settings.ShipStatsCorrectionModifier}},
+          "EasyExplore": {{.settings.EasyExplore}}
+        }
+      }
+  - path: /data/kraken/apply-settings.ps1
+    format: template
+    template: |
+      # Written by Kraken; runs before every start. Edits here are overwritten
+      # on the next start. See the Windrose spec for why it exists.
+      param([string]$Root = 'C:\data')
+      $ErrorActionPreference = 'Stop'
+      $utf8 = New-Object System.Text.UTF8Encoding($false)
+      $k = [IO.File]::ReadAllText((Join-Path $Root 'kraken\windrose-settings.json')) | ConvertFrom-Json
+
+      function Set-Field($obj, $name, $value) {
+        if ($obj.PSObject.Properties[$name]) { $obj.$name = $value }
+        else { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value }
+      }
+
+      # --- ServerDescription.json ---------------------------------------------
+      $sdPath = Join-Path $Root 'R5\ServerDescription.json'
+      if (Test-Path -LiteralPath $sdPath) {
+        $sd = [IO.File]::ReadAllText($sdPath) | ConvertFrom-Json
+      } else {
+        $sd = [pscustomobject]@{ Version = 1; ServerDescription_Persistent = [pscustomobject]@{} }
+      }
+      $p = $sd.ServerDescription_Persistent
+      Set-Field $p 'ServerName' ([string]$k.ServerName)
+      Set-Field $p 'Password' ([string]$k.Password)
+      # The guide: IsPasswordProtected must agree with Password, or behaviour
+      # is undefined. Derive it rather than ask for it.
+      Set-Field $p 'IsPasswordProtected' ([string]$k.Password -ne '')
+      Set-Field $p 'MaxPlayerCount' ([int]$k.MaxPlayerCount)
+      Set-Field $p 'UserSelectedRegion' ([string]$k.UserSelectedRegion)
+      Set-Field $p 'AutoLoadLatestBackupIfHasBroken' ([bool]$k.AutoLoadLatestBackupIfHasBroken)
+      # Blank keeps the code (or world) the server picked for itself.
+      if ([string]$k.InviteCode -ne '') { Set-Field $p 'InviteCode' ([string]$k.InviteCode) }
+      if ([string]$k.WorldIslandId -ne '') { Set-Field $p 'WorldIslandId' ([string]$k.WorldIslandId) }
+      [IO.File]::WriteAllText($sdPath, ($sd | ConvertTo-Json -Depth 10), $utf8)
+      Write-Output "kraken: applied server settings to R5\ServerDescription.json"
+
+      # --- World difficulty ---------------------------------------------------
+      $w = $k.World
+      if ($w.Preset -eq 'Keep') { exit 0 }
+      $id = [string]$p.WorldIslandId
+      $wd = $null
+      if ($id -ne '') {
+        $wd = Get-ChildItem -Path (Join-Path $Root "R5\Saved\SaveProfiles\Default\RocksDB_v2\*\Worlds\$id\WorldDescription.json") -ErrorAction SilentlyContinue |
+          Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      }
+      if (-not $wd) {
+        Write-Output "kraken: world $id has not been loaded yet; its difficulty applies from the next start"
+        exit 0
+      }
+
+      # Preset values are the ones the official guide lists for Easy/Medium/Hard.
+      $presets = @{
+        Easy   = @{ mobHealth = 0.7; mobDamage = 0.6;  shipHealth = 0.7; shipDamage = 0.6;  boarding = 0.7; combat = 'Easy' }
+        Medium = @{ mobHealth = 1;   mobDamage = 1;    shipHealth = 1;   shipDamage = 1;    boarding = 1;   combat = 'Normal' }
+        Hard   = @{ mobHealth = 1.5; mobDamage = 1.25; shipHealth = 1.5; shipDamage = 1.25; boarding = 1.5; combat = 'Hard' }
+      }
+      if ($w.Preset -eq 'Custom') {
+        $v = @{ mobHealth = [double]$w.MobHealthMultiplier; mobDamage = [double]$w.MobDamageMultiplier
+                shipHealth = [double]$w.ShipsHealthMultiplier; shipDamage = [double]$w.ShipsDamageMultiplier
+                boarding = [double]$w.BoardingDifficultyMultiplier; combat = [string]$w.CombatDifficulty
+                sharedQuests = [bool]$w.SharedQuests; easyExplore = [bool]$w.EasyExplore
+                coopStats = [double]$w.StatsCorrectionModifier; coopShipStats = [double]$w.ShipStatsCorrectionModifier }
+      } else {
+        $v = $presets[[string]$w.Preset]
+        $v.sharedQuests = $true; $v.easyExplore = $false; $v.coopStats = 1; $v.coopShipStats = 0
+      }
+      function Tag($name) { '{"TagName": "WDS.Parameter.' + $name + '"}' }
+      $settings = [ordered]@{
+        BoolParameters = [ordered]@{
+          (Tag 'Coop.SharedQuests') = $v.sharedQuests
+          (Tag 'EasyExplore')       = $v.easyExplore
+        }
+        FloatParameters = [ordered]@{
+          (Tag 'MobHealthMultiplier')              = $v.mobHealth
+          (Tag 'MobDamageMultiplier')              = $v.mobDamage
+          (Tag 'ShipsHealthMultiplier')            = $v.shipHealth
+          (Tag 'ShipsDamageMultiplier')            = $v.shipDamage
+          (Tag 'BoardingDifficultyMultiplier')     = $v.boarding
+          (Tag 'Coop.StatsCorrectionModifier')     = $v.coopStats
+          (Tag 'Coop.ShipStatsCorrectionModifier') = $v.coopShipStats
+        }
+        TagParameters = [ordered]@{
+          (Tag 'CombatDifficulty') = [ordered]@{ TagName = 'WDS.Parameter.CombatDifficulty.' + $v.combat }
+        }
+      }
+
+      $doc = [IO.File]::ReadAllText($wd.FullName) | ConvertFrom-Json
+      $cur = $doc.WorldDescription
+      # Leave the save alone when it already holds what the Settings tab asks for.
+      function Norm($preset, $s) { ($preset + '|' + ($s | ConvertTo-Json -Depth 10 -Compress)) }
+      $want = Norm $w.Preset ([pscustomobject]$settings | ConvertTo-Json -Depth 10 | ConvertFrom-Json)
+      $have = Norm ([string]$cur.WorldPresetType) $cur.WorldSettings
+      if ($want -eq $have) {
+        Write-Output "kraken: world $id difficulty already matches the Settings tab"
+        exit 0
+      }
+      Set-Field $cur 'WorldPresetType' ([string]$w.Preset)
+      Set-Field $cur 'WorldSettings' $settings
+      [IO.File]::WriteAllText($wd.FullName, ($doc | ConvertTo-Json -Depth 10), $utf8)
+      & (Join-Path $Root 'R5WorldDescriptionUpdater.exe') $wd.FullName
+      if ($LASTEXITCODE -ne 0) {
+        Write-Output "kraken: R5WorldDescriptionUpdater exited $LASTEXITCODE; world $id keeps its previous difficulty"
+      } else {
+        Write-Output "kraken: applied $($w.Preset) difficulty to world $id"
+      }
+      exit 0
+# A backup is the save data, not the ~3 GB install tree. Source: SaveWorkflow.md
+# shipped with the server. Since 0.10.0.5 the game loads every world from its
+# _Latest.zip autosave in RocksDB_v2_Backups and overwrites RocksDB_v2, its
+# runtime copy, on each load — so RocksDB_v2 is not worth capturing and is
+# rewritten during play. RocksDB holds saves from 0.10.0.4 and earlier, which
+# the server migrates once; it rides along for servers that still have one.
+# R5\ServerDescription.json is deliberately left out: a restore replaces every
+# directory the archive holds a file directly in, and for that file the
+# directory is R5\, which holds the game binaries. The Settings tab rebuilds
+# the file on every start.
+backup:
+  include:
+    - R5/Saved/SaveProfiles/*/RocksDB_v2_Backups/**
+    - R5/Saved/SaveProfiles/*/RocksDB/**
+  exclude:
+    - "**/LOG"
+    - "**/LOG.old.*"
 resources:
   min_memory_mb: 6144
   recommended_memory_mb: 12288

@@ -24,14 +24,14 @@ closed set: import one, edit it, or write your own.
 | **RuneScape Dragonwilds** | SteamCMD app 4019830, shipped for both operating systems from one appid. Six-player cap. It refuses to start until the `OwnerId` field carries your in-game Player ID. | `linux-native`, `windows-native` |
 | **V Rising** | SteamCMD app 1829350, Windows-only. `ServerHostSettings.json` for identity and network, a preset for gameplay rules. BepInEx-capable. | `windows-native` |
 | **Valheim** | SteamCMD app 896660. Name, world, password and public listing are launch options. No `ready_regex`, so it reads running once the process is up. BepInEx-capable. | `linux-native` |
-| **Windrose** | SteamCMD app 4129620, Windows-only. The server rewrites its own `ServerDescription.json` at runtime, so Kraken deliberately does not template it: boot once, then edit through Files or SFTP. | `windows-native` |
+| **Windrose** | SteamCMD app 4129620, Windows-only. Name, password, player cap, invite code, the world to load and its difficulty come from the Settings tab. They are merged into the game's own files before every start, because the server writes its own IDs into the same files. | `windows-native` |
 | **Windows Demo Server** | Not a game. A nanoserver image and a `cmd` loop, so you can watch the Windows container lifecycle end to end without a 30 GB download. | `windows-native` |
 
 Specs with a `query:` block report who is online: Valheim over A2S, Palworld
 over its REST API, Enshrouded and Dragonwilds from their console logs. Specs
 with a `backup:` block capture their saves rather than the install tree; Abiotic
-Factor, Windrose and the demo have no block and fall back to the Panel's
-built-in policy. See [Who is online](/wiki/operate/players/) and
+Factor and the demo have no block and fall back to the Panel's built-in
+policy. See [Who is online](/wiki/operate/players/) and
 [Backups](/wiki/operate/backups/).
 
 :::shot specs

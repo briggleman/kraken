@@ -172,7 +172,7 @@ closed set: import one, edit it, or write your own.</p>
 </tr>
 <tr>
 <td><strong>Windrose</strong></td>
-<td>SteamCMD app 4129620, Windows-only. The server rewrites its own <code>ServerDescription.json</code> at runtime, so Kraken deliberately does not template it: boot once, then edit through Files or SFTP.</td>
+<td>SteamCMD app 4129620, Windows-only. Name, password, player cap, invite code, the world to load and its difficulty come from the Settings tab. They are merged into the game&#39;s own files before every start, because the server writes its own IDs into the same files.</td>
 <td><code>windows-native</code></td>
 </tr>
 <tr>
@@ -185,8 +185,8 @@ closed set: import one, edit it, or write your own.</p>
 <p>Specs with a <code>query:</code> block report who is online: Valheim over A2S, Palworld
 over its REST API, Enshrouded and Dragonwilds from their console logs. Specs
 with a <code>backup:</code> block capture their saves rather than the install tree; Abiotic
-Factor, Windrose and the demo have no block and fall back to the Panel&#39;s
-built-in policy. See <a href="/wiki/operate/players/">Who is online</a> and
+Factor and the demo have no block and fall back to the Panel&#39;s built-in
+policy. See <a href="/wiki/operate/players/">Who is online</a> and
 <a href="/wiki/operate/backups/">Backups</a>.</p>
 <figure class="shot">
 <a href="/wiki/assets/shots/specs.webp"><img src="/wiki/assets/shots/specs.webp" alt="the game specs sheet: every bundled spec, imported on first boot, with its platforms and version and a manage and deploy action per row" width="1440" height="900" loading="lazy" decoding="async" /></a>

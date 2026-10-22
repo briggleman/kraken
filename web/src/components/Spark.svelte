@@ -16,15 +16,29 @@
   }: { values?: number[]; capacity?: number; flat?: boolean } = $props();
 
   let cv: HTMLCanvasElement;
+  // The box the canvas lays out to, as the ResizeObserver last reported it. A
+  // redraw used to read clientWidth/clientHeight itself, and it runs right
+  // after a telemetry tick has restyled every meter column on the page — so
+  // each sample forced a synchronous style and layout pass. $state, so a
+  // resize redraws through the same effect a new sample does.
+  let box = $state({ w: 0, h: 0 });
 
   const span = $derived(Math.max(capacity ?? values.length, values.length, 2));
   const blank = $derived(flat || values.length === 0);
 
   function prepare(w: number, h: number): CanvasRenderingContext2D {
-    cv.width = w * devicePixelRatio;
-    cv.height = h * devicePixelRatio;
+    const bw = Math.round(w * devicePixelRatio);
+    const bh = Math.round(h * devicePixelRatio);
+    // Assigning width or height reallocates the bitmap even when the value is
+    // unchanged, so only a real size change does; otherwise clearing is enough.
+    if (cv.width !== bw || cv.height !== bh) {
+      cv.width = bw;
+      cv.height = bh;
+    }
     const c = cv.getContext("2d")!;
-    c.scale(devicePixelRatio, devicePixelRatio);
+    c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    c.clearRect(0, 0, w, h);
+    c.setLineDash([]);
     c.strokeStyle = "rgba(255, 194, 102, 0.08)";
     c.lineWidth = 1;
     for (let gy = 1; gy <= 2; gy++) {
@@ -37,8 +51,7 @@
   }
 
   function draw() {
-    const w = cv.clientWidth,
-      h = cv.clientHeight;
+    const { w, h } = box;
     if (!w) return;
     if (blank) {
       drawFlat(w, h);
@@ -91,14 +104,23 @@
   }
 
   $effect(() => {
+    // The observer reports the box once on observe and again on every change,
+    // including the ones a window resize never announces (a band reflowing
+    // into a new column count).
+    const ro = new ResizeObserver(([e]) => {
+      box = { w: e.contentRect.width, h: e.contentRect.height };
+    });
+    ro.observe(cv);
+    return () => ro.disconnect();
+  });
+
+  $effect(() => {
     // Touch the reactive inputs so a new sample (or losing the feed) redraws.
     void values;
     void blank;
     void span;
+    void box;
     draw();
-    const onResize = () => draw();
-    addEventListener("resize", onResize);
-    return () => removeEventListener("resize", onResize);
   });
 </script>
 

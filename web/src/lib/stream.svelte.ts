@@ -65,6 +65,10 @@ const MAX_LINE_CHARS = 2_000;
 // eating 2 KB of the pane each. Detection looks at the head of the line only.
 const CLIXML_HEAD_CHARS = 32;
 const CLIXML_RE = /^\s*(?:#<\s*CLIXML|<Objs\b)/;
+// While the page is hidden the browser stops running animation frames, so
+// queued lines are applied on a timer instead. Coarse on purpose: nobody is
+// watching.
+const HIDDEN_FLUSH_MS = 250;
 // Reconnect backoff for a live stream, in ms. The last value repeats.
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
 // A handshake that neither opens nor errors within this window is abandoned
@@ -108,6 +112,29 @@ function renderable(raw: string): { text: string; hidden: number; full?: string 
   return { text: raw.slice(0, MAX_LINE_CHARS), hidden: raw.length - MAX_LINE_CHARS, full: raw };
 }
 
+/** Bring a buffer back under `cap` in place: drop the oldest lines of ordinary
+ *  output first and, only when none is left, the oldest of all. Kraken's own
+ *  lines (`system`, `error`) are kept: a Windows SteamCMD validate streams well
+ *  over MAX_LINES progress ticks during a live install, and with a plain tail
+ *  the step lines the pass opened with were scrolled off this ring before the
+ *  pass ended (#392). The Panel's buffer keeps them the same way, so the
+ *  retained log and the live view agree. One pass over the buffer, however
+ *  many lines a batch pushed over the cap. */
+export function evictTo(lines: StreamConsoleLine[], cap: number) {
+  let excess = lines.length - cap;
+  if (excess <= 0) return;
+  const kept: StreamConsoleLine[] = [];
+  for (const l of lines) {
+    if (excess > 0 && l.stream !== "system" && l.stream !== "error") excess--;
+    else kept.push(l);
+  }
+  // Every ordinary line is gone and the ring is still over: the oldest of
+  // Kraken's own lines go next.
+  if (excess > 0) kept.splice(0, excess);
+  lines.length = 0;
+  lines.push(...kept);
+}
+
 export class ServerStream {
   lines = $state<StreamConsoleLine[]>([]);
   stats = $state<LiveStats | null>(null);
@@ -130,26 +157,60 @@ export class ServerStream {
   #attempt = 0;
   #openedAt = 0;
   #seq = 0;
+  /** Lines received but not yet applied to `lines` — a plain array, not
+   *  state. Every frame arrives as its own task, and a connect replays the
+   *  scrollback as ~200 of them; applying each one as it came meant ~200
+   *  reactive flushes, each re-running the console's effects and a forced
+   *  layout, which stalled the drill-in for half a second on every open.
+   *  Lines are applied together, once per animation frame instead. */
+  #pending: StreamConsoleLine[] = [];
+  #flushHandle: { raf?: number; timer?: ReturnType<typeof setTimeout> } | null = null;
 
-  /** Append one console line to the ring buffer. Clamping happens here rather
+  /** Queue one console line for the ring buffer. Clamping happens here rather
    *  than at render time so the cap covers replayed scrollback too, and so a
    *  line costs one slice once instead of a layout pass per repaint. */
   #say(ts: number, stream: string, raw: string) {
     const { text, hidden, full } = renderable(raw);
-    this.lines.push({ seq: this.#seq++, ts, stream, text, hidden, full });
-    if (this.lines.length > MAX_LINES) this.#evictOne();
+    this.#pending.push({ seq: this.#seq++, ts, stream, text, hidden, full });
+    this.#scheduleFlush();
   }
 
-  /** Drop one line to bring the ring back under the cap: the oldest line of
-   *  ordinary output, or, only when none is left, the oldest of all. Kraken's
-   *  own lines (`system`, `error`) are kept: a Windows SteamCMD validate
-   *  streams well over MAX_LINES progress ticks during a live install, and
-   *  with a plain tail the step lines the pass opened with were scrolled off
-   *  this ring before the pass ended (#392). The Panel's buffer keeps them the
-   *  same way, so the retained log and the live view agree. */
-  #evictOne() {
-    const i = this.lines.findIndex((l) => l.stream !== "system" && l.stream !== "error");
-    this.lines.splice(i < 0 ? 0 : i, 1);
+  #scheduleFlush() {
+    if (this.#flushHandle) return;
+    if (typeof requestAnimationFrame !== "function" || document.hidden) {
+      this.#flushHandle = { timer: setTimeout(() => this.flush(), HIDDEN_FLUSH_MS) };
+    } else {
+      this.#flushHandle = { raf: requestAnimationFrame(() => this.flush()) };
+    }
+  }
+
+  #cancelFlush() {
+    const h = this.#flushHandle;
+    this.#flushHandle = null;
+    if (h?.raf !== undefined) cancelAnimationFrame(h.raf);
+    if (h?.timer !== undefined) clearTimeout(h.timer);
+  }
+
+  /** Apply every queued line to `lines` now, in arrival order, as one update.
+   *  The stream calls this itself once per frame; it is public so a caller
+   *  (or a test) that needs the buffer current can have it immediately. */
+  flush() {
+    this.#cancelFlush();
+    if (this.#pending.length === 0) return;
+    const batch = this.#pending;
+    this.#pending = [];
+    // Work on a plain copy and hand the ring back in one assignment: pushing
+    // into the state proxy line by line would notify readers per line, which is
+    // the cost this batching exists to avoid.
+    const next = [...this.lines, ...batch];
+    evictTo(next, MAX_LINES);
+    this.lines = next;
+  }
+
+  /** Drop queued lines that belong to a buffer about to be replaced. */
+  #dropPending() {
+    this.#cancelFlush();
+    this.#pending = [];
   }
 
   get connected() {
@@ -162,6 +223,7 @@ export class ServerStream {
     this.#teardown();
     this.#id = id;
     this.#mode = mode;
+    this.#dropPending();
     this.lines = [];
     this.generation += 1;
     this.stats = null;
@@ -191,6 +253,7 @@ export class ServerStream {
 
   destroy() {
     this.#teardown();
+    this.#dropPending();
     this.status = "idle";
   }
 
@@ -248,6 +311,7 @@ export class ServerStream {
       // Backoff is NOT reset here — only after the socket proves it stayed
       // open. Every connection replays the tail, so drop what we were holding
       // or a reconnect duplicates the overlap.
+      this.#dropPending();
       this.lines = [];
       this.generation += 1;
       this.status = "open";

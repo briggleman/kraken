@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.69.0](https://github.com/briggleman/kraken/compare/v0.68.0...v0.69.0) (2026-10-22)
+
+
+### Features
+
+* **specs:** windrose settings tab, world difficulty and save backups ([#462](https://github.com/briggleman/kraken/issues/462)) ([12919cc](https://github.com/briggleman/kraken/commit/12919cced6e2bb5b920c033b0ff464aa2b51a973))
+
+
+### Performance Improvements
+
+* **web:** apply console lines once per frame, and stop re-allocating the sparkline canvas ([#464](https://github.com/briggleman/kraken/issues/464)) ([f2e476b](https://github.com/briggleman/kraken/commit/f2e476b7e0147e49ee91d5b6e490c6bb1096e7e8))
+
 ## [0.68.0](https://github.com/briggleman/kraken/compare/v0.67.0...v0.68.0) (2026-10-21)
 
 

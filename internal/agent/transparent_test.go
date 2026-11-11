@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -140,6 +141,105 @@ func TestTransparentSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+// restoredWhileDockerDown is a Windows Agent whose startup restore of the
+// transparent network ran before Docker was up: the settings are known, the
+// network isn't, and the failure is recorded.
+func restoredWhileDockerDown(t *testing.T) (*DockerRuntime, *fakeNetworks) {
+	t.Helper()
+	state := t.TempDir()
+	f := &fakeNetworks{listErr: errors.New("open //./pipe/docker_engine: The system cannot find the file specified.")}
+	d := &DockerRuntime{osType: "windows", specDir: filepath.Join(state, "agent-specs"), networks: f}
+	if err := d.saveTransparent(&transparentSettings{Adapter: "Ethernet 3", VLAN: 20}); err != nil {
+		t.Fatal(err)
+	}
+	d.RestoreTransparentNetwork(context.Background())
+	if _, err := d.transparentNetwork(); err == nil || !strings.Contains(err.Error(), "docker_engine") {
+		t.Fatalf("after a restore with Docker down: err = %v; want the daemon's failure", err)
+	}
+	return d, f
+}
+
+// waitTransparent waits for a background build to settle.
+func waitTransparent(t *testing.T, d *DockerRuntime) (string, error) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		d.transparent.mu.Lock()
+		building := d.transparent.building
+		d.transparent.mu.Unlock()
+		if !building {
+			return d.transparentNetwork()
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the background build never finished")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// After a reboot the Agent can start before Docker; once Docker is up, a start
+// adopts the network that's still there instead of repeating the boot-time
+// failure until someone restarts the Agent.
+func TestReadyTransparentAdoptsAfterStartupFailure(t *testing.T) {
+	d, f := restoredWhileDockerDown(t)
+	f.listErr = nil
+	f.nets = []network.Summary{transparentNetSummary("kraken-vlan20", "Ethernet 3", "20")}
+
+	sp := &agentpb.ServerSpec{NetworkMode: "transparent"}
+	host := &container.HostConfig{}
+	if _, err := d.joinTransparent(context.Background(), sp, &container.Config{}, host); err != nil {
+		t.Fatalf("start after Docker came back: %v", err)
+	}
+	if host.NetworkMode != "kraken-vlan20" || len(f.created) != 0 {
+		t.Fatalf("network %q, created %v; want the existing network adopted", host.NetworkMode, f.created)
+	}
+	if name, err := d.transparentNetwork(); err != nil || name != "kraken-vlan20" {
+		t.Fatalf("not remembered: %q, %v", name, err)
+	}
+}
+
+// A start that finds the network gone doesn't create it in its own call (that
+// drops the call); it fails saying so and builds it in the background.
+func TestReadyTransparentBuildsMissingInBackground(t *testing.T) {
+	d, f := restoredWhileDockerDown(t)
+	f.listErr = nil
+
+	_, err := d.readyTransparent(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "being built") {
+		t.Fatalf("err = %v; want a being-built failure", err)
+	}
+	if name, err := waitTransparent(t, d); err != nil || name != "kraken-vlan20" {
+		t.Fatalf("after the background build: %q, %v", name, err)
+	}
+	if len(f.created) != 1 {
+		t.Fatalf("created %v; want exactly one network", f.created)
+	}
+}
+
+// Docker answering for the first time retries a network the startup lookup
+// missed, without waiting for a start.
+func TestRetryTransparentOnDockerRecovery(t *testing.T) {
+	d, f := restoredWhileDockerDown(t)
+	f.listErr = nil
+	f.nets = []network.Summary{transparentNetSummary("my-games", "Ethernet 3", "20")}
+
+	d.retryTransparent()
+	if name, err := waitTransparent(t, d); err != nil || name != "my-games" {
+		t.Fatalf("after the retry: %q, %v", name, err)
+	}
+
+	// Ready already, or a NAT node: nothing to retry.
+	d.retryTransparent()
+	if _, err := waitTransparent(t, d); err != nil || len(f.created) != 0 {
+		t.Fatalf("err %v, created %v; a ready network is left alone", err, f.created)
+	}
+	nat := &DockerRuntime{osType: "windows"}
+	nat.retryTransparent()
+	if nat.transparent.building {
+		t.Fatal("a NAT node started a build")
+	}
+}
+
 func TestApplyTransparentConfigIgnoredOnLinux(t *testing.T) {
 	d := &DockerRuntime{osType: "linux", specDir: filepath.Join(t.TempDir(), "agent-specs")}
 	if line := d.applyTransparentConfig(&agentpb.NodeConfig{ContainerNetwork: "transparent", TransparentAdapter: "eth0"}); line != "" {
@@ -155,7 +255,8 @@ func TestJoinTransparent(t *testing.T) {
 	cfg := &container.Config{ExposedPorts: nat.PortSet{"28000/udp": {}}}
 	host := &container.HostConfig{PortBindings: nat.PortMap{"28000/udp": {{HostPort: "28000"}}}}
 	sp := &agentpb.ServerSpec{NetworkMode: "transparent", MacAddress: "02:4b:aa:bb:cc:dd"}
-	netCfg, err := d.joinTransparent(sp, cfg, host)
+	ctx := context.Background()
+	netCfg, err := d.joinTransparent(ctx, sp, cfg, host)
 	if err != nil {
 		t.Fatalf("joinTransparent: %v", err)
 	}
@@ -168,17 +269,18 @@ func TestJoinTransparent(t *testing.T) {
 
 	// A NAT spec is untouched.
 	host2 := &container.HostConfig{PortBindings: host.PortBindings}
-	if netCfg, err := d.joinTransparent(&agentpb.ServerSpec{}, &container.Config{}, host2); err != nil || netCfg != nil || host2.NetworkMode != "" {
+	if netCfg, err := d.joinTransparent(ctx, &agentpb.ServerSpec{}, &container.Config{}, host2); err != nil || netCfg != nil || host2.NetworkMode != "" {
 		t.Fatalf("NAT spec changed: %v %v %q", netCfg, err, host2.NetworkMode)
 	}
 
 	// Not ready: the start fails with the reason instead of falling back to NAT.
-	d.transparent.name, d.transparent.err = "", "create network kraken-vlan20: access denied"
-	if _, err := d.joinTransparent(sp, &container.Config{}, &container.HostConfig{}); err == nil || !strings.Contains(err.Error(), "access denied") {
+	d.networks = &fakeNetworks{listErr: errors.New("access denied")}
+	d.transparent.name, d.transparent.err = "", "list networks: daemon down"
+	if _, err := d.joinTransparent(ctx, sp, &container.Config{}, &container.HostConfig{}); err == nil || !strings.Contains(err.Error(), "access denied") {
 		t.Fatalf("err = %v; want the network's failure", err)
 	}
 	// A Linux node never joins one.
-	if _, err := (&DockerRuntime{osType: "linux"}).joinTransparent(sp, &container.Config{}, &container.HostConfig{}); err == nil {
+	if _, err := (&DockerRuntime{osType: "linux"}).joinTransparent(ctx, sp, &container.Config{}, &container.HostConfig{}); err == nil {
 		t.Fatal("want an error on Linux")
 	}
 }

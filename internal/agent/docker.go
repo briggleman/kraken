@@ -255,6 +255,11 @@ func (d *DockerRuntime) checkHealth(ctx context.Context) (bool, string) {
 	case recovered:
 		slog.Info("docker daemon reachable", "mode", d.OSType())
 		d.adoptRunning(ctx)
+		// A transparent network the startup lookup couldn't reach (#426): the
+		// Agent's service can start before Docker does after a reboot.
+		if d.isWindows() {
+			d.retryTransparent()
+		}
 	case was && perr != nil:
 		slog.Error("docker daemon became unreachable — this node cannot install, start, or observe servers until it is back", "err", perr)
 	}
@@ -1464,7 +1469,7 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 		host.Resources.Memory = spec.MemoryLimitMb * 1024 * 1024
 	}
 	d.applyIsolation(host)
-	netCfg, err := d.joinTransparent(spec, cfg, host)
+	netCfg, err := d.joinTransparent(ctx, spec, cfg, host)
 	if err != nil {
 		return err
 	}
@@ -1485,14 +1490,14 @@ func (d *DockerRuntime) createRuntimeContainer(ctx context.Context, spec *agentp
 // node whose network isn't ready fails the start with the reason rather than
 // starting the server behind NAT, where its players would sit on the loading
 // screen with no explanation.
-func (d *DockerRuntime) joinTransparent(spec *agentpb.ServerSpec, cfg *container.Config, host *container.HostConfig) (*network.NetworkingConfig, error) {
+func (d *DockerRuntime) joinTransparent(ctx context.Context, spec *agentpb.ServerSpec, cfg *container.Config, host *container.HostConfig) (*network.NetworkingConfig, error) {
 	if spec.GetNetworkMode() != networkModeTransp {
 		return nil, nil
 	}
 	if !d.isWindows() {
 		return nil, fmt.Errorf("docker: transparent networking is for Windows nodes")
 	}
-	name, err := d.transparentNetwork()
+	name, err := d.readyTransparent(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("docker: %w", err)
 	}

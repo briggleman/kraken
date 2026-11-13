@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.69.1](https://github.com/briggleman/kraken/compare/v0.69.0...v0.69.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **agent:** retry the transparent network once docker is up ([#467](https://github.com/briggleman/kraken/issues/467)) ([b0e19cf](https://github.com/briggleman/kraken/commit/b0e19cf9adff1b0066eb5921bb36915eb67c2894))
+
 ## [0.69.0](https://github.com/briggleman/kraken/compare/v0.68.0...v0.69.0) (2026-10-22)
 
 

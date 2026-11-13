@@ -37,6 +37,13 @@ import (
 // never removes one: removing it drops the host the same way. An operator who
 // turns the mode off removes the network by hand when nothing needs it.
 //
+// A failed attempt is not final. After a reboot the Agent's service can start
+// before Docker does, so the startup lookup fails only because the daemon isn't
+// up yet. The Agent tries again when Docker first answers, and a start that
+// finds the last attempt failed looks again before it gives up, adopting the
+// network if it's there. If the network is missing, the Agent builds it in the
+// background instead of while the start's call to the Panel is open.
+//
 // The node's choice is stamped on each server's spec by the Panel
 // (ServerSpec.network_mode), so a server joins the network on its next start;
 // the network settings here only say which network that is.
@@ -117,9 +124,9 @@ func vlanOption(opts map[string]string) int32 {
 	return int32(v) // #nosec G115 -- range-checked above
 }
 
-// ensureTransparent returns the node's transparent network, creating it when
-// none on the adapter and VLAN exists.
-func ensureTransparent(ctx context.Context, ops networkOps, want transparentSettings) (string, error) {
+// lookupTransparent finds the node's transparent network without creating one:
+// "" and no error when none on the adapter and VLAN exists.
+func lookupTransparent(ctx context.Context, ops networkOps, want transparentSettings) (string, error) {
 	nets, err := ops.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.Arg("driver", transparentDriver))})
 	if err != nil {
 		return "", fmt.Errorf("list networks: %w", err)
@@ -129,7 +136,13 @@ func ensureTransparent(ctx context.Context, ops networkOps, want transparentSett
 	if err == nil {
 		nets = append(nets, all...)
 	}
-	if name, err := matchTransparent(nets, want); err != nil || name != "" {
+	return matchTransparent(nets, want)
+}
+
+// ensureTransparent returns the node's transparent network, creating it when
+// none on the adapter and VLAN exists.
+func ensureTransparent(ctx context.Context, ops networkOps, want transparentSettings) (string, error) {
+	if name, err := lookupTransparent(ctx, ops, want); err != nil || name != "" {
 		return name, err
 	}
 	opts := map[string]string{optWindowsInterface: want.Adapter}
@@ -267,6 +280,70 @@ func (d *DockerRuntime) transparentNetwork() (string, error) {
 	}
 }
 
+// readyTransparent is transparentNetwork for a start: when the last attempt
+// failed, it looks again before it fails the start, instead of returning a
+// reason that may be stale. An existing network is adopted on the spot. A
+// missing one is built in the background, because creating it drops the host's
+// connections, the start's own call from the Panel among them.
+func (d *DockerRuntime) readyTransparent(ctx context.Context) (string, error) {
+	name, err := d.transparentNetwork()
+	if err == nil {
+		return name, nil
+	}
+	t := &d.transparent
+	t.mu.Lock()
+	var want transparentSettings
+	failed := t.settings != nil && t.err != "" && !t.building
+	if failed {
+		want = *t.settings
+	}
+	t.mu.Unlock()
+	if !failed {
+		return "", err
+	}
+
+	found, lerr := lookupTransparent(ctx, d.netOps(), want)
+	t.mu.Lock()
+	current := t.settings != nil && *t.settings == want
+	switch {
+	case !current:
+	case lerr != nil:
+		t.err = lerr.Error()
+	case found != "":
+		t.name, t.err = found, ""
+	}
+	t.mu.Unlock()
+
+	switch {
+	case lerr != nil:
+		return "", errors.New("the node's transparent network is not ready: " + lerr.Error())
+	case found != "":
+		slog.Info("transparent network ready after an earlier failure", "network", found, "adapter", want.Adapter, "vlan", want.VLAN)
+		return found, nil
+	default:
+		d.buildTransparent(want)
+		return "", errors.New("the node's transparent network is missing and is being built; this node drops off for up to a minute, then try again")
+	}
+}
+
+// retryTransparent rebuilds the network in the background when the node is
+// configured for one but doesn't have it, for example after a startup attempt
+// that ran before Docker was up. It is called when Docker first answers.
+func (d *DockerRuntime) retryTransparent() {
+	t := &d.transparent
+	t.mu.Lock()
+	var want transparentSettings
+	need := t.settings != nil && t.name == "" && !t.building
+	if need {
+		want = *t.settings
+	}
+	t.mu.Unlock()
+	if need {
+		slog.Info("docker is reachable; retrying the transparent network", "adapter", want.Adapter, "vlan", want.VLAN)
+		d.buildTransparent(want)
+	}
+}
+
 func (d *DockerRuntime) saveTransparent(s *transparentSettings) error {
 	p := d.transparentStatePath()
 	if s == nil {
@@ -306,12 +383,19 @@ func (d *DockerRuntime) RestoreTransparentNetwork(ctx context.Context) {
 		slog.Warn("ignoring unreadable transparent network settings", "path", d.transparentStatePath(), "err", err)
 		return
 	}
-	d.transparent.mu.Lock()
-	d.transparent.settings = &s
-	d.transparent.mu.Unlock()
+	// Marked as building while it runs, so a Docker-recovery retry doesn't
+	// start a second attempt alongside this one.
+	t := &d.transparent
+	t.mu.Lock()
+	t.settings = &s
+	t.building = true
+	t.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, transparentTimeout)
 	defer cancel()
 	d.ensureTransparentNow(ctx, s)
+	t.mu.Lock()
+	t.building = false
+	t.mu.Unlock()
 }
 
 // containerAddress is a transparent game container's own address (#426): where

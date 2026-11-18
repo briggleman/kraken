@@ -54,6 +54,21 @@ Copying a DLL from a desktop Windows machine next to the executable does not
 work reliably; that copy has its own dependencies the image also lacks, and you
 end up chasing the chain one file at a time.
 
+## Hardware profile and device IDs
+
+Server Core also lacks the `IDConfigDB\CurrentDockInfo` registry key, so
+`GetCurrentHwProfileW` fails there with `ERROR_REGISTRY_CORRUPT` even though the
+profile itself exists. A game that reads a device ID through that call gets
+nothing back. Windrose did, and its server then could not sign in to its
+backend: the log shows `failed to call hwProfileInfo` followed by
+`Login finished with error`, and players can never reach it.
+
+The steam-win image now carries the key. The profile GUID, though, comes from
+the base image and is the same in every container. A game that uses it as an
+identity should get its own value per server: the Windrose spec keeps one in
+`kraken\hw-profile-guid` in the data directory and writes it into the registry
+before every start.
+
 ## The SteamCMD self-update trap
 
 This one is worth understanding even though the Agent handles it, because the
@@ -115,6 +130,12 @@ gives each game container its own LAN address.
 - **Pin the user directory.** `-UserDir=C:\data\<Project>` keeps UE's `Saved/`
   inside the bind mount, which is what makes backups and the file browser see
   it.
+- **A background helper has to exit with the server.** A Windows container
+  stays up while any process in it runs, not just the first one. A helper
+  started with `start /b` that outlives the server keeps the container alive
+  after a crash, and Kraken never sees the server stop. Have the helper watch
+  its parent `cmd` and exit when it does, as the Windrose spec's
+  `player-watch.ps1` does.
 - **Declare the Linux stop signal anyway.** A Windows daemon ignores custom stop
   signals and sends its own shutdown event, waits, then kills. A Windows-only
   signal name is dead weight on a Linux Agent.

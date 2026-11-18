@@ -200,10 +200,15 @@ func (s *Spec) validateJoin() error {
 	}
 	if j.Password != "" {
 		if !s.declaresKey(j.Password) {
-			return fmt.Errorf("spec %q: join.password %q is not a variable or setting of the spec", s.Slug, j.Password)
+			// The key is left out of these two messages on purpose: it is only a
+			// setting name, but it lives in a field called Password, and the
+			// error reaches a log line (catalog seed), where code scanning
+			// rightly refuses anything that looks like a credential. The
+			// field path is enough to find it.
+			return fmt.Errorf("spec %q: join.password is not a variable or setting of the spec", s.Slug)
 		}
 		if adminLike(j.Password) || (s.Query != nil && s.Query.Password == j.Password) {
-			return fmt.Errorf("spec %q: join.password %q is an admin credential — name the password players type to join", s.Slug, j.Password)
+			return fmt.Errorf("spec %q: join.password names an admin credential — name the password players type to join", s.Slug)
 		}
 	}
 	if len(j.Notes) > joinNotesMax || strings.ContainsAny(j.Notes, "\r\n") {

@@ -29,6 +29,12 @@ startup:
   # below), then the server starts. `&`, not `&&`: a failed apply still boots
   # the server on the settings it already had.
   #
+  # Then kraken\player-watch.ps1 starts in the background (`start /b` shares
+  # the console): Windrose logs player joins and leaves only to R5.log, and
+  # the watcher echoes them to the console. It starts before the server so it
+  # sees the last run's log being rotated aside, and it exits with the cmd
+  # chain, because a Windows container stays up while any process in it runs.
+  #
   # The server is the Shipping exe, launched the way the build's own
   # StartServerForeground.bat does. The root WindroseServer.exe is only a
   # wrapper around it. -MULTIHOME and -PORT are standard UE flags that keep the
@@ -36,6 +42,7 @@ startup:
   # through its P2P connection service (invite code), so no query port.
   command: >-
     powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\data\kraken\apply-settings.ps1
+    & start /b powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\data\kraken\player-watch.ps1
     & C:\data\R5\Binaries\Win64\WindroseServer-Win64-Shipping.exe -log -MULTIHOME=0.0.0.0 -PORT={{PORT_GAME}}
   # No ready_regex: stdout carries only UE's Display/Warning/Error lines. The
   # lines that mean "up" ("Server registration finished successfully", the
@@ -284,6 +291,106 @@ config_files:
         Write-Output "kraken: applied $($w.Preset) difficulty to world $id"
       }
       exit 0
+  - path: /data/kraken/player-watch.ps1
+    format: template
+    template: |
+      # Written by Kraken; started beside the server on every start. Edits here are
+      # overwritten on the next start. See the Windrose spec for why it exists.
+      #
+      # Windrose logs player joins and leaves only to R5\Saved\Logs\R5.log; the
+      # console gets UE's Display/Warning/Error lines and these are a level below.
+      # This follows the log and echoes one line per join and per leave.
+      param([string]$Log = 'C:\data\R5\Saved\Logs\R5.log')
+      $ErrorActionPreference = 'Continue'
+      $utf8 = New-Object System.Text.UTF8Encoding($false)
+      try { [Console]::OutputEncoding = $utf8 } catch {}
+
+      # A Windows container lives as long as any process in it, so the watcher has
+      # to end with the command chain that started it (cmd, which exits when the
+      # server does). Without that a crashed server would leave the container up
+      # and Kraken would never see it stop. If the parent cannot be found, the
+      # watcher does not run at all.
+      try {
+        $ppid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+        $parent = [Diagnostics.Process]::GetProcessById([int]$ppid)
+      } catch {
+        [Console]::Out.WriteLine("kraken: player join/leave lines are off: $_")
+        exit 0
+      }
+
+      function Say($msg) {
+        [Console]::Out.WriteLine("kraken: $msg")
+        [Console]::Out.Flush()
+      }
+
+      # The leave line carries only the account ID, so names are learned from the
+      # lines that pair the two ("Name 'X'. AccountId 'Y'" and
+      # "AccountName 'X'. AccountId Y").
+      $names = @{}
+      function Read-Line([string]$line) {
+        if ($line -match 'LogNet: Join succeeded: (.+?)\s*$') {
+          Say "player joined: $($Matches[1])"
+        } elseif ($line -match "Name '(.*?)'\. AccountId '?([0-9A-Fa-f]{32})") {
+          $names[$Matches[2].ToUpper()] = $Matches[1]
+        } elseif ($line -match "OnAccountDisconnected\s.*AccountId ([0-9A-Fa-f]{32})\..*DisconnectReason '(.*?)'\. FarewellReason '(.*?)'") {
+          $id = $Matches[1].ToUpper()
+          $why = if ($Matches[3]) { $Matches[3] } else { $Matches[2] }
+          $who = if ($names.ContainsKey($id)) { $names[$id] } else { "account $id" }
+          Say "player left: $who ($why)"
+        }
+      }
+
+      # Which file the path holds is told apart by its first line ("Log file open,
+      # <time>"): the server renames the last run's log aside and starts a new one
+      # at boot. Whatever file is there when the watcher starts is followed from its
+      # end (nobody joins in the first second of a boot); any file that replaces it
+      # is read from the top.
+      function Get-Header {
+        try {
+          $f = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite, Delete')
+          try {
+            $buf = New-Object byte[] 128
+            $n = $f.Read($buf, 0, $buf.Length)
+            $s = $utf8.GetString($buf, 0, $n)
+            $nl = $s.IndexOf("`n")
+            if ($nl -lt 0) { return $null }
+            return $s.Substring(0, $nl)
+          } finally { $f.Dispose() }
+        } catch { return $null }
+      }
+
+      $header = Get-Header
+      $pos = 0L
+      if ($header) { try { $pos = (New-Object IO.FileInfo $Log).Length } catch {} }
+
+      while (-not $parent.HasExited) {
+        Start-Sleep -Milliseconds 1000
+        $h = Get-Header
+        if (-not $h) { continue }
+        if ($h -ne $header) {
+          $header = $h
+          $pos = 0L
+        }
+        try {
+          $f = [IO.File]::Open($Log, 'Open', 'Read', 'ReadWrite, Delete')
+          try {
+            if ($f.Length -lt $pos) { $pos = 0L }
+            if ($f.Length -le $pos) { continue }
+            [void]$f.Seek($pos, 'Begin')
+            $buf = New-Object byte[] ([int][Math]::Min($f.Length - $pos, 4MB))
+            $n = $f.Read($buf, 0, $buf.Length)
+            if ($n -le 0) { continue }
+            # Only whole lines: a line the server is still writing waits for the
+            # next pass, and so does a UTF-8 character split across the boundary.
+            $end = [Array]::LastIndexOf($buf, [byte]10, $n - 1)
+            if ($end -lt 0) { continue }
+            $pos += $end + 1
+            foreach ($line in $utf8.GetString($buf, 0, $end).Split("`n")) {
+              Read-Line $line.TrimEnd("`r")
+            }
+          } finally { $f.Dispose() }
+        } catch {}
+      }
 # A backup is the save data, not the ~3 GB install tree. Source: SaveWorkflow.md
 # shipped with the server. Since 0.10.0.5 the game loads every world from its
 # _Latest.zip autosave in RocksDB_v2_Backups and overwrites RocksDB_v2, its

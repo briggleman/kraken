@@ -130,6 +130,12 @@ gives each game container its own LAN address.
 - **Pin the user directory.** `-UserDir=C:\data\<Project>` keeps UE's `Saved/`
   inside the bind mount, which is what makes backups and the file browser see
   it.
+- **A background helper has to exit with the server.** A Windows container
+  stays up while any process in it runs, not just the first one. A helper
+  started with `start /b` that outlives the server keeps the container alive
+  after a crash, and Kraken never sees the server stop. Have the helper watch
+  its parent `cmd` and exit when it does, as the Windrose spec's
+  `player-watch.ps1` does.
 - **Declare the Linux stop signal anyway.** A Windows daemon ignores custom stop
   signals and sends its own shutdown event, waits, then kills. A Windows-only
   signal name is dead weight on a Linux Agent.

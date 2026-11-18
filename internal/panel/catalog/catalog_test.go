@@ -115,6 +115,71 @@ func TestDragonwildsOwnerIdIsRequired(t *testing.T) {
 	}
 }
 
+// TestWindrosePlayerQueryMatchesTheWatcher runs the lines the Windrose spec's
+// player-watch.ps1 prints (as captured on windrose-01, 2026-11-18, plus the
+// edge cases it handles) through the spec's own query regexes, so a change to
+// either side that breaks the Online roster fails here.
+func TestWindrosePlayerQueryMatchesTheWatcher(t *testing.T) {
+	entries, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var wr *spec.Spec
+	for _, e := range entries {
+		if e.Spec != nil && e.Spec.Slug == "windrose" {
+			wr = e.Spec
+		}
+	}
+	if wr == nil || wr.Query == nil {
+		t.Fatal("bundled windrose spec with a query block not found")
+	}
+	join := regexp.MustCompile(wr.Query.JoinRegex)
+	leave := regexp.MustCompile(wr.Query.LeaveRegex)
+	name := func(re *regexp.Regexp, line string) (string, bool) {
+		m := re.FindStringSubmatch(line)
+		if m == nil {
+			return "", false
+		}
+		return m[re.SubexpIndex("name")], true
+	}
+	for _, c := range []struct{ line, want string }{
+		{"kraken: player joined: GHETTO CHiLD", "GHETTO CHiLD"},
+		{"kraken: player joined: GHETTO CHiLD\r", "GHETTO CHiLD"},
+		{"kraken: player joined: Zoë O'Brien", "Zoë O'Brien"},
+	} {
+		if got, ok := name(join, c.line); !ok || got != c.want {
+			t.Errorf("join %q: got %q (matched %v), want %q", c.line, got, ok, c.want)
+		}
+		if _, ok := name(leave, c.line); ok {
+			t.Errorf("leave regex matched the join line %q", c.line)
+		}
+	}
+	for _, c := range []struct{ line, want string }{
+		{"kraken: player left: GHETTO CHiLD (Go to lobby)", "GHETTO CHiLD"},
+		{"kraken: player left: GHETTO CHiLD (Go to lobby)\r", "GHETTO CHiLD"},
+		{"kraken: player left: Zoë O'Brien (Timeout)", "Zoë O'Brien"},
+		{"kraken: player left: Captain (Ret.) (BL disconnected)", "Captain (Ret.)"},
+	} {
+		if got, ok := name(leave, c.line); !ok || got != c.want {
+			t.Errorf("leave %q: got %q (matched %v), want %q", c.line, got, ok, c.want)
+		}
+	}
+	for _, line := range []string{
+		"[2026.11.18-18.05.52:927][  0]LogNet: Join succeeded: GHETTO CHiLD",
+		"kraken: device profile {07b10bc4-5235-4a5b-8965-338664a65ee8}",
+	} {
+		if _, ok := name(join, line); ok {
+			t.Errorf("join regex matched %q", line)
+		}
+		if _, ok := name(leave, line); ok {
+			t.Errorf("leave regex matched %q", line)
+		}
+	}
+	if wr.Query.MaxPlayersSetting != "MaxPlayerCount" {
+		t.Errorf("max_players_setting = %q, want MaxPlayerCount", wr.Query.MaxPlayersSetting)
+	}
+}
+
 // Every bundled Steam spec is covered by the build check (#392) on every
 // platform it declares, with no update_check block of its own: the derivation
 // from the install script finds app_update and the platform's app id. The two

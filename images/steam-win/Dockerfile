@@ -84,6 +84,14 @@ RUN Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/vs/17/release/vc_red
 # Copy the desktop/runtime DLLs Unity/UE servers need (sourced in the deps stage).
 COPY --from=deps C:/sys32/ C:/Windows/System32/
 
+# Hardware profile: Server Core lacks HKLM\...\IDConfigDB\CurrentDockInfo, so
+# GetCurrentHwProfileW fails with ERROR_REGISTRY_CORRUPT (1015). Windrose reads
+# its backend device ID through that call and could not sign in without it
+# (2026-11-18). The profile GUID the base image ships is the same in every
+# container; a spec that needs a per-server ID sets its own (windrose.yaml).
+RUN New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\IDConfigDB\CurrentDockInfo' -Force | Out-Null; \
+    New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\IDConfigDB\CurrentDockInfo' -Name DockingState -PropertyType DWord -Value 0 -Force | Out-Null
+
 # Trim ambient Windows state that the base image ships with — event logs,
 # C:\Windows\Temp junk. Doesn't need to share a layer with an install because
 # it's cleaning pre-existing state, not undoing something we added.

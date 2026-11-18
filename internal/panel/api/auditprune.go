@@ -25,8 +25,9 @@ const auditPruneDelay = time.Minute
 // and GET /audit reports it, so the two cannot drift apart again.
 //
 // The same ticker prunes closed and expired account invites (see
-// pruneInvitesOnce), which have no retention setting of their own and run
-// whether or not audit retention is on.
+// pruneInvitesOnce) and server share links (pruneShareLinksOnce), which have
+// no retention setting of their own and run whether or not audit retention
+// is on.
 func (s *Server) StartAuditPruner(ctx context.Context, interval time.Duration) {
 	if s.cfg.AuditRetentionDays <= 0 {
 		s.logger.Info("audit retention: keeping every entry (KRAKEN_AUDIT_RETENTION_DAYS=0)")
@@ -41,6 +42,7 @@ func (s *Server) StartAuditPruner(ctx context.Context, interval time.Duration) {
 		}
 		s.pruneAuditOnce(ctx)
 		s.pruneInvitesOnce(ctx)
+		s.pruneShareLinksOnce(ctx)
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
@@ -50,6 +52,7 @@ func (s *Server) StartAuditPruner(ctx context.Context, interval time.Duration) {
 			case <-t.C:
 				s.pruneAuditOnce(ctx)
 				s.pruneInvitesOnce(ctx)
+				s.pruneShareLinksOnce(ctx)
 			}
 		}
 	}()

@@ -857,6 +857,64 @@ type InviteStore interface {
 	DeleteInvitesBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
+// ShareLink is a read-only capability link to one server's public card (#475):
+// pasted into a chat, it unfurls into the server's name, game, status, players
+// and, when the link allows it, the values a player needs to join.
+//
+// Unlike an invite it is never consumed. A chat service fetches the link
+// several times (the page, then its image, then again through its own image
+// proxy) and every friend who taps it fetches it again, so reading it changes
+// nothing but LastSeenAt. It lives until it is revoked or, when one was chosen,
+// until it expires. The bearer token is never stored: TokenHash is its SHA-256
+// digest (see HashToken), so a database dump holds no usable links.
+type ShareLink struct {
+	ID       string `json:"id"`
+	ServerID string `json:"server_id"`
+	// TokenHash is the digest the public route looks the link up by.
+	TokenHash string `json:"-"`
+	// Label is the operator's own name for the link ("pinned in #general"),
+	// so a list of them can be told apart. Never shown publicly.
+	Label string `json:"label,omitempty"`
+	// ShowAddress and ShowPassword widen what the public card shows beyond
+	// status and players. Both default off; the spec's join block (#475)
+	// decides which values they cover.
+	ShowAddress  bool `json:"show_address"`
+	ShowPassword bool `json:"show_password"`
+	// CreatedBy is the user who made the link, or "" once that account is gone.
+	CreatedBy string    `json:"created_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	// ExpiresAt is nil for a link that lives until it is revoked.
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+}
+
+// Live reports whether the link still opens at now: not revoked and, when it
+// has an expiry, not past it.
+func (l *ShareLink) Live(now time.Time) bool {
+	return l.RevokedAt == nil && (l.ExpiresAt == nil || now.Before(*l.ExpiresAt))
+}
+
+// ShareLinkStore persists server share links. A link goes when its server does.
+type ShareLinkStore interface {
+	// CreateShareLink stores a new link. ErrNotFound when the server does not
+	// exist.
+	CreateShareLink(ctx context.Context, l *ShareLink) error
+	// GetShareLinkByHash finds a link by its token digest, in any state.
+	GetShareLinkByHash(ctx context.Context, hash string) (*ShareLink, error)
+	// ListShareLinks returns the server's links that are not revoked, newest
+	// first. Expired ones are included; the caller shows them as expired.
+	ListShareLinks(ctx context.Context, serverID string) ([]*ShareLink, error)
+	// RevokeShareLink marks the server's link revoked. ErrNotFound when the
+	// server has no unrevoked link with that id.
+	RevokeShareLink(ctx context.Context, serverID, id string, at time.Time) error
+	// TouchShareLink records that the link was opened at the given time.
+	TouchShareLink(ctx context.Context, id string, at time.Time) error
+	// DeleteShareLinksBefore deletes links that were revoked or expired before
+	// the given time. Housekeeping; the audit log is the record.
+	DeleteShareLinksBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
 // CAStore persists the Panel's self-generated Agent-enrollment CA (a single
 // keypair). Returns ErrNotFound when no CA has been generated yet.
 type CAStore interface {
@@ -892,6 +950,7 @@ type Store interface {
 	SessionStore
 	CAStore
 	InviteStore
+	ShareLinkStore
 	SettingsStore
 	NodeSettingsStore
 	DeviceStore

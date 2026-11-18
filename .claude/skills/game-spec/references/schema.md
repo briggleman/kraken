@@ -83,6 +83,8 @@ ports:                                    # name → {{PORT_<NAME>}}; default is
 
 # query: { method: a2s, port: query }                                      # Steam A2S on a spec PORT name
 # query: { method: palworld-rest, port: RESTAPIPort, password: AdminPassword }   # SETTING keys, not ports
+join: { method: address, port: game, password: SERVER_PASSWORD }          # what a share link shows a player (#475)
+# join: { method: invite_code, code: InviteCode, password: Password }     # games that join by code
 
 settings:                                 # config-file games: groups become tabs in the Settings sheet
   # hot_reload: true                      # game re-reads its files live (only changes the UI copy)
@@ -230,6 +232,16 @@ non-Steam games; `{{APP_ID}}` then stays unrendered, so do not reference it.
 - `method: palworld-rest` — `port` and `password` name **setting keys**; the Agent curls the
   REST metrics endpoint inside the container.
 - Omit for games with neither; the UI then shows no PLAYERS card.
+
+### `join`
+- What a server share link shows a player, and the allowlist for it: nothing else from the
+  server's settings is ever shown. Declare it on every real game.
+- `method: address` + `port` (a spec **port** name, the game port). `method: invite_code` +
+  `code` (a setting/variable key).
+- `password` is the **join** password key (a setting or variable). `Validate()` refuses admin,
+  RCON, owner, moderator or operator keys and the `palworld-rest` query's password key. With
+  several role passwords, pick the one a friend would get (Enshrouded: `friendPassword`).
+- Every key must be declared; `notes` is one optional line (≤160 chars), only if verified in game.
 
 ### `settings` + `config_files`
 - Field types: `string`, `text`, `int`, `float`, `bool`, `enum` (needs `options`), `password`.

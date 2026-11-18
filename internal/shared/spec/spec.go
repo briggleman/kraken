@@ -86,6 +86,130 @@ type Spec struct {
 	// conservative ephemeral-only exclude list); declaring the block replaces that
 	// policy wholesale — see Backup.
 	Backup *Backup `json:"backup,omitempty"`
+
+	// Join, when set, says what a player needs to connect: an address or an
+	// invite code, and which value is the join password. A server share link
+	// (#475) shows exactly these values and nothing else from the server's
+	// settings, so the block is also the allowlist. Omit it and a share link
+	// carries status and players only.
+	Join *Join `json:"join,omitempty"`
+}
+
+// The join methods.
+const (
+	// JoinAddress: players connect to host:port — the server's public host and
+	// the allocated port of the spec port named by Join.Port.
+	JoinAddress = "address"
+	// JoinInviteCode: players connect with a code the game issues (Windrose).
+	// Join.Code names the setting or variable that holds it.
+	JoinInviteCode = "invite_code"
+)
+
+// Join declares what a player needs to connect to a server of this spec.
+type Join struct {
+	// Method is "address" or "invite_code".
+	Method string `json:"method"`
+	// Port, for address, is the spec port NAME players connect to (usually the
+	// game port, not the query port).
+	Port string `json:"port,omitempty"`
+	// Code, for invite_code, is the setting or variable key holding the code.
+	Code string `json:"code,omitempty"`
+	// Password is the setting or variable key holding the password a player
+	// types to join. Never an admin or RCON password: a share link puts this
+	// value in front of anyone the operator shares it with, and Validate refuses
+	// the keys that are plainly not the join password. Omit it for a game with
+	// no join password.
+	Password string `json:"password,omitempty"`
+	// Notes is one optional line telling a player where in the game the values
+	// go ("join by invite code, then enter the password when asked").
+	Notes string `json:"notes,omitempty"`
+}
+
+// joinMethods are the Join methods a share link can render.
+var joinMethods = []string{JoinAddress, JoinInviteCode}
+
+// joinNotesMax bounds Join.Notes: it is one line on a phone screen.
+const joinNotesMax = 160
+
+// declaresKey reports whether key is a variable or a settings field of the
+// spec. A join key the spec does not declare is a typo that would leave the
+// share page silently blank, so Validate refuses it.
+func (s *Spec) declaresKey(key string) bool {
+	for _, v := range s.Variables {
+		if v.Key == key {
+			return true
+		}
+	}
+	for _, f := range s.Settings.fields() {
+		if f.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// adminLike reports whether a key names a credential that is plainly not a
+// join password: anything admin-, RCON- or owner-flavoured.
+func adminLike(key string) bool {
+	k := strings.ToLower(key)
+	for _, w := range []string{"admin", "rcon", "owner", "moderator", "operator"} {
+		if strings.Contains(k, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateJoin rejects a join block a share link could not render, and any
+// password key that is not the join password.
+func (s *Spec) validateJoin() error {
+	j := s.Join
+	if j == nil {
+		return nil
+	}
+	switch j.Method {
+	case JoinAddress:
+		if j.Port == "" {
+			return fmt.Errorf("spec %q: join.port (the spec port name players connect to) is required for method address", s.Slug)
+		}
+		found := false
+		for _, p := range s.Ports {
+			if p.Name == j.Port {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("spec %q: join.port %q is not one of the spec's ports", s.Slug, j.Port)
+		}
+		if j.Code != "" {
+			return fmt.Errorf("spec %q: join.code is only for method invite_code", s.Slug)
+		}
+	case JoinInviteCode:
+		if j.Code == "" {
+			return fmt.Errorf("spec %q: join.code (the setting or variable holding the code) is required for method invite_code", s.Slug)
+		}
+		if !s.declaresKey(j.Code) {
+			return fmt.Errorf("spec %q: join.code %q is not a variable or setting of the spec", s.Slug, j.Code)
+		}
+		if j.Port != "" {
+			return fmt.Errorf("spec %q: join.port is only for method address", s.Slug)
+		}
+	default:
+		return fmt.Errorf("spec %q: join.method must be one of %v", s.Slug, joinMethods)
+	}
+	if j.Password != "" {
+		if !s.declaresKey(j.Password) {
+			return fmt.Errorf("spec %q: join.password %q is not a variable or setting of the spec", s.Slug, j.Password)
+		}
+		if adminLike(j.Password) || (s.Query != nil && s.Query.Password == j.Password) {
+			return fmt.Errorf("spec %q: join.password %q is an admin credential — name the password players type to join", s.Slug, j.Password)
+		}
+	}
+	if len(j.Notes) > joinNotesMax || strings.ContainsAny(j.Notes, "\r\n") {
+		return fmt.Errorf("spec %q: join.notes must be one line of at most %d characters", s.Slug, joinNotesMax)
+	}
+	return nil
 }
 
 // Backup declares which parts of a server's data dir a backup captures.
@@ -622,6 +746,9 @@ func (s *Spec) Validate() error {
 		return err
 	}
 	if err := s.validateUpdateCheck(); err != nil {
+		return err
+	}
+	if err := s.validateJoin(); err != nil {
 		return err
 	}
 	return nil

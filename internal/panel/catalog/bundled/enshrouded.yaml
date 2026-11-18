@@ -48,6 +48,9 @@ startup:
 # template only reads .ports.game.
 ports:
   - { name: game, protocol: udp, default: 15637, required: true }
+# What a share link shows a player (#475). Friend is the group a shared link
+# is for; Admin's password is never shared.
+join: { method: address, port: game, password: friendPassword }
 # The roster comes from the server log, which names each player — A2S would
 # give a count only. (The game port does answer A2S_INFO: verified directly on
 # 2026-10-12, despite what this comment used to say.) Lines observed live

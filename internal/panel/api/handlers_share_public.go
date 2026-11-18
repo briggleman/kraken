@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
 	"net"
 	"net/http"
 	"net/netip"
@@ -33,6 +34,26 @@ import (
 // fetches is one sighting, not a dozen writes.
 const shareTouchEvery = time.Minute
 
+// liveShare resolves the {token} in the path to a live link and its server.
+// ok is false for a link that is unknown, revoked or expired, or whose server
+// is gone — the cases a public route answers with the same 404.
+func (s *Server) liveShare(r *http.Request, now time.Time) (link *store.ShareLink, sv *store.Server, token string, ok bool) {
+	ctx := r.Context()
+	token = chi.URLParam(r, "token")
+	link, err := s.store.GetShareLinkByHash(ctx, store.HashToken(token))
+	if err != nil || !link.Live(now) {
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			s.logger.Warn("share link lookup failed", "err", err)
+		}
+		return nil, nil, "", false
+	}
+	sv, err = s.store.GetServer(ctx, link.ServerID)
+	if err != nil {
+		return nil, nil, "", false
+	}
+	return link, sv, token, true
+}
+
 // handleSharePage serves the card for a live link, and the same plain 404
 // page for a link that is unknown, revoked or expired — the three are not
 // told apart, so a guess learns nothing.
@@ -43,19 +64,10 @@ func (s *Server) handleSharePage(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Robots-Tag", "noindex, nofollow")
 
-	token := chi.URLParam(r, "token")
 	now := time.Now().UTC()
-	link, err := s.store.GetShareLinkByHash(ctx, store.HashToken(token))
-	if err != nil || !link.Live(now) {
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			s.logger.Warn("share link lookup failed", "err", err)
-		}
-		s.writeSharePage(w, http.StatusNotFound, nil)
-		return
-	}
-	sv, err := s.store.GetServer(ctx, link.ServerID)
-	if err != nil {
-		s.writeSharePage(w, http.StatusNotFound, nil)
+	link, sv, token, ok := s.liveShare(r, now)
+	if !ok {
+		s.writeSharePage(w, r, http.StatusNotFound, nil)
 		return
 	}
 	card := s.shareCard(ctx, link, sv, token, now)
@@ -64,12 +76,55 @@ func (s *Server) handleSharePage(w http.ResponseWriter, r *http.Request) {
 			s.logger.Warn("share link touch failed", "err", err)
 		}
 	}
-	s.writeSharePage(w, http.StatusOK, card)
+	s.writeSharePage(w, r, http.StatusOK, card)
+}
+
+// handleShareCard serves the link's card image, the og:image a chat service
+// shows. It is drawn from the same allowlisted card as the page, so it can
+// show nothing the page does not.
+func (s *Server) handleShareCard(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	now := time.Now().UTC()
+	link, sv, token, ok := s.liveShare(r, now)
+	if !ok {
+		w.Header().Set("Cache-Control", "no-store")
+		http.NotFound(w, r)
+		return
+	}
+	card := s.shareCard(ctx, link, sv, token, now)
+	key := card.Key()
+	data, hit := s.shareCards.Get(key, now)
+	if !hit {
+		var art image.Image
+		if card.BannerURL != "" {
+			// No art is a normal outcome — a LAN-only Panel, a dead URL — and
+			// the card is drawn on the plain water column instead.
+			art, _ = s.shareBanners.Get(ctx, card.BannerURL)
+		}
+		var buf bytes.Buffer
+		if err := share.RenderPNG(&buf, card, art); err != nil {
+			s.logger.Error("share card render failed", "err", err)
+			http.Error(w, "could not render the card", http.StatusInternalServerError)
+			return
+		}
+		data = buf.Bytes()
+		s.shareCards.Put(key, data, now)
+	}
+	w.Header().Set("Content-Type", "image/png")
+	// Short: a chat service keeps its own copy anyway, and a browser that
+	// re-opens the page should see a reading no older than a minute.
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = w.Write(data)
 }
 
 // writeSharePage renders into a buffer first, so a template failure is a
 // clean 500 rather than half a page under a 200.
-func (s *Server) writeSharePage(w http.ResponseWriter, status int, card *share.Card) {
+func (s *Server) writeSharePage(w http.ResponseWriter, r *http.Request, status int, card *share.Card) {
 	var buf bytes.Buffer
 	var err error
 	if card == nil {
@@ -82,7 +137,11 @@ func (s *Server) writeSharePage(w http.ResponseWriter, status int, card *share.C
 		http.Error(w, "could not render this page", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	w.WriteHeader(status)
+	if r.Method == http.MethodHead {
+		return
+	}
 	_, _ = w.Write(buf.Bytes())
 }
 
@@ -92,22 +151,25 @@ func (s *Server) writeSharePage(w http.ResponseWriter, status int, card *share.C
 func (s *Server) shareCard(ctx context.Context, link *store.ShareLink, sv *store.Server, token string, now time.Time) *share.Card {
 	c := &share.Card{ServerName: sv.Name, AsOf: now}
 	public := s.publicURL(ctx)
-	if public != "" {
-		c.PageURL = public + "/s/" + token
-		c.SiteName = "Kraken · " + hostOf(public)
-	} else {
-		c.SiteName = "Kraken"
-	}
-
 	sp, _ := s.store.GetSpec(ctx, sv.SpecID)
 	if sp != nil {
 		c.Game = sp.Name
 		if isHTTPSURL(sp.BannerURL) {
 			c.BannerURL = sp.BannerURL
-			c.ImageURL = sp.BannerURL
 		}
 	} else {
 		c.Game = "Game server"
+	}
+	// og:image is the Panel's own card, which needs an absolute URL. Without
+	// a public address the spec's banner stands in, bare.
+	if public != "" {
+		c.PageURL = public + "/s/" + token
+		c.SiteName = "Kraken · " + hostOf(public)
+		c.ImageURL = c.PageURL + "/card.png"
+		c.ImageW, c.ImageH = share.CardW, share.CardH
+	} else {
+		c.SiteName = "Kraken"
+		c.ImageURL = c.BannerURL
 	}
 
 	node, _ := s.store.GetNode(ctx, hostNodeID(sv))
@@ -228,8 +290,7 @@ func publicHostOK(h string) bool {
 		// something a player's resolver will find.
 		return strings.Contains(h, ".") && !strings.HasSuffix(strings.ToLower(h), ".local")
 	}
-	return !(ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() ||
-		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast())
+	return share.PublicAddr(ip)
 }
 
 // isHTTPSURL reports whether u is an absolute https URL, the only kind of

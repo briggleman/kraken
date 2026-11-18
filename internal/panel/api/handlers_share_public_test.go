@@ -1,8 +1,10 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -23,7 +25,9 @@ func shareSeed(t *testing.T, e *accessEnv) {
 	ctx := context.Background()
 	sp := &spec.Spec{
 		ID: "spec-pal", Name: "Palworld", Slug: "palworld", Version: 1,
-		BannerURL: "https://cdn.example.net/hero.jpg",
+		// Loopback: the card's banner fetch refuses it at dial time, so tests
+		// never reach the network and the card falls back to no art.
+		BannerURL: "https://127.0.0.1/hero.jpg",
 		Platforms: []spec.Platform{{Kind: spec.LinuxNative, Image: "img"}},
 		Install:   spec.Install{Script: "true"},
 		Startup:   spec.Startup{Command: "run", Stop: spec.Stop{Type: spec.StopSignal, Value: "SIGINT"}},
@@ -116,8 +120,12 @@ func TestSharePage_StatusOnlyByDefault(t *testing.T) {
 	if m["theme-color"] != "#ffc266" {
 		t.Errorf("theme-color = %q, want the running gold", m["theme-color"])
 	}
-	if m["og:image"] != "https://cdn.example.net/hero.jpg" || m["twitter:card"] != "summary_large_image" {
-		t.Errorf("image tags = %q / %q", m["og:image"], m["twitter:card"])
+	if m["og:image"] != invitePublic+path+"/card.png" || m["twitter:card"] != "summary_large_image" ||
+		m["og:image:width"] != "1200" || m["og:image:height"] != "630" {
+		t.Errorf("image tags = %q / %q / %sx%s", m["og:image"], m["twitter:card"], m["og:image:width"], m["og:image:height"])
+	}
+	if alt := m["og:image:alt"]; alt != "Palworld: Saltmarrow &lt;Crossing&gt;, running, 3 / 10 players" {
+		t.Errorf("og:image:alt = %q", alt)
 	}
 	if m["og:url"] != invitePublic+path || !strings.Contains(m["og:site_name"], "kraken.example.com") {
 		t.Errorf("og:url = %q, og:site_name = %q", m["og:url"], m["og:site_name"])
@@ -269,5 +277,44 @@ func TestSharePage_StaticAssets(t *testing.T) {
 		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
 			t.Errorf("%s: %d", p, rec.Code)
 		}
+	}
+}
+
+// The card image is drawn from the same allowlisted card as the page, for a
+// live link only, and a burst of fetches costs one render.
+func TestShareCardImage(t *testing.T) {
+	e := newShareEnv(t)
+	shareSeed(t, e)
+	path := mintShare(t, e, map[string]any{"show_address": true, "show_password": true})
+
+	rec := getPublic(e, http.MethodGet, path+"/card.png")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("card: %d %q %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+	img, err := png.Decode(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("card is not a PNG: %v", err)
+	}
+	if b := img.Bounds(); b.Dx() != 1200 || b.Dy() != 630 {
+		t.Fatalf("card is %dx%d, want 1200x630", b.Dx(), b.Dy())
+	}
+	again := getPublic(e, http.MethodGet, path+"/card.png")
+	if !bytes.Equal(again.Body.Bytes(), rec.Body.Bytes()) {
+		t.Error("a second fetch within the minute should be the cached render")
+	}
+	if head := getPublic(e, http.MethodHead, path+"/card.png"); head.Code != http.StatusOK || head.Body.Len() != 0 {
+		t.Errorf("HEAD: %d with %d body bytes", head.Code, head.Body.Len())
+	}
+
+	hash := store.HashToken(strings.TrimPrefix(path, "/s/"))
+	l, _ := e.st.GetShareLinkByHash(context.Background(), hash)
+	if rec := e.do(t, "olga", http.MethodDelete, "/api/v1/servers/srv-p/share-links/"+l.ID, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: %d", rec.Code)
+	}
+	if rec := getPublic(e, http.MethodGet, path+"/card.png"); rec.Code != http.StatusNotFound {
+		t.Fatalf("revoked card: %d, want 404", rec.Code)
+	}
+	if rec := getPublic(e, http.MethodGet, "/s/no-such-token/card.png"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown card: %d, want 404", rec.Code)
 	}
 }

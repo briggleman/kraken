@@ -118,6 +118,7 @@
 <a class="toc-link lvl-2" href="#hyper-v-isolation-by-default">Hyper-V isolation, by default</a>
 <a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
 <a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
+<a class="toc-link lvl-2" href="#hardware-profile-and-device-ids">Hardware profile and device IDs</a>
 <a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
 <a class="toc-link lvl-2" href="#windows-nat-and-games-that-open-their-own-ports">Windows NAT and games that open their own ports</a>
 <a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>
@@ -160,6 +161,18 @@ import table inside the container, find what is unresolved, and add it to
 Copying a DLL from a desktop Windows machine next to the executable does not
 work reliably; that copy has its own dependencies the image also lacks, and you
 end up chasing the chain one file at a time.</p>
+<h2 id="hardware-profile-and-device-ids">Hardware profile and device IDs <a class="hlink" href="#hardware-profile-and-device-ids" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Server Core also lacks the <code>IDConfigDB\CurrentDockInfo</code> registry key, so
+<code>GetCurrentHwProfileW</code> fails there with <code>ERROR_REGISTRY_CORRUPT</code> even though the
+profile itself exists. A game that reads a device ID through that call gets
+nothing back. Windrose did, and its server then could not sign in to its
+backend: the log shows <code>failed to call hwProfileInfo</code> followed by
+<code>Login finished with error</code>, and players can never reach it.</p>
+<p>The steam-win image now carries the key. The profile GUID, though, comes from
+the base image and is the same in every container. A game that uses it as an
+identity should get its own value per server: the Windrose spec keeps one in
+<code>kraken\hw-profile-guid</code> in the data directory and writes it into the registry
+before every start.</p>
 <h2 id="the-steamcmd-self-update-trap">The SteamCMD self-update trap <a class="hlink" href="#the-steamcmd-self-update-trap" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>This one is worth understanding even though the Agent handles it, because the
 failure it produces looks like success.</p>
@@ -240,6 +253,7 @@ signal name is dead weight on a Linux Agent.</li>
 <a class="toc-link lvl-2" href="#hyper-v-isolation-by-default">Hyper-V isolation, by default</a>
 <a class="toc-link lvl-2" href="#bind-mounts-use-the--v-form">Bind mounts use the <code>-v</code> form</a>
 <a class="toc-link lvl-2" href="#missing-dlls">Missing DLLs</a>
+<a class="toc-link lvl-2" href="#hardware-profile-and-device-ids">Hardware profile and device IDs</a>
 <a class="toc-link lvl-2" href="#the-steamcmd-self-update-trap">The SteamCMD self-update trap</a>
 <a class="toc-link lvl-2" href="#windows-nat-and-games-that-open-their-own-ports">Windows NAT and games that open their own ports</a>
 <a class="toc-link lvl-2" href="#writing-a-windows-startup-command">Writing a Windows startup command</a>

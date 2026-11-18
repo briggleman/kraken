@@ -55,6 +55,17 @@ startup:
 # spec leaves the game on its default P2P mode and does not offer the toggle.
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
+# Who is online comes from the console lines kraken\player-watch.ps1 prints
+# (see startup): the game itself has no query port and logs joins only to
+# R5.log. The roster keys on the name; the game's join line carries no account
+# id. The leave line ends with the reason in parentheses, which the greedy
+# name capture leaves out even when a name has parentheses of its own.
+query:
+  method: log
+  join_regex: 'kraken: player joined: (?P<name>.+?)\s*$'
+  leave_regex: 'kraken: player left: (?P<name>.+) \([^()]*\)\s*$'
+  max_players_setting: MaxPlayerCount
+  max_players: 8
 
 # Field names, ranges and defaults come from the official Dedicated Server
 # Guide (playwindrose.com/dedicated-server-guide, game version 0.10.0.5.120)

@@ -23,6 +23,7 @@ import (
 	"github.com/briggleman/kraken/internal/panel/mail"
 	"github.com/briggleman/kraken/internal/panel/nodeclient"
 	"github.com/briggleman/kraken/internal/panel/rbac"
+	"github.com/briggleman/kraken/internal/panel/share"
 	"github.com/briggleman/kraken/internal/panel/store"
 	"github.com/briggleman/kraken/internal/panel/tunnel"
 	"github.com/briggleman/kraken/internal/panel/updatecheck"
@@ -118,6 +119,8 @@ type Server struct {
 	// inviteLimit bounds the two unauthenticated invite routes per client
 	// address, as downloadLimit does for download tokens.
 	inviteLimit *rateLimiter
+	// shareLimit bounds the public share-link page (#475) per client address.
+	shareLimit *rateLimiter
 
 	// mailer sends the Panel's email through the relay in the stored settings.
 	mailer *mail.Sender
@@ -225,6 +228,9 @@ func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option
 		// Invite redemption is token redemption, so it follows the download
 		// limiter's switch.
 		inviteLimit: newRateLimiter("invite_redeem", inviteRedeemPerMinute, inviteRedeemBurst,
+			cfg.DownloadRateLimitsEnabled()),
+		// The share page is token redemption too, so it follows the same switch.
+		shareLimit: newRateLimiter("share_page", sharePagePerMinute, sharePageBurst,
 			cfg.DownloadRateLimitsEnabled()),
 		mailer: &mail.Sender{},
 	}
@@ -516,6 +522,13 @@ func (s *Server) routes() chi.Router {
 	r.Get("/metrics", s.handleMetrics)
 	// iOS Password AutoFill — unauthenticated by necessity: Apple's CDN fetches it.
 	r.Get("/.well-known/apple-app-site-association", s.handleAppleAppSiteAssociation)
+	// Server share links (#475): the public card a link opens. The link is
+	// the whole authority and is read-only, so there is no session; limited
+	// per source address like the other token routes. Its stylesheet and
+	// script are files because the CSP allows nothing inline.
+	r.Handle("/s/static/*", http.StripPrefix("/s/static/", share.StaticHandler()))
+	r.With(s.limit(s.shareLimit)).Get("/s/{token}", s.handleSharePage)
+	r.With(s.limit(s.shareLimit)).Head("/s/{token}", s.handleSharePage)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth: login is public; logout/me require a valid session. Public and

@@ -1,0 +1,154 @@
+/* The public page a server share link opens (#475). A separate surface from the
+   Panel UI: it is served without the SPA, so it carries its own copy of the
+   Abyssal tokens it needs. Ported from design/mockups/server-share-card.html. */
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/fonts/archivo-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("/fonts/spline-sans-mono-latin.woff2") format("woff2");
+  font-weight: 300 500;
+  font-display: swap;
+}
+
+:root {
+  --void: #02090e;
+  --d1: #071521;
+  --d2: #0a1e2c;
+  --lumen: #ffc266;
+  --lumen-rgb: 255, 194, 102;
+  --ember: #d99a3c;
+  --teal: #1a7a6d;
+  --violet: #9d8cff;
+  --violet-rgb: 157, 140, 255;
+  --ink: #f5dfc1;
+  --ink-2: #b6a894;
+  --ink-3: #7d7160;
+  --ink-3-rgb: 125, 113, 96;
+  --edge: rgba(var(--lumen-rgb), 0.16);
+  --lit-ink: #1a1206;
+  --ui: "Archivo", "Segoe UI", sans-serif;
+  --mono: "Spline Sans Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+::selection { background: rgba(var(--lumen-rgb), 0.3); color: var(--ink); }
+
+html { background: var(--void); }
+body {
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(180deg, #0d3340 0%, #082530 30%, #04141b 60%, var(--void) 100%) fixed;
+}
+
+.sp { width: 100%; max-width: 480px; margin: 0 auto; position: relative; }
+
+.sp-art { height: 240px; overflow: hidden; }
+.sp-art img {
+  display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 35%;
+  filter: saturate(0.75) brightness(0.8);
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent);
+  mask-image: linear-gradient(180deg, #000 30%, transparent);
+}
+.is-stopped .sp-art img, .is-starting .sp-art img { filter: grayscale(1) brightness(0.5); }
+.is-unreachable .sp-art img { filter: saturate(0.3) brightness(0.55); }
+
+.sp-body { position: relative; padding: 40px 20px 32px; display: grid; gap: 18px; }
+.sp-art + .sp-body { margin-top: -118px; padding-top: 0; }
+
+.sp-head { display: grid; gap: 10px; }
+.sp-srv {
+  width: fit-content; max-width: 100%; padding: 0 30px 5px 0;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink);
+  border-bottom: 1px solid rgba(var(--lumen-rgb), 0.2);
+  overflow-wrap: anywhere;
+}
+.sp-game {
+  font-weight: 700; font-size: clamp(34px, 11vw, 46px); line-height: 1; letter-spacing: 0.02em;
+  text-shadow: 0 2px 24px rgba(2, 9, 14, 0.8); overflow-wrap: anywhere;
+}
+.is-stopped .sp-game, .is-starting .sp-game { color: var(--ink-2); }
+
+.sp-status { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 11px; border-radius: 3px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; white-space: nowrap;
+  border: 1px solid rgba(var(--ink-3-rgb), 0.55); color: var(--ink-2);
+}
+.chip i { width: 7px; height: 7px; border-radius: 50%; flex: none; border: 1.5px solid var(--ink-3); }
+.chip-running { color: var(--lumen); background: rgba(var(--lumen-rgb), 0.09); border-color: rgba(var(--lumen-rgb), 0.45); }
+.chip-running i { border: 0; background: var(--lumen); box-shadow: 0 0 8px var(--lumen); }
+.chip-unreachable { color: var(--violet); border-color: rgba(var(--violet-rgb), 0.5); }
+.chip-unreachable i { border: 1.5px dashed var(--violet); }
+
+.sp-players { font-family: var(--mono); font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.sp-players b { font-weight: 500; color: var(--ink); font-size: 18px; }
+
+.panel {
+  background: linear-gradient(180deg, var(--d2), var(--d1));
+  border: 1px solid var(--edge); border-radius: 6px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--lumen-rgb), 0.07);
+}
+.join { display: grid; }
+.join-h { padding: 14px 16px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); }
+.row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 12px 10px 12px 16px; border-top: 1px solid rgba(var(--lumen-rgb), 0.08);
+}
+.join-h + .row { border-top: 0; }
+.row-l { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+.row-v {
+  display: block; font-family: var(--mono); font-weight: 400; font-size: 17px; color: var(--ink);
+  overflow-wrap: anywhere; font-variant-numeric: tabular-nums; user-select: all;
+}
+.row-v.masked { letter-spacing: 0.18em; color: var(--ink-2); user-select: none; }
+.acts { display: flex; gap: 6px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 12px; border-radius: 4px; cursor: pointer;
+  font: 600 11px/1 var(--ui); letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-2); background: transparent; border: 1px solid var(--edge);
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.btn[hidden] { display: none; }
+.btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.btn:hover { border-color: rgba(var(--lumen-rgb), 0.42); color: var(--ink); }
+.btn:focus-visible { outline: 2px solid var(--lumen); outline-offset: 2px; }
+.btn.done { color: var(--lumen); border-color: rgba(var(--lumen-rgb), 0.5); background: rgba(var(--lumen-rgb), 0.09); }
+.btn.icon { padding: 0 10px; }
+.btn.icon[aria-pressed="true"] { color: var(--lumen); border-color: rgba(var(--lumen-rgb), 0.42); }
+.copy-all {
+  margin: 4px 16px 16px; justify-content: center; min-height: 44px; color: var(--lit-ink); border: 0;
+  background: linear-gradient(180deg, var(--lumen), var(--ember)); box-shadow: 0 6px 20px rgba(var(--lumen-rgb), 0.25);
+}
+.copy-all:hover, .copy-all.done { color: var(--lit-ink); background: linear-gradient(180deg, var(--lumen), var(--ember)); }
+.copy-all:hover { filter: brightness(1.06); }
+
+.sp-how { font-size: 14px; line-height: 1.55; color: var(--ink-2); max-width: 60ch; }
+
+.sp-foot {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: var(--mono); font-weight: 300; font-size: 11px; color: var(--ink-3); padding-top: 6px;
+}
+.brand { display: inline-flex; align-items: center; gap: 7px; font: 700 11px/1 var(--ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-2); }
+.brand .g {
+  width: 14px; aspect-ratio: 398 / 429; background: url("/kraken-glyph-teal.png") center / contain no-repeat;
+  filter: brightness(0) invert(84%) sepia(48%) saturate(600%) hue-rotate(338deg) brightness(101%);
+}
+
+.sp-gone .sp-body { padding-top: 72px; }
+
+@media (min-width: 560px) {
+  .sp { padding-top: 24px; }
+  .sp-art { border-radius: 10px 10px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+}

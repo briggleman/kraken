@@ -105,7 +105,7 @@ Reach for the shared-Docker-network fix first. This is for when you cannot.
 ```sh
 KRAKEN_RATE_LIMITS=all        # the default; "on" is accepted as its old spelling
 KRAKEN_RATE_LIMITS=login      # the login limiters only
-KRAKEN_RATE_LIMITS=downloads  # the download-token limiter only
+KRAKEN_RATE_LIMITS=downloads  # the token-redemption limiters only: downloads, invites, share links
 KRAKEN_RATE_LIMITS=off        # neither
 ```
 
@@ -117,6 +117,11 @@ The switch is split because the two surfaces fail differently. The advice for a
 Panel behind a NAT that erases the client used to be `off`, which threw away the
 token-redemption limiter as well — a limiter that has no such problem, since it
 guards a credential nobody shares.
+
+The token-redemption group covers every route where a link in the URL is the
+whole authority: file downloads, account invites, and the public page a server
+share link opens (`/s/{token}`), which allows 120 requests a minute per address
+with a burst of 40.
 
 ## Body caps
 

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+{{- with .Card}}
+<title>{{.ServerName}} · {{.Game}}</title>
+<meta name="theme-color" content="{{.ThemeColor}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{.SiteName}}">
+<meta property="og:title" content="{{.ServerName}}">
+<meta property="og:description" content="{{.Description}}">
+<meta property="og:url" content="{{.PageURL}}">
+{{- if .ImageURL}}
+<meta property="og:image" content="{{.ImageURL}}">
+<meta name="twitter:card" content="summary_large_image">
+{{- end}}
+<meta name="description" content="{{.Description}}">
+{{- else}}
+<title>Link not available</title>
+<meta name="theme-color" content="#02090E">
+{{- end}}
+<link rel="icon" href="/favicon-512.png">
+<link rel="stylesheet" href="/s/static/share.css">
+<script src="/s/static/share.js" defer></script>
+</head>
+<body>
+{{- with .Card}}
+<main class="sp is-{{.State}}">
+  {{- if .BannerURL}}
+  <div class="sp-art" role="presentation"><img src="{{.BannerURL}}" alt="" referrerpolicy="no-referrer"></div>
+  {{- end}}
+  <div class="sp-body">
+    <header class="sp-head">
+      <span class="sp-srv">{{.ServerName}}</span>
+      <h1 class="sp-game">{{.Game}}</h1>
+      <div class="sp-status">
+        <span class="chip chip-{{.State}}"><i aria-hidden="true"></i>{{.StateLabel}}</span>
+        {{- with .PlayersText}}
+        <span class="sp-players"><b>{{.}}</b> players</span>
+        {{- end}}
+      </div>
+    </header>
+
+    {{- if .Join}}
+    <section class="panel join" aria-labelledby="join-h">
+      <h2 class="join-h" id="join-h">Join</h2>
+      {{- range .Join}}
+      <div class="row">
+        <div class="row-text">
+          <div class="row-l">{{.Label}}</div>
+          <code class="row-v"{{if .Secret}} data-secret{{end}}>{{.Value}}</code>
+        </div>
+        <div class="acts">
+          {{- if .Secret}}
+          <button class="btn icon" type="button" data-reveal aria-pressed="false" aria-label="Show password" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          {{- end}}
+          <button class="btn" type="button" data-copy="{{.Value}}" aria-label="Copy {{.Label}}" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+      </div>
+      {{- end}}
+      {{- if gt (len .Join) 1}}
+      <button class="btn copy-all" type="button" data-copy="{{.CopyAll}}" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>
+        <span>Copy all</span>
+      </button>
+      {{- end}}
+    </section>
+    {{- end}}
+
+    {{- with .Notes}}
+    <p class="sp-how">{{.}}</p>
+    {{- end}}
+
+    <footer class="sp-foot">
+      <span class="brand"><span class="g" aria-hidden="true"></span>Kraken</span>
+      <span class="asof">{{if eq .State "unreachable"}}last checked{{else}}as of{{end}} {{.AsOfText}}</span>
+    </footer>
+  </div>
+</main>
+{{- else}}
+<main class="sp sp-gone">
+  <div class="sp-body">
+    <h1 class="sp-game">Link not available</h1>
+    <p class="sp-how">This share link doesn't open. It may have been revoked or expired. Ask whoever shared it for a new one.</p>
+    <footer class="sp-foot"><span class="brand"><span class="g" aria-hidden="true"></span>Kraken</span></footer>
+  </div>
+</main>
+{{- end}}
+</body>
+</html>

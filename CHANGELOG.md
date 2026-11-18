@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.70.0](https://github.com/briggleman/kraken/compare/v0.69.1...v0.70.0) (2026-11-18)
+
+
+### Features
+
+* **specs:** show who is online on windrose servers ([#474](https://github.com/briggleman/kraken/issues/474)) ([5d6e9dc](https://github.com/briggleman/kraken/commit/5d6e9dccc0abea2852ff3eb3610f0ca3e70ccd5d))
+
+
+### Bug Fixes
+
+* **specs:** let windrose sign in from a windows container ([#471](https://github.com/briggleman/kraken/issues/471)) ([c9dfbfb](https://github.com/briggleman/kraken/commit/c9dfbfb895e10830e38cf750ff91a6594f0c6fb4))
+
 ## [0.69.1](https://github.com/briggleman/kraken/compare/v0.69.0...v0.69.1) (2026-11-13)
 
 

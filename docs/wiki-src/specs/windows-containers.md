@@ -54,6 +54,21 @@ Copying a DLL from a desktop Windows machine next to the executable does not
 work reliably; that copy has its own dependencies the image also lacks, and you
 end up chasing the chain one file at a time.
 
+## Hardware profile and device IDs
+
+Server Core also lacks the `IDConfigDB\CurrentDockInfo` registry key, so
+`GetCurrentHwProfileW` fails there with `ERROR_REGISTRY_CORRUPT` even though the
+profile itself exists. A game that reads a device ID through that call gets
+nothing back. Windrose did, and its server then could not sign in to its
+backend: the log shows `failed to call hwProfileInfo` followed by
+`Login finished with error`, and players can never reach it.
+
+The steam-win image now carries the key. The profile GUID, though, comes from
+the base image and is the same in every container. A game that uses it as an
+identity should get its own value per server: the Windrose spec keeps one in
+`kraken\hw-profile-guid` in the data directory and writes it into the registry
+before every start.
+
 ## The SteamCMD self-update trap
 
 This one is worth understanding even though the Agent handles it, because the

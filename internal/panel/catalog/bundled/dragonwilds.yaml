@@ -112,6 +112,8 @@ startup:
   stop: { type: signal, value: SIGINT }
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: WorldPassword }
 # No A2S and no REST: the only account of who is online is the UE log. The
 # agent follows the console and keeps a roster from the matcher session's own
 # pair of lines (observed live on abyss-win, 2026-09-14):

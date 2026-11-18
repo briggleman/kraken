@@ -305,6 +305,43 @@ query:
   methods, and a `log` regex that does not compile or captures neither group,
   because every one of those fails silently at runtime as "players unknown".
 
+## The `join:` block — what a player needs to connect
+
+Optional, but every real game should have one. A server share link (#475) shows
+a player how to get in, and it shows **exactly** the values this block names and
+nothing else from the server's settings. The block is the allowlist. Without it,
+a share link carries status and players only.
+
+| method | when | declares |
+| --- | --- | --- |
+| `address` | players connect to `host:port` (most games) | `port:`: the spec **port name** players connect to (the game port, not the query port) |
+| `invite_code` | the game issues a code and players join with that (Windrose) | `code:`: the **setting or variable key** holding the code |
+
+```yaml
+join: { method: address, port: game, password: ServerPassword }
+join: { method: invite_code, code: InviteCode, password: Password, notes: "Players need the invite code, and the password too when one is set." }
+```
+
+- `password:` is the setting or variable key holding the password a player
+  types to **join**. Leave it out for a game with no join password. Never name an
+  admin, RCON or owner password: `Validate` refuses keys that look like one
+  (`admin`, `rcon`, `owner`, `moderator`, `operator` in the name) and the key a
+  `palworld-rest` query reads. A game with several role passwords picks the one a
+  shared link is for (Enshrouded: `friendPassword`).
+- Every key must be a declared variable or settings field. A typo would otherwise
+  leave the share page blank with no error.
+- For `address`, the Panel builds the host from the server's DNS name when it has
+  one, else the node's external IP, and always adds the allocated port of
+  `port:`.
+- `notes:` is one optional line (160 characters at most) telling a player where
+  the values go. Only write what you have seen in the game; leave it out when
+  unsure.
+- A blank value is simply not shown. Windrose's `InviteCode` left blank means the
+  server generated its own code, which the Panel does not know, so its link then
+  shows the password only.
+- Editing a bundled spec does not change specs already imported into a Panel.
+  Push the block to a live Panel the same way as any other spec edit.
+
 ## The `update_check:` block — is the installed build current
 
 Optional, and usually left out. The Panel checks each server's Steam build

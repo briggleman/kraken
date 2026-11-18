@@ -55,6 +55,8 @@ startup:
   stop: { type: signal, value: SIGINT }
 ports:
   - { name: game, protocol: udp, default: 34197, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: game_password }
 settings:
   groups:
     - id: server

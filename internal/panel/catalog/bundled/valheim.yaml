@@ -71,6 +71,8 @@ variables:
 ports:
   - { name: game, protocol: udp, default: 2456, required: true }
   - { name: query, protocol: udp, default: 2457, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: SERVER_PASSWORD }
 # Valheim answers the Steam A2S_INFO query on its query port → live player count.
 query: { method: a2s, port: query }
 # A backup is the save data, not the reinstallable install tree. Source: the

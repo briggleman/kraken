@@ -151,14 +151,16 @@ joins by code. Off by default.</li>
 you revoke it, which is what a pinned message wants.</li>
 </ul>
 <p><strong>Create link</strong> shows the URL <strong>once</strong>, in the same violet-edged box the SFTP
-password uses, with a copy control. The Panel stores only a digest of the
+password uses, with a copy control. On a Panel served over plain HTTP the browser gives the
+page no clipboard, so <strong>copy</strong> selects the URL for you to copy by hand instead.
+The Panel stores only a digest of the
 link&#39;s token, so once you close the box or move to another server, the URL
 cannot be shown again. If you lose it, revoke the link and make another.</p>
 <p>A link needs the Panel&#39;s <strong>public address</strong> (<em>sessions &amp; security</em>, or
 <code>KRAKEN_PUBLIC_URL</code>; see <a href="/wiki/configure/email/#the-public-address">the public address</a>).
 Without one the block says so instead of offering the form, because a link
 built from whatever address a request arrived on could point anywhere. A server
-holds at most 25 open links; revoke one to make room.</p>
+holds at most 25 live links (expired ones do not count); revoke one to make room.</p>
 <h2 id="what-a-link-shows">What a link shows <a class="hlink" href="#what-a-link-shows" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Every link shows:</p>
 <ul>

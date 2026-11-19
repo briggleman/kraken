@@ -30,7 +30,9 @@ administrators, and an Operator it is shared with.
   you revoke it, which is what a pinned message wants.
 
 **Create link** shows the URL **once**, in the same violet-edged box the SFTP
-password uses, with a copy control. The Panel stores only a digest of the
+password uses, with a copy control. On a Panel served over plain HTTP the browser gives the
+page no clipboard, so **copy** selects the URL for you to copy by hand instead.
+The Panel stores only a digest of the
 link's token, so once you close the box or move to another server, the URL
 cannot be shown again. If you lose it, revoke the link and make another.
 
@@ -38,7 +40,7 @@ A link needs the Panel's **public address** (*sessions & security*, or
 `KRAKEN_PUBLIC_URL`; see [the public address](/wiki/configure/email/#the-public-address)).
 Without one the block says so instead of offering the form, because a link
 built from whatever address a request arrived on could point anywhere. A server
-holds at most 25 open links; revoke one to make room.
+holds at most 25 live links (expired ones do not count); revoke one to make room.
 
 ## What a link shows
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.71.0](https://github.com/briggleman/kraken/compare/v0.70.0...v0.71.0) (2026-11-19)
+
+
+### Features
+
+* **api:** mint, list and revoke server share links ([#477](https://github.com/briggleman/kraken/issues/477)) ([b094f9d](https://github.com/briggleman/kraken/commit/b094f9d3d9e8bd7a58e0e6da37f4b166b45e10fe))
+* **panel:** draw the share card image in Go ([#479](https://github.com/briggleman/kraken/issues/479)) ([e2556a9](https://github.com/briggleman/kraken/commit/e2556a982fdb0cbd01654836de00679c84675f5c))
+* **panel:** serve the public page a server share link opens ([#478](https://github.com/briggleman/kraken/issues/478)) ([c4d6485](https://github.com/briggleman/kraken/commit/c4d6485d320824cfe12b94d533c3c9fa638b63bf))
+* **specs:** declare how players join a server ([#476](https://github.com/briggleman/kraken/issues/476)) ([1b61fc2](https://github.com/briggleman/kraken/commit/1b61fc213e8aa763538be39e57e85e7497a53d2d))
+* **web:** create, list and revoke share links from the drill-in ([#480](https://github.com/briggleman/kraken/issues/480)) ([1cf0548](https://github.com/briggleman/kraken/commit/1cf0548dc8e4c0109dbd86b1cd68120d442856b6))
+
 ## [0.70.0](https://github.com/briggleman/kraken/compare/v0.69.1...v0.70.0) (2026-11-18)
 
 

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Server share card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Spline+Sans+Mono:wght@300;400;500&display=block">
+<style>
+/* Mockup: what a shared Kraken server link unfurls into in a Discord channel, and the
+   page a friend lands on when they click it. Three parts: the og:image (1200x630,
+   rendered by the Panel), the text half of the embed (og:title / og:description /
+   og:site_name / theme-color), and the /s/{token} page with copy controls.
+   Fictional servers, TEST-NET addresses. Game art is each spec's own banner_url
+   (Steam library hero). Fonts load like the living mock's; a server-side render
+   would use the Panel's self-hosted copies in web/public/fonts. */
+
+:root{
+  --d1:#071521; --d2:#0a1e2c; --void:#02090E;
+  --lumen:#ffc266; --lumen-rgb:255, 194, 102;
+  --lumen-soft:rgba(var(--lumen-rgb), 0.09);
+  --edge:rgba(var(--lumen-rgb), 0.16);
+  --ok:#d8b46a; --teal:#1a7a6d;
+  --violet:#9d8cff; --violet-rgb:157, 140, 255;
+  --ink:#f5dfc1; --ink-2:#b6a894; --ink-3:#7d7160; --ink-3-rgb:125, 113, 96;
+  --ui:"Archivo","Segoe UI",sans-serif;
+  --mono:"Spline Sans Mono","Consolas",monospace;
+
+  /* third-party chrome, approximated so the card can be judged where it will live */
+  --chat-bg:#313338; --chat-embed:#2b2d31; --chat-text:#dbdee1; --chat-muted:#949ba4;
+  --chat-link:#00a8fc; --chat-name:#f2f3f5; --chat-avatar:#5865f2;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+::selection{background:rgba(var(--lumen-rgb),.3);color:var(--ink)}
+html{background:var(--void)}
+body{
+  min-height:100vh;color:var(--ink);font-family:var(--ui);-webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(100vw 70vh at 50% 130%, #2a2033, transparent 60%),
+    linear-gradient(180deg,#030d16 0%,#04121d 55%,#02090E 100%) fixed;
+}
+.page{max-width:1240px;margin:0 auto;padding:56px 16px 96px;display:grid;gap:64px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:700px){.page{padding-inline:40px}}
+
+h1{font-weight:700;font-size:clamp(26px,3vw,40px);letter-spacing:.05em;line-height:1.05}
+h2{font-weight:600;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3);margin-bottom:22px}
+.lede{margin-top:14px;max-width:68ch;color:var(--ink-2);font-size:16px;line-height:1.55}
+.lede code,.note code,td code{font-family:var(--mono);font-weight:400;font-size:.92em;color:var(--ink)}
+.note{margin-top:14px;color:var(--ink-2);font-size:14px;line-height:1.55;max-width:80ch}
+
+/* ================= the og:image ================= */
+.card{
+  width:1200px;height:630px;position:relative;overflow:hidden;isolation:isolate;
+  background:linear-gradient(180deg,#0d3340 0%,#082530 34%,#04141B 64%,#02090E 100%);
+  color:var(--ink);font-family:var(--ui);
+}
+/* the game's own art, sunk into the water column: it fades out toward the text side
+   and toward the floor, and is cooled so the only warm light is still ours */
+.card .art{
+  position:absolute;top:0;right:0;width:82%;height:78%;
+  background:var(--art) center 30% / cover no-repeat;
+  filter:saturate(.72) brightness(.78) contrast(1.05);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 48%),linear-gradient(180deg,#000 35%,transparent 100%);
+  -webkit-mask-composite:source-in;
+  mask-image:linear-gradient(90deg,transparent 0%,#000 48%),linear-gradient(180deg,#000 35%,transparent 100%);
+  mask-composite:intersect;
+}
+.card .tint{position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,51,64,.28),rgba(4,20,27,.55) 70%);mix-blend-mode:multiply}
+.card .surface{position:absolute;inset:0;background:radial-gradient(90% 70% at 30% -12%,rgba(255,215,154,.14),rgba(255,199,122,.04) 32%,transparent 55%)}
+.card .ray{position:absolute;top:-8%;height:130%;background:linear-gradient(180deg,rgba(255,215,154,var(--o)),transparent 70%);filter:blur(20px);mix-blend-mode:screen;transform:skewX(-9deg)}
+.card .vig{position:absolute;inset:0;box-shadow:inset 0 0 220px 40px rgba(1,9,14,.75)}
+
+.c-in{position:absolute;inset:56px 64px 48px;display:grid;grid-template-rows:auto 1fr auto auto}
+
+.c-top{display:flex;align-items:center;justify-content:space-between;gap:28px;min-width:0}
+/* the server is now the rack label: what this instance is called, above what it runs */
+.c-srv{
+  display:inline-flex;align-items:center;gap:16px;padding:0 56px 10px 0;min-width:0;
+  font-size:24px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);
+  border-bottom:1.5px solid rgba(var(--lumen-rgb),.2);
+}
+.c-srv svg{width:30px;height:30px;flex:none;color:var(--ink-2)}
+.c-srv span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{
+  display:inline-flex;align-items:center;gap:14px;padding:10px 22px;border-radius:5px;flex:none;
+  font-size:22px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;white-space:nowrap;
+  background:rgba(2,9,14,.55);
+}
+.chip i{width:14px;height:14px;border-radius:50%;flex:none}
+.chip.run{color:var(--lumen);background:rgba(var(--lumen-rgb),.12);border:1.5px solid rgba(var(--lumen-rgb),.45)}
+.chip.run i{background:var(--lumen);box-shadow:0 0 14px var(--lumen),0 0 4px var(--lumen)}
+.chip.stop{color:var(--ink-2);border:1.5px solid rgba(var(--ink-3-rgb),.55)}
+.chip.stop i{border:2.5px solid var(--ink-3)}
+.chip.lost{color:var(--violet);border:1.5px solid rgba(var(--violet-rgb),.5)}
+.chip.lost i{border:2.5px dashed var(--violet)}
+
+.c-game{
+  align-self:center;font-weight:700;font-size:112px;line-height:1;letter-spacing:.02em;
+  max-width:9.5ch;text-wrap:balance;overflow-wrap:anywhere;
+  text-shadow:0 4px 40px rgba(2,9,14,.7);
+}
+.c-game.long{font-size:84px;max-width:12ch}
+
+.c-rail{
+  display:grid;grid-auto-flow:column;grid-auto-columns:auto;justify-content:start;align-items:end;gap:30px;
+  padding:24px 32px 26px;border-radius:8px;border:1.5px solid var(--edge);
+  background:linear-gradient(180deg,rgba(10,30,44,.94),rgba(7,21,33,.94));
+  box-shadow:0 22px 60px rgba(0,0,0,.5),inset 0 1.5px 0 rgba(var(--lumen-rgb),.08);
+}
+.m{display:grid;gap:10px;min-width:0}
+.m + .m{padding-left:30px;border-left:1.5px solid rgba(var(--lumen-rgb),.1)}
+.m-l{font-size:17px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.m-v{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums;line-height:1;color:var(--ink);white-space:nowrap}
+.m-v.big{font-size:62px;text-shadow:0 0 26px rgba(var(--lumen-rgb),.5)}
+.m-v.big small{font-size:.5em;font-weight:300;color:var(--ink-2);text-shadow:none}
+.m-v.join{font-size:37px;font-weight:400;letter-spacing:.01em;padding-bottom:4px;overflow:hidden;text-overflow:ellipsis}
+.m-v.join.secret{max-width:12ch}
+.occ{height:9px;border-radius:5px;background:rgba(var(--ink-3-rgb),.22);overflow:hidden;width:180px}
+.occ b{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--teal),var(--lumen));box-shadow:0 0 12px rgba(var(--lumen-rgb),.5)}
+
+.c-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:18px;
+  font-family:var(--mono);font-weight:300;font-size:24px;color:var(--ink-3);letter-spacing:.02em;
+}
+.c-brand{display:inline-flex;align-items:center;gap:14px;font-family:var(--ui);font-weight:700;font-size:24px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2)}
+.c-brand span.g{
+  width:32px;aspect-ratio:398/429;background:url(kraken-glyph-teal.png) center/contain no-repeat;
+  filter:brightness(0) invert(84%) sepia(48%) saturate(600%) hue-rotate(338deg) brightness(101%) drop-shadow(0 0 10px rgba(var(--lumen-rgb),.45));
+}
+.c-foot .asof b{font-weight:400;color:var(--ink-2)}
+
+/* stopped: the light goes out, the art goes cold, nothing else is said */
+.card.is-stop .ray{display:none}
+.card.is-stop .surface{opacity:.3}
+.card.is-stop .art{filter:grayscale(1) brightness(.5)}
+.card.is-stop .c-game{color:var(--ink-2)}
+.card.is-stop .m-v{color:var(--ink-2);text-shadow:none}
+.card.is-stop .c-brand span.g{filter:brightness(0) invert(48%) sepia(12%) saturate(400%) hue-rotate(350deg)}
+/* unreachable: the readings are old, so they are shown as old */
+.card.is-lost .ray{display:none}
+.card.is-lost .surface{opacity:.45}
+.card.is-lost .art{filter:saturate(.3) brightness(.55)}
+.card.is-lost .m-v{color:var(--ink-2);text-shadow:none}
+.card.is-lost .occ b{background:rgba(var(--ink-3-rgb),.6);box-shadow:none}
+.card.is-lost .asof b{color:var(--violet)}
+
+/* ================= the chat context ================= */
+.chat{
+  background:var(--chat-bg);border-radius:10px;padding:22px 20px 26px;display:grid;gap:26px;grid-template-columns:minmax(0,1fr);
+  font-family:"gg sans","Segoe UI","Helvetica Neue",Arial,sans-serif;color:var(--chat-text);
+  box-shadow:0 22px 60px rgba(0,0,0,.5);
+}
+.msg{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px}
+.ava{width:40px;height:40px;border-radius:50%;background:var(--chat-avatar);display:grid;place-items:center;font-weight:700;color:#fff;font-size:15px}
+.who{font-size:15px;font-weight:600;color:var(--chat-name)}
+.who time{margin-left:8px;font-size:12px;font-weight:400;color:var(--chat-muted)}
+.body{font-size:15px;line-height:1.375;margin-top:2px}
+.body a{color:var(--chat-link);text-decoration:none;word-break:break-all}
+.embed{
+  margin-top:8px;max-width:432px;border-radius:4px;background:var(--chat-embed);
+  border-left:4px solid var(--bar);padding:8px 16px 16px 12px;display:grid;gap:8px;grid-template-columns:minmax(0,1fr);
+}
+.e-site{font-size:12px;color:var(--chat-muted);margin-top:8px}
+.e-title{font-size:16px;font-weight:600;color:var(--chat-link);line-height:1.3}
+.e-desc{font-size:14px;line-height:1.35;color:var(--chat-text);white-space:pre-line}
+.e-img{margin-top:8px;width:min(400px,100%);aspect-ratio:1200/630;border-radius:4px;overflow:hidden;position:relative}
+.e-img .card,.full .card{position:absolute;top:0;left:0;transform-origin:0 0}
+@media (max-width:520px){.chat{padding-inline:12px}.msg{grid-template-columns:32px minmax(0,1fr);gap:10px}.ava{width:32px;height:32px}.embed{padding-right:10px}}
+
+/* ================= full-size ================= */
+.grid-states{display:grid;gap:22px;grid-template-columns:minmax(0,1fr)}
+.full{width:100%;aspect-ratio:1200/630;position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--edge)}
+
+/* ================= the click-through page ================= */
+.landing{display:grid;gap:40px;align-items:start;grid-template-columns:minmax(0,1fr)}
+@media (min-width:900px){.landing{grid-template-columns:390px minmax(0,1fr)}}
+.phone{
+  width:100%;max-width:390px;border-radius:28px;padding:10px;background:#01060a;
+  box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(var(--lumen-rgb),.12);
+}
+.sp{
+  border-radius:20px;overflow:hidden;position:relative;
+  background:linear-gradient(180deg,#0d3340 0%,#082530 30%,#04141B 60%,#02090E 100%);
+}
+.sp-art{
+  height:230px;background:var(--art) center 35% / cover no-repeat;filter:saturate(.75) brightness(.8);
+  -webkit-mask-image:linear-gradient(180deg,#000 30%,transparent);mask-image:linear-gradient(180deg,#000 30%,transparent);
+}
+.sp-body{position:relative;margin-top:-118px;padding:0 20px 26px;display:grid;gap:18px}
+.sp-head{display:grid;gap:10px}
+.sp-srv{
+  display:inline-flex;align-items:center;gap:8px;width:fit-content;padding:0 30px 5px 0;
+  font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--ink);
+  border-bottom:1px solid rgba(var(--lumen-rgb),.2);
+}
+.sp-srv svg{width:14px;height:14px;color:var(--ink-2)}
+.sp-game{font-weight:700;font-size:44px;line-height:1;letter-spacing:.02em;text-shadow:0 2px 24px rgba(2,9,14,.8)}
+.sp-status{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.sp .chip{font-size:11px;padding:4px 11px;gap:8px;border-radius:3px;border-width:1px}
+.sp .chip i{width:7px;height:7px}
+.sp-players{font-family:var(--mono);font-size:14px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sp-players b{font-weight:500;color:var(--ink);font-size:18px}
+
+.panel{
+  background:linear-gradient(180deg,var(--d2),var(--d1));border:1px solid var(--edge);border-radius:6px;
+  box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(var(--lumen-rgb),.07);
+}
+.join{display:grid}
+.join-h{padding:14px 16px 4px;font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px 10px 12px 16px;border-top:1px solid rgba(var(--lumen-rgb),.08)}
+.row:first-of-type{border-top:0}
+.row-l{font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+.row-v{font-family:var(--mono);font-weight:400;font-size:17px;color:var(--ink);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.row-v.masked{letter-spacing:.18em;color:var(--ink-2)}
+.acts{display:flex;gap:6px}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 12px;border-radius:4px;cursor:pointer;
+  font:600 11px/1 var(--ui);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-2);background:transparent;border:1px solid var(--edge);
+  transition:border-color .2s,color .2s,background .2s;
+}
+.btn svg{width:15px;height:15px}
+.btn:hover{border-color:rgba(var(--lumen-rgb),.42);color:var(--ink)}
+.btn:focus-visible{outline:2px solid var(--lumen);outline-offset:2px}
+.btn.done{color:var(--lumen);border-color:rgba(var(--lumen-rgb),.5);background:var(--lumen-soft)}
+.btn.icon{padding:0 10px}
+.copy-all{
+  margin:4px 16px 16px;justify-content:center;min-height:44px;color:#1a1206;border:0;
+  background:linear-gradient(180deg,var(--lumen),#d99a3c);box-shadow:0 6px 20px rgba(var(--lumen-rgb),.25);
+}
+.copy-all:hover{color:#1a1206;filter:brightness(1.06)}
+.copy-all.done{color:#1a1206;background:linear-gradient(180deg,var(--lumen),#d99a3c)}
+.sp-how{font-size:13px;line-height:1.5;color:var(--ink-2)}
+.sp-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:var(--mono);font-weight:300;font-size:11px;color:var(--ink-3)}
+.sp-foot .c-brand{font-size:11px;gap:7px}
+.sp-foot .c-brand span.g{width:14px}
+
+/* ================= anatomy ================= */
+.ana{width:100%;border-collapse:collapse;font-size:14px;min-width:620px}
+.ana-wrap{overflow-x:auto;border:1px solid var(--edge);border-radius:6px;background:linear-gradient(180deg,var(--d2),var(--d1));scrollbar-width:thin;scrollbar-color:rgba(var(--lumen-rgb),.35) transparent}
+.ana th,.ana td{text-align:left;padding:12px 16px;border-bottom:1px solid rgba(var(--lumen-rgb),.08);vertical-align:top}
+.ana th{font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+.ana td{color:var(--ink-2);line-height:1.5}
+.ana td:first-child{color:var(--ink);white-space:nowrap}
+.ana tr:last-child td{border-bottom:0}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+@media (prefers-reduced-motion:reduce){.btn{transition:none}}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <h1>Server share card</h1>
+    <p class="lede">What a shared server link turns into when it is posted in a Discord channel, and the page a friend lands on when they tap it. Discord builds the card from tags in the page head: a text half (<code>og:site_name</code>, <code>og:title</code>, <code>og:description</code>, and <code>theme-color</code> for the side bar) and a 1200×630 <code>og:image</code> the Panel renders over the spec's own game art. Discord caches what it fetched, so every image is stamped with the time of its reading.</p>
+  </header>
+
+  <section>
+    <h2>In the channel</h2>
+    <div class="chat" id="chat"></div>
+    <p class="note">Text inside the image can't be selected or copied, so the join details are also in the description. The description is plain text: it can be selected on desktop, and a long press copies it on a phone. Tapping the link opens the share page below, which has a copy button for each value.</p>
+  </section>
+
+  <section>
+    <h2>The share page</h2>
+    <div class="landing">
+      <div class="phone"><div class="sp" id="sp"></div></div>
+      <div>
+        <p class="note" style="margin-top:0">The page at <code>/s/{token}</code> is the same reading as the card, laid out for a phone held by someone about to join. Each join value has its own copy button. <b>Copy all</b> puts every value on the clipboard in the order the game's connect screen asks for them, ready to paste into a DM. The password is masked on screen so a shared screen or a screenshot doesn't expose it. Copying works without revealing it.</p>
+        <p class="note">How a game is joined comes from its spec. Valheim and Palworld join by address. Windrose joins by invite code, so its card has no address. A server with no password shows no password row at all, rather than an empty value.</p>
+        <p class="note">Unlike the embed, this page respects revocation. Once a link is revoked, the page returns 404, while anything already rendered into a Discord message stays there.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The image, full size</h2>
+    <div class="grid-states" id="full"></div>
+  </section>
+
+  <section>
+    <h2>Anatomy</h2>
+    <div class="ana-wrap">
+      <table class="ana">
+        <thead><tr><th>Element</th><th>Source</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>Side bar</td><td><code>&lt;meta name="theme-color"&gt;</code></td><td><span class="sw" style="background:var(--lumen)"></span>running · <span class="sw" style="background:var(--ink-3)"></span>stopped · <span class="sw" style="background:var(--violet)"></span>unreachable. Same three readings as the chip.</td></tr>
+          <tr><td>Headline</td><td>spec <code>name</code></td><td>The game is the big type; the server's own name is the label above it, the way a node name sits above a server on the fleet deck.</td></tr>
+          <tr><td>Embed title</td><td><code>og:title</code></td><td>The server's display name, so the blue link line and the image headline say different things.</td></tr>
+          <tr><td>Game art</td><td>spec <code>banner_url</code></td><td>The Steam library hero every bundled spec already carries. Fades out under the text and toward the floor, cooled so the gold stays the only warm light. Greyscale when stopped. A spec with no banner, or a Panel with no outbound internet, renders the plain water column.</td></tr>
+          <tr><td>Join values</td><td>a new spec <code>join</code> block</td><td>Names which values a player needs: <code>address</code> (public host + game port) or <code>invite_code</code> (a setting), plus the setting that holds the <em>join</em> password. Admin passwords are never eligible.</td></tr>
+          <tr><td>Password</td><td>opt-in per link</td><td>Off by default. Once a password is in an embed, Discord keeps the image and description; revoking the link removes only the share page. Changing the password is the only real revocation, and the setting says so.</td></tr>
+          <tr><td>Description</td><td><code>og:description</code></td><td>Game · state · players on the first line, the join values on the second. The copyable text in Discord.</td></tr>
+          <tr><td>As-of stamp</td><td>time of the last reading</td><td>Always shown. Discord can redisplay a cached card, and the stamp keeps it honest.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const TUX='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c-2.2 0-3.6 1.9-3.6 4.4 0 1.3.3 2.2-.6 3.6C6.6 12.8 5.5 14.6 5.5 16.7c0 .9.3 1.6.7 2.1"/><path d="M12 3c2.2 0 3.6 1.9 3.6 4.4 0 1.3-.3 2.2.6 3.6 1.2 1.8 2.3 3.6 2.3 5.7 0 .9-.3 1.6-.7 2.1"/><path d="M8.6 18.6c-1.5-.2-3 .4-3.4 1.4.6.9 2.2 1.2 3.6.9M15.4 18.6c1.5-.2 3 .4 3.4 1.4-.6.9-2.2 1.2-3.6.9"/><path d="M8.8 19.2c1 .9 2.1 1.3 3.2 1.3s2.2-.4 3.2-1.3"/><circle cx="10.4" cy="7.3" r=".6" fill="currentColor"/><circle cx="13.6" cy="7.3" r=".6" fill="currentColor"/><path d="M10.9 9.2 12 10l1.1-.8"/></svg>';
+const WIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.6 10.5 4.6v6.9h-7zM13 4.3l7.5-1v8.2H13zM3.5 13.5h7v6.9l-7-1zM13 13.5h7.5v8.2L13 20.7z"/></svg>';
+const COPY='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>';
+const CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+const EYE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+const ART={
+  windrose:'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3041230/3e9ad197ff39345193cd44c1d9a072b482865a9f/library_hero_2x.jpg?t=1783932953',
+  valheim:'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/892970/f9ef3ded2cf7ff376208a63e1fc3c86c5f92e42d/library_hero_2x.jpg?t=1782131035',
+  palworld:'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1623730/2d3bef9d1a0ad28c0ea002ec4522e12e7218fbff/library_hero_2x.jpg?t=1784714419',
+};
+
+/* join: the spec decides what a player needs. Windrose joins by invite code; Valheim and
+   Palworld by address. A blank password is simply absent. */
+const SERVERS=[
+  {state:'run', game:'Windrose', art:ART.windrose, os:WIN, name:'Saltmarrow Crossing', players:3, max:10,
+   join:[['Invite code','Kq7Rw2Xp'],['Password','tidewater']], asof:'21:42 UTC', path:'s/7Qm2xK', when:'9:43'},
+  {state:'stop', game:'Valheim', art:ART.valheim, os:TUX, name:'Ironwood Hold', players:null, max:10,
+   join:[['Address','203.0.113.24:2456'],['Password','hearth4stone']], asof:'21:40 UTC', ago:'stopped 2h ago', path:'s/Hc9tLw', when:'9:51'},
+  {state:'lost', game:'Palworld', art:ART.palworld, os:TUX, name:'The Long Dark Below the Shelf', players:6, max:32,
+   join:[['Address','203.0.113.24:8211']], asof:'20:14 UTC', path:'s/b4RpZe', when:'10:02'},
+];
+const HOST='kraken.example.net';
+const CHIP={run:['run','Running'],stop:['stop','Stopped'],lost:['lost','Unreachable']};
+const BAR={run:'var(--lumen)',stop:'var(--ink-3)',lost:'var(--violet)'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function card(s){
+  const [cls,label]=CHIP[s.state];
+  const pct=s.players==null?0:Math.round(s.players/s.max*100);
+  const pv=s.players==null?'&ndash;':s.players;
+  const rays=s.state==='run'?`<div class="ray" style="--o:.09;left:4%;width:14%"></div><div class="ray" style="--o:.05;left:30%;width:18%"></div>`:'';
+  const join=s.join.map(([k,v])=>`<div class="m"><span class="m-l">${esc(k)}</span><span class="m-v join${k==='Password'?' secret':''}">${esc(v)}</span></div>`).join('');
+  const stamp=s.state==='stop'?`${esc(s.ago)} · as of <b>${esc(s.asof)}</b>`:s.state==='lost'?`last reading <b>${esc(s.asof)}</b>`:`as of <b>${esc(s.asof)}</b>`;
+  return `<div class="card is-${s.state}" role="img" aria-label="${esc(s.game)}: ${esc(s.name)}, ${label}">
+    <div class="art" style="--art:url('${s.art}')"></div><div class="tint"></div>
+    <div class="surface"></div>${rays}<div class="vig"></div>
+    <div class="c-in">
+      <div class="c-top">
+        <span class="c-srv">${s.os}<span>${esc(s.name)}</span></span>
+        <span class="chip ${cls}"><i></i>${label}</span>
+      </div>
+      <div class="c-game${s.game.length>10?' long':''}">${esc(s.game)}</div>
+      <div class="c-rail">
+        <div class="m"><span class="m-l">Players</span><span class="m-v big">${pv}<small> / ${s.max}</small></span><div class="occ"><b style="width:${pct}%"></b></div></div>
+        ${join}
+      </div>
+      <div class="c-foot">
+        <span class="c-brand"><span class="g"></span>Kraken</span>
+        <span class="asof">${stamp} · 18 Nov</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function desc(s){
+  const j=s.join.map(([k,v])=>`${k.toLowerCase()} ${v}`).join(' · ');
+  if(s.state==='run') return `${s.game} · running · ${s.players} of ${s.max} players\n${j}`;
+  if(s.state==='stop') return `${s.game} · stopped\n${j}`;
+  return `${s.game} · the panel can't reach this server's node · last reading ${s.asof}: ${s.players} of ${s.max} players\n${j}`;
+}
+
+document.getElementById('chat').innerHTML=SERVERS.map(s=>`<div class="msg">
+    <div class="ava">T</div>
+    <div>
+      <div class="who">tidewarden<time>Today at ${s.when} PM</time></div>
+      <div class="body"><a href="#sp">https://${HOST}/${s.path}</a></div>
+      <div class="embed" style="--bar:${BAR[s.state]}">
+        <div class="e-site">Kraken · ${HOST}</div>
+        <div class="e-title">${esc(s.name)}</div>
+        <div class="e-desc">${esc(desc(s))}</div>
+        <div class="e-img">${card(s)}</div>
+      </div>
+    </div>
+  </div>`).join('');
+
+document.getElementById('full').innerHTML=SERVERS.map(s=>`<div class="full">${card(s)}</div>`).join('');
+
+/* the share page, for the running Windrose server */
+(function(){
+  const s=SERVERS[0]; const [cls,label]=CHIP[s.state];
+  const rows=s.join.map(([k,v],i)=>{
+    const secret=k==='Password';
+    return `<div class="row">
+      <div><div class="row-l">${esc(k)}</div><div class="row-v${secret?' masked':''}" data-v="${esc(v)}" data-secret="${secret?1:0}">${secret?'&bull;'.repeat(9):esc(v)}</div></div>
+      <div class="acts">
+        ${secret?`<button class="btn icon" type="button" data-reveal aria-label="Show password" aria-pressed="false">${EYE}</button>`:''}
+        <button class="btn" type="button" data-copy="${esc(v)}" aria-label="Copy ${esc(k.toLowerCase())}">${COPY}<span>Copy</span></button>
+      </div>
+    </div>`;}).join('');
+  const all=s.join.map(([k,v])=>`${k}: ${v}`).join('\n');
+  document.getElementById('sp').innerHTML=`
+    <div class="sp-art" style="--art:url('${s.art}')"></div>
+    <div class="sp-body">
+      <div class="sp-head">
+        <span class="sp-srv">${s.os}${esc(s.name)}</span>
+        <div class="sp-game">${esc(s.game)}</div>
+        <div class="sp-status"><span class="chip ${cls}"><i></i>${label}</span><span class="sp-players"><b>${s.players}</b> / ${s.max} players</span></div>
+      </div>
+      <div class="panel join">
+        <div class="join-h">Join</div>
+        ${rows}
+        <button class="btn copy-all" type="button" data-copy="${esc(all)}">${COPY}<span>Copy all</span></button>
+      </div>
+      <p class="sp-how">In Windrose, join by invite code, then enter the password when the game asks for it.</p>
+      <div class="sp-foot"><span class="c-brand"><span class="g"></span>Kraken</span><span>as of ${esc(s.asof)} · 18 Nov</span></div>
+    </div>`;
+})();
+
+document.addEventListener('click',async e=>{
+  const c=e.target.closest('[data-copy]');
+  if(c){
+    try{await navigator.clipboard.writeText(c.dataset.copy)}catch(_){}
+    const span=c.querySelector('span'), was=span.textContent, icon=c.querySelector('svg').outerHTML;
+    c.classList.add('done'); c.querySelector('svg').outerHTML=CHECK; span.textContent='Copied';
+    setTimeout(()=>{c.classList.remove('done'); c.querySelector('svg').outerHTML=icon; span.textContent=was},1600);
+  }
+  const r=e.target.closest('[data-reveal]');
+  if(r){
+    const v=r.closest('.row').querySelector('.row-v'); const on=r.getAttribute('aria-pressed')!=='true';
+    r.setAttribute('aria-pressed',on); r.setAttribute('aria-label',on?'Hide password':'Show password');
+    v.classList.toggle('masked',!on); v.innerHTML=on?esc(v.dataset.v):'&bull;'.repeat(9);
+  }
+});
+
+function fit(){
+  document.querySelectorAll('.e-img, .full').forEach(box=>{
+    const c=box.querySelector('.card'); if(c) c.style.transform=`scale(${box.clientWidth/1200})`;
+  });
+}
+addEventListener('resize',fit); document.fonts.ready.then(fit); fit();
+</script>
+</body>
+</html>

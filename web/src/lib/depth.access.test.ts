@@ -23,6 +23,7 @@ vi.mock("@/api/client", async (importOriginal) => {
       getServerDns: ok(null),
       getServerSettings: ok({ groups: [], values: {} }),
       getServerAccess: (...a: unknown[]) => getServerAccess(...a),
+      listShareLinks: ok(null),
       grantServerAccess: (...a: unknown[]) => grantServerAccess(...a),
       getServerSftp: ok(null),
       getInstallLog: ok(null),

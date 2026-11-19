@@ -38,6 +38,9 @@
     accessGrant,
     accessRevoke,
     accessTransfer,
+    shareCreate,
+    shareRevoke,
+    shareDismissMinted,
   } from "@/lib/depth.svelte";
   import type { ConsoleView } from "@/lib/depth.svelte";
   import { openConfirm, CD_FILE_BODY, CD_FOLDER_BODY, retireConfirmBody, retireNote, ui } from "@/lib/state.svelte";
@@ -460,6 +463,92 @@
       accPick = "";
       accTransfer = false;
     }
+  }
+
+  // share links (#475): a read-only public card for this server, made from
+  // the form below, which is behind a button like the schedules form. The
+  // toggles name what this game's link would reveal, from its spec's join
+  // block; a spec without one shares status and players only.
+  let shareFormOpen = $state(false);
+  let shareLabel = $state("");
+  let shareAddr = $state(false);
+  let sharePw = $state(false);
+  let shareDays = $state(0);
+  let shareCopied = $state(false);
+  $effect(() => {
+    void depth.serverId;
+    shareFormOpen = false;
+    shareLabel = "";
+    shareAddr = false;
+    sharePw = false;
+    shareDays = 0;
+    shareCopied = false;
+    shareCopyFailed = false;
+  });
+  const shareJoin = $derived(server ? specOf(server)?.join : undefined);
+  const shareAddrLabel = $derived(shareJoin?.method === "invite_code" ? "invite code" : "address and port");
+  async function shareSubmit() {
+    const ok = await shareCreate({
+      label: shareLabel.trim(),
+      show_address: shareAddr,
+      show_password: sharePw,
+      expires_in_days: shareDays,
+    });
+    if (ok) {
+      shareFormOpen = false;
+      shareLabel = "";
+      shareAddr = false;
+      sharePw = false;
+      shareDays = 0;
+      shareCopied = false;
+    }
+  }
+  // The URL is on screen exactly once, so "copied" is only ever said when the
+  // clipboard took it. A Panel served over plain HTTP has no clipboard API:
+  // there the URL is selected instead, ready for a manual copy, and the line
+  // under it says so.
+  let shareCodeEl: HTMLElement | null = $state(null);
+  let shareCopyFailed = $state(false);
+  async function shareCopy() {
+    const url = depth.shareMinted;
+    if (!url || shareCopied) return;
+    let ok = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      shareCopyFailed = true;
+      if (shareCodeEl) {
+        const range = document.createRange();
+        range.selectNodeContents(shareCodeEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      return;
+    }
+    shareCopyFailed = false;
+    shareCopied = true;
+    setTimeout(() => (shareCopied = false), 1600);
+  }
+  // What a link reveals beyond status and players, in a few words.
+  function shareShows(l: { show_address: boolean; show_password: boolean }): string {
+    const bits: string[] = [];
+    if (l.show_address && shareJoin) bits.push(shareJoin.method === "invite_code" ? "invite code" : "address");
+    if (l.show_password && shareJoin?.password) bits.push("password");
+    return bits.length ? "status + " + bits.join(" + ") : "status only";
+  }
+  function shareSeen(l: { last_seen_at?: string }): string {
+    return l.last_seen_at ? "opened " + fmtWhen(Date.parse(l.last_seen_at)) : "never opened";
+  }
+  function shareExpiry(l: { state: string; expires_at?: string }): string {
+    if (l.state === "expired") return "expired";
+    return l.expires_at ? "until " + fmtDay(Date.parse(l.expires_at)) : "no expiry";
   }
 
   // schedules form. Every schedule write needs server.power, so a role without
@@ -1385,6 +1474,80 @@
               <button class="cfg-btn ghost" disabled={depth.accessBusy || !accPick} onclick={() => void accSubmit()}>{depth.accessBusy ? "sharing…" : "share"}</button>
             {/if}
             <p class="cfg-help">{accTransfer ? "the new owner can share it and remove shares; the old owner keeps nothing unless it is shared with them." : "a share only lets them see the server — their role decides what they can do on it."}</p>
+          </div>
+        </section>
+      {/if}
+      <!-- Share links (#475): read-only public cards for this server, the link
+           a chat unfurls. Shown to anyone who may change the server's settings.
+           The new link's URL uses the One Sighting well (the SFTP reveal's
+           classes): the Panel keeps a digest, so this is the only time it is
+           on screen. The password toggle says plainly that a chat keeps what
+           it was shown. -->
+      {#if depth.shareLinks}
+        <section class="side-block" aria-label="Share links">
+          <h3 class="pane-label">share links</h3>
+          <div class="side-body">
+            {#if depth.shareMinted}
+              <div class="sftp-reveal on">
+                <div class="sftp-pw">
+                  <code bind:this={shareCodeEl}>{depth.shareMinted}</code>
+                  <button class="mini-act res copy-act{shareCopied ? ' did' : ''}" onclick={shareCopy} aria-label="Copy share link"
+                    ><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button
+                  >
+                </div>
+                <p class="sftp-once">copy it now — the panel keeps only a digest, so this is the one time the link is on screen.</p>
+                {#if shareCopyFailed}
+                  <p class="sftp-once" role="status">this browser gave the page no clipboard — the link is selected; copy it with ctrl+c (⌘c) before you press done.</p>
+                {/if}
+                <button class="cfg-btn ghost" onclick={() => { shareCopyFailed = false; shareDismissMinted(); }}>done</button>
+              </div>
+            {/if}
+            {#each depth.shareLinks as l (l.id)}
+              <div class="sch-row acc-row{l.state === 'expired' ? ' paused' : ''}">
+                <span class="sch-main"><span>{l.label || "untitled link"}</span><small>{shareShows(l)} · {shareExpiry(l)} · {shareSeen(l)}{l.created_by ? " · made by " + l.created_by : ""}</small></span>
+                <span class="sch-acts"><button class="mini-act del" disabled={depth.shareBusy} onclick={() => void shareRevoke(l.id)}>revoke</button></span>
+              </div>
+            {/each}
+            {#if !depth.sharePublicSet}
+              <p class="cfg-help">a share link needs the panel's public address — set it under sessions &amp; security first.</p>
+            {:else if !shareFormOpen}
+              <button class="cfg-btn ghost sch-new" disabled={depth.shareBusy} onclick={() => (shareFormOpen = true)}>new share link</button>
+            {:else}
+              <div class="sch-form">
+                <div class="cfg-row">
+                  <span>label — only you see it</span>
+                  <input type="text" class="cfg-in" bind:value={shareLabel} maxlength="60" placeholder="pinned in #general" aria-label="Share link label" />
+                </div>
+                {#if shareJoin}
+                  <label class="tgl"><input type="checkbox" bind:checked={shareAddr} /><i></i>show the {shareAddrLabel}</label>
+                  {#if shareJoin.password}
+                    <label class="tgl"><input type="checkbox" bind:checked={sharePw} /><i></i>show the join password</label>
+                    {#if sharePw}
+                      <p class="sftp-once">a chat keeps the card it was shown. revoking the link closes its page, not the messages it was posted in — change the password to take it back.</p>
+                    {/if}
+                  {/if}
+                {:else}
+                  <p class="cfg-help">this game's spec does not say how players join, so a link shows its status and players only.</p>
+                {/if}
+                <div class="cfg-row">
+                  <span>expires</span>
+                  <select class="cfg-in" bind:value={shareDays} aria-label="Share link expiry">
+                    <option value={0}>never — until revoked</option>
+                    <option value={1}>in 1 day</option>
+                    <option value={7}>in 7 days</option>
+                    <option value={30}>in 30 days</option>
+                  </select>
+                </div>
+                <div class="sch-btns">
+                  <button class="cfg-btn ghost" disabled={depth.shareBusy} onclick={() => void shareSubmit()}>{depth.shareBusy ? "creating…" : "create link"}</button>
+                  <button class="cfg-btn ghost" disabled={depth.shareBusy} onclick={() => (shareFormOpen = false)}>cancel</button>
+                </div>
+              </div>
+            {/if}
+            {#if depth.shareError}
+              <p class="sftp-once" role="status" aria-live="polite">{depth.shareError}</p>
+            {/if}
+            <p class="cfg-help">a link shows this server's card to anyone who has it: name, game, status and players, plus what you switch on. it is never used up; revoke it to close it.</p>
           </div>
         </section>
       {/if}

@@ -35,6 +35,9 @@ import type {
   ServerSettings,
   SftpStatus,
   ServerAccess,
+  ShareLink,
+  ShareLinkInput,
+  ShareLinkList,
   SetupStatus,
   Spec,
   UpdateSettingsResult,
@@ -262,6 +265,16 @@ export const api = {
   /** Move ownership — administrators only. */
   transferServer(id: string, userId: string): Promise<ServerAccess> {
     return request("PUT", `/servers/${id}/owner`, { user_id: userId });
+  },
+  /** Share links (#475): read-only public cards for a server. */
+  listShareLinks(id: string): Promise<ShareLinkList> {
+    return request("GET", `/servers/${id}/share-links`);
+  },
+  createShareLink(id: string, input: ShareLinkInput): Promise<ShareLink> {
+    return request("POST", `/servers/${id}/share-links`, input);
+  },
+  revokeShareLink(id: string, linkId: string): Promise<void> {
+    return request("DELETE", `/servers/${id}/share-links/${linkId}`);
   },
   getServerSftp(id: string): Promise<SftpStatus> {
     return request("GET", `/servers/${id}/sftp`);

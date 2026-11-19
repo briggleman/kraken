@@ -505,6 +505,10 @@ export interface Spec {
    * backups; an archive predating a glob change reflects the policy as it is now.
    */
   backup?: { include?: string[]; exclude?: string[] };
+  /** What a player needs to connect (#475), and the allowlist a share link
+   *  shows from: an address or an invite code, and the join password's key.
+   *  Omitted means a share link carries status and players only. */
+  join?: { method: "address" | "invite_code"; port?: string; code?: string; password?: string; notes?: string };
 }
 
 /** The Panel's build, from GET /version. */
@@ -867,4 +871,36 @@ export interface ServerAccess {
   can_transfer: boolean;
   grants: ServerGrant[] | null;
   candidates: AccessUser[] | null;
+}
+
+/** A server share link (#475): a read-only public card for one server,
+ *  meant to be pasted into a chat where it unfurls. `url` is present only in
+ *  the answer to the create — the Panel keeps a digest, so it is never shown
+ *  again. */
+export interface ShareLink {
+  id: string;
+  label: string;
+  show_address: boolean;
+  show_password: boolean;
+  created_at: string;
+  created_by?: string;
+  expires_at?: string;
+  last_seen_at?: string;
+  state: "live" | "expired";
+  url?: string;
+}
+
+/** GET /servers/{id}/share-links. A link cannot be made without a public
+ *  address, which `public_url_set` reports. */
+export interface ShareLinkList {
+  links: ShareLink[];
+  public_url_set: boolean;
+}
+
+/** POST /servers/{id}/share-links. expires_in_days 0 lives until revoked. */
+export interface ShareLinkInput {
+  label: string;
+  show_address: boolean;
+  show_password: boolean;
+  expires_in_days: number;
 }

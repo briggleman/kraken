@@ -30,7 +30,7 @@
       "runtimeArgs": [
         "-NoProfile",
         "-Command",
-        "$env:KRAKEN_RUNTIME='fake'; $env:KRAKEN_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_SFTP_ADDR='127.0.0.1:2099'; $env:KRAKEN_NODE_ID='fake-live'; $env:KRAKEN_STATE_DIR=\"$env:TEMP\\kraken-fake-state\"; $env:KRAKEN_DATA_DIR=\"$env:TEMP\\kraken-fake-data\"; $env:KRAKEN_PANEL_URL='http://127.0.0.1:8080'; go run ./cmd/agent"
+        "$env:KRAKEN_RUNTIME='fake'; $env:KRAKEN_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_SFTP_ADDR='127.0.0.1:2099'; $env:KRAKEN_NODE_ID='fake-live'; $env:KRAKEN_STATE_DIR=\"$env:TEMP\\kraken-fake-state\"; $env:KRAKEN_DATA_DIR=\"$env:TEMP\\kraken-fake-data\"; $env:KRAKEN_PANEL_URL='http://127.0.0.1:8088'; go run ./cmd/agent"
       ],
       "port": 9099,
       "url": "http://localhost:9099"
@@ -41,9 +41,9 @@
       "runtimeArgs": [
         "-NoProfile",
         "-Command",
-        "$env:KRAKEN_CONFIG_FILE=\"$env:TEMP\\kraken-fakelive-panel.json\"; $env:KRAKEN_ENV='dev'; $env:KRAKEN_QUICKSTART='1'; $env:KRAKEN_LOCAL_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_BOOTSTRAP_ADMIN_PASSWORD='admin'; go run ./cmd/panel"
+        "$env:KRAKEN_CONFIG_FILE=\"$env:TEMP\\kraken-fakelive-panel.json\"; $env:KRAKEN_ENV='dev'; $env:KRAKEN_QUICKSTART='1'; $env:KRAKEN_LOCAL_AGENT_ADDR='127.0.0.1:9099'; $env:KRAKEN_BOOTSTRAP_ADMIN_PASSWORD='admin'; $env:KRAKEN_HTTP_ADDR=':8088'; go run ./cmd/panel"
       ],
-      "port": 8080
+      "port": 8088
     },
     {
       "name": "kraken-panel",

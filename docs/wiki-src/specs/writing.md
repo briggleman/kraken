@@ -226,8 +226,9 @@ prints. A regex that also matches a chat line invents players.
 
 ## The join block
 
-What a player needs to connect, and the only server values a share link ever
-shows. `address` needs a `port` naming the **spec port** players connect to;
+What a player needs to connect, and the only server values a
+[share link](/wiki/operate/share-links/) ever shows. `address` needs a `port`
+naming the **spec port** players connect to;
 `invite_code` needs a `code` naming the setting or variable that holds the code.
 Either may name a `password`: the setting or variable a player types to join.
 

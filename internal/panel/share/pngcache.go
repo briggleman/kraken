@@ -1,9 +1,8 @@
 package share
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,16 +31,18 @@ type PNGCache struct {
 // NewPNGCache returns an empty cache.
 func NewPNGCache() *PNGCache { return &PNGCache{items: map[string]pngEntry{}} }
 
-// Key is the cache key for a card: a digest of every field the image draws,
-// with the as-of time to the minute (the stamp shows minutes).
+// Key is the cache key for a card: every field the image draws, with the
+// as-of time to the minute (the stamp shows minutes). It is a plain string,
+// not a digest: it only ever lives in this process's map, beside the PNG that
+// already shows the same values, so hashing it would protect nothing.
 func (c *Card) Key() string {
-	h := sha256.New()
-	fmt.Fprintf(h, "%q|%q|%q|%q|%d|%d|%t|%s", c.ServerName, c.Game, c.BannerURL, c.State,
+	var b strings.Builder
+	fmt.Fprintf(&b, "%q|%q|%q|%q|%d|%d|%t|%s", c.ServerName, c.Game, c.BannerURL, c.State,
 		c.Players, c.MaxPlayers, c.PlayersKnown, c.AsOf.UTC().Format("2006-01-02T15:04"))
 	for _, j := range c.Join {
-		fmt.Fprintf(h, "|%s=%q", j.Kind, j.Value)
+		fmt.Fprintf(&b, "|%s=%q", j.Kind, j.Value)
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	return b.String()
 }
 
 // Get returns a fresh render for key, if there is one.

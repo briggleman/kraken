@@ -99,30 +99,38 @@ func (s *Server) handleShareCard(w http.ResponseWriter, r *http.Request) {
 		// A HEAD asks whether the image is there, not for it: answer without
 		// fetching art or drawing a card nobody will receive.
 		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.Header().Set("Cache-Control", "private, max-age=60")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if !hit {
-		var art image.Image
-		if card.BannerURL != "" {
-			// No art is a normal outcome — a LAN-only Panel, a dead URL — and
-			// the card is drawn on the plain water column instead.
-			art, _ = s.shareBanners.Get(ctx, card.BannerURL)
-		}
-		var buf bytes.Buffer
-		if err := share.RenderPNG(&buf, card, art); err != nil {
+		var err error
+		data, err = s.shareCards.GetOrRender(key, now, func() ([]byte, error) {
+			var art image.Image
+			if card.BannerURL != "" {
+				// No art is a normal outcome — a LAN-only Panel, a dead URL —
+				// and the card is drawn on the plain water column instead. The
+				// render is shared by every request waiting on this key, so it
+				// must not inherit one client's hang-up: a cancelled context
+				// here would cache an artless card for everyone.
+				art, _ = s.shareBanners.Get(context.WithoutCancel(ctx), card.BannerURL)
+			}
+			var buf bytes.Buffer
+			if err := share.RenderPNG(&buf, card, art); err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		})
+		if err != nil {
 			s.logger.Error("share card render failed", "err", err)
 			http.Error(w, "could not render the card", http.StatusInternalServerError)
 			return
 		}
-		data = buf.Bytes()
-		s.shareCards.Put(key, data, now)
 	}
 	w.Header().Set("Content-Type", "image/png")
 	// Short: a chat service keeps its own copy anyway, and a browser that
 	// re-opens the page should see a reading no older than a minute.
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	if r.Method == http.MethodHead {
 		return

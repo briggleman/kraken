@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -23,6 +25,9 @@ func TestPublicAddr(t *testing.T) {
 		"10.0.0.1": false, "192.168.1.1": false, "172.31.0.1": false, "127.0.0.1": false, "::1": false,
 		"169.254.169.254": false, "fe80::1": false, "fc00::1": false, "0.0.0.0": false, "224.0.0.1": false,
 		"100.64.0.1": false, "::ffff:192.168.1.1": false, "::ffff:203.0.113.24": true,
+		"0.1.2.3": false, "192.0.0.8": false, "198.18.0.1": false, "255.255.255.255": false, "240.0.0.1": false,
+		"64:ff9b::a9fe:a9fe": false, "64:ff9b::cb00:7118": true, "64:ff9b:1::1": false,
+		"2002:c0a8:0101::1": false, "2002:cb00:7118::1": true, "2001:0:4136:e378::1": false, "fec0::1": false,
 	} {
 		if got := PublicAddr(netip.MustParseAddr(s)); got != want {
 			t.Errorf("PublicAddr(%s) = %v, want %v", s, got, want)
@@ -55,12 +60,21 @@ func TestBannerCacheRefusesNonPublic(t *testing.T) {
 
 func TestShrink(t *testing.T) {
 	big := image.NewRGBA(image.Rect(0, 0, 3840, 1240))
-	small := shrink(big, bannerMaxWidth)
+	small := shrink(big, bannerMaxWidth, bannerMaxHeight)
 	if b := small.Bounds(); b.Dx() != 1600 || b.Dy() != 516 {
 		t.Fatalf("shrunk to %v", b)
 	}
-	if got := shrink(image.NewRGBA(image.Rect(0, 0, 800, 300)), bannerMaxWidth); got.Bounds().Dx() != 800 {
+	if got := shrink(image.NewRGBA(image.Rect(0, 0, 800, 300)), bannerMaxWidth, bannerMaxHeight); got.Bounds().Dx() != 800 {
 		t.Fatal("a small banner is not enlarged")
+	}
+	// A tall, narrow image is bounded by height too, and a 16-bit one is
+	// cached at 8 bits, so nothing cached outgrows the two limits.
+	tall := shrink(image.NewRGBA64(image.Rect(0, 0, 1200, 4000)), bannerMaxWidth, bannerMaxHeight)
+	if b := tall.Bounds(); b.Dx() != 300 || b.Dy() != 1000 {
+		t.Fatalf("tall banner shrunk to %v", b)
+	}
+	if _, ok := tall.(*image.RGBA); !ok {
+		t.Fatalf("cached art is %T, want *image.RGBA", tall)
 	}
 }
 
@@ -243,5 +257,32 @@ func TestBannerCacheCallerCancelDoesNotPoison(t *testing.T) {
 	img, err := bc.Get(context.Background(), srv.URL+"/hero.png")
 	if err != nil || img.Bounds().Dx() != 8 {
 		t.Fatalf("after a cancelled caller: %v, %v — want the banner, not a cached failure", img, err)
+	}
+}
+
+// Cards are drawn per request, and a posted link draws several at once (a
+// chat's unfurler and its image proxy, or two links rendering together). The
+// font faces are cached and an x/image Face is not safe for concurrent use,
+// so this runs renders in parallel for -race to see any sharing.
+func TestRenderPNGConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := &Card{ServerName: "Saltmarrow Crossing " + strconv.Itoa(i), Game: "Windrose", State: StateRunning,
+				Players: i, MaxPlayers: 8, PlayersKnown: true, AsOf: time.Unix(0, 0),
+				Join: []JoinValue{{Kind: JoinAddress, Value: "play.example.com:7777"}}}
+			var buf bytes.Buffer
+			errs <- RenderPNG(&buf, c, nil)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

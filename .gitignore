@@ -83,3 +83,6 @@ internal/panel/agentbin/dist/kraken-agent-*
 # gate checks against); bulky generated output is not.
 design/screenshots/
 web/.claude/
+
+# cf CLI local cache (account details) — never commit
+.cloudflare/

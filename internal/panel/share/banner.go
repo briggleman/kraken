@@ -37,10 +37,14 @@ const (
 	bannerTTL       = 6 * time.Hour
 	bannerFailTTL   = 10 * time.Minute
 	bannerMaxCached = 32
-	// bannerMaxSide and bannerMaxPixels bound the decoded image. Steam's
-	// library heroes are 3840×1240; anything past 8K on a side is not art.
-	bannerMaxSide   = 8192
-	bannerMaxPixels = 8192 * 4096
+	// bannerMaxHeight bounds the cached art's height the way bannerMaxWidth
+	// bounds its width, so a tall, narrow image cannot be cached at full size.
+	bannerMaxHeight = 1000
+	// bannerMaxSide and bannerMaxPixels bound the decoded image before it is
+	// scaled. Steam's library heroes are 3840×1240; a 16-bit image at the
+	// pixel cap still decodes into about 64 MB, which is the ceiling here.
+	bannerMaxSide   = 4096
+	bannerMaxPixels = 4096 * 2048
 )
 
 // errBannerAddr is a dial to an address a public page must not reach.
@@ -106,14 +110,54 @@ func NewBannerCache() *BannerCache {
 }
 
 // PublicAddr reports whether ip is an address a stranger could reach and a
-// public page may point at: not private, loopback, link-local, unspecified or
-// multicast.
+// public page may point at: not private, loopback, link-local, unspecified,
+// multicast or one of the special-purpose ranges below. An IPv6 address that
+// carries an IPv4 one (IPv4-mapped, NAT64, 6to4) is judged by the IPv4
+// address inside it, so a NAT64 gateway cannot be used to reach 169.254.x.
 func PublicAddr(ip netip.Addr) bool {
-	ip = ip.Unmap()
-	return ip.IsValid() && !(ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() ||
-		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast()) &&
-		// 100.64.0.0/10 (carrier-grade NAT) is not covered by IsPrivate.
-		!netip.MustParsePrefix("100.64.0.0/10").Contains(ip)
+	ip = embeddedV4(ip.Unmap())
+	if !ip.IsValid() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() ||
+		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() || ip.IsLinkLocalMulticast() {
+		return false
+	}
+	for _, p := range nonPublicPrefixes {
+		if p.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+// nonPublicPrefixes are the special-purpose ranges the netip predicates do
+// not cover.
+var nonPublicPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),      // "this network"
+	netip.MustParsePrefix("100.64.0.0/10"),  // carrier-grade NAT
+	netip.MustParsePrefix("192.0.0.0/24"),   // IETF protocol assignments
+	netip.MustParsePrefix("198.18.0.0/15"),  // benchmarking
+	netip.MustParsePrefix("240.0.0.0/4"),    // reserved, and broadcast
+	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64
+	netip.MustParsePrefix("2001::/32"),      // Teredo
+	netip.MustParsePrefix("fec0::/10"),      // deprecated site-local
+}
+
+var (
+	nat64Prefix = netip.MustParsePrefix("64:ff9b::/96")
+	sixToFour   = netip.MustParsePrefix("2002::/16")
+)
+
+// embeddedV4 returns the IPv4 address a NAT64 or 6to4 address carries, or ip
+// unchanged.
+func embeddedV4(ip netip.Addr) netip.Addr {
+	switch {
+	case nat64Prefix.Contains(ip):
+		b := ip.As16()
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	case sixToFour.Contains(ip):
+		b := ip.As16()
+		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]})
+	}
+	return ip
 }
 
 // Get returns the decoded banner at rawURL, from the cache when it is fresh.
@@ -219,17 +263,29 @@ func (b *BannerCache) fetch(ctx context.Context, rawURL string) (image.Image, er
 	if err != nil {
 		return nil, err
 	}
-	return shrink(img, bannerMaxWidth), nil
+	return shrink(img, bannerMaxWidth, bannerMaxHeight), nil
 }
 
-// shrink scales img down to at most maxW wide, keeping its aspect.
-func shrink(img image.Image, maxW int) image.Image {
+// shrink scales img to fit within maxW×maxH, never enlarging it, and always
+// returns an 8-bit RGBA copy. What is cached is then bounded by the two
+// limits at 4 bytes a pixel, whatever the downloaded image's size or depth.
+func shrink(img image.Image, maxW, maxH int) image.Image {
 	b := img.Bounds()
-	if b.Dx() <= maxW {
-		return img
+	w, h := b.Dx(), b.Dy()
+	if w > maxW {
+		h = h * maxW / w
+		w = maxW
 	}
-	h := b.Dy() * maxW / b.Dx()
-	dst := image.NewRGBA(image.Rect(0, 0, maxW, h))
+	if h > maxH {
+		w = w * maxH / h
+		h = maxH
+	}
+	w, h = max(w, 1), max(h, 1)
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	if w == b.Dx() && h == b.Dy() {
+		xdraw.Draw(dst, dst.Bounds(), img, b.Min, xdraw.Src)
+		return dst
+	}
 	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
 	return dst
 }

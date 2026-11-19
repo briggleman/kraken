@@ -120,7 +120,7 @@ guards a credential nobody shares.
 
 The token-redemption group covers every route where a link in the URL is the
 whole authority: file downloads, account invites, and the public page a server
-share link opens (`/s/{token}`), which allows 120 requests a minute per address
+[share link](/wiki/operate/share-links/) opens (`/s/{token}`), which allows 120 requests a minute per address
 with a burst of 40.
 
 ## Body caps

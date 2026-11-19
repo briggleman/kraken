@@ -86,6 +86,7 @@
 <a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
 <a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
 <a class="nav-link" href="/wiki/operate/users/">Users, roles and invites</a>
+<a class="nav-link" href="/wiki/operate/share-links/">Share links</a>
 </details>
 <details class="nav-sec" open data-here="1">
 <summary><span class="nav-sec-t">game specs</span></summary>
@@ -303,8 +304,8 @@ above the block with the date, and prefer the most specific prefix the game
 prints. A regex that also matches a chat line invents players.
 <a href="/wiki/operate/players/">Who is online</a> covers the runtime behaviour.</p>
 <h2 id="the-join-block">The join block <a class="hlink" href="#the-join-block" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
-<p>What a player needs to connect, and the only server values a share link ever
-shows. <code>address</code> needs a <code>port</code> naming the <strong>spec port</strong> players connect to;
+<p>What a player needs to connect, and the only server values a
+<a href="/wiki/operate/share-links/">share link</a> ever shows. <code>address</code> needs a <code>port</code> naming the <strong>spec port</strong> players connect to;
 <code>invite_code</code> needs a <code>code</code> naming the setting or variable that holds the code.
 Either may name a <code>password</code>: the setting or variable a player types to join.</p>
 <div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>join</b><span class="p">:</span> <i>{ method: address, port: game, password: ServerPassword }</i></span></pre></div>

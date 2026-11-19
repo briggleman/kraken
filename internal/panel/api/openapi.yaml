@@ -1259,6 +1259,79 @@ paths:
         '403': { description: The caller is not an administrator }
         '404': { description: No such server or user }
 
+  /servers/{id}/share-links:
+    parameters: [ { $ref: '#/components/parameters/ServerId' } ]
+    get:
+      tags: [Servers]
+      summary: List the server's share links
+      description: >-
+        Needs server.config on a server the caller can reach. Revoked links
+        are left out; expired ones are listed with state expired. The URL is
+        never shown again after the mint, because only its digest is stored.
+      responses:
+        '200':
+          description: The server's links, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  links:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShareLink' }
+                  public_url_set:
+                    type: boolean
+                    description: Whether a public address is configured; a link cannot be minted without one.
+        '403': { description: The caller lacks server.config }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Servers]
+      summary: Create a share link
+      description: >-
+        Mints a read-only link to the server's public card, meant to be pasted
+        into a chat where it unfurls. The link is never consumed; it lives
+        until revoked or, when expires_in_days is set, until it expires. The
+        answer carries the URL, the only time it is shown. Needs server.config
+        and a configured public address. At most 25 open links per server.
+        Audited as server.share:<link id>, with +address and +password when
+        the link shows them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, maxLength: 60, description: "The operator's own name for the link; never public" }
+                show_address: { type: boolean, default: false, description: "Show the join address or invite code the spec declares" }
+                show_password: { type: boolean, default: false, description: "Show the join password the spec declares" }
+                expires_in_days: { type: integer, minimum: 0, maximum: 365, default: 0, description: "0 means the link lives until it is revoked" }
+      responses:
+        '201':
+          description: The new link, with its URL
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareLink' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { description: The caller lacks server.config }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "No public address is set, or the server already has 25 open links" }
+  /servers/{id}/share-links/{linkId}:
+    parameters:
+      - { $ref: '#/components/parameters/ServerId' }
+      - { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Servers]
+      summary: Revoke a share link
+      description: >-
+        Closes the link's public page at once. What a chat service already
+        rendered from it stays where it was posted. Audited as
+        server.unshare:<link id>.
+      responses:
+        '204': { description: Revoked }
+        '403': { description: The caller lacks server.config }
+        '404': { description: "No such server for this caller, or no open link with that id" }
+
   /servers/{id}/schedules:
     parameters: [ { $ref: '#/components/parameters/ServerId' } ]
     get:
@@ -2577,6 +2650,20 @@ components:
             How the caller reaches this server: they own it, it is shared with
             them (a grant), or their role reaches every server (server.any).
             On the list and the single read only.
+    ShareLink:
+      type: object
+      required: [id, label, show_address, show_password, created_at, state]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        show_address: { type: boolean }
+        show_password: { type: boolean }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string, description: "Username of whoever made it; absent once that account is gone" }
+        expires_at: { type: string, format: date-time, description: Absent for a link that lives until revoked }
+        last_seen_at: { type: string, format: date-time, description: When the link was last opened }
+        state: { type: string, enum: [live, expired] }
+        url: { type: string, description: "The link itself, in the answer to the mint only" }
     ServerAccess:
       type: object
       description: >-

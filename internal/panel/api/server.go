@@ -696,6 +696,11 @@ func (s *Server) routes() chi.Router {
 			r.With(s.requirePermission(rbac.PermServerView)).Delete("/servers/{id}/access/{userID}", s.handleRevokeServerAccess)
 			r.With(s.requirePermission(rbac.PermServerAny), s.requirePermission(rbac.PermUserManage)).
 				Put("/servers/{id}/owner", s.handleTransferServer)
+			// Share links (#475): read-only public cards for a server. Anyone who
+			// may change the server's settings may share it.
+			r.With(s.requirePermission(rbac.PermServerConfig)).Get("/servers/{id}/share-links", s.handleListShareLinks)
+			r.With(s.requirePermission(rbac.PermServerConfig)).Post("/servers/{id}/share-links", s.handleCreateShareLink)
+			r.With(s.requirePermission(rbac.PermServerConfig)).Delete("/servers/{id}/share-links/{linkID}", s.handleRevokeShareLink)
 
 			r.With(s.requirePermission(rbac.PermServerView)).Get("/servers/{id}/schedules", s.handleListSchedules)
 			r.With(s.requirePermission(rbac.PermServerPower)).Post("/servers/{id}/schedules", s.handleCreateSchedule)

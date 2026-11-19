@@ -28,6 +28,8 @@ type Store struct {
 	auditLog  []*store.AuditEntry
 	sessions  map[string]*store.Session
 	invites   map[string]*store.Invite
+	// shares are server share links keyed by id.
+	shares map[string]*store.ShareLink
 
 	// Self-generated Agent-enrollment CA (dev: regenerated each restart).
 	caCert []byte
@@ -60,6 +62,7 @@ func New() *Store {
 		schedules:  make(map[string]*store.ScheduledTask),
 		sessions:   make(map[string]*store.Session),
 		invites:    make(map[string]*store.Invite),
+		shares:     make(map[string]*store.ShareLink),
 		nodeConfig: make(map[string]*store.NodeConfig),
 		devices:    make(map[deviceKey]*store.Device),
 	}
@@ -383,8 +386,8 @@ func (s *Store) DeleteServer(_ context.Context, id string) error {
 		return store.ErrNotFound
 	}
 	delete(s.servers, id)
-	// Its schedules and grants go with it, under the same lock (see
-	// store.ServerStore).
+	// Its schedules, grants and share links go with it, under the same lock
+	// (see store.ServerStore).
 	for sid, t := range s.schedules {
 		if t.ServerID == id {
 			delete(s.schedules, sid)
@@ -393,6 +396,11 @@ func (s *Store) DeleteServer(_ context.Context, id string) error {
 	for k := range s.grants {
 		if k.serverID == id {
 			delete(s.grants, k)
+		}
+	}
+	for k, l := range s.shares {
+		if l.ServerID == id {
+			delete(s.shares, k)
 		}
 	}
 	return nil

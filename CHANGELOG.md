@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.71.1](https://github.com/briggleman/kraken/compare/v0.71.0...v0.71.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **panel:** serialise share card drawing and patch go 1.26.11 ([#485](https://github.com/briggleman/kraken/issues/485)) ([e11373b](https://github.com/briggleman/kraken/commit/e11373b09b02403dc95d4733d9a1ef7393fe7a36))
+
 ## [0.71.0](https://github.com/briggleman/kraken/compare/v0.70.0...v0.71.0) (2026-11-19)
 
 

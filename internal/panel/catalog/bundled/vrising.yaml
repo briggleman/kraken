@@ -42,6 +42,8 @@ startup:
 ports:
   - { name: game, protocol: udp, default: 9876, required: true }
   - { name: query, protocol: udp, default: 9877, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: Password }
 settings:
   groups:
     - id: server

@@ -63,8 +63,8 @@ a valid `kind` and an `image`, and no kind twice), `install.script`,
 and at least one port. Every port needs a unique name, a `tcp` or `udp`
 protocol, and a default inside 1 to 65535.
 
-The optional blocks are `variables`, `settings`, `config_files`, `query` and
-`backup`.
+The optional blocks are `variables`, `settings`, `config_files`, `query`,
+`backup` and `join`.
 
 ### Platforms
 
@@ -223,6 +223,24 @@ Derive log patterns from a real server log, quote the line you saw in a comment
 above the block with the date, and prefer the most specific prefix the game
 prints. A regex that also matches a chat line invents players.
 [Who is online](/wiki/operate/players/) covers the runtime behaviour.
+
+## The join block
+
+What a player needs to connect, and the only server values a share link ever
+shows. `address` needs a `port` naming the **spec port** players connect to;
+`invite_code` needs a `code` naming the setting or variable that holds the code.
+Either may name a `password`: the setting or variable a player types to join.
+
+```yaml
+join: { method: address, port: game, password: ServerPassword }
+```
+
+The password key must be the **join** password. The validator refuses keys
+that read as admin, RCON, owner, moderator or operator credentials, and the key
+a `palworld-rest` query uses. Every key must be one the spec declares, because a
+typo would otherwise leave the share page blank without an error. An optional
+`notes` line tells a player where the values go; write it only from what you
+have seen in the game.
 
 ## The backup block
 

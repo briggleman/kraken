@@ -55,6 +55,10 @@ startup:
 # spec leaves the game on its default P2P mode and does not offer the toggle.
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
+# What a share link shows a player (#475). An InviteCode left blank is the one
+# the server generated, which the Panel does not know, so the link then shows
+# the password only.
+join: { method: invite_code, code: InviteCode, password: Password, notes: "Players need the invite code, and the password too when one is set." }
 # Who is online comes from the console lines kraken\player-watch.ps1 prints
 # (see startup): the game itself has no query port and logs joins only to
 # R5.log. The roster keys on the name; the game's join line carries no account

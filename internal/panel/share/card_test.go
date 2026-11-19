@@ -3,7 +3,9 @@ package share
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -186,5 +188,60 @@ func TestCardKey(t *testing.T) {
 		if c.Key() == base.Key() {
 			t.Errorf("changing %s did not change the key", name)
 		}
+	}
+}
+
+// A tiny file can declare an enormous image; the header is checked before a
+// pixel is allocated.
+func TestDecodeBannerRefusesGiantDimensions(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 16, 16))); err != nil {
+		t.Fatal(err)
+	}
+	ok := buf.Bytes()
+	if _, err := decodeBanner(ok); err != nil {
+		t.Fatalf("a 16x16 banner: %v", err)
+	}
+	// Rewrite the IHDR width/height (bytes 16..23) to 30000x30000; the
+	// header check must refuse it without decoding.
+	big := append([]byte(nil), ok...)
+	for i, v := range []byte{0, 0, 0x75, 0x30, 0, 0, 0x75, 0x30} {
+		big[16+i] = v
+	}
+	// IHDR's CRC covers its type and data (bytes 12..28) and sits at 29..32.
+	binary.BigEndian.PutUint32(big[29:33], crc32.ChecksumIEEE(big[12:29]))
+	if _, err := decodeBanner(big); err == nil || !strings.Contains(err.Error(), "larger than a banner") {
+		t.Fatalf("30000x30000 banner: %v, want a refusal", err)
+	}
+}
+
+// A caller that gives up stops waiting without cancelling the download or
+// leaving a failure cached for the next card.
+func TestBannerCacheCallerCancelDoesNotPoison(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "image/png")
+		_ = png.Encode(w, image.NewRGBA(image.Rect(0, 0, 8, 4)))
+	}))
+	defer srv.Close()
+	bc := NewBannerCache()
+	bc.client = srv.Client() // the test server is on loopback; skip the public-address dialer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := bc.Get(ctx, srv.URL+"/hero.png")
+		done <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled caller: %v, want context.Canceled", err)
+	}
+	close(release)
+	img, err := bc.Get(context.Background(), srv.URL+"/hero.png")
+	if err != nil || img.Bounds().Dx() != 8 {
+		t.Fatalf("after a cancelled caller: %v, %v — want the banner, not a cached failure", img, err)
 	}
 }

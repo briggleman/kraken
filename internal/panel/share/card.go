@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -283,12 +284,12 @@ func drawRail(img *image.RGBA, fs *fontSet, c *Card, look cardLook, x, y, w, h f
 	drawText(img, label, px, labelY, "PLAYERS", 17*0.26, cInk3)
 	num, capText := "–", ""
 	if c.PlayersKnown {
-		num = itoa(c.Players)
+		num = strconv.Itoa(c.Players)
 		if c.MaxPlayers > 0 {
-			capText = " / " + itoa(c.MaxPlayers)
+			capText = " / " + strconv.Itoa(c.MaxPlayers)
 		}
 	} else if c.MaxPlayers > 0 {
-		capText = " / " + itoa(c.MaxPlayers)
+		capText = " / " + strconv.Itoa(c.MaxPlayers)
 	}
 	if look.glow && c.PlayersKnown {
 		glowText(img, big, px, bigY, num, 0, cLumen, 14, 0.5)
@@ -388,25 +389,20 @@ func wrap(f font.Face, s string, tracking, maxW float64, n int) []string {
 
 // drawText draws s with its baseline at y, adding tracking px after each rune.
 func drawText(img *image.RGBA, f font.Face, x, y float64, s string, tracking float64, col color.RGBA) {
-	d := &font.Drawer{Dst: img, Src: image.NewUniform(col), Face: f}
-	pos := fixed.Point26_6{X: fixed.Int26_6(x * 64), Y: fixed.Int26_6(y * 64)}
-	prev := rune(-1)
-	for _, r := range s {
-		if prev >= 0 {
-			pos.X += f.Kern(prev, r)
-		}
-		d.Dot = pos
-		d.DrawString(string(r))
-		a, _ := f.GlyphAdvance(r)
-		pos.X += a + fixed.Int26_6(tracking*64)
-		prev = r
-	}
+	drawGlyphs(img, image.NewUniform(col), f, x, y, s, tracking)
 }
 
 // textMask renders s into an alpha mask the size of the card.
 func textMask(f font.Face, x, y float64, s string, tracking float64) *image.Alpha {
 	m := image.NewAlpha(image.Rect(0, 0, CardW, CardH))
-	d := &font.Drawer{Dst: m, Src: image.Opaque, Face: f}
+	drawGlyphs(m, image.Opaque, f, x, y, s, tracking)
+	return m
+}
+
+// drawGlyphs is the one glyph loop: kerning between runes, plus tracking px
+// after each, into any destination.
+func drawGlyphs(dst xdraw.Image, src image.Image, f font.Face, x, y float64, s string, tracking float64) {
+	d := &font.Drawer{Dst: dst, Src: src, Face: f}
 	pos := fixed.Point26_6{X: fixed.Int26_6(x * 64), Y: fixed.Int26_6(y * 64)}
 	prev := rune(-1)
 	for _, r := range s {
@@ -419,7 +415,6 @@ func textMask(f font.Face, x, y float64, s string, tracking float64) *image.Alph
 		pos.X += a + fixed.Int26_6(tracking*64)
 		prev = r
 	}
-	return m
 }
 
 // glowText lays a blurred copy of s under where it will be drawn.
@@ -725,26 +720,4 @@ func clampI(v, lo, hi int) int {
 		return hi
 	}
 	return v
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
 }

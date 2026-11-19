@@ -1193,3 +1193,98 @@ mutation check (grants switched off in the rule) fails all four.
 - The web drill-in still offers a few controls a grantee's role cannot use:
   console input, kick, settings apply, DNS/forwards, SFTP controls. The Panel
   refuses each one; the UI gating is tracked as #458.
+
+## Share links + dependency sweep (2026-11-19)
+
+Full pass on `main` at 0.71.0, after server share links shipped (#476–#481):
+the first anonymous surface that renders server data and makes outbound
+fetches. The share-link code had an adversarial read of its own; the rest of
+the tree went through the scanner stack and spot checks of everything shipped
+since the last audit (outbound mail, invites, shared servers, the Windrose
+roster, the AASA endpoint).
+
+### Fixed this pass
+
+**Concurrent card renders shared non-thread-safe font faces (CWE-362) — MEDIUM.**
+`fontSet.face` cached one `opentype.Face` per font and size and handed it to
+every render, but an x/image `font.Face` is not safe for concurrent use (it
+keeps a glyph buffer, a rasterizer and a mask). `GET /s/{token}/card.png`
+draws a card on every cache miss with nothing serialising it, so two misses at
+once — a chat's unfurler and its image proxy, two links, or anyone holding a
+posted link sending requests in parallel — raced inside the rasterizer:
+garbled glyphs at best, a panic or memory corruption at worst, reachable
+without an account. `TestRenderPNGConcurrent` reproduced it under `-race`
+(the race is in `sfnt.(*Font).LoadGlyph` via `opentype.(*Face).Glyph`).
+
+**Fix:** drawing runs under a package mutex (`drawMu`); the PNG encode, which
+touches no face, stays outside it. `PNGCache.GetOrRender` puts a singleflight
+in front, so a burst for one card draws it once rather than queueing a draw
+per request. The shared render also detaches from the requesting client's
+context, so one client hanging up can no longer leave an artless card cached
+for everyone.
+
+**Hardening from the same review — LOW:**
+
+- **`join.code` skipped the admin-credential guard** that `join.password`
+  has. A spec could name `AdminPassword` as an invite code and a link with the
+  address switch on would show it. Only `spec.manage` holders write specs, so
+  this was a guard gap rather than an escalation; `validateJoin` now applies
+  `adminLike` and the query-password check to the code too.
+- **Banner address checks** missed some special-purpose ranges. `PublicAddr`
+  now also refuses `0.0.0.0/8`, `192.0.0.0/24`, `198.18.0.0/15`,
+  `240.0.0.0/4`, Teredo `2001::/32`, local-use NAT64 `64:ff9b:1::/48` and
+  `fec0::/10`, and judges NAT64 (`64:ff9b::/96`) and 6to4 (`2002::/16`)
+  addresses by the IPv4 address inside them, so a NAT64 gateway cannot reach
+  `169.254.169.254`. The URL is admin-set and TLS verification already
+  required a valid certificate, so exposure was low.
+- **Banner memory bounds.** The decode cap drops from 8192×4096 to 4096×2048
+  (a 16-bit image at the cap decodes into about 64 MB). Cached art is now
+  bounded in height as well as width, and is always stored as 8-bit RGBA, so a
+  tall or 16-bit banner can no longer be cached at full decoded size.
+- **`card.png` is `Cache-Control: private`**, not `public`, so a CDN in front
+  of the Panel (Cloudflare caches `.png` by default) cannot keep serving a
+  revoked link's card, join values included, for the 60 s it was allowed.
+
+**Dependencies:**
+
+- **Go toolchain 1.26.6 → 1.26.11.** `govulncheck` reported 14 called
+  standard-library advisories, all fixed in 1.26.9–1.26.11: `net/http` (HTTP/2
+  trailer memory exhaustion, HPACK encoder race, flow-control refunds,
+  CONNECT desync, Range header size, MaxBytesReader race), `html/template`
+  (two context-tracking fixes), `crypto/tls` (ECH outer extensions),
+  `crypto/x509` (distrusted intermediates), `net/textproto`/`mime/multipart`
+  (memory limit bypass). Release binaries pick the toolchain up through
+  `go-version-file: go.mod`; the Docker images build on `golang:1.26-alpine`.
+- **OpenTelemetry 1.45.0 → 1.47.0** (Dependabot alerts #54, #55,
+  GHSA-q7gw-24fr-5p69: attribute-length limit bypass). Indirect, via the
+  Docker SDK; not called.
+- **`golang.org/x/net` 0.59.0 → 0.62.0** (GO-2026-6860/6866, `html`
+  rendering; not called) and **`golang.org/x/crypto` → 0.59.0**.
+
+### Checked and found safe
+
+Share links: 256-bit tokens stored as SHA-256 and looked up by digest; one
+identical `no-store` 404 for unknown, revoked, expired and deleted-server
+links; the token never reaches logs or audit; `Referrer-Policy: no-referrer`;
+every page field escaped by `html/template` (including `og:` content and
+`data-copy`), `share.js` writes only `textContent`; revoke filtered by
+`server_id` in both stores; the card is an allowlist; banner fetch checks the
+address in the dialer after DNS, with `Proxy: nil`, three https-only
+redirects, 4 s and 12 MB. Mail: `html/template` for HTML parts, header values
+refuse CR/LF and subjects are Q-encoded. Web: the one `{@html}` (spec
+highlighter) escapes before wrapping. `npm audit` (prod + dev): 0. `go vet`,
+`staticcheck`: clean. `gosec`: no finding outside the triaged baseline; the
+new G705 on `card.png` is a PNG under `nosniff`.
+
+### Accepted with monitoring (no upstream fix)
+
+Unchanged: `GO-2026-4883`, `GO-2026-4887` (Docker SDK, called, `Fixed in:
+N/A`), `GO-2026-5051` (go-smb2 client, operator-configured share), plus the
+uncalled Docker SDK `GO-2026-5617`, `GO-2026-5668`, `GO-2026-5746`.
+
+### Residual, by design
+
+A link with the password switch on shows the **current** password, so
+changing the password does not shut out someone holding the link; revoke it
+too. The wiki's share-links page says to change the password when revoking;
+it now also says to revoke when changing.

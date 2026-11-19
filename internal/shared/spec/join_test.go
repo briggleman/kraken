@@ -50,6 +50,7 @@ func TestJoin_Invalid(t *testing.T) {
 		{"invite with a port", Join{Method: JoinInviteCode, Code: "INVITE", Port: "game"}, "only for method address"},
 		{"undeclared password", Join{Method: JoinAddress, Port: "game", Password: "Typo"}, "not a variable or setting"},
 		{"admin password", Join{Method: JoinAddress, Port: "game", Password: "AdminPassword"}, "admin credential"},
+		{"admin code", Join{Method: JoinInviteCode, Code: "AdminPassword"}, "admin credential"},
 		{"multi-line notes", Join{Method: JoinAddress, Port: "game", Notes: "one\ntwo"}, "one line"},
 		{"long notes", Join{Method: JoinAddress, Port: "game", Notes: strings.Repeat("x", joinNotesMax+1)}, "one line"},
 	}

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // A chat service fetches a card image two or three times in quick succession
@@ -26,6 +28,7 @@ type pngEntry struct {
 type PNGCache struct {
 	mu    sync.Mutex
 	items map[string]pngEntry
+	group singleflight.Group
 }
 
 // NewPNGCache returns an empty cache.
@@ -54,6 +57,31 @@ func (p *PNGCache) Get(key string, now time.Time) ([]byte, bool) {
 		return nil, false
 	}
 	return e.data, true
+}
+
+// GetOrRender returns the fresh render for key, or calls render once however
+// many requests miss on the same key together and stores what it returns. A
+// burst for one card then draws it once instead of queueing a draw per
+// request behind the renderer's lock.
+func (p *PNGCache) GetOrRender(key string, now time.Time, render func() ([]byte, error)) ([]byte, error) {
+	if data, ok := p.Get(key, now); ok {
+		return data, nil
+	}
+	v, err, _ := p.group.Do(key, func() (any, error) {
+		if data, ok := p.Get(key, now); ok {
+			return data, nil
+		}
+		data, err := render()
+		if err != nil {
+			return nil, err
+		}
+		p.Put(key, data, now)
+		return data, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.([]byte), nil
 }
 
 // Put stores a render, dropping expired entries and then the oldest when full.

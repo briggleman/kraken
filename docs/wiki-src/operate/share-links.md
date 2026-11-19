@@ -133,6 +133,10 @@ message it was posted in, text and image, including any join values it showed.
 If a link showed the password, revoking the link is not enough to take the
 password back: **change the password** in the server's settings. The form says
 this when you turn the password on.
+
+The reverse holds too: a live link always shows the **current** password, so
+changing the password does not shut out someone who holds a link that shows
+it. Revoke that link as well.
 :::
 
 An expired link behaves like a revoked one. Revoked and expired links leave the

@@ -160,10 +160,29 @@ func lookFor(state string) cardLook {
 // RenderPNG draws the card as a PNG. art may be nil (no banner, or the fetch
 // failed); the card is then the plain water column.
 func RenderPNG(w io.Writer, c *Card, art image.Image) error {
-	fs, err := loadFonts()
+	img, err := drawCard(c, art)
 	if err != nil {
 		return err
 	}
+	return png.Encode(w, img)
+}
+
+// drawMu serialises drawing. The faces in fontSet are cached and shared, and
+// an x/image font.Face is not safe for concurrent use (each keeps a glyph
+// buffer and a rasterizer), while every card is drawn on a request — several
+// at once when a chat's unfurler and its image proxy arrive together. Drawing
+// is tens of milliseconds and the PNG cache absorbs bursts, so one at a time
+// costs little; the encode, which touches no face, stays outside the lock.
+var drawMu sync.Mutex
+
+// drawCard draws the card into a new image.
+func drawCard(c *Card, art image.Image) (*image.RGBA, error) {
+	fs, err := loadFonts()
+	if err != nil {
+		return nil, err
+	}
+	drawMu.Lock()
+	defer drawMu.Unlock()
 	look := lookFor(c.State)
 	img := image.NewRGBA(image.Rect(0, 0, CardW, CardH))
 
@@ -240,7 +259,7 @@ func RenderPNG(w io.Writer, c *Card, art image.Image) error {
 	drawText(img, stampFace, sx, footY, prefix, 0, cInk3)
 	drawText(img, stampVal, sx+wPre, footY, val, 0, look.stamp)
 
-	return png.Encode(w, img)
+	return img, nil
 }
 
 // drawHeadline sets the game's name as large as fits: 112px on one line,

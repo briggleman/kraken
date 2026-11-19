@@ -192,6 +192,11 @@ func (s *Spec) validateJoin() error {
 		if !s.declaresKey(j.Code) {
 			return fmt.Errorf("spec %q: join.code %q is not a variable or setting of the spec", s.Slug, j.Code)
 		}
+		// The code is shown on a link as plainly as the password, so it gets the
+		// same guard: an invite code is never an admin or query credential.
+		if adminLike(j.Code) || (s.Query != nil && s.Query.Password == j.Code) {
+			return fmt.Errorf("spec %q: join.code names an admin credential — name the code players type to join", s.Slug)
+		}
 		if j.Port != "" {
 			return fmt.Errorf("spec %q: join.port is only for method address", s.Slug)
 		}

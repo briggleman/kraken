@@ -15,6 +15,8 @@ import type {
   Server,
   ServerDnsState,
   ServerAccess,
+  ShareLink,
+  ShareLinkInput,
   ServerSettings,
   SftpStatus,
 } from "@/api/types";
@@ -113,6 +115,17 @@ export const depth = $state({
   // rather than taking the drill-in's error line.
   access: null as ServerAccess | null,
   accessBusy: false,
+  // Share links (#475): read-only public cards for the server. Optional like
+  // access — a role without server.config is not asked, and a refusal leaves
+  // the block out — with its own error line, so a failed mint never takes
+  // the drill-in's.
+  shareLinks: null as ShareLink[] | null,
+  sharePublicSet: false,
+  shareBusy: false,
+  shareError: null as string | null,
+  // The URL of the link just made. The Panel keeps only a digest and answers
+  // with it exactly once, so it is held only until the drill-in moves on.
+  shareMinted: null as string | null,
   sftp: null as SftpStatus | null,
   sftpOpen: false,
   sftpBusy: false,
@@ -474,6 +487,11 @@ export function openDepth(id: string, x: number, y: number, returnTo?: HTMLEleme
   depth.error = null;
   depth.access = null;
   depth.accessBusy = false;
+  depth.shareLinks = null;
+  depth.sharePublicSet = false;
+  depth.shareBusy = false;
+  depth.shareError = null;
+  depth.shareMinted = null;
   depth.sftp = null;
   depth.sftpOpen = false;
   depth.sftpBusy = false;
@@ -577,11 +595,12 @@ async function refreshDetail() {
     api.getServerSettings(id),
     allowed<FileListing | null>("server.files.read", () => api.listFiles(id, "."), null),
     api.getServerAccess(id),
+    allowed("server.config", () => api.listShareLinks(id), null),
     allowed<SftpStatus | null>("server.files.read", () => api.getServerSftp(id), null),
     api.getInstallLog(id),
   ]);
   if (depth.serverId !== id) return; // drilled elsewhere meanwhile
-  const [srv, bk, sch, dns, settings, files, access, sftp, installLog] = results;
+  const [srv, bk, sch, dns, settings, files, access, shares, sftp, installLog] = results;
   if (bk.status === "fulfilled") {
     depth.backups = bk.value.backups ?? [];
     depth.backupMirror = bk.value.mirror ?? "";
@@ -602,6 +621,10 @@ async function refreshDetail() {
   if (settings.status === "fulfilled") depth.settings = settings.value;
   if (files.status === "fulfilled") depth.files = files.value;
   if (access.status === "fulfilled") depth.access = access.value;
+  if (shares.status === "fulfilled" && shares.value) {
+    depth.shareLinks = shares.value.links ?? [];
+    depth.sharePublicSet = shares.value.public_url_set;
+  }
   // SFTP keeps its own error line: it is one optional affordance in the tab
   // strip, and a node that cannot answer for it must not blank the drill-in.
   depth.sftp = sftp.status === "fulfilled" ? sftp.value : null;
@@ -613,9 +636,9 @@ async function refreshDetail() {
   if (installLog.status === "fulfilled" && claimInstallLog(logRead)) {
     setInstallLog(installLog.value);
   }
-  // The three optional reads (access, SFTP, the install log) are excluded from
-  // the drill-in's error line.
-  const firstErr = results.slice(0, -3).find((r) => r.status === "rejected") as
+  // The four optional reads (access, share links, SFTP, the install log) are
+  // excluded from the drill-in's error line.
+  const firstErr = results.slice(0, -4).find((r) => r.status === "rejected") as
     | PromiseRejectedResult
     | undefined;
   // Only this refresh's own verdict is written, and only over the notice it
@@ -1165,6 +1188,51 @@ export function accessRevoke(userId: string): Promise<boolean> {
 
 export function accessTransfer(userId: string): Promise<boolean> {
   return accessChange((id) => api.transferServer(id, userId));
+}
+
+// --- share links (#475) ------------------------------------------------------
+
+/** Make a share link and hold its URL for the one time it is shown. */
+export async function shareCreate(input: ShareLinkInput): Promise<boolean> {
+  const id = depth.serverId;
+  if (!id || depth.shareBusy) return false;
+  depth.shareBusy = true;
+  depth.shareError = null;
+  try {
+    const link = await api.createShareLink(id, input);
+    if (depth.serverId !== id) return true;
+    depth.shareMinted = link.url ?? null;
+    depth.shareLinks = [{ ...link, url: undefined }, ...(depth.shareLinks ?? [])];
+    return true;
+  } catch (e) {
+    if (depth.serverId === id) depth.shareError = errMsg(e);
+    return false;
+  } finally {
+    depth.shareBusy = false;
+  }
+}
+
+/** Revoke a link: its public page closes at once. */
+export async function shareRevoke(linkId: string): Promise<boolean> {
+  const id = depth.serverId;
+  if (!id || depth.shareBusy) return false;
+  depth.shareBusy = true;
+  depth.shareError = null;
+  try {
+    await api.revokeShareLink(id, linkId);
+    if (depth.serverId === id) depth.shareLinks = (depth.shareLinks ?? []).filter((l) => l.id !== linkId);
+    return true;
+  } catch (e) {
+    if (depth.serverId === id) depth.shareError = errMsg(e);
+    return false;
+  } finally {
+    depth.shareBusy = false;
+  }
+}
+
+/** Forget the URL once the operator has dismissed it. */
+export function shareDismissMinted() {
+  depth.shareMinted = null;
 }
 
 // --- schedules ---------------------------------------------------------------

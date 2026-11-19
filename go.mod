@@ -20,6 +20,7 @@ require (
 	github.com/pressly/goose/v3 v3.26.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/image v0.48.0
+	golang.org/x/sync v0.25.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.83.2
@@ -62,7 +63,6 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	gotest.tools/v3 v3.5.2 // indirect

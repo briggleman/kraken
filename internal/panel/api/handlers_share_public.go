@@ -95,6 +95,14 @@ func (s *Server) handleShareCard(w http.ResponseWriter, r *http.Request) {
 	card := s.shareCard(ctx, link, sv, token, now)
 	key := card.Key()
 	data, hit := s.shareCards.Get(key, now)
+	if !hit && r.Method == http.MethodHead {
+		// A HEAD asks whether the image is there, not for it: answer without
+		// fetching art or drawing a card nobody will receive.
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if !hit {
 		var art image.Image
 		if card.BannerURL != "" {

@@ -51,6 +51,8 @@ variables:
 ports:
   - { name: game, protocol: udp, default: 7777, required: true }
   - { name: query, protocol: udp, default: 27015, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: SERVER_PASSWORD }
 resources:
   min_memory_mb: 4096
   recommended_memory_mb: 8192

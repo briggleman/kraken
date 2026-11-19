@@ -122,6 +122,7 @@
 <a class="toc-link lvl-2" href="#the-rule-that-changed">The rule that changed</a>
 <a class="toc-link lvl-2" href="#the-two-step-steamcmd-pattern">The two-step SteamCMD pattern</a>
 <a class="toc-link lvl-2" href="#the-query-block">The query block</a>
+<a class="toc-link lvl-2" href="#the-join-block">The join block</a>
 <a class="toc-link lvl-2" href="#the-backup-block">The backup block</a>
 <a class="toc-link lvl-2" href="#validating">Validating</a>
 </div></details>
@@ -144,8 +145,8 @@ a valid <code>kind</code> and an <code>image</code>, and no kind twice), <code>i
 <code>startup.command</code>, a <code>startup.stop</code> of type <code>signal</code> or <code>command</code> with a value,
 and at least one port. Every port needs a unique name, a <code>tcp</code> or <code>udp</code>
 protocol, and a default inside 1 to 65535.</p>
-<p>The optional blocks are <code>variables</code>, <code>settings</code>, <code>config_files</code>, <code>query</code> and
-<code>backup</code>.</p>
+<p>The optional blocks are <code>variables</code>, <code>settings</code>, <code>config_files</code>, <code>query</code>,
+<code>backup</code> and <code>join</code>.</p>
 <h3 id="platforms">Platforms <a class="hlink" href="#platforms" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <p><code>linux-native</code>, <code>windows-native</code> and <code>linux-wine</code>. The list order is <strong>scheduler
 priority</strong>, so native kinds go before <code>linux-wine</code>: Wine is the fallback for a
@@ -301,6 +302,18 @@ needs a join and a leave regex that compile as RE2 and capture at least one of
 above the block with the date, and prefer the most specific prefix the game
 prints. A regex that also matches a chat line invents players.
 <a href="/wiki/operate/players/">Who is online</a> covers the runtime behaviour.</p>
+<h2 id="the-join-block">The join block <a class="hlink" href="#the-join-block" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>What a player needs to connect, and the only server values a share link ever
+shows. <code>address</code> needs a <code>port</code> naming the <strong>spec port</strong> players connect to;
+<code>invite_code</code> needs a <code>code</code> naming the setting or variable that holds the code.
+Either may name a <code>password</code>: the setting or variable a player types to join.</p>
+<div class="cmd spec-code" data-lang="yaml"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><span class="l"><b>join</b><span class="p">:</span> <i>{ method: address, port: game, password: ServerPassword }</i></span></pre></div>
+<p>The password key must be the <strong>join</strong> password. The validator refuses keys
+that read as admin, RCON, owner, moderator or operator credentials, and the key
+a <code>palworld-rest</code> query uses. Every key must be one the spec declares, because a
+typo would otherwise leave the share page blank without an error. An optional
+<code>notes</code> line tells a player where the values go; write it only from what you
+have seen in the game.</p>
 <h2 id="the-backup-block">The backup block <a class="hlink" href="#the-backup-block" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Data-directory-relative POSIX globs, never <code>C:\data\…</code> and never a leading <code>/</code>.
 <code>include</code> selects, <code>exclude</code> filters, an exclude wins.</p>
@@ -343,6 +356,7 @@ you the script was idempotent.</p>
 <a class="toc-link lvl-2" href="#the-rule-that-changed">The rule that changed</a>
 <a class="toc-link lvl-2" href="#the-two-step-steamcmd-pattern">The two-step SteamCMD pattern</a>
 <a class="toc-link lvl-2" href="#the-query-block">The query block</a>
+<a class="toc-link lvl-2" href="#the-join-block">The join block</a>
 <a class="toc-link lvl-2" href="#the-backup-block">The backup block</a>
 <a class="toc-link lvl-2" href="#validating">Validating</a>
     </div>

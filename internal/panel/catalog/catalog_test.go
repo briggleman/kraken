@@ -244,3 +244,49 @@ func TestBundledSteamSpecsLeaveValidateToThePass(t *testing.T) {
 		}
 	}
 }
+
+// TestBundledSpecsDeclareHowToJoin pins the join block (#475) on every bundled
+// game: a share link shows these values and nothing else, so a spec that loses
+// its block silently ships links with no way in. windemo is a demo, not a game.
+func TestBundledSpecsDeclareHowToJoin(t *testing.T) {
+	entries, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := map[string]spec.Join{
+		"abiotic-factor": {Method: spec.JoinAddress, Port: "game", Password: "SERVER_PASSWORD"},
+		"dragonwilds":    {Method: spec.JoinAddress, Port: "game", Password: "WorldPassword"},
+		"enshrouded":     {Method: spec.JoinAddress, Port: "game", Password: "friendPassword"},
+		"factorio":       {Method: spec.JoinAddress, Port: "game", Password: "game_password"},
+		"palworld":       {Method: spec.JoinAddress, Port: "game", Password: "ServerPassword"},
+		"valheim":        {Method: spec.JoinAddress, Port: "game", Password: "SERVER_PASSWORD"},
+		"vrising":        {Method: spec.JoinAddress, Port: "game", Password: "Password"},
+		"windrose":       {Method: spec.JoinInviteCode, Code: "InviteCode", Password: "Password"},
+	}
+	seen := map[string]bool{}
+	for _, e := range entries {
+		s := e.Spec
+		w, ok := want[s.Slug]
+		if !ok {
+			if s.Join != nil && s.Slug == "windemo" {
+				t.Errorf("windemo declares a join block; it is a demo")
+			}
+			continue
+		}
+		seen[s.Slug] = true
+		if s.Join == nil {
+			t.Errorf("%s: no join block", s.Slug)
+			continue
+		}
+		got := *s.Join
+		got.Notes = ""
+		if got != w {
+			t.Errorf("%s: join = %+v, want %+v", s.Slug, got, w)
+		}
+	}
+	for slug := range want {
+		if !seen[slug] {
+			t.Errorf("%s: not in the catalog", slug)
+		}
+	}
+}

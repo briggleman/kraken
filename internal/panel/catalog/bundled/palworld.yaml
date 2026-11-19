@@ -81,6 +81,8 @@ startup:
   stop: { type: signal, value: SIGINT }
 ports:
   - { name: game, protocol: udp, default: 8211, required: true }
+# What a share link shows a player (#475).
+join: { method: address, port: game, password: ServerPassword }
 
 # Palworld doesn't answer A2S; player count comes from its REST API
 # (/v1/api/metrics, Basic auth "admin"). The Agent curls it inside the container,

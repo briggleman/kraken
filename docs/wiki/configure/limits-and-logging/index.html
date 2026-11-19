@@ -239,7 +239,7 @@ account. An unparseable entry is a startup error, the same as
 <h3 id="the-off-switch">the off switch <a class="hlink" href="#the-off-switch" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h3>
 <div class="cmd" data-lang="sh"><button class="cmd-copy" type="button" data-copy><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><span>copy</span></button><pre><code>KRAKEN_RATE_LIMITS=all        # the default; &quot;on&quot; is accepted as its old spelling
 KRAKEN_RATE_LIMITS=login      # the login limiters only
-KRAKEN_RATE_LIMITS=downloads  # the download-token limiter only
+KRAKEN_RATE_LIMITS=downloads  # the token-redemption limiters only: downloads, invites, share links
 KRAKEN_RATE_LIMITS=off        # neither</code></pre></div>
 <p>Anything else is a <strong>startup error</strong>: every value here is a deliberate posture,
 and a typo must not be read as one of them. Anything other than <code>all</code> is logged
@@ -248,6 +248,10 @@ loudly at startup.</p>
 Panel behind a NAT that erases the client used to be <code>off</code>, which threw away the
 token-redemption limiter as well — a limiter that has no such problem, since it
 guards a credential nobody shares.</p>
+<p>The token-redemption group covers every route where a link in the URL is the
+whole authority: file downloads, account invites, and the public page a server
+share link opens (<code>/s/{token}</code>), which allows 120 requests a minute per address
+with a burst of 40.</p>
 <h2 id="body-caps">Body caps <a class="hlink" href="#body-caps" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
 <p>Not configurable, listed here because the answers arrive as HTTP errors:</p>
 <ul>

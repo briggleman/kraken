@@ -154,7 +154,8 @@ type Config struct {
 
 	// RateLimits selects which limiters run: "all" (the default; "on" is the
 	// historical alias), "login" for the login-side limiters only, "downloads"
-	// for the token-redemption limiter only, or "off" for neither — each
+	// for the token-redemption limiters only (file downloads, invites, share
+	// links), or "off" for neither — each
 	// logged loudly at startup when it is not "all". The switch is split
 	// because the two surfaces fail differently: behind a NAT that erases the
 	// client address the per-IP login bucket is shared by the whole internet

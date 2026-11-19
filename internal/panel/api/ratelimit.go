@@ -65,6 +65,14 @@ const (
 	// same budget. A person opening their one link takes two of these.
 	inviteRedeemPerMinute = 30
 	inviteRedeemBurst     = 10
+	// sharePagePerMinute / Burst guard GET /s/{token}, the public page a
+	// server share link opens (#475). Looser than invites: one share is a
+	// page fetch plus image fetches from a chat service's few addresses, and
+	// a channel of friends tapping the link can sit behind one NAT. Guessing
+	// a 256-bit token is not what this limit is for; it bounds the database
+	// reads an unauthenticated route can be made to do.
+	sharePagePerMinute = 120
+	sharePageBurst     = 40
 )
 
 // mailLimitKey is the one key the outbound-mail limiter spends from.

@@ -98,6 +98,18 @@ type Card struct {
 	SiteName string
 	PageURL  string
 	ImageURL string
+	// ImageW and ImageH are set when ImageURL is the Panel's own card, whose
+	// size is known; a chat service lays the embed out before fetching it.
+	ImageW, ImageH int
+}
+
+// ImageAlt is the image's alt text: what the card says, in one line.
+func (c *Card) ImageAlt() string {
+	alt := c.Game + ": " + c.ServerName + ", " + strings.ToLower(c.StateLabel())
+	if t := c.PlayersText(); t != "" && c.State == StateRunning {
+		alt += ", " + t + " players"
+	}
+	return alt
 }
 
 // StateLabel is the chip text.

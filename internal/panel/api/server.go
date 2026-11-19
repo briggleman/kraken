@@ -121,6 +121,10 @@ type Server struct {
 	inviteLimit *rateLimiter
 	// shareLimit bounds the public share-link page (#475) per client address.
 	shareLimit *rateLimiter
+	// shareBanners and shareCards hold the share card's fetched game art and
+	// its recent renders (#475).
+	shareBanners *share.BannerCache
+	shareCards   *share.PNGCache
 
 	// mailer sends the Panel's email through the relay in the stored settings.
 	mailer *mail.Sender
@@ -206,17 +210,19 @@ func WithClientTLSBytes(cert, key, ca []byte) Option {
 func New(cfg *config.Config, st store.Store, logger *slog.Logger, opts ...Option) *Server {
 	s := &Server{
 		cfg: cfg, store: st, logger: logger,
-		bootstrap:  newBootstrapRegistry(),
-		agentJobs:  newAgentUpdateJobs(),
-		restores:   newRestoreJobs(),
-		lastRotate: map[string]time.Time{},
-		installs:   newInstallLog(),
-		telemetry:  newTelemetryCache(),
-		downloads:  newDownloadTokenRegistry(),
-		alerts:     alerts.NewDispatcher(st, nil, logger),
-		watchdogs:  alerts.NewWatchdogTracker(),
-		rosters:    alerts.NewRosterTracker(),
-		nodeFalls:  alerts.NewNodeTracker(),
+		bootstrap:    newBootstrapRegistry(),
+		agentJobs:    newAgentUpdateJobs(),
+		restores:     newRestoreJobs(),
+		lastRotate:   map[string]time.Time{},
+		installs:     newInstallLog(),
+		telemetry:    newTelemetryCache(),
+		downloads:    newDownloadTokenRegistry(),
+		shareBanners: share.NewBannerCache(),
+		shareCards:   share.NewPNGCache(),
+		alerts:       alerts.NewDispatcher(st, nil, logger),
+		watchdogs:    alerts.NewWatchdogTracker(),
+		rosters:      alerts.NewRosterTracker(),
+		nodeFalls:    alerts.NewNodeTracker(),
 
 		downloadLimit: newRateLimiter("download", downloadRedeemPerMinute, downloadRedeemBurst,
 			cfg.DownloadRateLimitsEnabled()),
@@ -529,6 +535,8 @@ func (s *Server) routes() chi.Router {
 	r.Handle("/s/static/*", http.StripPrefix("/s/static/", share.StaticHandler()))
 	r.With(s.limit(s.shareLimit)).Get("/s/{token}", s.handleSharePage)
 	r.With(s.limit(s.shareLimit)).Head("/s/{token}", s.handleSharePage)
+	r.With(s.limit(s.shareLimit)).Get("/s/{token}/card.png", s.handleShareCard)
+	r.With(s.limit(s.shareLimit)).Head("/s/{token}/card.png", s.handleShareCard)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth: login is public; logout/me require a valid session. Public and

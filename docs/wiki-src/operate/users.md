@@ -82,6 +82,10 @@ phone hears about, if your role holds `server.view`.
 
 Each row's target is the server.
 
+To show a server to people who have no account at all, a card for a Discord
+channel, use a [share link](/wiki/operate/share-links/) instead: read-only,
+revocable, and it reaches nothing in the Panel.
+
 ## Creating an account
 
 The create form at the bottom of the sheet has two modes.

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Share links — Kraken wiki</title>
+<meta name="description" content="A read-only public card for one server — how to make a share link, what it shows and never shows, how it unfurls in Discord and what the page behind it looks like, where the join address and password come from, revoking and expiry, game art on a LAN-only Panel, getting past Cloudflare, and the audit entries." />
+<link rel="canonical" href="https://krakenserver.io/wiki/operate/share-links/" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Kraken" />
+<meta property="og:url" content="https://krakenserver.io/wiki/operate/share-links/" />
+<meta property="og:title" content="Share links — Kraken wiki" />
+<meta property="og:description" content="A read-only public card for one server — how to make a share link, what it shows and never shows, how it unfurls in Discord and what the page behind it looks like, where the join address and password come from, revoking and expiry, game art on a LAN-only Panel, getting past Cloudflare, and the audit entries." />
+<meta property="og:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Share links — Kraken wiki" />
+<meta name="twitter:description" content="A read-only public card for one server — how to make a share link, what it shows and never shows, how it unfurls in Discord and what the page behind it looks like, where the join address and password come from, revoking and expiry, game art on a LAN-only Panel, getting past Cloudflare, and the audit entries." />
+<meta name="twitter:image" content="https://krakenserver.io/assets/kraken-social-card.png" />
+<meta name="theme-color" content="#02090E" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/favicon-180.png" />
+<link rel="preload" href="/assets/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/assets/fonts/spline-sans-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/wiki/assets/wiki.css" />
+</head>
+<body>
+
+<div class="bg-depth"></div>
+<div class="bg-fog-glow"></div>
+<div class="bg-vignette"></div>
+
+<a class="skip" href="#doc">skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="kr-lock" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <span class="top-tag">wiki</span>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle the wiki contents" aria-expanded="false" aria-controls="side">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <nav class="top-nav">
+      <a class="link" href="/">landing</a>
+      <a class="link" href="https://github.com/briggleman/kraken">github</a>
+      <span class="stamp mono">v0.70.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side">
+    <nav class="nav" aria-label="wiki contents">
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">start here</span></summary>
+<a class="nav-link" href="/wiki/">Start here</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">install</span></summary>
+<a class="nav-link" href="/wiki/install/panel/">Install the Panel</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/install/panel/bare-metal/">Panel on bare metal</a>
+<a class="nav-link" href="/wiki/install/panel/from-source/">Panel from source</a>
+</div>
+<a class="nav-link" href="/wiki/install/agent/">Install an Agent</a>
+<a class="nav-link" href="/wiki/install/upgrade/">Upgrading</a>
+<a class="nav-link" href="/wiki/install/uninstall/">Uninstalling</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">configure</span></summary>
+<a class="nav-link" href="/wiki/configure/panel/">Panel configuration</a>
+<a class="nav-link" href="/wiki/configure/agent/">Agent configuration</a>
+<a class="nav-link" href="/wiki/configure/reverse-proxy/">Behind a reverse proxy</a>
+<a class="nav-link" href="/wiki/configure/network/">Ports and firewall</a>
+<a class="nav-link" href="/wiki/configure/limits-and-logging/">Limits and logging</a>
+<a class="nav-link" href="/wiki/configure/email/">Outbound email</a>
+</details>
+<details class="nav-sec" open data-here="1">
+<summary><span class="nav-sec-t">operate</span></summary>
+<a class="nav-link" href="/wiki/operate/fleet/">The fleet view</a>
+<a class="nav-link" href="/wiki/operate/servers/">Servers</a>
+<a class="nav-link" href="/wiki/operate/files/">Files and SFTP</a>
+<a class="nav-link" href="/wiki/operate/backups/">Backups</a>
+<a class="nav-link" href="/wiki/operate/mods/">Mods (BepInEx)</a>
+<a class="nav-link" href="/wiki/operate/players/">Who is online</a>
+<a class="nav-link" href="/wiki/operate/audit/">The audit log</a>
+<a class="nav-link" href="/wiki/operate/alerts/">Push alerts</a>
+<a class="nav-link" href="/wiki/operate/users/">Users, roles and invites</a>
+<a class="nav-link is-here" href="/wiki/operate/share-links/" aria-current="page">Share links</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">game specs</span></summary>
+<a class="nav-link" href="/wiki/specs/">The spec catalog</a>
+<div class="nav-kids">
+<a class="nav-link" href="/wiki/specs/writing/">Writing a spec</a>
+<a class="nav-link" href="/wiki/specs/platforms/">Platforms</a>
+<a class="nav-link" href="/wiki/specs/windows-containers/">Windows containers</a>
+</div>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">security</span></summary>
+<a class="nav-link" href="/wiki/security/">Security</a>
+</details>
+<details class="nav-sec" open>
+<summary><span class="nav-sec-t">reference</span></summary>
+<a class="nav-link" href="/wiki/reference/api/">API reference</a>
+<a class="nav-link" href="/wiki/reference/cli/">krakenctl</a>
+<a class="nav-link" href="/wiki/reference/releases/">Releases</a>
+<a class="nav-link" href="/wiki/reference/troubleshooting/">Troubleshooting</a>
+</details>
+    </nav>
+  </aside>
+
+  <main class="doc" id="doc">
+    <nav class="crumbs" aria-label="breadcrumb"><a href="/wiki/">wiki</a><i aria-hidden="true">/</i><span>operate</span><i aria-hidden="true">/</i><span aria-current="page">Share links</span></nav>
+    <h1>Share links</h1>
+    <p class="lede">A read-only public card for one server — how to make a share link, what it shows and never shows, how it unfurls in Discord and what the page behind it looks like, where the join address and password come from, revoking and expiry, game art on a LAN-only Panel, getting past Cloudflare, and the audit entries.</p>
+    <details class="toc-in"><summary>on this page</summary><div class="toc">
+<a class="toc-link lvl-2" href="#making-one">Making one</a>
+<a class="toc-link lvl-2" href="#what-a-link-shows">What a link shows</a>
+<a class="toc-link lvl-2" href="#in-discord">In Discord</a>
+<a class="toc-link lvl-2" href="#the-page-behind-the-link">The page behind the link</a>
+<a class="toc-link lvl-2" href="#where-the-join-values-come-from">Where the join values come from</a>
+<a class="toc-link lvl-2" href="#revoking-and-expiry">Revoking and expiry</a>
+<a class="toc-link lvl-2" href="#game-art-and-a-lan-only-panel">Game art and a LAN-only Panel</a>
+<a class="toc-link lvl-2" href="#behind-cloudflare">Behind Cloudflare</a>
+<a class="toc-link lvl-2" href="#rate-limit">Rate limit</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+</div></details>
+    <article class="prose">
+<p>A <strong>share link</strong> is a URL you paste into a Discord channel (or any chat that
+previews links) so friends can see a server&#39;s card: the game, its status, how
+many people are on, and, if you choose, how to join. It needs no account and
+gives no access to the Panel. It is the public counterpart of
+<a href="/wiki/operate/users/#sharing-a-server">sharing a server with a user</a>, which
+lets another <em>account</em> reach the server.</p>
+<h2 id="making-one">Making one <a class="hlink" href="#making-one" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Open the server&#39;s drill-in. The <strong>share links</strong> block sits under <strong>access</strong> and
+is shown to anyone whose role holds <code>server.config</code> on that server: the owner,
+administrators, and an Operator it is shared with.</p>
+<p><strong>New share link</strong> opens a short form:</p>
+<ul>
+<li><strong>label</strong>: your own name for the link (<code>pinned in #general</code>), at most 60
+characters. Nobody else sees it; it is how you tell links apart.</li>
+<li><strong>show the address and port</strong>, or <strong>show the invite code</strong> for a game that
+joins by code. Off by default.</li>
+<li><strong>show the join password</strong>. Off by default, and see
+<a href="#revoking-and-expiry">revoking</a> before you turn it on.</li>
+<li><strong>expires</strong>: never, or in 1, 7 or 30 days. A link with no expiry lives until
+you revoke it, which is what a pinned message wants.</li>
+</ul>
+<p><strong>Create link</strong> shows the URL <strong>once</strong>, in the same violet-edged box the SFTP
+password uses, with a copy control. On a Panel served over plain HTTP the browser gives the
+page no clipboard, so <strong>copy</strong> selects the URL for you to copy by hand instead.
+The Panel stores only a digest of the
+link&#39;s token, so once you close the box or move to another server, the URL
+cannot be shown again. If you lose it, revoke the link and make another.</p>
+<p>A link needs the Panel&#39;s <strong>public address</strong> (<em>sessions &amp; security</em>, or
+<code>KRAKEN_PUBLIC_URL</code>; see <a href="/wiki/configure/email/#the-public-address">the public address</a>).
+Without one the block says so instead of offering the form, because a link
+built from whatever address a request arrived on could point anywhere. A server
+holds at most 25 live links (expired ones do not count); revoke one to make room.</p>
+<h2 id="what-a-link-shows">What a link shows <a class="hlink" href="#what-a-link-shows" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Every link shows:</p>
+<ul>
+<li>the server&#39;s display name and the game&#39;s name, over the game&#39;s art;</li>
+<li>a status, with the colour Discord paints the embed&#39;s side bar;</li>
+<li>the player count, while the server is running and the count is known;</li>
+<li>the time of the reading, in UTC.</li>
+</ul>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>status</th>
+<th>side bar</th>
+<th>when</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Running</strong></td>
+<td>sodium gold</td>
+<td>the server is running</td>
+</tr>
+<tr>
+<td><strong>Starting</strong></td>
+<td>sand</td>
+<td>starting, installing, or restoring a backup</td>
+</tr>
+<tr>
+<td><strong>Stopped</strong></td>
+<td>sand</td>
+<td>anything else: stopped, crashed, failed install, retired</td>
+</tr>
+<tr>
+<td><strong>Unreachable</strong></td>
+<td>violet</td>
+<td>the server&#39;s node is not online, so the Panel cannot vouch for any state; no player count is shown</td>
+</tr>
+</tbody></table>
+</div>
+<p>A link shows the address (or invite code) and the join password <strong>only</strong> when
+you switched them on for that link, and only the values the game&#39;s spec names in
+its <a href="/wiki/specs/writing/#the-join-block"><code>join</code> block</a>.</p>
+<p><strong>A link never shows</strong> anything else about the server or the Panel: not the
+server&#39;s id, the node&#39;s name or LAN address, the owner, other settings or
+variables (admin and RCON passwords included), SFTP details, logs or errors.
+The page is built from an allowlist of the fields above, not from the server
+record with fields removed.</p>
+<h2 id="in-discord">In Discord <a class="hlink" href="#in-discord" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Paste the URL into a channel and Discord fetches it and draws an embed:</p>
+<ul>
+<li><strong>the title</strong> is the server&#39;s name, as a link to the share page;</li>
+<li><strong>the text under it</strong> is the game, status and player count, then the join
+values on a second line. This is the one place in Discord a player can select
+and copy them from;</li>
+<li><strong>the image</strong> is a 1200×630 card the Panel draws itself: the game&#39;s art, the
+game in large type, the server&#39;s name above it, a status chip, the readings
+and the time they were taken.</li>
+</ul>
+<p><strong>A Discord embed is a snapshot.</strong> Discord fetches the link when it is posted
+and keeps what it drew; the card in an old message does not update when the
+server starts or stops. Discord also caches each URL for about half an hour, so
+posting the same link again soon after can show the earlier card. The time on
+the card is there so nobody mistakes an old card for a live one. For a status
+that updates, see <a href="#what-is-not-here">what is not here</a>.</p>
+<h2 id="the-page-behind-the-link">The page behind the link <a class="hlink" href="#the-page-behind-the-link" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Tapping the link opens a page laid out for a phone: the art, the server and
+game, the status, and a <strong>Join</strong> panel with a <strong>copy</strong> control for each value and
+<strong>copy all</strong>, which copies every value on its own line, ready to paste into a
+direct message. The password is masked until <strong>show</strong> is pressed, and copying it
+does not need it shown. Without JavaScript the page still shows every value as
+plain text.</p>
+<p>The page is never indexed by search engines, and opening it never uses the link
+up: Discord fetches it several times, and every friend who taps it fetches it
+again. The block&#39;s row shows when a link was last opened.</p>
+<h2 id="where-the-join-values-come-from">Where the join values come from <a class="hlink" href="#where-the-join-values-come-from" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The spec decides how a player joins, so the share form names the right thing:</p>
+<ul>
+<li><strong>By address</strong> (most games): the Panel builds <code>host:port</code> from the server&#39;s
+<a href="/wiki/configure/network/#game-ports-end-to-end">DNS record</a> when it has one, else the node&#39;s
+detected WAN address, else its public host, and always adds the server&#39;s
+allocated game port. A private, loopback or link-local address, or a bare
+machine name, is never shown; if that is all the node has, the link shows no
+address rather than your LAN.</li>
+<li><strong>By invite code</strong> (Windrose): the value of the setting the spec names. A
+Windrose server whose invite code is left blank uses a code it generated
+itself, which the Panel does not know, so its link shows the password only.
+Set the code in the server&#39;s settings to share it.</li>
+<li><strong>The join password</strong> is the setting or variable the spec names as the one a
+player types. A spec cannot name an admin or RCON password there; the
+validator refuses it. For Enshrouded it is the <strong>Friend</strong> group&#39;s password.</li>
+</ul>
+<p>A spec without a <code>join</code> block shares status and players only, and the form says
+so.</p>
+<h2 id="revoking-and-expiry">Revoking and expiry <a class="hlink" href="#revoking-and-expiry" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p><strong>Revoke</strong> on a link&#39;s row closes its page and its card at once: both answer the
+same plain &quot;link not available&quot; page, with nothing for a chat to draw, whether
+the link was revoked, expired or never existed.</p>
+<aside class="callout is-warning">
+<span class="callout-k">warning</span>
+<div class="callout-b"><p><strong>Revoking does not reach into Discord.</strong> A card already posted stays in the
+message it was posted in, text and image, including any join values it showed.
+If a link showed the password, revoking the link is not enough to take the
+password back: <strong>change the password</strong> in the server&#39;s settings. The form says
+this when you turn the password on.</p>
+</div>
+</aside>
+
+
+<p>An expired link behaves like a revoked one. Revoked and expired links leave the
+list and are deleted from the database 30 days later; the audit log keeps the
+record.</p>
+<h2 id="game-art-and-a-lan-only-panel">Game art and a LAN-only Panel <a class="hlink" href="#game-art-and-a-lan-only-panel" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The card&#39;s art is the spec&#39;s <code>banner_url</code>, which the Panel downloads when it
+draws a card. Because an anonymous request can cause that download, it is held
+tight: <strong>https</strong> only, to <strong>public addresses</strong> only (checked after DNS, so a
+name that resolves to your LAN is refused), at most three https redirects,
+4 seconds, 12 MB. The art is kept for six hours.</p>
+<p>A Panel with no outbound internet simply draws the card on the plain water
+column. The failed download is remembered for ten minutes, so it costs the wait
+once rather than on every card.</p>
+<h2 id="behind-cloudflare">Behind Cloudflare <a class="hlink" href="#behind-cloudflare" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>Discord&#39;s fetcher has to reach <code>/s/…</code> on your public address. Two things in
+front of the Panel can stop it, and both fail silently, as an embed that never
+appears:</p>
+<ul>
+<li><strong>Custom WAF rules</strong>, such as a rule that blocks every country but one. A
+rule like that also blocks friends abroad from the share page. Add a <strong>Skip</strong>
+rule above it for <code>http.request.uri.path wildcard &quot;/s/*&quot;</code>.</li>
+<li><strong>Bot Fight Mode</strong> on the Free plan. It <strong>cannot be skipped</strong> by any WAF rule
+or Page Rule. If it challenges Discord&#39;s fetcher, the choices are turning it
+off or a paid plan, where Super Bot Fight Mode can be skipped.</li>
+</ul>
+<p>To see what happened to Discord&#39;s fetch, look in the zone&#39;s HTTP request log for
+user agents containing <code>Discordbot</code> and read the response status and security
+action. A <code>200</code> with no action means Cloudflare let it through and anything
+missing is on the page itself.</p>
+<h2 id="rate-limit">Rate limit <a class="hlink" href="#rate-limit" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<p>The share page and its card are limited per client address: 120 requests a
+minute with a burst of 40, generous because one share is several fetches from
+Discord&#39;s few addresses and a channel of friends can share one NAT. It belongs
+to the token-redemption group, so it is on when <code>KRAKEN_RATE_LIMITS</code> is <code>all</code> or
+<code>downloads</code>; see <a href="/wiki/configure/limits-and-logging/">limits and logging</a>.</p>
+<h2 id="in-the-audit-log">In the audit log <a class="hlink" href="#in-the-audit-log" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>action</th>
+<th>actor</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>server.share:&lt;link id&gt;</code></td>
+<td>whoever made it</td>
+<td>a link was made; <code>+address</code> and <code>+password</code> are appended when it shows them</td>
+</tr>
+<tr>
+<td><code>server.unshare:&lt;link id&gt;</code></td>
+<td>whoever revoked it</td>
+<td>the link was revoked</td>
+</tr>
+</tbody></table>
+</div>
+<p>The link&#39;s token never reaches the log. Opening a link is not audited; the
+block&#39;s <em>opened</em> time records it instead.</p>
+<h2 id="what-is-not-here">What is not here <a class="hlink" href="#what-is-not-here" aria-label="link to this section"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></a></h2>
+<ul>
+<li><strong>A status that updates in Discord.</strong> An embed is a snapshot by design. A bot
+that edits one pinned message as the server changes is tracked in
+<a href="https://github.com/briggleman/kraken/issues/207">#207</a>.</li>
+<li><strong>Player names.</strong> A link shows how many are on, never who.</li>
+<li><strong>A platform mark.</strong> The card and page do not yet say whether the server runs
+on Linux or Windows.</li>
+</ul>
+    </article>
+
+    <nav class="pager" aria-label="more pages">
+      <a class="pg prev" href="/wiki/operate/users/"><span class="pg-k">previous</span><span class="pg-t">Users, roles and invites</span></a>
+      <a class="pg next" href="/wiki/specs/"><span class="pg-k">next</span><span class="pg-t">The spec catalog<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </nav>
+
+    <footer class="doc-foot">
+      <a class="edit" href="https://github.com/briggleman/kraken/edit/main/docs/wiki-src/operate/share-links.md">edit this page on github</a>
+      <span class="mono">source: docs/wiki-src/operate/share-links.md</span>
+    </footer>
+  </main>
+
+  <aside class="rail" aria-label="on this page">
+    <span class="rail-k">on this page</span>
+    <div class="toc">
+<a class="toc-link lvl-2" href="#making-one">Making one</a>
+<a class="toc-link lvl-2" href="#what-a-link-shows">What a link shows</a>
+<a class="toc-link lvl-2" href="#in-discord">In Discord</a>
+<a class="toc-link lvl-2" href="#the-page-behind-the-link">The page behind the link</a>
+<a class="toc-link lvl-2" href="#where-the-join-values-come-from">Where the join values come from</a>
+<a class="toc-link lvl-2" href="#revoking-and-expiry">Revoking and expiry</a>
+<a class="toc-link lvl-2" href="#game-art-and-a-lan-only-panel">Game art and a LAN-only Panel</a>
+<a class="toc-link lvl-2" href="#behind-cloudflare">Behind Cloudflare</a>
+<a class="toc-link lvl-2" href="#rate-limit">Rate limit</a>
+<a class="toc-link lvl-2" href="#in-the-audit-log">In the audit log</a>
+<a class="toc-link lvl-2" href="#what-is-not-here">What is not here</a>
+    </div>
+  </aside>
+</div>
+
+<footer class="site-foot">
+  <div class="foot-in">
+    <a class="kr-lock sm" href="/" aria-label="Kraken home"><span class="kr-glyph" role="img" aria-label="Kraken glyph"></span><span class="kr-word">KRAKEN</span></a>
+    <nav class="foot-links">
+      <a href="/wiki/">wiki</a>
+      <a href="https://github.com/briggleman/kraken">repository</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/SECURITY.md">security</a>
+      <a href="https://github.com/briggleman/kraken/blob/main/LICENSE">gpl-3.0</a>
+    </nav>
+    <div class="signoff mono">
+      <span>the deep is quiet</span><span class="sep">·</span>
+      <span>documentation for v0.70.0</span><span class="sep">·</span>
+      <span>generated from docs/wiki-src</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/wiki/assets/wiki.js" defer></script>
+</body>
+</html>

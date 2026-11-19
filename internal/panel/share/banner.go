@@ -1,6 +1,7 @@
 package share
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	xdraw "golang.org/x/image/draw"
+	"golang.org/x/sync/singleflight"
 )
 
 // Banner fetching for the card image. The URL comes from a spec, which only
@@ -35,6 +37,10 @@ const (
 	bannerTTL       = 6 * time.Hour
 	bannerFailTTL   = 10 * time.Minute
 	bannerMaxCached = 32
+	// bannerMaxSide and bannerMaxPixels bound the decoded image. Steam's
+	// library heroes are 3840×1240; anything past 8K on a side is not art.
+	bannerMaxSide   = 8192
+	bannerMaxPixels = 8192 * 4096
 )
 
 // errBannerAddr is a dial to an address a public page must not reach.
@@ -48,6 +54,7 @@ type bannerEntry struct {
 // BannerCache fetches and keeps decoded banner images.
 type BannerCache struct {
 	client *http.Client
+	group  singleflight.Group
 	mu     sync.Mutex
 	items  map[string]bannerEntry
 	now    func() time.Time
@@ -111,32 +118,59 @@ func PublicAddr(ip netip.Addr) bool {
 
 // Get returns the decoded banner at rawURL, from the cache when it is fresh.
 // A nil image with a nil error never happens: no art is an error.
+//
+// The download belongs to the cache, not to whichever request asked first:
+// it runs once per URL however many cards wait on it (a chat service's
+// unfurler and its image proxy tend to arrive together), and it is detached
+// from the caller's context, so a client that hangs up mid-fetch neither
+// cancels the download for the others nor leaves a failure cached for ten
+// minutes. A caller that gives up just stops waiting.
 func (b *BannerCache) Get(ctx context.Context, rawURL string) (image.Image, error) {
-	now := b.now()
-	b.mu.Lock()
-	if e, ok := b.items[rawURL]; ok {
-		ttl := bannerTTL
-		if e.img == nil {
-			ttl = bannerFailTTL
-		}
-		if now.Sub(e.at) < ttl {
-			b.mu.Unlock()
-			if e.img == nil {
-				return nil, errors.New("share: banner unavailable (cached failure)")
-			}
-			return e.img, nil
-		}
+	if img, ok, err := b.cached(rawURL); ok {
+		return img, err
 	}
-	b.mu.Unlock()
+	ch := b.group.DoChan(rawURL, func() (any, error) {
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bannerTimeout)
+		defer cancel()
+		img, err := b.fetch(fctx, rawURL)
+		b.mu.Lock()
+		if len(b.items) >= bannerMaxCached {
+			b.evictOldest()
+		}
+		b.items[rawURL] = bannerEntry{img: img, at: b.now()}
+		b.mu.Unlock()
+		return img, err
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-ch:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+		return r.Val.(image.Image), nil
+	}
+}
 
-	img, err := b.fetch(ctx, rawURL)
+// cached answers from the cache when it holds a fresh entry for rawURL.
+func (b *BannerCache) cached(rawURL string) (image.Image, bool, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.items) >= bannerMaxCached {
-		b.evictOldest()
+	e, ok := b.items[rawURL]
+	if !ok {
+		return nil, false, nil
 	}
-	b.items[rawURL] = bannerEntry{img: img, at: now}
-	return img, err
+	ttl := bannerTTL
+	if e.img == nil {
+		ttl = bannerFailTTL
+	}
+	if b.now().Sub(e.at) >= ttl {
+		return nil, false, nil
+	}
+	if e.img == nil {
+		return nil, true, errors.New("share: banner unavailable (cached failure)")
+	}
+	return e.img, true, nil
 }
 
 func (b *BannerCache) evictOldest() {
@@ -174,9 +208,16 @@ func (b *BannerCache) fetch(ctx context.Context, rawURL string) (image.Image, er
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "image/") {
 		return nil, fmt.Errorf("share: banner is %q, not an image", ct)
 	}
-	img, _, err := image.Decode(io.LimitReader(resp.Body, bannerMaxBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bannerMaxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("share: banner decode: %w", err)
+		return nil, err
+	}
+	if len(body) > bannerMaxBytes {
+		return nil, errors.New("share: banner is larger than 12 MB")
+	}
+	img, err := decodeBanner(body)
+	if err != nil {
+		return nil, err
 	}
 	return shrink(img, bannerMaxWidth), nil
 }
@@ -191,4 +232,24 @@ func shrink(img image.Image, maxW int) image.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, maxW, h))
 	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
 	return dst
+}
+
+// decodeBanner decodes a downloaded banner. The byte cap does not bound the
+// decoded size: a few hundred KB of a flat colour can declare 30000×30000
+// pixels and ask for gigabytes, so the header is read first and anything
+// larger than a real banner is refused before a pixel is allocated.
+func decodeBanner(body []byte) (image.Image, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("share: banner decode: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > bannerMaxSide || cfg.Height > bannerMaxSide ||
+		cfg.Width*cfg.Height > bannerMaxPixels {
+		return nil, fmt.Errorf("share: banner is %d×%d, larger than a banner needs to be", cfg.Width, cfg.Height)
+	}
+	img, _, err := image.Decode(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("share: banner decode: %w", err)
+	}
+	return img, nil
 }

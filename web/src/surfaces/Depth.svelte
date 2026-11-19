@@ -483,6 +483,7 @@
     sharePw = false;
     shareDays = 0;
     shareCopied = false;
+    shareCopyFailed = false;
   });
   const shareJoin = $derived(server ? specOf(server)?.join : undefined);
   const shareAddrLabel = $derived(shareJoin?.method === "invite_code" ? "invite code" : "address and port");
@@ -502,9 +503,36 @@
       shareCopied = false;
     }
   }
-  function shareCopy() {
-    if (!depth.shareMinted || shareCopied) return;
-    if (navigator.clipboard) navigator.clipboard.writeText(depth.shareMinted).catch(() => {});
+  // The URL is on screen exactly once, so "copied" is only ever said when the
+  // clipboard took it. A Panel served over plain HTTP has no clipboard API:
+  // there the URL is selected instead, ready for a manual copy, and the line
+  // under it says so.
+  let shareCodeEl: HTMLElement | null = $state(null);
+  let shareCopyFailed = $state(false);
+  async function shareCopy() {
+    const url = depth.shareMinted;
+    if (!url || shareCopied) return;
+    let ok = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      shareCopyFailed = true;
+      if (shareCodeEl) {
+        const range = document.createRange();
+        range.selectNodeContents(shareCodeEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      return;
+    }
+    shareCopyFailed = false;
     shareCopied = true;
     setTimeout(() => (shareCopied = false), 1600);
   }
@@ -1462,13 +1490,16 @@
             {#if depth.shareMinted}
               <div class="sftp-reveal on">
                 <div class="sftp-pw">
-                  <code>{depth.shareMinted}</code>
+                  <code bind:this={shareCodeEl}>{depth.shareMinted}</code>
                   <button class="mini-act res copy-act{shareCopied ? ' did' : ''}" onclick={shareCopy} aria-label="Copy share link"
                     ><span class="ns-stack"><span class="ns-w on">copy</span><span class="ns-w off">copied</span></span></button
                   >
                 </div>
                 <p class="sftp-once">copy it now — the panel keeps only a digest, so this is the one time the link is on screen.</p>
-                <button class="cfg-btn ghost" onclick={shareDismissMinted}>done</button>
+                {#if shareCopyFailed}
+                  <p class="sftp-once" role="status">this browser gave the page no clipboard — the link is selected; copy it with ctrl+c (⌘c) before you press done.</p>
+                {/if}
+                <button class="cfg-btn ghost" onclick={() => { shareCopyFailed = false; shareDismissMinted(); }}>done</button>
               </div>
             {/if}
             {#each depth.shareLinks as l (l.id)}

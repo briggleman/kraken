@@ -26,7 +26,7 @@ const (
 	// shareLinkMaxDays bounds a chosen expiry; 0 means the link lives until
 	// it is revoked.
 	shareLinkMaxDays = 365
-	// shareLinksPerServer caps the open links on one server. A link is cheap
+	// shareLinksPerServer caps the live links on one server. A link is cheap
 	// to make and lives forever by default, so an unbounded list is a list
 	// nobody reads; revoking one makes room.
 	shareLinksPerServer = 25
@@ -131,13 +131,22 @@ func (s *Server) handleCreateShareLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "no public address is set — a share link needs it; set it under sessions & security")
 		return
 	}
-	open, err := s.store.ListShareLinks(ctx, sv.ID)
+	listed, err := s.store.ListShareLinks(ctx, sv.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not count share links")
 		return
 	}
-	if len(open) >= shareLinksPerServer {
-		writeError(w, http.StatusConflict, "this server already has 25 share links — revoke one first")
+	// Only live links count: an expired one opens nothing, so a server that
+	// uses short-lived links is never blocked by ones that already ran out.
+	now := time.Now().UTC()
+	live := 0
+	for _, l := range listed {
+		if l.Live(now) {
+			live++
+		}
+	}
+	if live >= shareLinksPerServer {
+		writeError(w, http.StatusConflict, "this server already has 25 live share links — revoke one first")
 		return
 	}
 
@@ -146,7 +155,6 @@ func (s *Server) handleCreateShareLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create a share link")
 		return
 	}
-	now := time.Now().UTC()
 	l := &store.ShareLink{
 		ID: uuid.NewString(), ServerID: sv.ID, TokenHash: store.HashToken(token), Label: label,
 		ShowAddress: req.ShowAddress, ShowPassword: req.ShowPassword, CreatedAt: now,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -194,5 +195,22 @@ func TestShareLinks_CapPerServer(t *testing.T) {
 	}
 	if rec := e.do(t, "olga", http.MethodPost, "/api/v1/servers/srv-a/share-links", map[string]any{}); rec.Code != http.StatusCreated {
 		t.Fatalf("after revoking one: %d, want 201", rec.Code)
+	}
+}
+
+// Expired links open nothing, so they do not count toward the cap.
+func TestShareLinks_CapCountsLiveLinksOnly(t *testing.T) {
+	e := newShareEnv(t)
+	past := time.Now().Add(-time.Hour)
+	for i := 0; i < 25; i++ {
+		if err := e.st.CreateShareLink(context.Background(), &store.ShareLink{
+			ID: "expired-" + strconv.Itoa(i), ServerID: "srv-a", TokenHash: "h" + strconv.Itoa(i),
+			CreatedAt: past.Add(-time.Hour), ExpiresAt: &past,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rec := e.do(t, "olga", http.MethodPost, "/api/v1/servers/srv-a/share-links", map[string]any{}); rec.Code != http.StatusCreated {
+		t.Fatalf("25 expired links blocked a mint: %d %s", rec.Code, rec.Body.String())
 	}
 }
